@@ -151,6 +151,12 @@ final class WindowManager: ObservableObject {
 
     func activate(windowID: UUID) {
         guard let state = states[windowID] else { return }
+        if let previous = activeState, previous !== state,
+           let group = state.hostWindow?.tabGroup,
+           let previousWindow = previous.hostWindow,
+           group.windows.contains(previousWindow) {
+            state.isSidebarVisible = previous.isSidebarVisible
+        }
         activeState = state
         activeStateCancellable = state.objectWillChange.sink { [weak self] in
             self?.objectWillChange.send()
@@ -166,6 +172,7 @@ final class WindowManager: ObservableObject {
         // no active AppState, which disables Command+T/Command+W and blanks the
         // sidebar. Secondary native windows still leave the manager normally.
         if windowID == primaryWindowID {
+            state.resetClosedWindow()
             // SwiftUI commonly reuses this NSWindow when the app is reopened
             // from the Dock. Keep the weak reference so the reopen handler can
             // bring the existing workspace back instead of losing its route.
@@ -195,6 +202,19 @@ final class WindowManager: ObservableObject {
         activate(windowID: primaryWindowID)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @discardableResult
+    func openNativeTab(from source: AppState? = nil) -> AppState {
+        let source = source ?? activeState
+        let parent = source?.hostWindow
+        let state = openNewWindow()
+        if let source { state.isSidebarVisible = source.isSidebarVisible }
+        if let parent, parent.isVisible || parent.tabGroup?.windows.contains(where: { $0.isVisible }) == true, let window = state.hostWindow {
+            parent.addTabbedWindow(window, ordered: .above)
+            window.makeKeyAndOrderFront(nil)
+        }
+        return state
     }
 
     @discardableResult
@@ -237,57 +257,27 @@ final class WindowManager: ObservableObject {
         }
         window.isReleasedWhenClosed = false
 
+        // Register before showing: native tab insertion must not depend on
+        // an asynchronous SwiftUI representable callback.
+        state.hostWindow = window
+
         let controller = NSWindowController(window: window)
         windowControllers[windowID] = controller
+        window.tabbingMode = .disallowed
         controller.showWindow(nil)
+        window.tabbingMode = .preferred
         window.makeKeyAndOrderFront(nil)
-        DispatchQueue.main.async { [weak window] in
-            guard let window else { return }
-            configureEditorWindowChrome(window)
+        DispatchQueue.main.async { [weak window, weak state] in
+            guard let window, let state else { return }
+            configureEditorWindowChrome(window, appState: state)
         }
         return state
     }
 
     private func openRestoredWindow(_ restoration: RestoredWindow) {
-        let windowID = UUID()
-        let state = AppState(
-            initialDocuments: restoration.documents,
-            recentFiles: recentFiles,
-            preferences: preferences,
-            recoveryStore: recoveryStore
-        )
-        state.windowManager = self
-        state.selectedDocumentID = resolvedSelectedDocumentID(for: restoration)
-        state.isSidebarVisible = restoration.isSidebarVisible
-        states[windowID] = state
-
-        let rootView = EditorWindowRoot(
-            appState: state,
-            windowManager: self,
-            windowID: windowID
-        )
-        let hostingController = NSHostingController(rootView: rootView)
-        let window = NSWindow(contentViewController: hostingController)
-        window.styleMask = [
-            .titled,
-            .closable,
-            .miniaturizable,
-            .resizable,
-            .fullSizeContentView
-        ]
-        window.title = state.windowTitle
-        configureEditorWindowChrome(window)
-        window.minSize = NSSize(width: 900, height: 560)
-        applyFrame(restoration.frame, to: window)
-        window.isReleasedWhenClosed = false
-
-        let controller = NSWindowController(window: window)
-        windowControllers[windowID] = controller
-        controller.showWindow(nil)
-        DispatchQueue.main.async { [weak window] in
-            guard let window else { return }
-            configureEditorWindowChrome(window)
-        }
+        let state = openNewWindow(with: restoration.documents.first)
+        guard let window = state.hostWindow else { return }
+        apply(restoration, to: state, window: window)
     }
 
     func openFileInNewWindow(_ url: URL) {
@@ -304,7 +294,17 @@ final class WindowManager: ObservableObject {
             focus(match.document, in: match.state)
             return
         }
-        let target = createWindowIfNeeded ? openNewWindow() : (preferredState ?? activeState ?? openNewWindow())
+        let candidate = preferredState ?? activeState
+        let target: AppState
+        if createWindowIfNeeded {
+            target = openNewWindow()
+        } else if let candidate, candidate.documents.count == 1,
+                  candidate.documents.first?.isDisposableBlank == true {
+            target = candidate
+        } else {
+            target = openNativeTab(from: candidate)
+        }
+        target.hostWindow?.makeKeyAndOrderFront(nil)
         target.beginOpeningFile(url)
     }
 
@@ -322,6 +322,7 @@ final class WindowManager: ObservableObject {
 
     func focus(_ document: EditorDocument, in state: AppState) {
         state.selectedDocumentID = document.id
+        if let window = state.hostWindow { window.tabGroup?.selectedWindow = window }
         state.hostWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -769,16 +770,26 @@ final class WindowManager: ObservableObject {
         }
     }
 
-    private func captureWorkspaceSnapshot() -> WorkspaceSessionSnapshot {
-        let orderedStates = NSApp.orderedWindows.compactMap { window in
-            states.values.first(where: { $0.hostWindow === window })
-        }
-        let remainingStates = states.values.filter { state in
-            !orderedStates.contains(where: { $0 === state })
-        }
-        let windows = (orderedStates + remainingStates).map { state in
-            let documents = state.documents.map { document in
-                WorkspaceDocumentSnapshot(
+    // Preserve the existing on-disk schema: one stored window is one native
+    // tab group, with documents in the order AppKit currently displays them.
+    func captureWorkspaceSnapshot() -> WorkspaceSessionSnapshot {
+        var visited = Set<ObjectIdentifier>()
+        var snapshots: [WorkspaceWindowSnapshot] = []
+        for window in NSApp.orderedWindows + states.values.compactMap(\.hostWindow) {
+            guard states.values.contains(where: { $0.hostWindow === window }),
+                  !visited.contains(ObjectIdentifier(window)) else { continue }
+            let members = window.tabGroup?.windows ?? [window]
+            members.forEach { visited.insert(ObjectIdentifier($0)) }
+            guard members.contains(where: { $0.isVisible }) else { continue }
+            let groupStates = members.compactMap { member in
+                states.values.first { $0.hostWindow === member }
+            }
+            let selectedWindow = window.tabGroup?.selectedWindow ?? window
+            let selectedState = groupStates.first { $0.hostWindow === selectedWindow }
+                ?? groupStates.first
+            let documents = groupStates.flatMap(\.documents).map { document in
+                document.refreshDirtyState()
+                return WorkspaceDocumentSnapshot(
                     documentID: document.id,
                     text: document.synchronizedText(),
                     sourceURL: document.url,
@@ -791,22 +802,19 @@ final class WindowManager: ObservableObject {
                     fileRevisionSnapshot: document.fileRevisionSnapshot
                 )
             }
-            let frame = state.hostWindow.map {
-                WorkspaceWindowFrame(
-                    x: Double($0.frame.origin.x),
-                    y: Double($0.frame.origin.y),
-                    width: Double($0.frame.width),
-                    height: Double($0.frame.height)
-                )
-            }
-            return WorkspaceWindowSnapshot(
+            snapshots.append(WorkspaceWindowSnapshot(
                 documents: documents,
-                selectedDocumentID: state.selectedDocumentID,
-                isSidebarVisible: state.isSidebarVisible,
-                frame: frame
-            )
+                selectedDocumentID: selectedState?.selectedDocumentID,
+                isSidebarVisible: selectedState?.isSidebarVisible ?? true,
+                frame: WorkspaceWindowFrame(
+                    x: Double(selectedWindow.frame.origin.x),
+                    y: Double(selectedWindow.frame.origin.y),
+                    width: Double(selectedWindow.frame.width),
+                    height: Double(selectedWindow.frame.height)
+                )
+            ))
         }
-        return WorkspaceSessionSnapshot(windows: windows)
+        return WorkspaceSessionSnapshot(windows: snapshots)
     }
 
     private func presentWorkspaceSaveError(_ error: Error) {
@@ -954,7 +962,14 @@ final class WindowManager: ObservableObject {
             recoveredDocuments = windows.first?.documents ?? []
             return
         }
-        recoveredDocuments = recoverySnapshots.map(Self.makeRecoveredDocument)
+        let recovered = recoverySnapshots.map(Self.makeRecoveredDocument)
+        recoveredDocuments = recovered
+        if !recovered.isEmpty {
+            initialRestoredWindow = RestoredWindow(
+                documents: recovered, selectedDocumentID: recovered.first?.id,
+                isSidebarVisible: true, frame: nil
+            )
+        }
     }
 
     private func apply(
@@ -962,21 +977,20 @@ final class WindowManager: ObservableObject {
         to state: AppState,
         window: NSWindow
     ) {
-        state.selectedDocumentID = resolvedSelectedDocumentID(for: restoration)
         state.isSidebarVisible = restoration.isSidebarVisible
         applyFrame(restoration.frame, to: window)
-    }
-
-    private func resolvedSelectedDocumentID(
-        for restoration: RestoredWindow
-    ) -> UUID? {
-        if let selectedDocumentID = restoration.selectedDocumentID,
-           restoration.documents.contains(where: {
-               $0.id == selectedDocumentID
-           }) {
-            return selectedDocumentID
+        var selectedWindow = window
+        var previousWindow = window
+        for document in restoration.documents.dropFirst() {
+            let tabState = openNewWindow(with: document)
+            tabState.isSidebarVisible = restoration.isSidebarVisible
+            guard let tabWindow = tabState.hostWindow else { continue }
+            previousWindow.addTabbedWindow(tabWindow, ordered: .above)
+            previousWindow = tabWindow
+            if document.id == restoration.selectedDocumentID { selectedWindow = tabWindow }
         }
-        return restoration.documents.first?.id
+        if let group = window.tabGroup { group.selectedWindow = selectedWindow }
+        selectedWindow.makeKeyAndOrderFront(nil)
     }
 
     private func applyFrame(

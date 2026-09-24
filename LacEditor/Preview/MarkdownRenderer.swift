@@ -18,7 +18,7 @@ enum MarkdownRenderer {
         let border = darkMode ? "#3a3a40" : "#dedee3"
         let codeBackground = darkMode ? "#25252a" : "#f3f3f5"
         let accent = darkMode ? "#aeb6ff" : "#4d55a7"
-        let background = darkMode ? "#1e1e22" : "#fbfbfb"
+        let background = darkMode ? "#1b1b1b" : "#fbfbfb"
 
         return """
         <!doctype html>
@@ -27,10 +27,10 @@ enum MarkdownRenderer {
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
-          :root { color-scheme: \(darkMode ? "dark" : "light"); }
+          :root { color-scheme: \(darkMode ? "dark" : "light"); background: \(background); }
           * { box-sizing: border-box; }
           body {
-            margin: 0; padding: 30px 38px 64px; background: \(background); color: \(foreground);
+            margin: 0; padding: 24px clamp(20px, 4vw, 32px) 64px; background: \(background); color: \(foreground);
             font: 15px/1.72 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
             overflow-wrap: anywhere;
           }

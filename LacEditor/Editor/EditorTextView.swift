@@ -54,6 +54,7 @@ struct EditorTextView: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
+        scrollView.backgroundColor = .lacEditorBackground
 
         let textStorage = NSTextStorage()
         let layoutManager = FoldLayoutManager()

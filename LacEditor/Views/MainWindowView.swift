@@ -99,7 +99,7 @@ struct MainWindowView: View {
     }
 
     private var showsTabBar: Bool {
-        appState.documents.count > 1
+        false // Native NSWindow tabs reserve their own titlebar space.
     }
 
 }
@@ -146,14 +146,32 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         sidebarItem.canCollapseFromWindowResize = false
         sidebarItem.allowsFullHeightLayout = true
         sidebarItem.titlebarSeparatorStyle = .none
-        let contentItem = NSSplitViewItem(viewController: contentController)
+        // Scroll views extend underneath the system toolbar. Their content
+        // insets reserve the safe area; the preview divider clips separately.
+        let contentBoundary = NSViewController()
+        contentBoundary.view = NSView()
+        contentBoundary.view.wantsLayer = true
+        contentBoundary.view.layer?.masksToBounds = true
+        contentBoundary.addChild(contentController)
+        contentController.safeAreaRegions = []
+        let hosted = contentController.view
+        hosted.translatesAutoresizingMaskIntoConstraints = false
+        contentBoundary.view.addSubview(hosted)
+        NSLayoutConstraint.activate([
+            hosted.topAnchor.constraint(equalTo: contentBoundary.view.topAnchor),
+            hosted.bottomAnchor.constraint(equalTo: contentBoundary.view.bottomAnchor),
+            hosted.leadingAnchor.constraint(equalTo: contentBoundary.view.leadingAnchor),
+            hosted.trailingAnchor.constraint(equalTo: contentBoundary.view.trailingAnchor)
+        ])
+        // AppKit owns the titlebar backdrop, as in NT2. Do not place an
+        // additional material over the scrolling content.
+        let contentItem = NSSplitViewItem(viewController: contentBoundary)
         contentItem.minimumThickness = 420
         controller.addSplitViewItem(sidebarItem)
         controller.addSplitViewItem(contentItem)
         controller.splitView.dividerStyle = .thin
         controller.splitView.isVertical = true
         controller.view.wantsLayer = true
-        controller.view.layer?.backgroundColor = NSColor.lacEditorBackground.cgColor
         DispatchQueue.main.async { [weak controller] in
             guard let controller else { return }
             controller.splitView.setPosition(
@@ -235,20 +253,17 @@ private struct DocumentEditorPane: View {
 
     var body: some View {
         ZStack {
-            HSplitView {
-                editor
-                    .frame(minWidth: 300)
-
-                if document.isPreviewEffectivelyEnabled {
+            NativeEditorSplit(
+                editor: AnyView(editor),
+                preview: document.isPreviewEffectivelyEnabled ? AnyView(
                     MarkdownPreview(
                         markdown: document.text,
                         revision: document.textRevision,
                         darkMode: darkMode,
                         document: document
                     )
-                    .frame(minWidth: 280)
-                }
-            }
+                ) : nil
+            )
             if document.ioState == .opening {
                 VStack(spacing: 12) {
                     ProgressView()
@@ -278,5 +293,71 @@ private struct DocumentEditorPane: View {
             isActive: true,
             requestTextTransformation: appState.presentTextTransformation
         )
+    }
+}
+
+/// Only the scrolling panes underlap the toolbar, never the divider between
+/// them. A real split view also preserves the user's split ratio on updates.
+struct NativeEditorSplit: NSViewControllerRepresentable {
+    let editor: AnyView
+    let preview: AnyView?
+
+    func makeNSViewController(context: Context) -> NativeEditorSplitController {
+        let controller = NativeEditorSplitController()
+        controller.update(editor: editor, preview: preview)
+        return controller
+    }
+
+    func updateNSViewController(_ controller: NativeEditorSplitController, context: Context) {
+        controller.update(editor: editor, preview: preview)
+    }
+}
+
+final class NativeEditorSplitController: NSSplitViewController {
+    private let editorHost = NSHostingController(rootView: AnyView(EmptyView()))
+    private var previewHost: NSHostingController<AnyView>?
+
+    override func loadView() {
+        splitView = ContentDividerSplitView()
+        splitView.isVertical = true
+        splitView.dividerStyle = .thin
+        view = splitView
+        editorHost.safeAreaRegions = []
+        let item = NSSplitViewItem(viewController: editorHost)
+        item.minimumThickness = 300
+        addSplitViewItem(item)
+    }
+
+    func update(editor: AnyView, preview: AnyView?) {
+        _ = view
+        editorHost.rootView = editor
+        if let preview {
+            if let previewHost {
+                previewHost.rootView = preview
+            } else {
+                let host = NSHostingController(rootView: preview)
+                host.safeAreaRegions = []
+                let item = NSSplitViewItem(viewController: host)
+                item.minimumThickness = 280
+                previewHost = host
+                addSplitViewItem(item)
+            }
+        } else if previewHost != nil {
+            removeSplitViewItem(splitViewItems[1])
+            previewHost = nil
+        }
+    }
+}
+
+final class ContentDividerSplitView: NSSplitView {
+    // Prevent AppKit's layer-backed divider from extending through the chrome.
+    override var dividerColor: NSColor { .clear }
+
+    override func drawDivider(in rect: NSRect) {
+        let contentRect = window.map { convert($0.contentLayoutRect, from: nil) } ?? bounds
+        let visible = rect.intersection(contentRect)
+        guard !visible.isEmpty else { return }
+        NSColor.separatorColor.setFill()
+        visible.fill()
     }
 }

@@ -13,7 +13,7 @@ LacEditor 为日常文本、Markdown、JSON 和代码编辑而生：打开即写
   <a href="https://github.com/kolmh/LacEditor/issues">反馈问题</a>
 </p>
 
-> 当前版本：`0.13.18` · macOS 26+ · Apple Silicon
+> 当前版本：`0.14.0` · macOS 26+ · Apple Silicon
 
 ## 为什么是 LacEditor？
 
@@ -81,6 +81,8 @@ swift test
 也可以用 Xcode 打开 `LacEditor.xcodeproj`，选择 `LacEditor` scheme 后按 `Command+R`。
 
 ## 技术方向
+
+从 0.14.0 起使用 macOS 原生窗口标签，支持系统拖动、拆出与合并。旧版工作区会按原顺序恢复为原生标签组，继续保留未保存内容、正式文件路径和 Finder 打开方式。
 
 LacEditor 使用 SwiftUI 构建界面，AppKit `NSTextView` 负责编辑，TextKit 负责可视区布局，WebKit 配合
 `cmark-gfm` 负责本地 Markdown 预览。文件读写、语法扫描、搜索替换、JSON、预览和恢复各自保持独立，

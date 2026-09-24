@@ -205,15 +205,15 @@ final class LineNumberRulerView: NSRulerView {
             return
         }
 
-        let contentLayoutRect: NSRect
-        if let window {
-            contentLayoutRect = NSIntersectionRect(
-                bounds,
-                convert(window.contentLayoutRect, from: nil)
-            )
-        } else {
-            contentLayoutRect = bounds
-        }
+        // Share the clip view's physical viewport with the text. Do not anchor
+        // labels to the titlebar safe area: that pins the first visible number.
+        let contentLayoutRect = scrollView.map {
+            let viewport = convert($0.contentView.bounds, from: $0.contentView)
+            return bounds.intersection(NSRect(
+                x: bounds.minX, y: viewport.minY,
+                width: bounds.width, height: viewport.height
+            ))
+        } ?? bounds
         contentDrawingRect = contentLayoutRect
         guard !contentLayoutRect.isEmpty else {
             visibleLineMap = []
@@ -300,12 +300,9 @@ final class LineNumberRulerView: NSRulerView {
             )
             textViewRect.origin.x += textView.textContainerOrigin.x
             textViewRect.origin.y += textView.textContainerOrigin.y
-            let rulerRect = LineNumberGeometry.rulerRect(
-                for: textViewRect,
-                visibleTextRect: visibleRect,
-                contentLayoutRect: contentLayoutRect,
-                rulerBounds: bounds
-            )
+            var rulerRect = convert(textViewRect, from: textView)
+            rulerRect.origin.x = bounds.minX
+            rulerRect.size.width = bounds.width
             guard rulerRect.intersects(contentLayoutRect) else { continue }
             lines.append(LineNumberVisibleLine(
                 number: lineNumber,
@@ -333,12 +330,9 @@ final class LineNumberRulerView: NSRulerView {
                 textViewRect.origin.x += textView.textContainerOrigin.x
                 textViewRect.origin.y += textView.textContainerOrigin.y
             }
-            let rulerRect = LineNumberGeometry.rulerRect(
-                for: textViewRect,
-                visibleTextRect: visibleRect,
-                contentLayoutRect: contentLayoutRect,
-                rulerBounds: bounds
-            )
+            var rulerRect = convert(textViewRect, from: textView)
+            rulerRect.origin.x = bounds.minX
+            rulerRect.size.width = bounds.width
             if rulerRect.intersects(contentLayoutRect) {
                 lines.append(LineNumberVisibleLine(
                     number: lineNumber,

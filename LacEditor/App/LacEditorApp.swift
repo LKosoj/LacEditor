@@ -16,7 +16,7 @@ struct LacEditorApp: App {
         )
         let recoveredDocuments = manager.takeRecoveredDocuments()
         let state = AppState(
-            initialDocuments: recoveredDocuments,
+            initialDocuments: Array(recoveredDocuments.prefix(1)),
             recentFiles: manager.recentFiles,
             preferences: manager.preferences,
             recoveryStore: manager.recoveryStore
@@ -100,6 +100,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             defer: false
         )
         window.title = "设置"
+        window.tabbingMode = .disallowed
         window.contentViewController = NSHostingController(
             rootView: SettingsHostView(
                 fallbackState: state,
@@ -478,7 +479,7 @@ final class MenuLocalizationController: NSObject {
 }
 
 struct WindowCloseCoordinator: NSViewRepresentable {
-    let appState: AppState
+    @ObservedObject var appState: AppState
     let windowManager: WindowManager
     let windowID: UUID
 
@@ -540,9 +541,9 @@ struct WindowCloseCoordinator: NSViewRepresentable {
 
         func scheduleChromeUpdate(for window: NSWindow) {
             chromeWorkItem?.cancel()
-            let workItem = DispatchWorkItem { [weak window] in
+            let workItem = DispatchWorkItem { [weak self, weak window] in
                 MainActor.assumeIsolated {
-                    guard let window else { return }
+                    guard let self, let window else { return }
                     configureEditorWindowChrome(window, appState: self.appState)
                 }
             }
@@ -587,6 +588,7 @@ struct WindowCloseCoordinator: NSViewRepresentable {
         }
 
         func windowDidBecomeKey(_ notification: Notification) {
+            isCloseApproved = false
             // A SwiftUI Window scene may be reopened from the Dock after it
             // was closed. Rebind the existing session before activating it so
             // menu commands and sidebar state target this window again.
@@ -610,19 +612,29 @@ struct WindowCloseCoordinator: NSViewRepresentable {
 
 @MainActor
 func configureEditorWindowChrome(_ window: NSWindow, appState: AppState? = nil) {
+    window.tabbingIdentifier = "com.laceditor.editor"
+    window.tabbingMode = .preferred
+    window.tab.title = appState?.selectedDocument?.displayName ?? "未命名"
+    window.isDocumentEdited = appState?.selectedDocument?.isDirty == true
     // This is the same structure used by Finder: the native split sidebar is
     // allowed to extend through the titlebar, while one compact AppKit toolbar
     // owns every titlebar control and tracks the split-view divider.
     window.styleMask.insert(.fullSizeContentView)
     window.toolbarStyle = .unified
     window.titleVisibility = .hidden
-    // Let the native full-height sidebar material continue behind the
-    // traffic-light/titlebar area, as it does in Finder.
-    window.titlebarAppearsTransparent = true
+    // Use NT2's native titlebar backdrop above the full-height scroll views.
+    window.titlebarAppearsTransparent = false
     window.backgroundColor = .windowBackgroundColor
     window.titlebarSeparatorStyle = .none
 
     if let appState {
         configureEditorWindowToolbar(window, appState: appState)
+    }
+}
+
+/// AppKit sends the native tab bar's plus action down the responder chain.
+extension AppDelegate {
+    @objc func newWindowForTab(_ sender: Any?) {
+        Self.sharedManager?.openNativeTab()
     }
 }

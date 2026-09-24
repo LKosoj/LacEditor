@@ -338,7 +338,7 @@ struct LacEditorCommands: Commands {
                     KeyEquivalent(Character(String(number))),
                     modifiers: .command
                 )
-                .disabled((appState?.documents.count ?? 0) < number)
+                .disabled((appState?.hostWindow?.tabGroup?.windows.count ?? 1) < number || appState == nil)
             }
             Divider()
             Button {

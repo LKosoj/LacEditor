@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 
 /// Owns the editor window's toolbar as a native AppKit toolbar. Keeping all
 /// titlebar controls in one toolbar lets macOS provide a single active/inactive
@@ -13,6 +14,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
     }
 
     private weak var appState: AppState?
+    private var stateObservation: AnyCancellable?
     private let titleField = NSTextField(labelWithString: "LacEditor")
     private let languageButton = NSPopUpButton(frame: .zero, pullsDown: false)
     private weak var sidebarItem: NSToolbarItem?
@@ -24,6 +26,15 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         super.init()
         configureTitleField()
         configureLanguageButton()
+        stateObservation = appState.objectWillChange.sink { [weak self, weak appState] in
+            DispatchQueue.main.async {
+                guard let appState else { return }
+                self?.update(appState: appState)
+                appState.hostWindow?.title = appState.windowTitle
+                appState.hostWindow?.tab.title = appState.selectedDocument?.displayName ?? "未命名"
+                appState.hostWindow?.isDocumentEdited = appState.selectedDocument?.isDirty == true
+            }
+        }
     }
 
     func makeToolbar() -> NSToolbar {
@@ -82,7 +93,6 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
             .toggleSidebar,
-            .sidebarTrackingSeparator,
             ItemIdentifier.title,
             .flexibleSpace,
             ItemIdentifier.history,

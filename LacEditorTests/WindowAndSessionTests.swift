@@ -35,7 +35,7 @@ final class WindowAndSessionTests: XCTestCase {
         let contentView = try XCTUnwrap(window.contentView)
         let split = try XCTUnwrap(findSplit(contentView))
         let sidebar = split.splitViewItems[0]
-        let accessory = try XCTUnwrap(split.splitViewItems[1].topAlignedAccessoryViewControllers.first)
+        XCTAssertTrue(split.splitViewItems[1].topAlignedAccessoryViewControllers.isEmpty)
         for size in [NSSize(width: 900, height: 560), NSSize(width: 1120, height: 720)] {
             window.setContentSize(size)
             try await Task.sleep(for: .milliseconds(100))
@@ -43,10 +43,7 @@ final class WindowAndSessionTests: XCTestCase {
             XCTAssertEqual(split.view.convert(split.view.bounds, to: nil).maxY,
                            contentView.convert(contentView.bounds, to: nil).maxY, accuracy: 1,
                            "The split view must reach behind the titlebar")
-            XCTAssertFalse(accessory.isHidden)
-            XCTAssertGreaterThan(accessory.view.visibleRect.width, 200)
-            XCTAssertGreaterThan(accessory.view.visibleRect.height, 20)
-            XCTAssertEqual(accessory.view.safeAreaInsets.top, 0, accuracy: 1)
+            XCTAssertGreaterThan(split.splitViewItems[1].viewController.view.visibleRect.width, 200)
         }
         sidebar.isCollapsed = true // Same entry point as AppKit's toolbar button.
         XCTAssertFalse(state.isSidebarVisible)
@@ -79,7 +76,7 @@ final class WindowAndSessionTests: XCTestCase {
 
         XCTAssertTrue(manager.activeState === state)
         XCTAssertTrue(state.hostWindow === reopenedWindow)
-        XCTAssertEqual(state.selectedDocument?.text, "kept")
+        XCTAssertTrue(state.selectedDocument?.isDisposableBlank == true)
     }
 
     func testPreservedWorkspaceRestoresTabOrderAndDirtyState() async throws {
@@ -120,6 +117,8 @@ final class WindowAndSessionTests: XCTestCase {
         let window = makeWindow(title: "Workspace")
         let windowID = UUID()
         manager.register(windowID: windowID, state: state, window: window)
+
+        window.orderFront(nil)
 
         let shouldTerminate = await withCheckedContinuation { continuation in
             manager.requestApplicationTermination {

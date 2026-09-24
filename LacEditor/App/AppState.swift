@@ -362,6 +362,10 @@ final class AppState: ObservableObject {
     }
 
     func newDocument() {
+        if let windowManager, hostWindow != nil {
+            windowManager.openNativeTab(from: self)
+            return
+        }
         let document = EditorDocument()
         documents.append(document)
         selectedDocumentID = document.id
@@ -635,11 +639,15 @@ final class AppState: ObservableObject {
     }
 
     func closeSelectedDocument() {
-        guard let document = selectedDocument else { return }
-        close(document)
+        if let hostWindow { hostWindow.performClose(nil) }
+        else if let document = selectedDocument { close(document) }
     }
 
     func close(_ document: EditorDocument) {
+        if documents.count == 1, let hostWindow {
+            hostWindow.performClose(nil)
+            return
+        }
         if documents.count == 1, document.isDisposableBlank {
             hostWindow?.performClose(nil)
             return
@@ -670,20 +678,16 @@ final class AppState: ObservableObject {
     }
 
     func selectNextTab() {
-        guard !documents.isEmpty else { return }
-        let index = selectedDocumentIndex ?? 0
-        selectedDocumentID = documents[(index + 1) % documents.count].id
+        hostWindow?.selectNextTab(nil)
     }
 
     func selectPreviousTab() {
-        guard !documents.isEmpty else { return }
-        let index = selectedDocumentIndex ?? 0
-        selectedDocumentID = documents[(index - 1 + documents.count) % documents.count].id
+        hostWindow?.selectPreviousTab(nil)
     }
 
     func selectTab(at index: Int) {
-        guard documents.indices.contains(index) else { return }
-        selectedDocumentID = documents[index].id
+        guard let group = hostWindow?.tabGroup, group.windows.indices.contains(index) else { return }
+        group.selectedWindow = group.windows[index]
     }
 
     func moveDocument(_ sourceID: UUID, before targetID: UUID?) {
@@ -711,7 +715,7 @@ final class AppState: ObservableObject {
         stopObserving(document)
         documents.remove(at: index)
         if documents.isEmpty {
-            newDocument()
+            resetClosedWindow()
         } else {
             selectedDocumentID = documents[min(index, documents.count - 1)].id
         }
@@ -1268,6 +1272,16 @@ final class AppState: ObservableObject {
         recoveryWorkItems.values.forEach { $0.cancel() }
         recoveryWorkItems.removeAll()
         recoveryStore?.discard(documentIDs: documentIDs)
+    }
+
+    /// Only called after the close pipeline has approved discarding/saving.
+    /// SwiftUI retains its primary scene, but closed documents must not return.
+    func resetClosedWindow() {
+        for document in documents { stopObserving(document) }
+        let blank = EditorDocument()
+        documents = [blank]
+        selectedDocumentID = blank.id
+        observe(blank)
     }
 
     func persistRecoverySnapshotsImmediately() {
@@ -1933,7 +1947,7 @@ final class AppState: ObservableObject {
         recoveryStore?.discard(documentID: document.id)
         documents.remove(at: index)
         if documents.isEmpty {
-            newDocument()
+            resetClosedWindow()
         } else {
             selectedDocumentID = documents[min(index, documents.count - 1)].id
         }

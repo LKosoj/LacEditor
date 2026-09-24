@@ -10,6 +10,15 @@ private let markdownPerformanceLog = OSLog(
 
 private final class MarkdownWebView: WKWebView {
     var reloadRenderedContent: (() -> Void)?
+    private var pageDarkMode: Bool?
+
+    func configurePageAppearance(darkMode: Bool) {
+        guard pageDarkMode != darkMode else { return }
+        pageDarkMode = darkMode
+        appearance = NSAppearance(named: darkMode ? .darkAqua : .aqua)
+        underPageBackgroundColor = NSColor(calibratedWhite: darkMode ? 0.105 : 251.0 / 255.0, alpha: 1)
+        needsLayout = true
+    }
 
     override func reload() -> WKNavigation? {
         reloadRenderedContent?()
@@ -39,7 +48,9 @@ struct MarkdownPreview: NSViewRepresentable {
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
         let view = MarkdownWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = context.coordinator
-        view.setValue(false, forKey: "drawsBackground")
+        // WebKit owns its native top inset and scroll pocket. Do not disable
+        // these without a replacement: page text would overlap toolbar items.
+        view.configurePageAppearance(darkMode: darkMode)
         context.coordinator.webView = view
         context.coordinator.document = document
         view.reloadRenderedContent = { [weak view, weak coordinator = context.coordinator] in
@@ -56,6 +67,7 @@ struct MarkdownPreview: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: WKWebView, context: Context) {
+        (nsView as? MarkdownWebView)?.configurePageAppearance(darkMode: darkMode)
         context.coordinator.document = document
         context.coordinator.render(markdown: markdown, revision: revision, darkMode: darkMode)
     }
@@ -68,8 +80,9 @@ struct MarkdownPreview: NSViewRepresentable {
         private var lastRevision: UInt?
         private var lastDarkMode: Bool?
         private var lastRenderedHTML = ""
-        private weak var cachedScrollView: NSScrollView?
         private var generation = 0
+        private var loadGeneration = 0
+        private var latestNavigation: WKNavigation?
         private var pendingScrollRatio: CGFloat = 0
 
         init(document: EditorDocument) {
@@ -147,37 +160,37 @@ struct MarkdownPreview: NSViewRepresentable {
                           document.taskCoordinator.isCurrent(taskGeneration, for: .preview),
                           let webView else { return }
                     document.taskCoordinator.finish(.preview, generation: taskGeneration)
-                    pendingScrollRatio = scrollRatio(in: webView)
                     lastRenderedHTML = html
-                    webView.stopLoading()
-                    webView.loadHTMLString(html, baseURL: nil)
+                    loadPreservingScroll(html, in: webView)
                 }
             }
             renderTask = task
         }
 
-        private func scrollRatio(in webView: WKWebView) -> CGFloat {
-            guard let scrollView = findScrollView(in: webView) else { return 0 }
-            let available = max(
-                1,
-                (scrollView.documentView?.bounds.height ?? scrollView.contentSize.height)
-                    - scrollView.contentView.bounds.height
-            )
-            return min(1, max(0, scrollView.contentView.bounds.minY / available))
+        private func loadPreservingScroll(_ html: String, in webView: WKWebView) {
+            loadGeneration += 1
+            let requestedLoad = loadGeneration
+            let requestedRender = generation
+            // WebKit's native scroll-view bounds need not track the page's
+            // compositor scroll position. Query the page only when reloading.
+            webView.evaluateJavaScript("window.scrollY / Math.max(1, document.documentElement.scrollHeight - window.innerHeight)") { [weak self, weak webView] value, _ in
+                guard let self, let webView,
+                      requestedLoad == self.loadGeneration,
+                      requestedRender == self.generation else { return }
+                if let number = value as? NSNumber, number.doubleValue.isFinite {
+                    self.pendingScrollRatio = min(1, max(0, number.doubleValue))
+                }
+                webView.stopLoading()
+                self.latestNavigation = webView.loadHTMLString(html, baseURL: nil)
+            }
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            guard navigation === latestNavigation else { return }
             let ratio = pendingScrollRatio
-            DispatchQueue.main.async {
-                guard let scrollView = self.findScrollView(in: webView) else { return }
-                let available = max(
-                    0,
-                    (scrollView.documentView?.bounds.height ?? scrollView.contentSize.height)
-                        - scrollView.contentView.bounds.height
-                )
-                scrollView.contentView.scroll(to: NSPoint(x: 0, y: available * ratio))
-                scrollView.reflectScrolledClipView(scrollView.contentView)
-            }
+            let requestedLoad = loadGeneration
+            guard requestedLoad == loadGeneration else { return }
+            webView.evaluateJavaScript("window.scrollTo(0, \(ratio) * Math.max(0, document.documentElement.scrollHeight - window.innerHeight))", completionHandler: nil)
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -186,25 +199,7 @@ struct MarkdownPreview: NSViewRepresentable {
 
         fileprivate func reloadLastRenderedHTML(in webView: WKWebView) {
             guard !lastRenderedHTML.isEmpty else { return }
-            pendingScrollRatio = scrollRatio(in: webView)
-            webView.stopLoading()
-            webView.loadHTMLString(lastRenderedHTML, baseURL: nil)
-        }
-
-        private func findScrollView(in view: NSView) -> NSScrollView? {
-            if let cachedScrollView,
-               cachedScrollView !== view,
-               cachedScrollView.window != nil {
-                return cachedScrollView
-            }
-            if let scrollView = view as? NSScrollView { return scrollView }
-            for subview in view.subviews {
-                if let scrollView = findScrollView(in: subview) {
-                    cachedScrollView = scrollView
-                    return scrollView
-                }
-            }
-            return nil
+            loadPreservingScroll(lastRenderedHTML, in: webView)
         }
 
         func webView(
