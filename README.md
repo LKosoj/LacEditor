@@ -13,7 +13,7 @@ LacEditor 为日常文本、Markdown、JSON 和代码编辑而生：打开即写
   <a href="https://github.com/kolmh/LacEditor/issues">反馈问题</a>
 </p>
 
-> 当前版本：`0.14.0` · macOS 26+ · Apple Silicon
+> 当前版本：`0.14.1` · macOS 26+ · Apple Silicon
 
 ## 为什么是 LacEditor？
 

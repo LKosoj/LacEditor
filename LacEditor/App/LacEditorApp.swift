@@ -527,7 +527,6 @@ struct WindowCloseCoordinator: NSViewRepresentable {
         weak var previousDelegate: NSWindowDelegate?
         private var chromeWorkItem: DispatchWorkItem?
         private var isWaitingForSave = false
-        private var isCloseApproved = false
 
         init(appState: AppState, windowManager: WindowManager, windowID: UUID) {
             self.appState = appState
@@ -555,40 +554,36 @@ struct WindowCloseCoordinator: NSViewRepresentable {
         }
 
         func windowShouldClose(_ sender: NSWindow) -> Bool {
-            if windowManager.terminationApproved || isCloseApproved {
-                return true
-            }
-            if appState.hasPendingSave {
-                guard !isWaitingForSave else { return false }
-                isWaitingForSave = true
-                appState.waitForPendingSaves { [weak self, weak sender] in
-                    guard let self, let sender else { return }
-                    isWaitingForSave = false
-                    appState.confirmClosingAllDocuments { [weak self, weak sender] approved in
-                        guard let self, let sender, approved else { return }
-                        appState.prepareForApprovedWindowClose()
-                        isCloseApproved = true
-                        sender.performClose(nil)
-                    }
-                }
-                return false
-            }
+            if windowManager.terminationApproved { return true }
             guard !isWaitingForSave else { return false }
             isWaitingForSave = true
-            appState.confirmClosingAllDocuments { [weak self, weak sender] approved in
+            let confirm = { [weak self, weak sender] in
                 guard let self, let sender else { return }
-                isWaitingForSave = false
-                if approved {
-                    appState.prepareForApprovedWindowClose()
-                    isCloseApproved = true
-                    sender.performClose(nil)
+                self.appState.confirmClosingAllDocuments { [weak self, weak sender] approved in
+                    guard let self, let sender else { return }
+                    guard approved else {
+                        self.isWaitingForSave = false
+                        return
+                    }
+                    // The sheet completion runs while AppKit is unwinding its
+                    // modal session. Do not re-enter performClose: a dirty native
+                    // tab can reject that second request even after Discard.
+                    DispatchQueue.main.async { [weak self, weak sender] in
+                        guard let self, let sender else { return }
+                        self.appState.prepareForApprovedWindowClose()
+                        sender.close()
+                    }
                 }
+            }
+            if appState.hasPendingSave {
+                appState.waitForPendingSaves(completion: confirm)
+            } else {
+                confirm()
             }
             return false
         }
 
         func windowDidBecomeKey(_ notification: Notification) {
-            isCloseApproved = false
             // A SwiftUI Window scene may be reopened from the Dock after it
             // was closed. Rebind the existing session before activating it so
             // menu commands and sidebar state target this window again.
@@ -604,6 +599,7 @@ struct WindowCloseCoordinator: NSViewRepresentable {
         }
 
         func windowWillClose(_ notification: Notification) {
+            isWaitingForSave = false
             windowManager.unregister(windowID: windowID)
             previousDelegate?.windowWillClose?(notification)
         }

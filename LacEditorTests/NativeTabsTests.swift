@@ -5,6 +5,51 @@ import WebKit
 
 @MainActor
 final class NativeTabsTests: XCTestCase {
+    func testNativeTabCloseSheetSaveDiscardAndCancel() async throws {
+        _ = NSApplication.shared
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        for choice in ["不保存", "取消", "保存"] {
+            let url = folder.appendingPathComponent("\(choice).txt")
+            try "original".write(to: url, atomically: true, encoding: .utf8)
+            let manager = WindowManager()
+            let parentState = manager.openNewWindow()
+            let document = EditorDocument(text: "original", url: url)
+            document.text = "edited"
+            document.refreshDirtyState()
+            let state = manager.openNewWindow(with: document)
+            let parent = try XCTUnwrap(parentState.hostWindow)
+            let window = try XCTUnwrap(state.hostWindow)
+            defer {
+                window.delegate = nil; window.close()
+                parent.delegate = nil; parent.close()
+            }
+            parent.addTabbedWindow(window, ordered: .above)
+            window.makeKeyAndOrderFront(nil)
+            try await Task.sleep(for: .milliseconds(300))
+            window.performClose(nil)
+            try await Task.sleep(for: .milliseconds(250))
+            let sheet = try XCTUnwrap(window.attachedSheet, "\(choice): missing confirmation")
+            func button(in view: NSView) -> NSButton? {
+                if let button = view as? NSButton, button.title == choice { return button }
+                return view.subviews.lazy.compactMap { button(in: $0) }.first
+            }
+            try XCTUnwrap(button(in: try XCTUnwrap(sheet.contentView))).performClick(nil)
+            try await Task.sleep(for: .milliseconds(600))
+            if choice == "取消" {
+                XCTAssertTrue(window.isVisible)
+                XCTAssertEqual(parent.tabGroup?.windows.count, 2)
+                XCTAssertTrue(document.isDirty)
+            } else {
+                XCTAssertFalse(window.isVisible, "\(choice) must close the confirmed native tab")
+                XCTAssertFalse(parent.tabGroup?.windows.contains(window) == true)
+            }
+            XCTAssertNil(window.attachedSheet, "Do not present a second confirmation")
+            XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), choice == "保存" ? "edited" : "original")
+        }
+    }
+
     func testNativeGroupRoundTripAndLegacyWorkspaceMigration() async throws {
         _ = NSApplication.shared
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
