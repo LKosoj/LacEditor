@@ -6,9 +6,11 @@ final class RecentFilesStore: ObservableObject {
 
     private let key = "recentFilePaths"
     private let maximumCount = 12
+    private let defaults: UserDefaults
 
-    init() {
-        let paths = UserDefaults.standard.stringArray(forKey: key) ?? []
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        let paths = defaults.stringArray(forKey: key) ?? []
         urls = paths.map(URL.init(fileURLWithPath:))
     }
 
@@ -41,6 +43,6 @@ final class RecentFilesStore: ObservableObject {
     }
 
     private func persist() {
-        UserDefaults.standard.set(urls.map(\.path), forKey: key)
+        defaults.set(urls.map(\.path), forKey: key)
     }
 }

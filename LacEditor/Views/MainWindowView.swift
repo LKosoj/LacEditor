@@ -140,8 +140,8 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         )
         let contentController = NSHostingController(rootView: content)
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarController)
-        sidebarItem.minimumThickness = 200
-        sidebarItem.maximumThickness = 360
+        sidebarItem.minimumThickness = 210
+        sidebarItem.maximumThickness = 340
         sidebarItem.canCollapse = true
         sidebarItem.canCollapseFromWindowResize = false
         sidebarItem.allowsFullHeightLayout = true

@@ -1,6 +1,26 @@
 import Combine
 import Foundation
 
+/// Every persistent store uses the same namespace. A new bundle identifier
+/// alone does not isolate files stored under Application Support.
+enum AppEnvironment {
+    static let experimentIdentifier = "com.laceditor.ui-experiment"
+    static var isExperiment: Bool { Bundle.main.bundleIdentifier == experimentIdentifier }
+    static var displayName: String { isExperiment ? "LacEditor 实验版" : "LacEditor" }
+
+    static func dataDirectoryName(for identifier: String?) -> String {
+        switch identifier {
+        case experimentIdentifier: "LacEditor-UI-Experiment"
+        case "com.laceditor.acceptance": "LacEditor-Acceptance"
+        default: "LacEditor"
+        }
+    }
+
+    static var dataDirectoryName: String {
+        dataDirectoryName(for: Bundle.main.bundleIdentifier)
+    }
+}
+
 enum WorkspaceExitBehavior: String, CaseIterable, Identifiable {
     case preserveWorkspace
     case askToSave

@@ -287,8 +287,7 @@ final class DocumentRecoveryStore: @unchecked Sendable {
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first ?? FileManager.default.temporaryDirectory
-        let directory = Bundle.main.bundleIdentifier == "com.laceditor.acceptance"
-            ? "LacEditor-Acceptance" : "LacEditor"
+        let directory = AppEnvironment.dataDirectoryName
         return base.appendingPathComponent(directory, isDirectory: true)
             .appendingPathComponent("Recovery", isDirectory: true)
     }

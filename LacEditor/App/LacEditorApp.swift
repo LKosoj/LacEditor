@@ -30,14 +30,14 @@ struct LacEditorApp: App {
     }
 
     var body: some Scene {
-        Window("LacEditor", id: "main") {
+        Window(AppEnvironment.displayName, id: "main") {
             EditorWindowRoot(
                 appState: appState,
                 windowManager: windowManager,
                 windowID: primaryWindowID
             )
         }
-        .defaultSize(width: 1120, height: 720)
+        .defaultSize(width: 1180, height: 780)
         .commands {
             LacEditorCommands(windowManager: windowManager)
         }
@@ -57,7 +57,7 @@ struct SettingsHostView: View {
         SettingsView()
             .environmentObject(targetState)
             .preferredColorScheme(targetState.preferredColorScheme)
-            .tint(Color(red: 0.31, green: 0.34, blue: 0.66))
+            .tint(LacEditorDesign.accent)
             .background(
                 WindowThemeCoordinator(
                     theme: targetState.theme,
@@ -133,7 +133,7 @@ struct EditorWindowRoot: View {
             .environmentObject(appState)
             .environmentObject(windowManager)
             .preferredColorScheme(appState.preferredColorScheme)
-            .tint(Color(red: 0.31, green: 0.34, blue: 0.66))
+            .tint(LacEditorDesign.accent)
             .frame(minWidth: 900, minHeight: 560)
             .background(
                 WindowCloseCoordinator(

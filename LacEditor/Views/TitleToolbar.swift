@@ -15,6 +15,22 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
 
     private weak var appState: AppState?
     private var stateObservation: AnyCancellable?
+    private var updateScheduled = false
+    private var lastPresentation: Presentation?
+    private weak var undoItem: NSToolbarItem?
+    private weak var redoItem: NSToolbarItem?
+
+    private struct Presentation: Equatable {
+        let documentID: UUID?
+        let url: URL?
+        let title: String
+        let language: EditorLanguage?
+        let sidebar: Bool
+        let dirty: Bool
+        let preview: Bool
+        let canUndo: Bool
+        let canRedo: Bool
+    }
     private let titleField = NSTextField(labelWithString: "LacEditor")
     private let languageButton = NSPopUpButton(frame: .zero, pullsDown: false)
     private weak var sidebarItem: NSToolbarItem?
@@ -27,12 +43,12 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         configureTitleField()
         configureLanguageButton()
         stateObservation = appState.objectWillChange.sink { [weak self, weak appState] in
+            guard let self, !self.updateScheduled else { return }
+            self.updateScheduled = true
             DispatchQueue.main.async {
+                self.updateScheduled = false
                 guard let appState else { return }
-                self?.update(appState: appState)
-                appState.hostWindow?.title = appState.windowTitle
-                appState.hostWindow?.tab.title = appState.selectedDocument?.displayName ?? "未命名"
-                appState.hostWindow?.isDocumentEdited = appState.selectedDocument?.isDirty == true
+                self.update(appState: appState)
             }
         }
     }
@@ -57,7 +73,32 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         }
         guard let appState else { return }
 
-        titleField.stringValue = appState.windowTitle
+        let document = appState.selectedDocument
+        let manager = appState.hostWindow?.firstResponder?.undoManager
+        let presentation = Presentation(
+            documentID: document?.id,
+            url: document?.url,
+            title: document?.displayName ?? "未命名",
+            language: document?.language,
+            sidebar: appState.isSidebarVisible,
+            dirty: document?.isDirty == true,
+            preview: document?.isPreviewEffectivelyEnabled == true,
+            canUndo: manager?.canUndo == true,
+            canRedo: manager?.canRedo == true
+        )
+        guard presentation != lastPresentation else { return }
+        // Items are materialized after makeToolbar returns. Do not cache an
+        // unrendered presentation or the first real update would be skipped.
+        if sidebarItem != nil { lastPresentation = presentation }
+        titleField.stringValue = presentation.title
+        titleField.toolTip = document?.url?.path ?? "未命名文档"
+        if let window = appState.hostWindow {
+            if window.title != appState.windowTitle { window.title = appState.windowTitle }
+            if window.tab.title != presentation.title { window.tab.title = presentation.title }
+            if window.isDocumentEdited != presentation.dirty { window.isDocumentEdited = presentation.dirty }
+        }
+        undoItem?.isEnabled = presentation.canUndo
+        redoItem?.isEnabled = presentation.canRedo
         sidebarItem?.toolTip = appState.isSidebarVisible
             ? "隐藏侧边栏（⌃⌘B）"
             : "显示侧边栏（⌃⌘B）"
@@ -169,6 +210,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         undoItem.target = self
         undoItem.action = #selector(performUndo)
         undoItem.toolTip = "撤销（⌘Z）"
+        self.undoItem = undoItem
 
         let redoItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("LacEditor.Redo"))
         redoItem.label = "重做"
@@ -176,6 +218,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         redoItem.target = self
         redoItem.action = #selector(performRedo)
         redoItem.toolTip = "重做（⇧⌘Z）"
+        self.redoItem = redoItem
 
         let item = NSToolbarItemGroup(itemIdentifier: ItemIdentifier.history)
         item.subitems = [undoItem, redoItem]

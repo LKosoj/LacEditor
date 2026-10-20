@@ -349,8 +349,8 @@ final class AppState: ObservableObject {
     }
 
     var windowTitle: String {
-        guard let document = selectedDocument else { return "LacEditor" }
-        return "\(document.isDirty ? "● " : "")\(document.displayName) — LacEditor"
+        guard let document = selectedDocument else { return AppEnvironment.displayName }
+        return "\(document.isDirty ? "● " : "")\(document.displayName) — \(AppEnvironment.displayName)"
     }
 
     var sidebarPresentation: SidebarPresentation {

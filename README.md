@@ -59,6 +59,10 @@ LacEditor 为日常文本、Markdown、JSON 和代码编辑而生：打开即写
 
 ## 从源码构建
 
+当前另有独立的 FlClash 风格 UI 实验分支，使用现有 SwiftUI + AppKit，无需安装 Flutter。
+实验版安装、Xcode scheme、打包命令与本轮范围见 [实验版说明](docs/UI_EXPERIMENT_README.md)。
+正式发行版本仍为上方所示版本，实验包不会覆盖正式 App 的设置和恢复数据。
+
 环境要求：
 
 - macOS 26+

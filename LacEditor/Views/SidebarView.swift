@@ -15,14 +15,22 @@ struct SidebarView: View {
             )
             .id(windowManager.primaryReopenGeneration)
 
-            Divider()
-                .opacity(0.45)
-
             Button {
                 SettingsWindowController.shared.present(windowManager: windowManager)
             } label: {
-                Label("设置", systemImage: "gearshape")
-                    .font(.system(size: 12))
+                HStack(spacing: 8) {
+                    Label("设置", systemImage: "gearshape")
+                    Spacer()
+                    if AppEnvironment.isExperiment {
+                        Text("UI 1")
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(LacEditorDesign.selectionFill, in: Capsule())
+                            .accessibilityLabel("界面实验第一轮")
+                    }
+                }
+                    .font(.system(size: 13))
                     .foregroundStyle(isSettingsHovering ? .primary : .secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 8)
@@ -30,13 +38,13 @@ struct SidebarView: View {
             }
             .buttonStyle(.plain)
             .stableHelp("打开设置", shortcut: "⌘,")
-            .frame(height: 35)
+            .frame(height: 40)
             .background(
-                isSettingsHovering ? Color.primary.opacity(0.05) : .clear,
+                isSettingsHovering ? LacEditorDesign.hoverFill : .clear,
                 in: RoundedRectangle(cornerRadius: 5, style: .continuous)
             )
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .onHover { isSettingsHovering = $0 }
         }
         .background(SidebarMaterialBackground())

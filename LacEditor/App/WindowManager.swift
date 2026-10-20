@@ -8,8 +8,8 @@ final class WindowManager: ObservableObject {
         "com.laceditor.editor-tab"
     )
 
-    let recentFiles = RecentFilesStore()
-    let sidebarLibrary = SidebarLibraryStore()
+    let recentFiles: RecentFilesStore
+    let sidebarLibrary: SidebarLibraryStore
     let preferences: AppPreferences
     let recoveryStore: DocumentRecoveryStore?
     let workspaceStore: WorkspaceSessionStore?
@@ -66,8 +66,12 @@ final class WindowManager: ObservableObject {
     init(
         recoveryStore: DocumentRecoveryStore? = nil,
         workspaceStore: WorkspaceSessionStore? = nil,
-        preferences: AppPreferences? = nil
+        preferences: AppPreferences? = nil,
+        recentFiles: RecentFilesStore? = nil,
+        sidebarLibrary: SidebarLibraryStore? = nil
     ) {
+        self.recentFiles = recentFiles ?? RecentFilesStore()
+        self.sidebarLibrary = sidebarLibrary ?? SidebarLibraryStore()
         self.recoveryStore = recoveryStore
         self.workspaceStore = workspaceStore
         self.preferences = preferences ?? AppPreferences()
@@ -76,10 +80,10 @@ final class WindowManager: ObservableObject {
             workspace: try? workspaceStore?.loadAndConsume(),
             recoverySnapshots: recoverySnapshots
         )
-        recentFilesCancellable = recentFiles.objectWillChange.sink { [weak self] in
+        recentFilesCancellable = self.recentFiles.objectWillChange.sink { [weak self] in
             self?.objectWillChange.send()
         }
-        sidebarLibraryCancellable = sidebarLibrary.objectWillChange.sink { [weak self] in
+        sidebarLibraryCancellable = self.sidebarLibrary.objectWillChange.sink { [weak self] in
             self?.objectWillChange.send()
         }
         _ = appearanceMenuController
@@ -248,7 +252,7 @@ final class WindowManager: ObservableObject {
         ]
         window.title = state.windowTitle
         configureEditorWindowChrome(window)
-        window.setContentSize(NSSize(width: 1120, height: 720))
+        window.setContentSize(NSSize(width: 1180, height: 780))
         window.minSize = NSSize(width: 900, height: 560)
         if let screenPoint {
             position(window, near: screenPoint)
@@ -998,7 +1002,7 @@ final class WindowManager: ObservableObject {
         to window: NSWindow
     ) {
         guard let storedFrame else {
-            window.setContentSize(NSSize(width: 1120, height: 720))
+            window.setContentSize(NSSize(width: 1180, height: 780))
             window.center()
             return
         }

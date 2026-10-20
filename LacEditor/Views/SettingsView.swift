@@ -147,7 +147,7 @@ struct SettingsView: View {
             Divider()
 
             HStack(spacing: 8) {
-                Label("LacEditor", systemImage: "info.circle")
+                Label(AppEnvironment.displayName, systemImage: "info.circle")
                 Spacer()
                 Text(versionDescription)
             }
@@ -179,7 +179,8 @@ struct SettingsView: View {
 
         switch (version, build) {
         case let (.some(version), .some(build)):
-            return "版本 \(version)（构建 \(build)）"
+            let iteration = info?["LacEditorExperimentIteration"] as? String
+            return "版本 \(version)\(iteration.map { " · \($0)" } ?? "")（构建 \(build)）"
         case let (.some(version), .none):
             return "版本 \(version)"
         default:
