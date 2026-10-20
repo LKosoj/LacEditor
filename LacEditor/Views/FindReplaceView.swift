@@ -61,11 +61,15 @@ struct FindReplaceView: View {
             HStack(spacing: 8) {
                 if state.isWorking {
                     ProgressView().controlSize(.small)
-                    Text("正在查找…")
+                    Text(state.message ?? "正在查找…")
                     Button("取消任务") { appState.cancelFindReplaceTask() }.buttonStyle(.borderless)
                 } else {
+                    if state.message?.hasPrefix("已替换") == true {
+                        Image(systemName: "checkmark.circle").accessibilityHidden(true)
+                    }
                     Text(state.message ?? "输入关键词，按回车查找下一处")
                         .lineLimit(1).help(state.message ?? "")
+                        .accessibilityIdentifier("find.result.message")
                 }
                 Spacer(minLength: 0)
                 if !state.isWorking { Text("⇧↩ 上一个").foregroundStyle(.tertiary) }

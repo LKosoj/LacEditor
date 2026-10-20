@@ -1,14 +1,14 @@
-# LacEditor 界面实验 UI7
+# LacEditor 界面实验 UI8
 
-版本：**0.15.0 · UI7（构建 70）**。分支：`codex/flclash-ui-experiment`。
+版本：**0.15.0 · UI8（构建 71）**。分支：`codex/flclash-ui-experiment`。
 
-本轮集中打磨侧栏折叠和拖放：统一展开/收起节奏、同步箭头、限制可交互区域，边缘滚动跟随屏幕刷新，跨行保持速度。沿用文件筛选、设置修复与可编辑示例库，借鉴 FlClash 的局部反馈，使用现有 SwiftUI + AppKit 实现，不需要安装 Flutter、Dart、Android SDK 或其他新开发环境。
+本轮打磨操作反馈、键盘焦点和局部状态刷新。沿用 UI7 侧栏动效、文件筛选、设置修复与可编辑示例库，借鉴 FlClash 的局部反馈，使用现有 SwiftUI + AppKit 实现，不需要安装 Flutter、Dart、Android SDK 或其他新开发环境。
 
 ## 安装体验
 
-1. 先正常退出正在运行的旧实验版，再解压 `dist/LacEditor-0.15.0-UI7-70-arm64.zip`。
+1. 先正常退出正在运行的旧实验版，再解压 `dist/LacEditor-0.15.0-UI8-71-arm64.zip`。
 2. 将「LacEditor 实验版.app」拖入「应用程序」。保留原有的「LacEditor.app」。
-3. 在「设置 → 关于」核对 `0.15.0 · UI7（构建 70）`。新用户从空白文档开始；已有实验版用户沿用实验数据，只替换同名实验 App。
+3. 在「设置 → 关于」核对 `0.15.0 · UI8（构建 71）`。新用户从空白文档开始；已有实验版用户沿用实验数据，只替换同名实验 App。
 
 本机打包采用 ad hoc 签名，未进行 Developer ID 公证。若 macOS 阻止首次启动，按系统「隐私与安全性」中的提示允许打开。
 
@@ -38,6 +38,14 @@
 偏好、最近文件、收藏与分组、工作区和异常恢复均分离，不自动导入正式数据。两个 App 主动打开同一磁盘文件时仍会编辑同一文件，体验对比建议使用文件副本。
 
 ## 本轮变化与边界
+
+- 侧栏底部固定一行操作反馈：收藏、分组成员和最近记录的变更可点击「撤销」，恢复原顺序；后续修改了对应列表时拒绝覆盖。仅影响组织记录，不删除磁盘文件，不占用正文的 Command+Z 撤销栈。
+- 提示约 6 秒后恢复为操作说明；鼠标悬停或聚焦撤销按钮时保持。提示只由独立底部视图订阅，出现/消失不移动列表与设置按钮。
+- 自定义侧栏行、筛选框、设置分类与主题控件具有可见焦点描边；辅助窗口原生按钮沿用系统焦点环。按钮 Tab 遍历仍遵循 macOS「键盘导航」设置，不强行更改系统偏好。
+- 编解码复制按钮显示约 3 秒「已复制」，与过期提示分开；查找/替换显示当前任务名称和替换数量。
+- 文档向 AppState 转发的界面状态先去重，光标及重复未保存值不再导致相同通知。仅证明测得的通知减少，不代表整窗重绘数或显示帧率。
+
+UI7 已有变化继续保留：
 
 - 展开、收起统一 200 ms 的无回弹曲线，箭头同步转动；标题和文件行自然尺寸保持，仅改变列表裁切高度。中途反向从当前显示位置继续，不添加内容淡入淡出。
 - 裁掉的区域同时限制点击/拖放命中，避免收起或部分展开的文件行拦住后续模块。
@@ -91,7 +99,7 @@ UI1/UI2 已有变化继续保留：
 - 删除滚动条配置中的整窗重复遍历；后台加载文件存在状态和身份；工具栏合并刷新并跳过相同呈现状态。
 - 保留现有文本排版、字体、输入法、行号、编辑操作和 NT2 原生标题栏材质路径。
 
-本轮结果与未测项见 [UI7 验收记录](../AcceptanceReports/UI7-2026-10-20.md)，设置与扫描性能见 [UI6](../AcceptanceReports/UI6-2026-10-20.md)，之前的拖放与静态画面见 [UI5](../AcceptanceReports/UI5-2026-10-20.md)，示例数据保护见 [UI4](../AcceptanceReports/UI4-2026-10-20.md)，预览及 Instruments 历史结果见 [UI3](../AcceptanceReports/UI3-2026-10-20.md)，历史记录保留在 [UI2](../AcceptanceReports/UI2-2026-10-20.md) 与 [UI1](../AcceptanceReports/UI1-2026-10-20.md)。不能将功能测试或静态截图当作帧率证明。
+本轮结果与未测项见 [UI8 验收记录](../AcceptanceReports/UI8-2026-10-20.md)，侧栏动效见 [UI7](../AcceptanceReports/UI7-2026-10-20.md)，设置与扫描性能见 [UI6](../AcceptanceReports/UI6-2026-10-20.md)，之前的拖放与静态画面见 [UI5](../AcceptanceReports/UI5-2026-10-20.md)，示例数据保护见 [UI4](../AcceptanceReports/UI4-2026-10-20.md)，预览及 Instruments 历史结果见 [UI3](../AcceptanceReports/UI3-2026-10-20.md)，历史记录保留在 [UI2](../AcceptanceReports/UI2-2026-10-20.md) 与 [UI1](../AcceptanceReports/UI1-2026-10-20.md)。不能将功能测试或静态截图当作帧率证明。
 
 ## 建议这样试用
 
@@ -127,5 +135,7 @@ LACEDITOR_UI_ENDURANCE=1 swift test -c release --filter UIExperimentTests.testNa
 swiftc -parse-as-library Verification/SidebarPointerVerification.swift -o .build/sidebar-pointer-verification
 .build/sidebar-pointer-verification '.build/AcceptanceDerivedData/Build/Products/Release/LacEditor.app'
 ```
+
+增加 `LACEDITOR_INTERACTION_POLISH=1` 同时检查右键收藏/从分组移除和底部撤销；该流程仅修改临时夹具。`LACEDITOR_UI_SNAPSHOTS=1` 可额外保存夹具截图。
 
 工具只接受 `com.laceditor.acceptance`，启动时设置独立临时 home 并生成模拟侧栏；检查连续反向点击、真实拖动边缘滚动、悬停展开和 Esc 取消，正常退出后移除临时文件，不操作已经运行的实例。可加 `LACEDITOR_UI_SNAPSHOTS=1` 捕获该夹具窗口的静态画面；不包含用户文件，也不能作为帧率证明。

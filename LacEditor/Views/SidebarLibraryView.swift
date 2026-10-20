@@ -152,6 +152,7 @@ struct SidebarLibraryView: View {
                 .accessibilityIdentifier("sidebar.section.\(section.rawValue)")
                 .disabled(filter.isActive)
                 .focused($focusedHeader, equals: title)
+                .editorFocusRing(focusedHeader == title)
                 .accessibilityValue(isExpanded ? "已展开" : "已收起")
                 if section == .groups {
                     Button {
@@ -163,6 +164,7 @@ struct SidebarLibraryView: View {
                     }
                     .buttonStyle(.plain)
                     .focused($focusedHeader, equals: title + ".add")
+                    .editorFocusRing(focusedHeader == title + ".add", radius: 4)
                     .opacity(isHovering ? 1 : 0)
                     .stableHelp("新建分组")
                     .accessibilityLabel("新建分组")
@@ -177,6 +179,7 @@ struct SidebarLibraryView: View {
                     }
                     .buttonStyle(.plain)
                     .focused($focusedHeader, equals: title + ".clear")
+                    .editorFocusRing(focusedHeader == title + ".clear", radius: 4)
                     .opacity(isHovering ? 1 : 0)
                     .stableHelp("清除最近文件")
                     .accessibilityLabel("清除最近文件")
@@ -265,6 +268,7 @@ private struct SidebarGroupView: View {
             .accessibilityIdentifier("sidebar.group.\(group.id.uuidString)")
             .disabled(isFiltering)
             .focused($isFocused)
+            .editorFocusRing(isFocused)
             .accessibilityValue(isExpanded ? "已展开" : "已收起")
             .onHover { isHovering = $0 }
             .onDrag { SidebarDragPayload.group(group.id).itemProvider() }
@@ -325,6 +329,7 @@ private struct SidebarFileRow: View {
     let url: URL
     let location: SidebarFileLocation
     @State private var isHovering = false
+    @FocusState private var isFocused: Bool
     @State private var fileExists = true
     @State private var fileIdentity: DocumentFileIdentity?
     @Environment(\.controlActiveState) private var activeState
@@ -394,6 +399,8 @@ private struct SidebarFileRow: View {
             }
         }
         .buttonStyle(SoftRowButtonStyle())
+        .focused($isFocused)
+        .editorFocusRing(isFocused)
         .accessibilityIdentifier("sidebar.file.\(location.accessibilityID).\(url.path)")
         .onHover { isHovering = $0 }
         .animation(reduceMotion ? nil : LacEditorDesign.hoverAnimation, value: isHovering)
@@ -428,7 +435,7 @@ private struct SidebarFileRow: View {
             Divider()
 
             Button {
-                windowManager.sidebarLibrary.toggleFavorite(url)
+                appState.toggleSidebarFavorite(url)
             } label: {
                 Label(
                     windowManager.sidebarLibrary.isFavorite(url)
@@ -443,7 +450,7 @@ private struct SidebarFileRow: View {
             Menu {
                 ForEach(windowManager.sidebarLibrary.groups) { group in
                     Button {
-                        windowManager.sidebarLibrary.add(url, toGroup: group.id)
+                        appState.addSidebarFile(url, toGroup: group.id)
                     } label: {
                         Label(
                             group.name,
@@ -491,19 +498,19 @@ private struct SidebarFileRow: View {
         switch location {
         case .favorites:
             Button(role: .destructive) {
-                windowManager.sidebarLibrary.toggleFavorite(url)
+                appState.toggleSidebarFavorite(url)
             } label: {
                 Label("从收藏夹移除", systemImage: "star.slash")
             }
         case let .group(id):
             Button(role: .destructive) {
-                windowManager.sidebarLibrary.remove(url, fromGroup: id)
+                appState.removeSidebarFile(url, fromGroup: id)
             } label: {
                 Label("从分组中移除", systemImage: "minus.circle")
             }
         case .recent:
             Button(role: .destructive) {
-                appState.recentFiles.remove(url)
+                appState.removeRecentSidebarFile(url)
             } label: {
                 Label("从最近文件中删除", systemImage: "trash")
             }

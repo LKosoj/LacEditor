@@ -1,6 +1,89 @@
 import AppKit
 import SwiftUI
 
+/// Window-local feedback; never participates in the document undo stack.
+@MainActor
+final class InlineFeedbackState: ObservableObject {
+    struct Item: Identifiable, Equatable {
+        let id = UUID()
+        let title: String
+        let canUndo: Bool
+        let symbol: String
+    }
+    @Published private(set) var item: Item?
+    private var undoAction: (() -> Bool)?
+    private var expiration: Task<Void, Never>?
+    private var isInteracting = false
+    private let duration: Duration
+
+    init(duration: Duration = .seconds(6)) { self.duration = duration }
+    deinit { expiration?.cancel() }
+
+    func show(_ title: String, symbol: String = "checkmark.circle", undo: (() -> Bool)? = nil) {
+        expiration?.cancel()
+        undoAction = undo
+        item = Item(title: title, canUndo: undo != nil, symbol: symbol)
+        scheduleExpiration()
+    }
+
+    func setInteracting(_ interacting: Bool) {
+        guard interacting != isInteracting else { return }
+        isInteracting = interacting
+        if interacting { expiration?.cancel(); expiration = nil }
+        else { scheduleExpiration() }
+    }
+
+    func undo() {
+        guard let action = undoAction else { return }
+        undoAction = nil
+        if action() { show("已撤销上次操作") }
+        else { show("列表已变化，未撤销", symbol: "info.circle") }
+    }
+
+    func clear() {
+        expiration?.cancel(); expiration = nil
+        undoAction = nil
+        item = nil
+        isInteracting = false
+    }
+
+    private func scheduleExpiration() {
+        expiration?.cancel()
+        guard let id = item?.id, !isInteracting else { return }
+        let delay = duration
+        expiration = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: delay) } catch { return }
+            guard let self, self.item?.id == id else { return }
+            self.clear()
+        }
+    }
+}
+
+/// An overlay keeps keyboard focus distinct from selection, without reflow.
+private struct EditorFocusRing: ViewModifier {
+    let focused: Bool
+    let radius: CGFloat
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.controlActiveState) private var activeState
+    @Environment(\.colorSchemeContrast) private var contrast
+    func body(content: Content) -> some View {
+        content.focusEffectDisabled()
+            .overlay {
+                if focused && enabled && activeState != .inactive {
+                    RoundedRectangle(cornerRadius: radius)
+                        .strokeBorder(LacEditorDesign.accent, lineWidth: contrast == .increased ? 3 : 2)
+                        .allowsHitTesting(false).accessibilityHidden(true)
+                }
+            }
+    }
+}
+
+extension View {
+    func editorFocusRing(_ focused: Bool, radius: CGFloat = 6) -> some View {
+        modifier(EditorFocusRing(focused: focused, radius: radius))
+    }
+}
+
 enum LacEditorDesign {
     static let sidebarWidth: CGFloat = 250
     static let sidebarRowHeight: CGFloat = 34

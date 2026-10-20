@@ -49,8 +49,8 @@ struct SidebarPointerVerification {
     static func mouse(_ type: CGEventType, at point: CGPoint) {
         CGWarpMouseCursorPosition(point)
         let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point,
-                            mouseButton: .left)
-        if type == .leftMouseDown || type == .leftMouseUp {
+                            mouseButton: type == .rightMouseDown || type == .rightMouseUp ? .right : .left)
+        if [.leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp].contains(type) {
             event?.setIntegerValueField(.mouseEventClickState, value: 1)
         }
         event?.post(tap: .cghidEventTap)
@@ -103,7 +103,7 @@ struct SidebarPointerVerification {
         for index in 0..<16 {
             let file = directory.appendingPathComponent("sample-\(index).txt")
             try "侧栏指针验收，仅使用临时文件。".write(to: file, atomically: true, encoding: .utf8)
-            files.append(file.path)
+            files.append(file.standardizedFileURL.resolvingSymlinksInPath().path)
         }
         let first = Group(id: UUID(), name: "拖放源分组", isExpanded: true, paths: files)
         let second = Group(id: UUID(), name: "悬停展开分组", isExpanded: false, paths: [files.last!])
@@ -163,6 +163,72 @@ struct SidebarPointerVerification {
             guard abs(try frame(identified(firstID)).minY - initial.minY) < 1 else {
                 throw Failure.operation("group header moved during reversal")
             }
+        }
+        if ProcessInfo.processInfo.environment["LACEDITOR_INTERACTION_POLISH"] == "1" {
+            func library() throws -> Library {
+                try JSONDecoder().decode(Library.self, from: Data(contentsOf: libraryURL))
+            }
+            let sourceID = "sidebar.file.group.\(first.id.uuidString).\(files[0])"
+            func menuAction(_ title: String) async throws {
+                let rect = try frame(identified(sourceID))
+                let point = CGPoint(x: rect.midX, y: rect.midY)
+                mouse(.mouseMoved, at: point)
+                try await Task.sleep(for: .milliseconds(100))
+                mouse(.rightMouseDown, at: point)
+                try await Task.sleep(for: .milliseconds(60))
+                mouse(.rightMouseUp, at: point)
+                try await Task.sleep(for: .milliseconds(250))
+                guard let item = find(app, {
+                    attribute($0, kAXTitleAttribute) as? String == title
+                        && attribute($0, kAXRoleAttribute) as? String == kAXMenuItemRole
+                }) else {
+                    throw Failure.operation("context menu action: \(title)")
+                }
+                print("Context menu \(title) rect=\(try frame(item))")
+                guard AXUIElementPerformAction(item, kAXPressAction as CFString) == .success else {
+                    throw Failure.operation("context menu press: \(title)")
+                }
+                try await Task.sleep(for: .milliseconds(350))
+            }
+            try await menuAction("添加到收藏夹")
+            print("Favorite after menu=\(try library().favoritePaths), expected=\(files[0])")
+            guard try library().favoritePaths == [files[0]] else {
+                try await snapshot(pid: pid, name: "UI8-feedback-failure")
+                throw Failure.operation("favorite action")
+            }
+            let undo = try identified("sidebar.feedback.undo")
+            if snapshots { try await snapshot(pid: pid, name: "UI8-sidebar-feedback") }
+            guard AXUIElementPerformAction(undo, kAXPressAction as CFString) == .success else {
+                throw Failure.operation("favorite undo action")
+            }
+            try await Task.sleep(for: .milliseconds(150))
+            guard try library().favoritePaths.isEmpty else { throw Failure.operation("favorite undo") }
+            try await Task.sleep(for: .milliseconds(300))
+            try await menuAction("从分组中移除")
+            print("Group after remove count=\(try library().groups[0].paths.count), first=\(try library().groups[0].paths.first ?? "nil")")
+            guard try library().groups[0].paths == Array(first.paths.dropFirst()) else {
+                throw Failure.operation("remove membership")
+            }
+            guard AXUIElementPerformAction(try identified("sidebar.feedback.undo"), kAXPressAction as CFString) == .success,
+                  try library().groups[0].paths == first.paths else { throw Failure.operation("membership undo") }
+            try await Task.sleep(for: .milliseconds(300))
+            // The feedback row reserves its height, so these operations cannot
+            // displace the source/header or editor content.
+            guard abs(try frame(identified(firstID)).minY - initial.minY) < 1 else {
+                throw Failure.operation("feedback moved group header")
+            }
+            print("UI8 context menus: favorite/remove + inline undo preserve original order and header position.")
+            guard let filter = find(window, {
+                attribute($0, kAXRoleAttribute) as? String == kAXTextFieldRole
+                    && (attribute($0, kAXDescriptionAttribute) as? String ?? "").contains("筛选")
+            }) else { throw Failure.missing("filter field") }
+            try await click(filter)
+            try await Task.sleep(for: .milliseconds(150))
+            guard attribute(filter, kAXFocusedAttribute) as? Bool == true else {
+                throw Failure.operation("filter focus")
+            }
+            if snapshots { try await snapshot(pid: pid, name: "UI8-filter-focus") }
+            print("UI8 native filter field received focus; button Tab traversal remains system-controlled.")
         }
         let source = try frame(identified("sidebar.file.group.\(first.id.uuidString).\(files[0])"))
         guard let scroll = find(window, { attribute($0, kAXRoleAttribute) as? String == kAXScrollAreaRole }) else {

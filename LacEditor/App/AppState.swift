@@ -141,6 +141,7 @@ enum SidebarPresentation: Equatable {
 
 @MainActor
 final class AppState: ObservableObject {
+    let sidebarFeedback = InlineFeedbackState()
     @Published var documents: [EditorDocument] = []
     private var searchMatchCache = SearchMatchCacheStore()
     @Published var selectedDocumentID: UUID? {
@@ -957,11 +958,14 @@ final class AppState: ObservableObject {
         dismissTextTransformation()
     }
 
-    func copyTextTransformationResult() {
+    func copyTextTransformationResult(to pasteboard: NSPasteboard = .general) {
         guard let output = textTransformation.preview?.output else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(output, forType: .string)
-        textTransformation.message = "结果已复制"
+        pasteboard.clearContents()
+        if pasteboard.setString(output, forType: .string) {
+            textTransformation.copyFeedback.show("结果已复制")
+        } else {
+            textTransformation.message = "无法写入剪贴板，请重试"
+        }
     }
 
     func dismissTextTransformation() {
@@ -969,6 +973,7 @@ final class AppState: ObservableObject {
     }
 
     func closeAuxiliaryWindows() {
+        sidebarFeedback.clear()
         dismissFindReplace()
         openingOperations.values.forEach { $0.cancel() }
         openingOperations.removeAll()
@@ -1189,15 +1194,61 @@ final class AppState: ObservableObject {
         closeDocumentsSequentially(documents, removesDocuments: false, completion: completion)
     }
 
+    func toggleSidebarFavorite(_ url: URL) {
+        guard let library = windowManager?.sidebarLibrary else { return }
+        let previous = library.favoritePaths
+        let wasFavorite = library.isFavorite(url)
+        library.toggleFavorite(url)
+        let expected = library.favoritePaths
+        sidebarFeedback.show(wasFavorite ? "已从收藏夹移除" : "已添加到收藏夹") { [weak library] in
+            library?.restoreFavorites(previous, ifUnchanged: expected) ?? false
+        }
+    }
+
+    func addSidebarFile(_ url: URL, toGroup id: UUID) {
+        guard let library = windowManager?.sidebarLibrary,
+              let group = library.groups.first(where: { $0.id == id }) else { return }
+        guard !library.groupsContaining(url).contains(id) else {
+            sidebarFeedback.show("文件已在此分组中")
+            return
+        }
+        library.add(url, toGroup: id)
+        let expected = library.groups.first(where: { $0.id == id })?.paths ?? []
+        sidebarFeedback.show("已添加到“\(group.name)”") { [weak library] in
+            library?.restoreGroupFiles(group.paths, in: id, ifUnchanged: expected) ?? false
+        }
+    }
+
+    func removeSidebarFile(_ url: URL, fromGroup id: UUID) {
+        guard let library = windowManager?.sidebarLibrary,
+              let group = library.groups.first(where: { $0.id == id }) else { return }
+        library.remove(url, fromGroup: id)
+        let expected = library.groups.first(where: { $0.id == id })?.paths ?? []
+        guard group.paths != expected else { return }
+        sidebarFeedback.show("已从“\(group.name)”移除") { [weak library] in
+            library?.restoreGroupFiles(group.paths, in: id, ifUnchanged: expected) ?? false
+        }
+    }
+
+    func removeRecentSidebarFile(_ url: URL) {
+        let previous = recentFiles.urls
+        recentFiles.remove(url)
+        let expected = recentFiles.urls
+        guard previous != expected else { return }
+        sidebarFeedback.show("已移除最近文件记录") { [weak recentFiles] in
+            recentFiles?.restore(previous, ifUnchanged: expected) ?? false
+        }
+    }
+
     private func observe(_ document: EditorDocument) {
         documentCancellables[document.id] = Publishers.MergeMany([
-            document.$url.dropFirst().map { _ in () }.eraseToAnyPublisher(),
-            document.$language.dropFirst().map { _ in () }.eraseToAnyPublisher(),
-            document.$isDirty.dropFirst().map { _ in () }.eraseToAnyPublisher(),
-            document.$isPreviewVisible.dropFirst().map { _ in () }.eraseToAnyPublisher(),
-            document.$performanceProfile.dropFirst().map { _ in () }.eraseToAnyPublisher(),
-            document.$featureOverrides.dropFirst().map { _ in () }.eraseToAnyPublisher(),
-            document.$ioState.dropFirst().map { _ in () }.eraseToAnyPublisher()
+            document.$url.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            document.$language.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            document.$isDirty.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            document.$isPreviewVisible.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            document.$performanceProfile.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            document.$featureOverrides.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            document.$ioState.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher()
         ])
         .sink { [weak self] in self?.objectWillChange.send() }
 

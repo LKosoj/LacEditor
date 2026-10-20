@@ -262,6 +262,7 @@ private struct SettingsNavigationRow: View {
     let selected: Bool
     let action: () -> Void
     @State private var hovering = false
+    @FocusState private var focused: Bool
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
@@ -274,6 +275,8 @@ private struct SettingsNavigationRow: View {
                             in: RoundedRectangle(cornerRadius: 7))
         }
         .buttonStyle(SoftRowButtonStyle()).onHover { hovering = $0 }
+        .focused($focused).editorFocusRing(focused)
+        .accessibilityIdentifier("settings.section.\(section.id)")
         .accessibilityLabel(section.rawValue).accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
@@ -282,6 +285,7 @@ private struct ThemeChoice: View {
     let theme: AppTheme
     let selected: Bool
     let action: () -> Void
+    @FocusState private var focused: Bool
     private var dark: Bool { theme == .dark }
     var body: some View {
         Button(action: action) {
@@ -303,6 +307,8 @@ private struct ThemeChoice: View {
                 }.font(.system(size: 11, weight: selected ? .medium : .regular))
             }.frame(maxWidth: .infinity).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel(theme.rawValue)
+            .focused($focused).editorFocusRing(focused)
+            .accessibilityIdentifier("settings.theme.\(theme.rawValue)")
             .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

@@ -31,6 +31,13 @@ final class RecentFilesStore: ObservableObject {
         persist()
     }
 
+    func restore(_ previous: [URL], ifUnchanged expected: [URL]) -> Bool {
+        guard urls == expected else { return false }
+        urls = previous
+        persist()
+        return true
+    }
+
     func replace(_ oldURL: URL, with newURL: URL) {
         let oldURL = oldURL.standardizedFileURL
         let newURL = newURL.standardizedFileURL

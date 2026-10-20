@@ -21,11 +21,13 @@ struct TextTransformationPreview: Equatable {
 
 @MainActor
 final class TextTransformationPreviewState: ObservableObject {
+    let copyFeedback = InlineFeedbackState(duration: .seconds(3))
     @Published private(set) var preview: TextTransformationPreview?
     @Published var message: String?
     @Published private(set) var canReplace = false
 
     func present(_ preview: TextTransformationPreview) {
+        copyFeedback.clear()
         self.preview = preview
         message = nil
         canReplace = preview.input != preview.output
@@ -38,6 +40,7 @@ final class TextTransformationPreviewState: ObservableObject {
     }
 
     func clear() {
+        copyFeedback.clear()
         preview = nil
         message = nil
         canReplace = false
@@ -63,7 +66,7 @@ struct TextTransformationView: View {
                         .lineLimit(1).help(state.message ?? "")
                     Spacer(minLength: 12)
                     Button("关闭", action: close).keyboardShortcut(.cancelAction)
-                    Button("复制结果") { appState.copyTextTransformationResult() }
+                    CopyTransformationResultButton(feedback: state.copyFeedback) { appState.copyTextTransformationResult() }
                     Button("替换原文") { appState.applyTextTransformationPreview() }
                         .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                         .disabled(!state.canReplace)
@@ -108,6 +111,23 @@ struct TextTransformationView: View {
         let prefix = text.prefix(limit + 1)
         guard prefix.count > limit else { return text }
         return String(prefix.prefix(limit)) + "\n\n…预览已截断，替换仍会使用完整结果"
+    }
+}
+
+/// Copy confirmation stays next to the triggering button, separate from
+/// stale-result or conversion errors, and never changes the footer width.
+private struct CopyTransformationResultButton: View {
+    @ObservedObject var feedback: InlineFeedbackState
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Label(feedback.item == nil ? "复制结果" : "已复制",
+                  systemImage: feedback.item == nil ? "doc.on.doc" : "checkmark")
+                .frame(width: 82)
+        }
+        .accessibilityIdentifier("transformation.copy")
+        .accessibilityLabel(feedback.item == nil ? "复制转换结果" : "转换结果已复制")
+        .onDisappear { feedback.setInteracting(false) }
     }
 }
 

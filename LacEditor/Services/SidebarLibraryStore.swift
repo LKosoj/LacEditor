@@ -98,6 +98,23 @@ final class SidebarLibraryStore: ObservableObject {
         persist()
     }
 
+    /// Only roll back the affected collection if no later edit changed it.
+    /// Other groups and disclosure preferences remain untouched.
+    func restoreFavorites(_ paths: [String], ifUnchanged expected: [String]) -> Bool {
+        guard favoritePaths == expected else { return false }
+        favoritePaths = paths
+        persist()
+        return true
+    }
+
+    func restoreGroupFiles(_ paths: [String], in id: UUID, ifUnchanged expected: [String]) -> Bool {
+        guard let index = groups.firstIndex(where: { $0.id == id }),
+              groups[index].paths == expected else { return false }
+        groups[index].paths = paths
+        persist()
+        return true
+    }
+
     @discardableResult
     func createGroup(named proposedName: String) -> UUID? {
         let name = proposedName.trimmingCharacters(in: .whitespacesAndNewlines)
