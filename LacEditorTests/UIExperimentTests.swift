@@ -6,6 +6,164 @@ import Darwin
 
 @MainActor
 final class UIExperimentTests: XCTestCase {
+    func testTooltipCancelsWhenOriginatingWindowResignsKeyOrViewDetaches() async throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 260, height: 200),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let tracking = ToolTipTrackingView(text: "设置", shortcut: "⌘,")
+        tracking.frame = NSRect(x: 0, y: 0, width: 100, height: 40)
+        window.contentView?.addSubview(tracking)
+        let event = try XCTUnwrap(NSEvent.enterExitEvent(with: .mouseEntered, location: .zero,
+            modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+            context: nil, eventNumber: 0, trackingNumber: 0, userData: nil))
+        tracking.mouseEntered(with: event)
+        XCTAssertTrue(tracking.isPresentationPending)
+        NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
+        XCTAssertFalse(tracking.isPresentationPending)
+        tracking.mouseEntered(with: event)
+        XCTAssertTrue(tracking.isPresentationPending)
+        tracking.removeFromSuperview()
+        XCTAssertFalse(tracking.isPresentationPending)
+        try await Task.sleep(for: .milliseconds(700))
+        XCTAssertTrue(window.childWindows?.isEmpty ?? true)
+    }
+
+    func testInactiveSettingsWaitsForActivationAndDoesNotReopenAfterClose() async throws {
+        _ = NSApplication.shared
+        let fixture = try UI2Fixture()
+        defer { fixture.dispose() }
+        try await Task.sleep(for: .milliseconds(100))
+        var active = false
+        var activationRequests = 0
+        let settings = SettingsWindowController(applicationIsActive: { active },
+                                                activateApplication: { activationRequests += 1 })
+        settings.present(windowManager: fixture.manager)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(activationRequests, 1)
+        XCTAssertFalse(NSApp.windows.contains {
+            $0.identifier?.rawValue == "LacEditor.SettingsWindow" && $0.isVisible
+        })
+        active = true
+        NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApp)
+        try await Task.sleep(for: .milliseconds(150))
+        let window = try XCTUnwrap(NSApp.windows.first {
+            $0.identifier?.rawValue == "LacEditor.SettingsWindow" && $0.isVisible
+        })
+        window.performClose(nil)
+        NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApp)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertFalse(window.isVisible)
+        XCTAssertEqual(activationRequests, 1)
+    }
+
+    func testNativeTabEnduranceAndClosedEditorRelease() async throws {
+        guard ProcessInfo.processInfo.environment["LACEDITOR_UI_ENDURANCE"] == "1" else {
+            throw XCTSkip("Enable LACEDITOR_UI_ENDURANCE for the two-minute native tab workload")
+        }
+        _ = NSApplication.shared
+        let unit = "中英文 Mixed text 123，长期滚动与原生标签切换。\n"
+        let text = String(repeating: unit, count: 30_000)
+        let fixture = try UI2Fixture(text: text)
+        defer { fixture.dispose() }
+        fixture.preferences.wordWrapEnabled = false
+        var states = [fixture.state]
+        for index in 1..<10 {
+            let state = fixture.manager.openNativeTab(from: fixture.state)
+            state.selectedDocument?.text = "\(index)\n" + text
+            state.selectedDocument?.markSaved()
+            states.append(state)
+        }
+        try await Task.sleep(for: .seconds(1))
+        let editors = NSHashTable<LacTextView>.weakObjects()
+        for state in states {
+            let view = try XCTUnwrap(state.hostWindow?.contentView)
+            editors.add(try XCTUnwrap(descendants(in: view, of: LacTextView.self).first))
+        }
+        XCTAssertEqual(editors.allObjects.count, 10)
+        let duration: TimeInterval = 120
+        let start = ProcessInfo.processInfo.systemUptime
+        var cycle = 0
+        var nextSample: TimeInterval = 0
+        var samples: [UInt64] = []
+        while ProcessInfo.processInfo.systemUptime - start < duration {
+            let state = states[cycle % states.count]
+            let window = try XCTUnwrap(state.hostWindow)
+            window.tabGroup?.selectedWindow = window
+            window.makeKeyAndOrderFront(nil)
+            let content = try XCTUnwrap(window.contentView)
+            let editor = try XCTUnwrap(descendants(in: content, of: LacTextView.self).first)
+            let scroll = try XCTUnwrap(editor.enclosingScrollView)
+            let fraction = CGFloat((cycle * 17) % 100) / 100
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, editor.bounds.height - scroll.contentSize.height) * fraction))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            if cycle.isMultiple(of: 10) {
+                window.setContentSize(NSSize(width: cycle.isMultiple(of: 20) ? 1000 : 1180, height: 720))
+            }
+            content.layoutSubtreeIfNeeded()
+            let elapsed = ProcessInfo.processInfo.systemUptime - start
+            if elapsed >= nextSample {
+                samples.append(hostResidentSize())
+                print("UI6_ENDURANCE elapsed_s=\(Int(elapsed)) switches=\(cycle) host_rss_bytes=\(samples.last!)")
+                fflush(stdout)
+                nextSample += 10
+            }
+            cycle += 1
+            try await Task.sleep(for: .milliseconds(30))
+        }
+        for (index, state) in states.enumerated() {
+            XCTAssertEqual(state.selectedDocument?.synchronizedText(), index == 0 ? text : "\(index)\n" + text)
+        }
+        for state in states.dropFirst() { state.hostWindow?.performClose(nil) }
+        states.removeSubrange(1...)
+        try await Task.sleep(for: .seconds(2))
+        XCTAssertEqual(editors.allObjects.count, 1, "Closed native tabs must release their editors")
+        XCTAssertTrue(fixture.manager.activeState === fixture.state)
+        print("UI6_ENDURANCE completed switches=\(cycle) rss_samples=\(samples) after_close_rss_bytes=\(hostResidentSize())")
+        fflush(stdout)
+    }
+
+    private func hostResidentSize() -> UInt64 {
+        var info = mach_task_basic_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout.size(ofValue: info) / MemoryLayout<natural_t>.size)
+        let result = withUnsafeMutablePointer(to: &info) { pointer in
+            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        return result == KERN_SUCCESS ? info.resident_size : 0
+    }
+
+    func testSettingsPresentationFinishesOriginatingEventAndReleasesClosedHost() async throws {
+        _ = NSApplication.shared
+        let fixture = try UI2Fixture()
+        defer { fixture.dispose() }
+        try await Task.sleep(for: .milliseconds(150))
+        let settings = SettingsWindowController(applicationIsActive: { true })
+        settings.present(windowManager: fixture.manager)
+        // A button event can still reorder its originating editor before it
+        // returns. Presentation must happen after that synchronous work.
+        fixture.state.hostWindow?.makeKeyAndOrderFront(nil)
+        XCTAssertFalse(NSApp.windows.contains {
+            $0.identifier?.rawValue == "LacEditor.SettingsWindow" && $0.isVisible
+        })
+        try await Task.sleep(for: .milliseconds(150))
+        var window: NSWindow? = try XCTUnwrap(NSApp.windows.first {
+            $0.identifier?.rawValue == "LacEditor.SettingsWindow" && $0.isVisible
+        })
+        let closedHosts = NSHashTable<NSViewController>.weakObjects()
+        closedHosts.add(try XCTUnwrap(window?.contentViewController))
+        let originalHost = ObjectIdentifier(try XCTUnwrap(window?.contentViewController))
+        for _ in 0..<10 { settings.present(windowManager: fixture.manager) }
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertEqual(ObjectIdentifier(try XCTUnwrap(window?.contentViewController)), originalHost)
+        window?.performClose(nil)
+        window = nil
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertTrue(closedHosts.allObjects.isEmpty)
+    }
+
     func testUI5ChromeMaterialsAndPaneBoundariesAcrossSizesAndThemes() async throws {
         _ = NSApplication.shared
         let fixture = try UI2Fixture(text: "# 布局检查\n\n中文与 English 123。\n", language: .markdown)
@@ -422,7 +580,7 @@ final class UIExperimentTests: XCTestCase {
         defer { fixture.dispose() }
         let parent = try XCTUnwrap(fixture.state.hostWindow)
         try await Task.sleep(for: .milliseconds(250)) // Allow native window registration.
-        let settings = SettingsWindowController()
+        let settings = SettingsWindowController(applicationIsActive: { true })
         settings.present(windowManager: fixture.manager)
         try await Task.sleep(for: .milliseconds(250))
         let settingsWindow = try XCTUnwrap(NSApp.windows.first {

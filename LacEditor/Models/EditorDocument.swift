@@ -330,25 +330,18 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     }
 
     private static func countLines(in text: String) -> Int {
-        let value = text as NSString
         var count = 1
-        var location = 0
-        while location < value.length {
-            let character = value.character(at: location)
-            if character == 0x0D,
-               location + 1 < value.length,
-               value.character(at: location + 1) == 0x0A {
-                count += 1
-                location += 2
-                continue
-            }
-            if character == 0x0A
+        var previousWasCR = false
+        // Sequential UTF-16 iteration avoids NSString random-access bridging
+        // on every code unit of a large, mixed CJK/Latin Swift String.
+        for character in text.utf16 {
+            if (character == 0x0A && !previousWasCR)
                 || character == 0x0D
                 || character == 0x2028
                 || character == 0x2029 {
                 count += 1
             }
-            location += 1
+            previousWasCR = character == 0x0D
         }
         return count
     }

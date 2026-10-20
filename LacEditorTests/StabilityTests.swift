@@ -3,6 +3,20 @@ import XCTest
 @testable import LacEditor
 
 final class StabilityTests: XCTestCase {
+    func testLineIndexBulkReadsKeepCRLFAndUTF16PositionsAtBlockBoundaries() {
+        let text = String(repeating: "a", count: 8_191) + "\r\n中文😀\u{2028}next\rfinal\u{2029}\n"
+        let swiftIndex = LogicalLineIndex(text: text)
+        let foundationIndex = LogicalLineIndex(text: "")
+        foundationIndex.reset(with: text as NSString)
+        for location in 0...(text as NSString).length {
+            XCTAssertEqual(foundationIndex.lineNumber(at: location), swiftIndex.lineNumber(at: location))
+        }
+        XCTAssertEqual(swiftIndex.lineNumber(at: 8_192), 1)
+        XCTAssertEqual(swiftIndex.lineNumber(at: 8_193), 2)
+        XCTAssertEqual(swiftIndex.lineNumber(at: text.utf16.count), 6)
+        XCTAssertEqual(foundationIndex.textLength, text.utf16.count)
+    }
+
     func testDocumentTaskCoordinatorCancelsRegisteredAsyncTask() {
         let coordinator = DocumentTaskCoordinator()
         var cancelled = false

@@ -1,14 +1,14 @@
-# LacEditor 界面实验 UI5
+# LacEditor 界面实验 UI6
 
-版本：**0.15.0 · UI5（构建 68）**。分支：`codex/flclash-ui-experiment`。
+版本：**0.15.0 · UI6（构建 69）**。分支：`codex/flclash-ui-experiment`。
 
-本轮继续打磨拖放与流畅度：增加侧栏落位提示、分组悬停展开、拖放边缘滚动，并减少大文档布局时的重复重绘工作。沿用 UI4 文件筛选与可编辑示例库，借鉴 FlClash 的局部反馈，使用现有 SwiftUI + AppKit 实现，不需要安装 Flutter、Dart、Android SDK 或其他新开发环境。
+本轮处理设置窗口焦点时序、重复工作区更新和大文档行数扫描开销，补充持续标签切换与拖放计时测试。沿用文件筛选、拖放与可编辑示例库，借鉴 FlClash 的局部反馈，使用现有 SwiftUI + AppKit 实现，不需要安装 Flutter、Dart、Android SDK 或其他新开发环境。
 
 ## 安装体验
 
-1. 先正常退出正在运行的旧实验版，再解压 `dist/LacEditor-0.15.0-UI5-68-arm64.zip`。
+1. 先正常退出正在运行的旧实验版，再解压 `dist/LacEditor-0.15.0-UI6-69-arm64.zip`。
 2. 将「LacEditor 实验版.app」拖入「应用程序」。保留原有的「LacEditor.app」。
-3. 在「设置 → 关于」核对 `0.15.0 · UI5（构建 68）`。新用户从空白文档开始；已有实验版用户沿用实验数据，只替换同名实验 App。
+3. 在「设置 → 关于」核对 `0.15.0 · UI6（构建 69）`。新用户从空白文档开始；已有实验版用户沿用实验数据，只替换同名实验 App。
 
 本机打包采用 ad hoc 签名，未进行 Developer ID 公证。若 macOS 阻止首次启动，按系统「隐私与安全性」中的提示允许打开。
 
@@ -38,6 +38,15 @@
 偏好、最近文件、收藏与分组、工作区和异常恢复均分离，不自动导入正式数据。两个 App 主动打开同一磁盘文件时仍会编辑同一文件，体验对比建议使用文件副本。
 
 ## 本轮变化与边界
+
+- 设置展示延至按钮/菜单事件结束；应用尚未激活时通过一次系统激活通知完成展示。窗口关闭后清理等待，不定时抢回焦点。
+- 按钮提示只在前台 key window 展示，失焦、关闭、移除或应用失活时立即取消；提示面板不能接受焦点。
+- 重复激活相同工作区不再重复发布更新；窗口注册移出 SwiftUI 更新事务，关闭和切换工作区统一维护状态订阅。
+- 行数和行索引采用顺序 UTF-16 与 Foundation 分块读取，保持所有换行语义；取消隐藏标签、非活动会话和缩放期间的布局预热。
+- 增加十个标签两分钟连续切换与关闭释放、设置生命周期和拖放计时回归。字体、基线、行高、中文输入法和原生标题栏结构不变。
+- 深处跳转仍主要耗在 AppKit 字体属性修复，未关闭原生字体修复、裁剪文档或引入另一套编辑内核；本轮性能测量和边界见 UI6 验收。
+
+UI5 已有变化继续保留：
 
 - 文件拖到行上半部/下半部时显示前/后落位线；分组头接收文件时显示描边，约 550 ms 后展开收起的组。文件和分组末尾各有 20 pt 落区。
 - 拖放到列表上下约 36 pt 边缘时按距离连续滚动；普通悬停不启动滚动。离开侧栏、取消、松手或关闭视图后清除提示，计时器只在拖放期间存在。
@@ -74,7 +83,7 @@ UI1/UI2 已有变化继续保留：
 - 删除滚动条配置中的整窗重复遍历；后台加载文件存在状态和身份；工具栏合并刷新并跳过相同呈现状态。
 - 保留现有文本排版、字体、输入法、行号、编辑操作和 NT2 原生标题栏材质路径。
 
-本轮结果与未测项见 [UI5 验收记录](../AcceptanceReports/UI5-2026-10-20.md)，示例数据保护见 [UI4](../AcceptanceReports/UI4-2026-10-20.md)，预览及 Instruments 历史结果见 [UI3](../AcceptanceReports/UI3-2026-10-20.md)，之前记录保留在 [UI2](../AcceptanceReports/UI2-2026-10-20.md) 与 [UI1](../AcceptanceReports/UI1-2026-10-20.md)。本轮已捕获并检查深浅色静态窗口画面；真实指针动画仍需独立确认，不能将功能测试或静态截图当作帧率证明。
+本轮结果与未测项见 [UI6 验收记录](../AcceptanceReports/UI6-2026-10-20.md)，之前的拖放与静态画面见 [UI5](../AcceptanceReports/UI5-2026-10-20.md)，示例数据保护见 [UI4](../AcceptanceReports/UI4-2026-10-20.md)，预览及 Instruments 历史结果见 [UI3](../AcceptanceReports/UI3-2026-10-20.md)，历史记录保留在 [UI2](../AcceptanceReports/UI2-2026-10-20.md) 与 [UI1](../AcceptanceReports/UI1-2026-10-20.md)。不能将功能测试或静态截图当作帧率证明。
 
 ## 建议这样试用
 
@@ -94,6 +103,12 @@ UI1/UI2 已有变化继续保留：
 ```sh
 LACEDITOR_UI_STRESS=1 swift test -c release --filter UIExperimentTests.testProfileInteractionWorkload
 LACEDITOR_UI_STRESS=1 LACEDITOR_PROFILE_SIZE_MB=50 swift test -c release --filter UIExperimentTests.testProfileInteractionWorkload
+```
+
+十个原生标签的两分钟压力测试（约 2 MB/标签，使用临时夹具）：
+
+```sh
+LACEDITOR_UI_ENDURANCE=1 swift test -c release --filter UIExperimentTests.testNativeTabEnduranceAndClosedEditorRelease
 ```
 
 输出的同步操作耗时包含 AppKit layout，不能当作显示帧时间；RSS 仅覆盖 XCTest 宿主，不包括 WebKit 子进程。完整设计保存在 [实验方案](FLCLASH_UI_EXPERIMENT_PLAN.md)。先体验独立候选包，确认后再决定合并正式版；多屏、非 Retina、VoiceOver、真实指针/IME 与长时间内存检查仍需继续。

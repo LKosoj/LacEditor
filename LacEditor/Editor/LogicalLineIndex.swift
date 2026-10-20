@@ -25,27 +25,43 @@ final class LogicalLineIndex {
     }
 
     func reset(with text: String) {
-        reset(with: text as NSString)
+        textLength = text.utf16.count
+        lineStarts = [0]
+        var previousWasCR = false
+        appendLineStarts(text.utf16, offset: 0, previousWasCR: &previousWasCR)
     }
 
     func reset(with value: NSString) {
         textLength = value.length
         lineStarts = [0]
-        guard value.length > 0 else { return }
+        guard textLength > 0 else { return }
+        // NSTextStorage exposes an NSString view. Bulk reads avoid millions
+        // of Swift/ObjC character(at:) bridges without copying the document.
+        var buffer = [unichar](repeating: 0, count: min(8_192, textLength))
+        var previousWasCR = false
         var location = 0
-        while location < value.length {
-            let character = value.character(at: location)
-            if character == 0x0D,
-               location + 1 < value.length,
-               value.character(at: location + 1) == 0x0A {
-                lineStarts.append(location + 2)
-                location += 2
-                continue
+        while location < textLength {
+            let count = min(buffer.count, textLength - location)
+            buffer.withUnsafeMutableBufferPointer {
+                value.getCharacters($0.baseAddress!, range: NSRange(location: location, length: count))
             }
-            if Self.isLineSeparator(character) {
+            appendLineStarts(buffer.prefix(count), offset: location, previousWasCR: &previousWasCR)
+            location += count
+        }
+    }
+
+    private func appendLineStarts<Units: Sequence>(
+        _ units: Units, offset: Int, previousWasCR: inout Bool
+    ) where Units.Element == unichar {
+        for (index, character) in units.enumerated() {
+            let location = offset + index
+            if character == 0x0A, previousWasCR {
+                // Also handles CR/LF split across two Foundation read blocks.
+                lineStarts[lineStarts.count - 1] = location + 1
+            } else if Self.isLineSeparator(character) {
                 lineStarts.append(location + 1)
             }
-            location += 1
+            previousWasCR = character == 0x0D
         }
     }
 

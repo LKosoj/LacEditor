@@ -80,8 +80,60 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     private var windowController: NSWindowController?
     private weak var presentedManager: WindowManager?
+    private var presentationWorkItem: DispatchWorkItem?
+    private var activationObserver: NSObjectProtocol?
+    private let applicationIsActive: @MainActor () -> Bool
+    private let activateApplication: @MainActor () -> Void
+
+    init(applicationIsActive: @escaping @MainActor () -> Bool = { NSApp.isActive },
+         activateApplication: @escaping @MainActor () -> Void = { NSApp.activate(ignoringOtherApps: true) }) {
+        self.applicationIsActive = applicationIsActive
+        self.activateApplication = activateApplication
+        super.init()
+    }
+
+    deinit {
+        presentationWorkItem?.cancel()
+        if let activationObserver { NotificationCenter.default.removeObserver(activationObserver) }
+    }
 
     func present(windowManager: WindowManager) {
+        // Finish the originating SwiftUI button/menu event before transferring
+        // key-window ownership. Otherwise that event may reactivate its editor
+        // after the settings window has already been shown.
+        presentationWorkItem?.cancel()
+        stopWaitingForActivation()
+        let work = DispatchWorkItem { [weak self, weak windowManager] in
+            guard let self, let windowManager else { return }
+            presentationWorkItem = nil
+            if applicationIsActive() {
+                show(windowManager: windowManager)
+            } else {
+                // An inactive-window click can finish activating the SwiftUI
+                // editor scene after makeKeyAndOrderFront. Wait for that one
+                // activation event, then present outside its notification.
+                activationObserver = NotificationCenter.default.addObserver(
+                    forName: NSApplication.didBecomeActiveNotification, object: NSApp, queue: .main
+                ) { [weak self, weak windowManager] _ in
+                    MainActor.assumeIsolated {
+                        guard let self, let windowManager else { return }
+                        self.stopWaitingForActivation()
+                        self.present(windowManager: windowManager)
+                    }
+                }
+                activateApplication()
+            }
+        }
+        presentationWorkItem = work
+        DispatchQueue.main.async(execute: work)
+    }
+
+    private func stopWaitingForActivation() {
+        if let activationObserver { NotificationCenter.default.removeObserver(activationObserver) }
+        activationObserver = nil
+    }
+
+    private func show(windowManager: WindowManager) {
         guard let state = windowManager.activeState else { return }
 
         if let window = windowController?.window {
@@ -95,7 +147,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
                 presentedManager = windowManager
             }
             window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
             return
         }
 
@@ -124,10 +175,12 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         presentedManager = windowManager
         controller.showWindow(nil)
         window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     func windowWillClose(_ notification: Notification) {
+        presentationWorkItem?.cancel()
+        presentationWorkItem = nil
+        stopWaitingForActivation()
         windowController = nil
     }
 }
@@ -525,7 +578,13 @@ struct WindowCloseCoordinator: NSViewRepresentable {
             context.coordinator.scheduleChromeUpdate(for: window)
         }
         if let window = nsView.window, appState.hostWindow !== window {
-            windowManager.register(windowID: windowID, state: appState, window: window)
+            // Registration publishes the active workspace. Never perform it
+            // inside SwiftUI's representable update transaction.
+            DispatchQueue.main.async { [weak window] in
+                guard let window, nsView.window === window,
+                      appState.hostWindow !== window else { return }
+                windowManager.register(windowID: windowID, state: appState, window: window)
+            }
         }
     }
 

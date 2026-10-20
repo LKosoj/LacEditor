@@ -603,7 +603,10 @@ extension EditorTextView {
 
         private func scheduleDirectionalLayoutPrefetch() {
             layoutPrefetchWorkItem?.cancel()
-            guard !wordWrap, let textView,
+            layoutPrefetchWorkItem = nil
+            guard isActive, !isLiveResizing, !wordWrap, let textView,
+                  let window = textView.window, window.isVisible,
+                  window.tabGroup.map({ $0.selectedWindow === window }) ?? true,
                   EditorLayoutPolicy.usesViewportLayout(
                     textLength: textView.textStorage?.length ?? 0
                   ) else { return }
@@ -611,7 +614,9 @@ extension EditorTextView {
             let direction: CGFloat = currentY >= lastViewportOriginY ? 1 : -1
             lastViewportOriginY = currentY
             let workItem = DispatchWorkItem { [weak self, weak textView] in
-                guard let self, let textView,
+                guard let self, isActive, !isLiveResizing, let textView,
+                      let window = textView.window, window.isVisible,
+                      window.tabGroup.map({ $0.selectedWindow === window }) ?? true,
                       let layoutManager = textView.layoutManager,
                       let textContainer = textView.textContainer,
                       EditorLayoutPolicy.usesViewportLayout(
@@ -668,6 +673,8 @@ extension EditorTextView {
                 liveResizeLayoutWorkItem = nil
                 pendingLiveResizeWordWrap = nil
                 isLiveResizing = false
+                layoutPrefetchWorkItem?.cancel()
+                layoutPrefetchWorkItem = nil
                 scheduleTextCodecSuggestion()
                 cancelDelimiterMatch(clearHighlight: true, releaseSnapshot: true)
                 textView?.requestsFirstResponderWhenAttached = false

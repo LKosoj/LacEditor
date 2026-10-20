@@ -5,6 +5,73 @@ import XCTest
 
 @MainActor
 final class SidebarDragTests: XCTestCase {
+    func testHoverExpansionCancelsPreviousGroupAndStopsOnRelease() async throws {
+        _ = NSApplication.shared
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let library = SidebarLibraryStore(storageURL: folder.appendingPathComponent("library.json"))
+        let first = try XCTUnwrap(library.createGroup(named: "First"))
+        let second = try XCTUnwrap(library.createGroup(named: "Second"))
+        library.setExpanded(false, for: first)
+        library.setExpanded(false, for: second)
+        let window = NSWindow(contentRect: NSRect(x: 200, y: 200, width: 260, height: 400),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 260, height: 400))
+        scroll.documentView = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 1_000))
+        window.contentView = scroll
+        window.orderFront(nil)
+        defer { window.close() }
+        var dragging = true
+        let point = window.convertPoint(toScreen: scroll.contentView.convert(NSPoint(x: 100, y: 200), to: nil))
+        let state = SidebarDragState(mouseLocation: { point }, isDragging: { dragging })
+        state.scrollView = scroll
+        state.hover(.group(first), placement: .inside, library: library)
+        try await Task.sleep(for: .milliseconds(150))
+        state.hover(.group(second), placement: .inside, library: library)
+        for _ in 0..<50 {
+            if library.groups.first(where: { $0.id == second })?.isExpanded == true { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertFalse(try XCTUnwrap(library.groups.first { $0.id == first }).isExpanded)
+        XCTAssertTrue(try XCTUnwrap(library.groups.first { $0.id == second }).isExpanded)
+        dragging = false
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertNil(state.target)
+        XCTAssertEqual(library.groups.map(\.id), [first, second])
+    }
+
+    func testDragTimerScrollsEdgeAndStopsAfterCancellationOrHiddenWindow() async throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 200, y: 200, width: 260, height: 400),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 260, height: 400))
+        scroll.documentView = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 2_000))
+        window.contentView = scroll
+        window.orderFront(nil)
+        defer { window.close() }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let library = SidebarLibraryStore(storageURL: folder.appendingPathComponent("library.json"))
+        var point = window.convertPoint(toScreen: scroll.contentView.convert(NSPoint(x: 100, y: 398), to: nil))
+        let state = SidebarDragState(mouseLocation: { point }, isDragging: { true })
+        state.scrollView = scroll
+        state.hover(.favoritesHeader, placement: .inside, library: library)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertGreaterThan(scroll.contentView.bounds.minY, 0)
+        state.finish()
+        let stopped = scroll.contentView.bounds.minY
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(scroll.contentView.bounds.minY, stopped)
+        point = window.convertPoint(toScreen: scroll.contentView.convert(NSPoint(x: 100, y: stopped + 200), to: nil))
+        state.hover(.favoritesHeader, placement: .inside, library: library)
+        window.orderOut(nil)
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertNil(state.target)
+        XCTAssertEqual(scroll.contentView.bounds.minY, stopped)
+    }
+
     func testRowHalvesAndAppendHaveUnambiguousDestinations() {
         let url = URL(fileURLWithPath: "/tmp/a.md")
         let id = UUID()

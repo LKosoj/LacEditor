@@ -172,14 +172,21 @@ final class WindowManager: ObservableObject {
 
     func activate(windowID: UUID) {
         guard let state = states[windowID] else { return }
+        guard activeState !== state else { return }
         if let previous = activeState, previous !== state,
            let group = state.hostWindow?.tabGroup,
            let previousWindow = previous.hostWindow,
            group.windows.contains(previousWindow) {
             state.isSidebarVisible = previous.isSidebarVisible
         }
+        setActiveState(state)
+    }
+
+    private func setActiveState(_ state: AppState?) {
+        guard activeState !== state else { return }
+        activeStateCancellable = nil
         activeState = state
-        activeStateCancellable = state.objectWillChange.sink { [weak self] in
+        activeStateCancellable = state?.objectWillChange.sink { [weak self] in
             self?.objectWillChange.send()
         }
     }
@@ -197,18 +204,18 @@ final class WindowManager: ObservableObject {
             // SwiftUI commonly reuses this NSWindow when the app is reopened
             // from the Dock. Keep the weak reference so the reopen handler can
             // bring the existing workspace back instead of losing its route.
-            activeState = states.values.first(where: {
+            setActiveState(states.values.first(where: {
                 $0 !== state && $0.hostWindow?.isVisible == true
-            }) ?? state
+            }) ?? state)
             return
         }
 
         let removedState = states.removeValue(forKey: windowID)
         windowControllers.removeValue(forKey: windowID)
         if activeState === removedState {
-            activeState = states.values.first(where: {
+            setActiveState(states.values.first(where: {
                 $0.hostWindow?.isVisible == true
-            })
+            }))
         }
     }
 

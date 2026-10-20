@@ -1,10 +1,31 @@
 import AppKit
+import Combine
 import SwiftUI
 import XCTest
 @testable import LacEditor
 
 @MainActor
 final class WindowAndSessionTests: XCTestCase {
+    func testRepeatedActivationDoesNotPublishOrReplaceWorkspaceSubscription() {
+        _ = NSApplication.shared
+        let manager = WindowManager()
+        let state = makeState(document: EditorDocument(text: "kept"))
+        let window = makeWindow(title: "Activation")
+        let windowID = UUID()
+        defer { window.close() }
+        manager.register(windowID: windowID, state: state, window: window)
+        var updates = 0
+        let observation = manager.objectWillChange.sink { updates += 1 }
+        defer { observation.cancel() }
+        for _ in 0..<100 {
+            manager.register(windowID: windowID, state: state, window: window)
+            manager.activate(windowID: windowID)
+        }
+        XCTAssertEqual(updates, 0)
+        state.selectedDocumentID = nil
+        XCTAssertGreaterThan(updates, 0, "The selected workspace must still forward changes")
+    }
+
     func testFullHeightSidebarAndTabAccessorySurviveResizeAndNativeCollapse() async throws {
         _ = NSApplication.shared
         let manager = WindowManager()

@@ -168,6 +168,14 @@ final class SidebarDragState: ObservableObject {
     weak var scrollView: NSScrollView?
     private var timer: Timer?
     private var expandWork: DispatchWorkItem?
+    private let mouseLocation: () -> NSPoint
+    private let isDragging: () -> Bool
+
+    init(mouseLocation: @escaping () -> NSPoint = { NSEvent.mouseLocation },
+         isDragging: @escaping () -> Bool = { NSEvent.pressedMouseButtons & 1 != 0 }) {
+        self.mouseLocation = mouseLocation
+        self.isDragging = isDragging
+    }
 
     deinit { timer?.invalidate(); expandWork?.cancel() }
 
@@ -216,11 +224,11 @@ final class SidebarDragState: ObservableObject {
     }
 
     private func tick() {
-        guard NSEvent.pressedMouseButtons & 1 != 0, let scrollView, let window = scrollView.window,
+        guard isDragging(), let scrollView, let window = scrollView.window,
               window.isVisible, !scrollView.isHiddenOrHasHiddenAncestor else {
             finish(); return
         }
-        let point = scrollView.contentView.convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
+        let point = scrollView.contentView.convert(window.convertPoint(fromScreen: mouseLocation()), from: nil)
         let clip = scrollView.contentView
         guard point.x >= clip.bounds.minX, point.x <= clip.bounds.maxX,
               point.y >= clip.bounds.minY, point.y <= clip.bounds.maxY else {
