@@ -316,6 +316,11 @@ struct NativeEditorSplit: NSViewControllerRepresentable {
 final class NativeEditorSplitController: NSSplitViewController {
     private let editorHost = NSHostingController(rootView: AnyView(EmptyView()))
     private var previewHost: NSHostingController<AnyView>?
+    private var previewItem: NSSplitViewItem?
+    private var retainedPreview: AnyView?
+    private var previewIsVisible = false
+    private var editorFraction: CGFloat = 0.5
+    private var needsRatioRestore = false
 
     override func loadView() {
         splitView = ContentDividerSplitView()
@@ -332,20 +337,58 @@ final class NativeEditorSplitController: NSSplitViewController {
         _ = view
         editorHost.rootView = editor
         if let preview {
+            retainedPreview = preview
+            let root = AnyView(preview.environment(\.markdownPreviewActive, true))
             if let previewHost {
-                previewHost.rootView = preview
+                previewHost.rootView = root
             } else {
-                let host = NSHostingController(rootView: preview)
+                let host = NSHostingController(rootView: root)
                 host.safeAreaRegions = []
                 let item = NSSplitViewItem(viewController: host)
-                item.minimumThickness = 280
+                item.minimumThickness = 240
+                item.canCollapse = true
+                item.canCollapseFromWindowResize = false
                 previewHost = host
+                previewItem = item
                 addSplitViewItem(item)
             }
-        } else if previewHost != nil {
-            removeSplitViewItem(splitViewItems[1])
-            previewHost = nil
+            if !previewIsVisible {
+                previewIsVisible = true
+                needsRatioRestore = true
+                previewItem?.isCollapsed = false
+                view.needsLayout = true
+            }
+        } else if previewIsVisible {
+            rememberRatio()
+            previewIsVisible = false
+            needsRatioRestore = false
+            if let retainedPreview {
+                previewHost?.rootView = AnyView(retainedPreview.environment(\.markdownPreviewActive, false))
+            }
+            // Keep one native pane/WebView, suspend its work while collapsed.
+            // A width animation would force repeated TextKit reflow. Preserve
+            // immediate geometry and the native scroll pockets instead.
+            previewItem?.isCollapsed = true
         }
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        guard previewIsVisible, view.window != nil, splitView.bounds.width > 1 else { return }
+        if needsRatioRestore {
+            needsRatioRestore = false
+            let width = splitView.bounds.width - splitView.dividerThickness
+            let position = min(max(300, width * editorFraction), max(300, width - 240))
+            splitView.setPosition(position, ofDividerAt: 0)
+        } else {
+            rememberRatio()
+        }
+    }
+
+    private func rememberRatio() {
+        let width = splitView.bounds.width - splitView.dividerThickness
+        guard previewIsVisible, width > 1, !needsRatioRestore else { return }
+        editorFraction = min(0.9, max(0.1, editorHost.view.frame.width / width))
     }
 }
 

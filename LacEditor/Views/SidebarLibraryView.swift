@@ -5,9 +5,11 @@ import UniformTypeIdentifiers
 struct SidebarLibraryView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var windowManager: WindowManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var recentFiles: RecentFilesStore
     @ObservedObject var library: SidebarLibraryStore
     @State private var hoveredSection: SidebarLibrarySection?
+    @FocusState private var focusedHeader: String?
 
     var body: some View {
         ScrollView(.vertical) {
@@ -98,7 +100,7 @@ struct SidebarLibraryView: View {
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         let isExpanded = library.isExpanded(section)
-        let isHovering = hoveredSection == section
+        let isHovering = hoveredSection == section || focusedHeader?.hasPrefix(title) == true
         VStack(spacing: 4) {
             HStack(spacing: 6) {
                 Button {
@@ -121,7 +123,7 @@ struct SidebarLibraryView: View {
                             .font(.system(size: 8, weight: .semibold))
                             .rotationEffect(.degrees(isExpanded ? 90 : 0))
                             .opacity(isHovering ? 1 : 0)
-                            .animation(.easeOut(duration: 0.1), value: isHovering)
+                            .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: isHovering)
                             .frame(width: 9)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -129,6 +131,8 @@ struct SidebarLibraryView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .focused($focusedHeader, equals: title)
+                .accessibilityValue(isExpanded ? "已展开" : "已收起")
                 if section == .groups {
                     Button {
                         windowManager.requestCreateSidebarGroup()
@@ -138,6 +142,7 @@ struct SidebarLibraryView: View {
                             .frame(width: 24, height: 24)
                     }
                     .buttonStyle(.plain)
+                    .focused($focusedHeader, equals: title + ".add")
                     .opacity(isHovering ? 1 : 0)
                     .stableHelp("新建分组")
                     .accessibilityLabel("新建分组")
@@ -151,8 +156,10 @@ struct SidebarLibraryView: View {
                             .frame(width: 20, height: 20)
                     }
                     .buttonStyle(.plain)
+                    .focused($focusedHeader, equals: title + ".clear")
                     .opacity(isHovering ? 1 : 0)
                     .stableHelp("清除最近文件")
+                    .accessibilityLabel("清除最近文件")
                 }
             }
             .foregroundStyle(.secondary)
@@ -206,6 +213,7 @@ private struct SidebarGroupView: View {
     let group: SidebarFileGroup
     @ObservedObject var library: SidebarLibraryStore
     @State private var isHovering = false
+    @FocusState private var isFocused: Bool
 
     var body: some View {
         VStack(spacing: 2) {
@@ -224,7 +232,7 @@ private struct SidebarGroupView: View {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 8, weight: .semibold))
                         .rotationEffect(.degrees(group.isExpanded ? 90 : 0))
-                        .opacity(isHovering ? 1 : 0)
+                        .opacity(isHovering || isFocused ? 1 : 0)
                         .frame(width: 9)
                     Spacer()
                     if !group.paths.isEmpty {
@@ -243,6 +251,8 @@ private struct SidebarGroupView: View {
                 )
             }
             .buttonStyle(.plain)
+            .focused($isFocused)
+            .accessibilityValue(group.isExpanded ? "已展开" : "已收起")
             .onHover { isHovering = $0 }
             .onDrag { SidebarDragPayload.group(group.id).itemProvider() }
             .onDrop(

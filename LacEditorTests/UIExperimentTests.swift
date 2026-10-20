@@ -1,10 +1,232 @@
 import AppKit
 import SwiftUI
 import XCTest
+import Darwin
 @testable import LacEditor
 
 @MainActor
 final class UIExperimentTests: XCTestCase {
+    func testNativeTabSwitchingRetainsEditorsAndPreview() async throws {
+        let fixture = try UI2Fixture(text: "# 原生标签\n\n保留编辑与预览。", language: .markdown)
+        defer { fixture.dispose() }
+        fixture.document.isPreviewVisible = true
+        try await Task.sleep(for: .milliseconds(350))
+        let first = try XCTUnwrap(fixture.state.hostWindow)
+        let secondState = fixture.manager.openNativeTab(from: fixture.state)
+        let second = try XCTUnwrap(secondState.hostWindow)
+        defer {
+            second.delegate = nil
+            second.contentViewController = nil
+            second.close()
+        }
+        try await Task.sleep(for: .milliseconds(250))
+        let firstContent = try XCTUnwrap(first.contentView)
+        let secondContent = try XCTUnwrap(second.contentView)
+        let editor = try XCTUnwrap(descendants(in: firstContent, of: LacTextView.self).first)
+        let otherEditor = try XCTUnwrap(descendants(in: secondContent, of: LacTextView.self).first)
+        let preview = try XCTUnwrap(descendants(in: firstContent, of: MarkdownWebView.self).first)
+        editor.setSelectedRange(NSRange(location: 2, length: 3))
+        let group = try XCTUnwrap(first.tabGroup)
+        XCTAssertEqual(group.windows.count, 2)
+        var samples: [Double] = []
+        for index in 0..<100 {
+            let start = ProcessInfo.processInfo.systemUptime
+            group.selectedWindow = index.isMultiple(of: 2) ? first : second
+            group.selectedWindow?.contentView?.layoutSubtreeIfNeeded()
+            samples.append((ProcessInfo.processInfo.systemUptime - start) * 1000)
+            try await Task.sleep(for: .milliseconds(8))
+        }
+        XCTAssertTrue(descendants(in: firstContent, of: LacTextView.self).first === editor)
+        XCTAssertTrue(descendants(in: secondContent, of: LacTextView.self).first === otherEditor)
+        XCTAssertTrue(descendants(in: firstContent, of: MarkdownWebView.self).first === preview)
+        XCTAssertEqual(editor.selectedRange(), NSRange(location: 2, length: 3))
+        let sorted = samples.sorted()
+        print(String(format: "UI3_METRIC native-tab median_ms=%.3f p95_ms=%.3f max_ms=%.3f count=100",
+                     sorted[50], sorted[94], sorted[99]))
+    }
+
+    func testPreviewTogglePreservesEditorViewportWithWrappedText() async throws {
+        let text = String(repeating: "中英文 Mixed words，分栏宽度改变时保留阅读位置。", count: 5) + "\n"
+        let fixture = try UI2Fixture(text: String(repeating: text, count: 300), language: .markdown)
+        defer { fixture.dispose() }
+        fixture.state.isSidebarVisible = false
+        fixture.document.isPreviewVisible = true
+        try await Task.sleep(for: .milliseconds(400))
+        let window = try XCTUnwrap(fixture.state.hostWindow)
+        let content = try XCTUnwrap(window.contentView)
+        let editor = try XCTUnwrap(descendants(in: content, of: LacTextView.self).first)
+        let scroll = try XCTUnwrap(editor.enclosingScrollView)
+        let layout = try XCTUnwrap(editor.layoutManager)
+        let container = try XCTUnwrap(editor.textContainer)
+        let location = (text as NSString).length * 100
+        let glyph = layout.glyphRange(forCharacterRange: NSRange(location: location, length: 1), actualCharacterRange: nil)
+        let rect = layout.boundingRect(forGlyphRange: glyph, in: container)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: rect.minY + editor.textContainerOrigin.y))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        func topCharacter() -> Int {
+            let point = NSPoint(x: 0, y: scroll.contentView.bounds.minY - editor.textContainerOrigin.y + 1)
+            let glyph = layout.glyphIndex(for: point, in: container)
+            return layout.characterIndexForGlyph(at: min(glyph, layout.numberOfGlyphs - 1))
+        }
+        let original = topCharacter()
+        fixture.state.togglePreview()
+        try await Task.sleep(for: .milliseconds(150))
+        fixture.state.togglePreview()
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(Double(topCharacter()), Double(original), accuracy: Double((text as NSString).length),
+                       "A preview round trip must keep the editor within the same paragraph")
+    }
+
+    /// Opt-in, repeatable native-window workload used for UI2/UI3 comparison.
+    /// Measurements include AppKit layout; they are not display frame times.
+    func testProfileInteractionWorkload() async throws {
+        guard ProcessInfo.processInfo.environment["LACEDITOR_UI_STRESS"] == "1" else {
+            throw XCTSkip("Enable LACEDITOR_UI_STRESS for the profiling workload")
+        }
+        _ = NSApplication.shared
+        let large = ProcessInfo.processInfo.environment["LACEDITOR_PROFILE_SIZE_MB"] == "50"
+        let unit = "## 阅读与编辑\n\n中英文 Mixed text 123，保留注意力。\n\n- 项目\n  - 子项\n\n```js\nconst value = { enabled: true };\n```\n\n"
+        let text = String(repeating: unit, count: large ? (50 * 1_024 * 1_024 / unit.utf8.count + 1) : 6_000)
+        let fixture = try UI2Fixture(text: text, language: .markdown)
+        defer { fixture.dispose() }
+        fixture.state.isSidebarVisible = false
+        fixture.document.isPreviewVisible = !large
+        let window = try XCTUnwrap(fixture.state.hostWindow)
+        window.orderFront(nil)
+        try await Task.sleep(for: .seconds(2))
+        let content = try XCTUnwrap(window.contentView)
+        let editor = try XCTUnwrap(descendants(in: content, of: LacTextView.self).first)
+        let scroll = try XCTUnwrap(editor.enclosingScrollView)
+        editor.setSelectedRange(NSRange(location: 10, length: 4))
+        var samples: [String: [Double]] = [:]
+        var rss: [UInt64] = []
+        func residentSize() -> UInt64 {
+            var info = mach_task_basic_info_data_t()
+            var count = mach_msg_type_number_t(MemoryLayout.size(ofValue: info) / MemoryLayout<natural_t>.size)
+            let result = withUnsafeMutablePointer(to: &info) { pointer in
+                pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                    task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+                }
+            }
+            return result == KERN_SUCCESS ? info.resident_size : 0
+        }
+        rss.append(residentSize())
+        for cycle in 0..<30 {
+            var start = ProcessInfo.processInfo.systemUptime
+            window.setContentSize(NSSize(width: cycle.isMultiple(of: 2) ? 1000 : 1180, height: 720))
+            content.layoutSubtreeIfNeeded()
+            samples["resize", default: []].append((ProcessInfo.processInfo.systemUptime - start) * 1000)
+            try await Task.sleep(for: .milliseconds(20))
+            start = ProcessInfo.processInfo.systemUptime
+            let y = max(0, editor.bounds.height - scroll.contentView.bounds.height) * CGFloat(cycle % 10) / 10
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: y))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            content.layoutSubtreeIfNeeded()
+            samples["scroll", default: []].append((ProcessInfo.processInfo.systemUptime - start) * 1000)
+            if !large {
+                start = ProcessInfo.processInfo.systemUptime
+                fixture.state.togglePreview()
+                content.layoutSubtreeIfNeeded()
+                samples["preview-toggle", default: []].append((ProcessInfo.processInfo.systemUptime - start) * 1000)
+            }
+            fixture.state.toggleSidebar()
+            try await Task.sleep(for: .milliseconds(60))
+            if cycle.isMultiple(of: 5) { rss.append(residentSize()) }
+        }
+        try await Task.sleep(for: .seconds(1))
+        rss.append(residentSize())
+        XCTAssertTrue(descendants(in: content, of: LacTextView.self).first === editor)
+        XCTAssertEqual(editor.selectedRange(), NSRange(location: 10, length: 4))
+        XCTAssertEqual(fixture.document.synchronizedText(), text)
+        for (name, values) in samples.sorted(by: { $0.key < $1.key }) {
+            let sorted = values.sorted()
+            print(String(format: "UI3_METRIC %@ median_ms=%.3f p95_ms=%.3f max_ms=%.3f count=%d", name,
+                         sorted[sorted.count / 2], sorted[Int(Double(sorted.count - 1) * 0.95)], sorted.last!, sorted.count))
+        }
+        print("UI3_METRIC bytes=\(text.utf8.count) host_rss_bytes=\(rss)")
+        fflush(stdout)
+    }
+
+    func testPreviewToggleKeepsEditorUndoWebViewAndSplitRatio() async throws {
+        _ = NSApplication.shared
+        let text = """
+        # 留一点空白
+
+        轻量的编辑器，让注意力回到文字。
+        A quiet place to write and think.
+
+        ## 把想法写下来
+
+        1. 记录今天的灵感
+           1. 留住细节
+           2. 整理线索
+        2. 写下第一稿
+
+        > 不急着写完，先把这一句写好。
+
+        | 内容 | 状态 |
+        | --- | --- |
+        | 文字与代码 | 随时开始 |
+
+        ```swift
+        let message = "你好，LacEditor"
+        print(message)
+        ```
+        """
+        let fixture = try UI2Fixture(text: text, language: .markdown)
+        defer { fixture.dispose() }
+        let draft = fixture.directory.appendingPathComponent("draft.md")
+        try text.write(to: draft, atomically: true, encoding: .utf8)
+        fixture.document.url = draft
+        fixture.manager.recentFiles.record(draft)
+        fixture.manager.sidebarLibrary.toggleFavorite(draft)
+        fixture.state.isSidebarVisible = true
+        fixture.document.isPreviewVisible = true
+        try await Task.sleep(for: .milliseconds(500))
+        let window = try XCTUnwrap(fixture.state.hostWindow)
+        let content = try XCTUnwrap(window.contentView)
+        func findSplit(in view: NSView) -> NativeEditorSplitController? {
+            if let split = view as? NSSplitView, let controller = split.delegate as? NativeEditorSplitController { return controller }
+            return view.subviews.lazy.compactMap { findSplit(in: $0) }.first
+        }
+        let split = try XCTUnwrap(findSplit(in: content))
+        let editor = try XCTUnwrap(descendants(in: content, of: LacTextView.self).first)
+        let webView = try XCTUnwrap(descendants(in: content, of: MarkdownWebView.self).first)
+        window.makeFirstResponder(editor)
+        editor.insertText("X", replacementRange: NSRange(location: 0, length: 0))
+        try await Task.sleep(for: .milliseconds(300))
+        let editedText = editor.string
+        let undo = try XCTUnwrap(editor.undoManager)
+        XCTAssertTrue(undo.canUndo)
+        editor.setSelectedRange(NSRange(location: 10, length: 3))
+        split.splitView.setPosition((split.splitView.bounds.width - split.splitView.dividerThickness) * 0.62, ofDividerAt: 0)
+        content.layoutSubtreeIfNeeded()
+        let fraction = split.splitView.subviews[0].frame.width / (split.splitView.bounds.width - split.splitView.dividerThickness)
+        for _ in 0..<6 {
+            fixture.state.togglePreview()
+            try await Task.sleep(for: .milliseconds(35))
+            content.layoutSubtreeIfNeeded()
+            fixture.state.togglePreview()
+            try await Task.sleep(for: .milliseconds(35))
+            content.layoutSubtreeIfNeeded()
+            XCTAssertTrue(descendants(in: content, of: LacTextView.self).first === editor)
+            XCTAssertTrue(descendants(in: content, of: MarkdownWebView.self).first === webView)
+            XCTAssertEqual(editor.selectedRange(), NSRange(location: 10, length: 3))
+            XCTAssertEqual(split.splitView.subviews[0].frame.width / (split.splitView.bounds.width - split.splitView.dividerThickness),
+                           fraction, accuracy: 0.015)
+        }
+        XCTAssertEqual(editor.string, editedText)
+        XCTAssertTrue(undo.canUndo)
+        undo.undo()
+        XCTAssertEqual(editor.string, text, "Preview toggling must preserve the real text undo operation")
+        for theme: AppTheme in [.light, .dark] {
+            fixture.preferences.theme = theme
+            split.splitView.setPosition((split.splitView.bounds.width - split.splitView.dividerThickness) * 0.5, ofDividerAt: 0)
+            try await Task.sleep(for: .milliseconds(400))
+            try await captureFixture(window, name: "UI3-preview-\(theme.rawValue)")
+        }
+    }
+
     func testSettingsPagesFitMinimumWindowAndKeepNativeScrollContainers() async throws {
         _ = NSApplication.shared
         let fixture = try UI2Fixture()
@@ -329,7 +551,7 @@ private final class UI2Fixture {
     let document: EditorDocument
     let state: AppState
 
-    init() throws {
+    init(text: String = "LacEditor 测试正文\n", language: EditorLanguage = .plainText) throws {
         directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         suite = "LacEditorTests.ui2.\(UUID().uuidString)"
@@ -337,7 +559,7 @@ private final class UI2Fixture {
         preferences = AppPreferences(defaults: defaults)
         manager = WindowManager(preferences: preferences, recentFiles: RecentFilesStore(defaults: defaults),
                                 sidebarLibrary: SidebarLibraryStore(storageURL: directory.appendingPathComponent("library.json")))
-        document = EditorDocument(text: "LacEditor 测试正文\n", language: .plainText)
+        document = EditorDocument(text: text, language: language)
         state = manager.openNewWindow(with: document)
     }
 
