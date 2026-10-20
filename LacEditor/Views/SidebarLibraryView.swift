@@ -11,6 +11,7 @@ struct SidebarLibraryView: View {
     var query = ""
     @State private var hoveredSection: SidebarLibrarySection?
     @FocusState private var focusedHeader: String?
+    @StateObject private var dragState = SidebarDragState()
 
     private var filter: SidebarLibraryFilter { SidebarLibraryFilter(query: query) }
     private var favorites: [URL] { filter.files(library.favoriteURLs) }
@@ -68,15 +69,8 @@ struct SidebarLibraryView: View {
                     ForEach(groups) { group in
                         SidebarGroupView(group: group, library: library, isFiltering: filter.isActive)
                     }
-                    Color.clear
-                        .frame(height: 5)
-                        .onDrop(
-                            of: SidebarDragPayload.supportedTypes,
-                            delegate: SidebarGroupDropDelegate(
-                                targetGroupID: nil,
-                                library: library
-                            )
-                        )
+                    Color.clear.frame(height: 20).contentShape(Rectangle())
+                        .sidebarDropArea(.groupsEnd, height: 20, library: library, enabled: !filter.isActive)
                 }
             }
 
@@ -107,9 +101,12 @@ struct SidebarLibraryView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 12)
             .background(NativeScrollViewConfigurator())
+            .background(SidebarDragScrollAttachment(state: dragState))
         }
         .scrollIndicators(.automatic)
         .scrollContentBackground(.hidden)
+        .environmentObject(dragState)
+        .onDisappear { dragState.finish() }
     }
 
     @ViewBuilder
@@ -187,6 +184,8 @@ struct SidebarLibraryView: View {
             .padding(.horizontal, 8)
             .frame(height: 28)
             .onHover { hoveredSection = $0 ? section : nil }
+            .sidebarDropArea(section == .favorites ? .favoritesHeader : .unavailable,
+                             height: 28, library: library, enabled: !filter.isActive)
 
             SidebarDisclosure(isExpanded: isExpanded) {
                 content()
@@ -205,26 +204,11 @@ struct SidebarLibraryView: View {
                     .onDrag {
                         SidebarDragPayload.file(url, location: location).itemProvider()
                     }
-                    .onDrop(
-                        of: SidebarDragPayload.supportedTypes,
-                        delegate: SidebarFileDropDelegate(
-                            targetURL: url,
-                            targetLocation: location,
-                            library: library
-                        )
-                    )
+                    .sidebarDropArea(.file(url, location), height: 46, library: library, enabled: !filter.isActive)
             }
 
-            Color.clear
-                .frame(height: 8)
-                .onDrop(
-                    of: SidebarDragPayload.supportedTypes,
-                    delegate: SidebarFileDropDelegate(
-                        targetURL: nil,
-                        targetLocation: location,
-                        library: library
-                    )
-                )
+            Color.clear.frame(height: 20).contentShape(Rectangle())
+                .sidebarDropArea(.filesEnd(location), height: 20, library: library, enabled: !filter.isActive)
         }
     }
 }
@@ -247,7 +231,7 @@ private struct SidebarGroupView: View {
                     Image(systemName: isExpanded ? "folder.fill" : "folder")
                         .resizable()
                         .scaledToFit()
-            .foregroundStyle(.secondary)
+                        .foregroundStyle(.secondary)
                         .frame(width: 16, height: 16)
                     Text(group.name)
                         .font(.system(size: 13, weight: .medium))
@@ -273,19 +257,13 @@ private struct SidebarGroupView: View {
                     in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                 )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(SoftRowButtonStyle())
             .disabled(isFiltering)
             .focused($isFocused)
             .accessibilityValue(isExpanded ? "已展开" : "已收起")
             .onHover { isHovering = $0 }
             .onDrag { SidebarDragPayload.group(group.id).itemProvider() }
-            .onDrop(
-                of: SidebarDragPayload.supportedTypes,
-                delegate: SidebarGroupDropDelegate(
-                    targetGroupID: group.id,
-                    library: library
-                )
-            )
+            .sidebarDropArea(.group(group.id), height: 32, library: library, enabled: !isFiltering)
             .contextMenu {
                 Button {
                     windowManager.requestRenameSidebarGroup(group)
@@ -310,33 +288,19 @@ private struct SidebarGroupView: View {
                                     location: .group(group.id)
                                 ).itemProvider()
                             }
-                            .onDrop(
-                                of: SidebarDragPayload.supportedTypes,
-                                delegate: SidebarFileDropDelegate(
-                                    targetURL: url,
-                                    targetLocation: .group(group.id),
-                                    library: library
-                                )
-                            )
+                            .sidebarDropArea(.file(url, .group(group.id)), height: 46,
+                                             library: library, enabled: !isFiltering)
                     }
 
-                    Color.clear
-                        .frame(height: 8)
-                        .onDrop(
-                            of: SidebarDragPayload.supportedTypes,
-                            delegate: SidebarFileDropDelegate(
-                                targetURL: nil,
-                                targetLocation: .group(group.id),
-                                library: library
-                            )
-                        )
+                    Color.clear.frame(height: 20).contentShape(Rectangle())
+                        .sidebarDropArea(.filesEnd(.group(group.id)), height: 20,
+                                         library: library, enabled: !isFiltering)
                 }
             }
         }
     }
 }
-
-private enum SidebarFileLocation: Equatable {
+enum SidebarFileLocation: Equatable {
     case favorites
     case group(UUID)
     case recent
@@ -528,153 +492,6 @@ private struct SidebarFileRow: View {
                 appState.recentFiles.remove(url)
             } label: {
                 Label("从最近文件中删除", systemImage: "trash")
-            }
-        }
-    }
-}
-
-private struct SidebarDragPayload: Codable {
-    static let supportedTypes: [UTType] = [.utf8PlainText, .fileURL]
-    enum Kind: String, Codable {
-        case file
-        case group
-    }
-
-    let kind: Kind
-    let path: String?
-    let groupID: UUID?
-    let sourceGroupID: UUID?
-    let isFavorite: Bool
-
-    static func file(_ url: URL, location: SidebarFileLocation) -> Self {
-        let groupID: UUID?
-        let isFavorite: Bool
-        switch location {
-        case .favorites:
-            groupID = nil
-            isFavorite = true
-        case let .group(id):
-            groupID = id
-            isFavorite = false
-        case .recent:
-            groupID = nil
-            isFavorite = false
-        }
-        return Self(
-            kind: .file,
-            path: url.path,
-            groupID: nil,
-            sourceGroupID: groupID,
-            isFavorite: isFavorite
-        )
-    }
-
-    static func group(_ id: UUID) -> Self {
-        Self(
-            kind: .group,
-            path: nil,
-            groupID: id,
-            sourceGroupID: nil,
-            isFavorite: false
-        )
-    }
-
-    func itemProvider() -> NSItemProvider {
-        let data = try? JSONEncoder().encode(self)
-        let string = data?.base64EncodedString() ?? ""
-        return NSItemProvider(object: string as NSString)
-    }
-
-    static func load(from info: DropInfo, completion: @escaping (Self) -> Void) -> Bool {
-        if let provider = info.itemProviders(for: [.utf8PlainText]).first {
-            provider.loadObject(ofClass: NSString.self) { object, _ in
-                guard let string = object as? String,
-                      let data = Data(base64Encoded: string),
-                      let payload = try? JSONDecoder().decode(Self.self, from: data) else {
-                    return
-                }
-                DispatchQueue.main.async { completion(payload) }
-            }
-            return true
-        }
-
-        guard let provider = info.itemProviders(for: [.fileURL]).first else { return false }
-        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) { item, _ in
-            let url: URL?
-            if let value = item as? URL {
-                url = value
-            } else if let value = item as? NSURL {
-                url = value as URL
-            } else if let data = item as? Data,
-                      let value = String(data: data, encoding: .utf8) {
-                url = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines))
-            } else {
-                url = nil
-            }
-            guard let url, isSupportedFile(url) else { return }
-            DispatchQueue.main.async {
-                completion(.file(url, location: .recent))
-            }
-        }
-        return true
-    }
-
-    private static func isSupportedFile(_ url: URL) -> Bool {
-        guard FileService.supportedExtensions.contains(
-            url.pathExtension.lowercased()
-        ) else { return false }
-        let values = try? url.resourceValues(forKeys: [.isRegularFileKey])
-        return values?.isRegularFile == true
-    }
-}
-
-private struct SidebarFileDropDelegate: DropDelegate {
-    let targetURL: URL?
-    let targetLocation: SidebarFileLocation
-    let library: SidebarLibraryStore
-
-    func validateDrop(info: DropInfo) -> Bool {
-        info.hasItemsConforming(to: SidebarDragPayload.supportedTypes)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        SidebarDragPayload.load(from: info) { payload in
-            guard payload.kind == .file,
-                  let path = payload.path else { return }
-            let url = URL(fileURLWithPath: path)
-            switch targetLocation {
-            case .favorites:
-                if !library.isFavorite(url) { library.toggleFavorite(url) }
-                library.moveFavorite(url, before: targetURL)
-            case let .group(id):
-                library.add(url, toGroup: id)
-                library.moveFile(url, inGroup: id, before: targetURL)
-            case .recent:
-                break
-            }
-        }
-    }
-}
-
-private struct SidebarGroupDropDelegate: DropDelegate {
-    let targetGroupID: UUID?
-    let library: SidebarLibraryStore
-
-    func validateDrop(info: DropInfo) -> Bool {
-        info.hasItemsConforming(to: SidebarDragPayload.supportedTypes)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        SidebarDragPayload.load(from: info) { payload in
-            switch payload.kind {
-            case .group:
-                if let id = payload.groupID, id != targetGroupID {
-                    library.moveGroup(id, before: targetGroupID)
-                }
-            case .file:
-                if let path = payload.path, let targetGroupID {
-                    library.add(URL(fileURLWithPath: path), toGroup: targetGroupID)
-                }
             }
         }
     }

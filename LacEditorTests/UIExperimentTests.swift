@@ -6,6 +6,90 @@ import Darwin
 
 @MainActor
 final class UIExperimentTests: XCTestCase {
+    func testUI5ChromeMaterialsAndPaneBoundariesAcrossSizesAndThemes() async throws {
+        _ = NSApplication.shared
+        let fixture = try UI2Fixture(text: "# 布局检查\n\n中文与 English 123。\n", language: .markdown)
+        defer { fixture.dispose() }
+        let samples = ExperimentSampleLibrary(rootURL: fixture.directory.appendingPathComponent("Examples"),
+                                               defaults: fixture.defaults)
+        await samples.prepare(in: fixture.manager.sidebarLibrary)
+        fixture.state.isSidebarVisible = true
+        fixture.document.isPreviewVisible = true
+        let window = try XCTUnwrap(fixture.state.hostWindow)
+        window.orderFrontRegardless()
+        try await Task.sleep(for: .milliseconds(350))
+        let content = try XCTUnwrap(window.contentView)
+        let editor = try XCTUnwrap(descendants(in: content, of: LacTextView.self).first)
+        let webView = try XCTUnwrap(descendants(in: content, of: MarkdownWebView.self).first)
+        for theme: AppTheme in [.light, .dark, .system] {
+            fixture.preferences.theme = theme
+            for size in [NSSize(width: 900, height: 560), NSSize(width: 1180, height: 780)] {
+                window.setContentSize(size)
+                try await Task.sleep(for: .milliseconds(100))
+                content.layoutSubtreeIfNeeded()
+                XCTAssertEqual(window.toolbarStyle, .unified)
+                XCTAssertEqual(window.titlebarSeparatorStyle, .none)
+                let material = try XCTUnwrap(descendants(in: content, of: NSVisualEffectView.self)
+                    .first { $0.material == .sidebar })
+                XCTAssertEqual(material.blendingMode, .behindWindow)
+                XCTAssertEqual(material.state, .followsWindowActiveState)
+                let split = try XCTUnwrap(descendants(in: content, of: ContentDividerSplitView.self).first)
+                XCTAssertEqual(split.dividerColor, NSColor.clear)
+                let editorRect = editor.convert(editor.visibleRect, to: content)
+                let previewRect = webView.convert(webView.visibleRect, to: content)
+                XCTAssertLessThanOrEqual(editorRect.maxX, previewRect.minX + 1)
+                XCTAssertGreaterThan(editorRect.width, 200)
+                XCTAssertGreaterThan(previewRect.width, 190)
+                XCTAssertTrue(descendants(in: content, of: LacTextView.self).first === editor)
+                for scroll in descendants(in: content, of: NSScrollView.self) {
+                    XCTAssertEqual(scroll.scrollerStyle, NSScroller.preferredScrollerStyle,
+                                   "Owned scroll views must follow macOS scrollbar preferences")
+                }
+            }
+            try await captureFixture(window, name: "UI5-window-\(theme.rawValue)")
+        }
+    }
+
+    func testViewportDisplayBatchingKeepsDeepEditingUndoAndCompositionStable() async throws {
+        _ = NSApplication.shared
+        let unit = "中英文 Mixed text 123，深处编辑的行高与撤销应保持稳定。\n"
+        let text = String(repeating: unit, count: 14_000)
+        let fixture = try UI2Fixture(text: text)
+        defer { fixture.dispose() }
+        fixture.preferences.wordWrapEnabled = false
+        try await Task.sleep(for: .milliseconds(200))
+        let content = try XCTUnwrap(fixture.state.hostWindow?.contentView)
+        let editor = try XCTUnwrap(descendants(in: content, of: LacTextView.self).first)
+        let layout = try XCTUnwrap(editor.layoutManager as? FoldLayoutManager)
+        XCTAssertTrue(EditorLayoutPolicy.usesViewportLayout(textLength: editor.textStorage!.length))
+        let location = (unit as NSString).length * 12_000
+        editor.setSelectedRange(NSRange(location: location, length: 0))
+        editor.scrollRangeToVisible(editor.selectedRange())
+        fixture.state.hostWindow?.makeFirstResponder(editor)
+        let initialHeight = layout.editorLineHeight
+        for theme: AppTheme in [.dark, .light] {
+            fixture.preferences.theme = theme
+            layout.invalidateDisplay(forCharacterRange: NSRange(location: location, length: 10))
+            try await Task.sleep(for: .milliseconds(70))
+            XCTAssertEqual(editor.string, text)
+            XCTAssertEqual(layout.editorLineHeight, initialHeight)
+        }
+        editor.insertText("edit", replacementRange: editor.selectedRange())
+        XCTAssertTrue(editor.string.contains("edit"))
+        editor.undoManager?.undo()
+        XCTAssertEqual(editor.string, text)
+        editor.setSelectedRange(NSRange(location: location, length: 0))
+        editor.setMarkedText("zhong", selectedRange: NSRange(location: 5, length: 0),
+                             replacementRange: NSRange(location: NSNotFound, length: 0))
+        editor.insertText("中文", replacementRange: NSRange(location: NSNotFound, length: 0))
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertFalse(editor.hasMarkedText())
+        XCTAssertEqual((editor.string as NSString).substring(with: NSRange(location: location, length: 2)), "中文")
+        XCTAssertEqual(layout.editorLineHeight, initialHeight)
+        XCTAssertTrue(descendants(in: content, of: LacTextView.self).first === editor)
+        XCTAssertEqual(fixture.document.synchronizedText(), editor.string)
+    }
+
     func testUI4SamplesFilterAndEmptyEditorRetainNativeEditor() async throws {
         _ = NSApplication.shared
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -323,7 +407,7 @@ final class UIExperimentTests: XCTestCase {
                 for scroll in scrolls {
                     XCTAssertLessThanOrEqual(scroll.bounds.width, 720)
                     XCTAssertFalse(scroll.hasHorizontalScroller)
-                    XCTAssertEqual(scroll.scrollerStyle, .overlay)
+                    XCTAssertEqual(scroll.scrollerStyle, NSScroller.preferredScrollerStyle)
                 }
                 XCTAssertEqual(window.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]),
                                theme == .light ? .aqua : .darkAqua)
@@ -529,7 +613,7 @@ final class UIExperimentTests: XCTestCase {
         content.addSubview(bridge)
         own.documentView = content
         bridge.configureScrollViews()
-        XCTAssertEqual(own.scrollerStyle, .overlay)
+        XCTAssertEqual(own.scrollerStyle, NSScroller.preferredScrollerStyle)
         XCTAssertTrue(own.autohidesScrollers)
         XCTAssertEqual(other.scrollerStyle, .legacy)
     }

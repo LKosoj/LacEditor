@@ -49,6 +49,7 @@ struct EditorTextView: NSViewRepresentable {
             )
         }
         let scrollView = NSScrollView()
+        scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = !wordWrap
         scrollView.autohidesScrollers = true

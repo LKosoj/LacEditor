@@ -198,9 +198,8 @@ struct SidebarMaterialBackground: NSViewRepresentable {
     }
 }
 
-/// Keeps SwiftUI List's underlying scroll view on the native overlay style,
-/// which follows the window's active appearance instead of drawing a dark
-/// legacy track.
+/// Configures only the owning scroll view and respects the system's scrollbar
+/// policy, including users who choose to always show scrollbars.
 struct NativeScrollViewConfigurator: NSViewRepresentable {
     func makeNSView(context: Context) -> ConfiguratorView {
         ConfiguratorView()
@@ -231,7 +230,7 @@ struct NativeScrollViewConfigurator: NSViewRepresentable {
             if let scrollView = enclosingScrollView {
                 guard configuredScrollView !== scrollView else { return }
                 configuredScrollView = scrollView
-                scrollView.scrollerStyle = .overlay
+                scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
                 scrollView.autohidesScrollers = true
             } else if window != nil {
                 // SwiftUI attaches this bridge inside the scroll content. One
@@ -240,7 +239,7 @@ struct NativeScrollViewConfigurator: NSViewRepresentable {
                     guard let self, let scrollView = self.enclosingScrollView,
                           self.configuredScrollView !== scrollView else { return }
                     self.configuredScrollView = scrollView
-                    scrollView.scrollerStyle = .overlay
+                    scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
                     scrollView.autohidesScrollers = true
                 }
                 pendingConfiguration = work

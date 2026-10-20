@@ -59,6 +59,7 @@ extension EditorTextView {
         private var rulerRefreshNeedsLayout = false
         private var selectionVisibilityWorkItem: DispatchWorkItem?
         private var textCodecSuggestionWorkItem: DispatchWorkItem?
+        private var textCodecSuggestionGeneration: UInt = 0
         private var modelSyncWorkItem: DispatchWorkItem?
         private var layoutPrefetchWorkItem: DispatchWorkItem?
         private var listNormalizationWorkItem: DispatchWorkItem?
@@ -667,8 +668,7 @@ extension EditorTextView {
                 liveResizeLayoutWorkItem = nil
                 pendingLiveResizeWordWrap = nil
                 isLiveResizing = false
-                textCodecSuggestionWorkItem?.cancel()
-                document.textCodecSuggestionTitle = nil
+                scheduleTextCodecSuggestion()
                 cancelDelimiterMatch(clearHighlight: true, releaseSnapshot: true)
                 textView?.requestsFirstResponderWhenAttached = false
                 if let textView,
@@ -1132,18 +1132,26 @@ extension EditorTextView {
 
         private func scheduleTextCodecSuggestion(delay: TimeInterval = 0.18) {
             textCodecSuggestionWorkItem?.cancel()
+            textCodecSuggestionGeneration &+= 1
+            let generation = textCodecSuggestionGeneration
+            // updateNSView may call this while SwiftUI is reconciling. Publish
+            // the suggestion outside that update, and discard stale clears.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, textCodecSuggestionGeneration == generation,
+                      document.textCodecSuggestionTitle != nil else { return }
+                document.textCodecSuggestionTitle = nil
+            }
             guard isActive,
                   let textView,
                   !textView.hasMarkedText(),
                   textView.textStorage != nil else {
-                document.textCodecSuggestionTitle = nil
                 return
             }
             let selection = textView.selectedRange()
             let revision = contentRevision
-            document.textCodecSuggestionTitle = nil
             let workItem = DispatchWorkItem { [weak self, weak textView] in
                 guard let self, isActive,
+                      textCodecSuggestionGeneration == generation,
                       let textView,
                       let currentText = textView.textStorage?.mutableString,
                       textView.selectedRange() == selection,

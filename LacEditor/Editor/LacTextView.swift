@@ -177,6 +177,17 @@ final class LacTextView: NSTextView {
         }
     }
 
+    override func prepareContent(in rect: NSRect) {
+        // NSView's documented way to suppress responsive-scrolling overdraw.
+        // Large TextKit documents already prefetch one viewport after idle;
+        // preparing AppKit's larger speculative rect duplicates that work.
+        if EditorLayoutPolicy.usesViewportLayout(textLength: textStorage?.length ?? 0) {
+            super.prepareContent(in: visibleRect)
+        } else {
+            super.prepareContent(in: rect)
+        }
+    }
+
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
         guard let layoutManager,

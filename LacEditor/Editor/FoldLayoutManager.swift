@@ -47,6 +47,8 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     private var cachedDefaultBaselineOffset: CGFloat = 0
     private var groupsTemporaryAttributeUpdates = false
     private var pendingTemporaryDisplayRange: NSRange?
+    private var pendingViewportDisplayRange: NSRange?
+    private var viewportDisplayScheduled = false
 
     var editorLineHeight: CGFloat {
         max(1, cachedDefaultLineHeight + editorLineSpacing)
@@ -84,7 +86,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
 
     override func invalidateDisplay(forCharacterRange charRange: NSRange) {
         guard groupsTemporaryAttributeUpdates else {
-            super.invalidateDisplay(forCharacterRange: charRange)
+            invalidateEditorDisplay(in: charRange)
             return
         }
         if let pendingTemporaryDisplayRange {
@@ -115,7 +117,33 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         guard !wasGrouping else { return }
         let invalidatedRange = pendingTemporaryDisplayRange ?? range
         pendingTemporaryDisplayRange = nil
-        super.invalidateDisplay(forCharacterRange: invalidatedRange)
+        invalidateEditorDisplay(in: invalidatedRange)
+    }
+
+    private func invalidateEditorDisplay(in range: NSRange) {
+        guard EditorLayoutPolicy.usesViewportLayout(textLength: textStorage?.length ?? 0) else {
+            super.invalidateDisplay(forCharacterRange: range)
+            return
+        }
+        // Filling a noncontiguous layout hole can invalidate display once per
+        // fragment. Forwarding each callback reenters NSTextView's preparation
+        // and recalculates usage over all earlier layout fragments. Flush one
+        // union after layout returns, through the same native invalidation API.
+        pendingViewportDisplayRange = pendingViewportDisplayRange.map { NSUnionRange($0, range) } ?? range
+        guard !viewportDisplayScheduled else { return }
+        viewportDisplayScheduled = true
+        DispatchQueue.main.async { [weak self] in self?.flushViewportDisplay() }
+    }
+
+    private func flushViewportDisplay() {
+        viewportDisplayScheduled = false
+        guard let range = pendingViewportDisplayRange else { return }
+        pendingViewportDisplayRange = nil
+        let length = textStorage?.length ?? 0
+        let location = min(range.location, length)
+        super.invalidateDisplay(forCharacterRange: NSRange(
+            location: location, length: min(range.length, length - location)
+        ))
     }
 
     func setFoldedRange(_ range: NSRange?) {

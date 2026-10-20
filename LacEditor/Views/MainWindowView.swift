@@ -24,31 +24,7 @@ struct MainWindowView: View {
         // the entire controller below it prevents full-height sidebar material.
         .ignoresSafeArea(.container, edges: .top)
         .background(Color(nsColor: .lacEditorBackground))
-        .overlay {
-            if isDropTargeted {
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.accentColor, lineWidth: 2)
-                    .padding(8)
-                    .allowsHitTesting(false)
-            }
-        }
-        .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted) { providers in
-            var accepted = false
-            for provider in providers {
-                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-                    let url: URL?
-                    if let data = item as? Data {
-                        url = URL(dataRepresentation: data, relativeTo: nil)
-                    } else {
-                        url = item as? URL
-                    }
-                    guard let url, !url.hasDirectoryPath else { return }
-                    DispatchQueue.main.async { appState.openFile(url) }
-                }
-                accepted = true
-            }
-            return accepted
-        }
+        .onDrop(of: [UTType.fileURL.identifier], isTargeted: nil, perform: openDroppedFiles)
         .onChange(of: appState.documents.map(\.id)) { _, documentIDs in
             editorSessions.retainDocuments(Set(documentIDs))
         }
@@ -99,6 +75,24 @@ struct MainWindowView: View {
             reduceMotion ? nil : LacEditorDesign.structuralAnimation,
             value: appState.isStatusBarVisible
         )
+        .overlay {
+            if isDropTargeted {
+                Rectangle().strokeBorder(LacEditorDesign.accent.opacity(0.7), lineWidth: 1.5)
+                    .allowsHitTesting(false)
+            }
+        }
+        .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted, perform: openDroppedFiles)
+    }
+
+    private func openDroppedFiles(_ providers: [NSItemProvider]) -> Bool {
+        for provider in providers {
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                let url = (item as? Data).flatMap { URL(dataRepresentation: $0, relativeTo: nil) } ?? item as? URL
+                guard let url, !url.hasDirectoryPath else { return }
+                DispatchQueue.main.async { appState.openFile(url) }
+            }
+        }
+        return !providers.isEmpty
     }
 
     private var showsTabBar: Bool {

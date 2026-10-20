@@ -152,13 +152,27 @@ final class SidebarLibraryStore: ObservableObject {
         persist()
     }
 
-    func moveGroup(_ id: UUID, before targetID: UUID?) {
+    func moveGroup(_ id: UUID, before targetID: UUID?, after: Bool = false) {
+        guard id != targetID else { return }
         guard let source = groups.firstIndex(where: { $0.id == id }) else { return }
         let group = groups.remove(at: source)
         let destination = targetID.flatMap { target in
-            groups.firstIndex(where: { $0.id == target })
+            groups.firstIndex(where: { $0.id == target }).map { $0 + (after ? 1 : 0) }
         } ?? groups.endIndex
         groups.insert(group, at: destination)
+        persist()
+    }
+
+    /// A drop is one persisted operation. Hovering never mutates the library.
+    /// Files copied between collections keep their original membership.
+    func placeFavorite(_ url: URL, relativeTo target: URL?, after: Bool) {
+        movePath(canonicalPath(url), before: target.map(canonicalPath), after: after, in: &favoritePaths)
+        persist()
+    }
+
+    func placeFile(_ url: URL, inGroup id: UUID, relativeTo target: URL?, after: Bool) {
+        guard let index = groups.firstIndex(where: { $0.id == id }) else { return }
+        movePath(canonicalPath(url), before: target.map(canonicalPath), after: after, in: &groups[index].paths)
         persist()
     }
 
@@ -222,9 +236,10 @@ final class SidebarLibraryStore: ObservableObject {
         return "\(base) \(suffix)"
     }
 
-    private func movePath(_ path: String, before target: String?, in paths: inout [String]) {
+    private func movePath(_ path: String, before target: String?, after: Bool = false, in paths: inout [String]) {
+        guard path != target else { return }
         paths.removeAll { $0 == path }
-        let destination = target.flatMap { paths.firstIndex(of: $0) } ?? paths.endIndex
+        let destination = target.flatMap { paths.firstIndex(of: $0).map { $0 + (after ? 1 : 0) } } ?? paths.endIndex
         paths.insert(path, at: destination)
     }
 

@@ -59,7 +59,7 @@ struct SidebarView: View {
                     .padding(.horizontal, 8)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(SoftRowButtonStyle())
             .stableHelp("打开设置", shortcut: "⌘,")
             .frame(height: 40)
             .background(
@@ -92,7 +92,7 @@ private struct ExperimentSampleControls: View {
                 }.font(.system(size: 11)).padding(.horizontal, 9).frame(height: 32)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(SoftRowButtonStyle())
+            .buttonStyle(QuietActionButtonStyle())
             .foregroundStyle(.secondary)
             .disabled(samples.isPreparing)
             .contextMenu {
