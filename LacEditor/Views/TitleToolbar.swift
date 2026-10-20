@@ -92,7 +92,9 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
+            .flexibleSpace,
             .toggleSidebar,
+            .sidebarTrackingSeparator,
             ItemIdentifier.title,
             .flexibleSpace,
             ItemIdentifier.history,

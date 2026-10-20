@@ -5,6 +5,53 @@ import WebKit
 
 @MainActor
 final class NativeTabsTests: XCTestCase {
+    func testLastPopulatedTabBecomesBlankBeforeWindowCloses() async throws {
+        _ = NSApplication.shared
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        for choice in ["已保存", "不保存", "取消", "保存"] {
+            let url = folder.appendingPathComponent("\(choice).txt")
+            try "original".write(to: url, atomically: true, encoding: .utf8)
+            let manager = WindowManager()
+            let document = EditorDocument(text: "original", url: url)
+            if choice != "已保存" { document.text = "edited"; document.refreshDirtyState() }
+            let state = manager.openNewWindow(with: document)
+            let window = try XCTUnwrap(state.hostWindow)
+            defer { window.delegate = nil; window.close() }
+            try await Task.sleep(for: .milliseconds(300))
+            state.closeSelectedDocument()
+            try await Task.sleep(for: .milliseconds(200))
+            if choice != "已保存" {
+                let sheet = try XCTUnwrap(window.attachedSheet)
+                func button(in view: NSView) -> NSButton? {
+                    if let button = view as? NSButton, button.title == choice { return button }
+                    return view.subviews.lazy.compactMap { button(in: $0) }.first
+                }
+                try XCTUnwrap(button(in: try XCTUnwrap(sheet.contentView))).performClick(nil)
+                try await Task.sleep(for: .milliseconds(500))
+            }
+            XCTAssertTrue(window.isVisible)
+            XCTAssertNil(window.attachedSheet)
+            XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), choice == "保存" ? "edited" : "original")
+            if choice == "取消" {
+                XCTAssertTrue(state.selectedDocument === document)
+                XCTAssertTrue(document.isDirty)
+            } else {
+                XCTAssertTrue(state.selectedDocument?.isDisposableBlank == true)
+                XCTAssertNotEqual(state.selectedDocumentID, document.id)
+                state.closeSelectedDocument()
+                try await Task.sleep(for: .milliseconds(200))
+                XCTAssertFalse(window.isVisible)
+                manager.reopenPrimaryWindow()
+                try await Task.sleep(for: .milliseconds(200))
+                XCTAssertTrue(window.isVisible)
+                XCTAssertTrue(manager.activeState === state)
+                XCTAssertTrue(state.selectedDocument?.isDisposableBlank == true)
+            }
+        }
+    }
+
     func testNativeTabCloseSheetSaveDiscardAndCancel() async throws {
         _ = NSApplication.shared
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

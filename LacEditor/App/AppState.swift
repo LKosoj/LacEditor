@@ -639,23 +639,34 @@ final class AppState: ObservableObject {
     }
 
     func closeSelectedDocument() {
-        if let hostWindow { hostWindow.performClose(nil) }
-        else if let document = selectedDocument { close(document) }
+        if let document = selectedDocument { close(document) }
     }
 
+    private var isClosingDocument = false
+
     func close(_ document: EditorDocument) {
-        if documents.count == 1, let hostWindow {
+        guard !isClosingDocument else { return }
+        // A native tab is an NSWindow. Keep the last populated tab's window
+        // alive and replace its document; only a disposable blank closes it.
+        if documents.count == 1, let hostWindow,
+           document.isDisposableBlank || (hostWindow.tabGroup?.windows.count ?? 1) > 1 {
             hostWindow.performClose(nil)
             return
         }
-        if documents.count == 1, document.isDisposableBlank {
-            hostWindow?.performClose(nil)
-            return
+        isClosingDocument = true
+        let confirm = { [weak self, weak document] in
+            guard let self, let document else { return }
+            self.confirmClosing(document) { [weak self, weak document] shouldClose in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.isClosingDocument = false
+                    guard shouldClose, let document else { return }
+                    self.removeDocument(document)
+                }
+            }
         }
-        confirmClosing(document) { [weak self, weak document] shouldClose in
-            guard shouldClose, let self, let document else { return }
-            self.removeDocument(document)
-        }
+        if hasPendingSave { waitForPendingSaves(completion: confirm) }
+        else { confirm() }
     }
 
     func closeOtherDocuments(keeping document: EditorDocument) {
@@ -1078,6 +1089,7 @@ final class AppState: ObservableObject {
             actionName: "替换"
         )
         findReplace.message = "已替换 1 处"
+        findNext()
     }
 
     func replaceAllMatches() {

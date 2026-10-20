@@ -338,7 +338,10 @@ struct LacEditorCommands: Commands {
                     KeyEquivalent(Character(String(number))),
                     modifiers: .command
                 )
-                .disabled((appState?.hostWindow?.tabGroup?.windows.count ?? 1) < number || appState == nil)
+                // NSWindow.tabGroup may create a native group and lay out the
+                // hosting view. Never invoke it while SwiftUI evaluates menus.
+                // selectTab(at:) validates the index when the command runs.
+                .disabled(appState == nil)
             }
             Divider()
             Button {

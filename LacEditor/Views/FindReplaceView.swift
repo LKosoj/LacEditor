@@ -12,7 +12,7 @@ struct FindReplaceView: View {
     @ObservedObject private var state: FindReplaceState
     @FocusState private var focusedField: Field?
     private let close: () -> Void
-    private let modeChanged: (FindReplaceMode) -> Void
+    @State private var showsEscapeHelp = false
 
     private enum Field {
         case query
@@ -21,58 +21,66 @@ struct FindReplaceView: View {
 
     init(
         state: FindReplaceState,
-        close: @escaping () -> Void,
-        modeChanged: @escaping (FindReplaceMode) -> Void
+        close: @escaping () -> Void
     ) {
         _state = ObservedObject(wrappedValue: state)
         self.close = close
-        self.modeChanged = modeChanged
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Spacer()
-                Picker("模式", selection: $state.mode) {
-                    ForEach(FindReplaceMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(width: 150)
-            }
-
             Grid(alignment: .trailing, horizontalSpacing: 10, verticalSpacing: 10) {
                 GridRow {
                     Text("查找")
                     TextField("输入要查找的内容", text: $state.query)
                         .textFieldStyle(.roundedBorder)
                         .focused($focusedField, equals: .query)
-                        .onSubmit { appState.findNext() }
+                        .onKeyPress(keys: [.return], phases: .down) { press in
+                            guard !actionsDisabled else { return .handled }
+                            if press.modifiers.contains(.shift) {
+                                appState.findPrevious()
+                            } else {
+                                appState.findNext()
+                            }
+                            return .handled
+                        }
                 }
-                if state.mode == .replace {
-                    GridRow {
-                        Text("替换为")
-                        TextField("输入替换内容", text: $state.replacement)
-                            .textFieldStyle(.roundedBorder)
-                            .focused($focusedField, equals: .replacement)
-                    }
+                GridRow {
+                    Text("替换为")
+                    TextField("输入替换内容，留空表示删除", text: $state.replacement)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($focusedField, equals: .replacement)
                 }
             }
 
             HStack(spacing: 8) {
                 Toggle("解释转义字符", isOn: $state.interpretsEscapes)
-                Image(systemName: "questionmark.circle")
+                Image(systemName: "info.circle")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
-                    .stableHelp(
-                        #"可用转义字符：\n 换行，\r 回车，\t 制表符，\s 空格，\\ 反斜杠"#
-                    )
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+                    .onHover { showsEscapeHelp = $0 }
+                    .accessibilityLabel("转义字符说明")
+                    .accessibilityHint(escapeHelp)
+                    .overlay(alignment: .topLeading) {
+                        if showsEscapeHelp {
+                            Text(escapeHelp)
+                                .font(.system(size: 12))
+                                .padding(10)
+                                .frame(width: 330, alignment: .leading)
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(nsColor: .separatorColor), lineWidth: 0.5))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .offset(y: 24)
+                                .allowsHitTesting(false)
+                        }
+                    }
                 Spacer()
                 Toggle("区分大小写", isOn: $state.isCaseSensitive)
             }
             .toggleStyle(.checkbox)
+            .zIndex(1)
 
             HStack {
                 if let message = state.message {
@@ -88,44 +96,45 @@ struct FindReplaceView: View {
                         appState.cancelFindReplaceTask()
                     }
                 }
+            }
+            .frame(minHeight: 18)
+
+            HStack {
                 Button("关闭") {
                     close()
                 }
                 .keyboardShortcut(.cancelAction)
+                Spacer()
                 Button {
                     appState.findPrevious()
                 } label: {
                     Label("上一个", systemImage: "chevron.up")
                 }
-                .disabled(state.isWorking)
+                .disabled(actionsDisabled)
                 Button {
                     appState.findNext()
                 } label: {
                     Label("下一个", systemImage: "chevron.down")
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(state.isWorking)
+                .disabled(actionsDisabled)
 
-                if state.mode == .replace {
-                    Button("替换") { appState.replaceCurrentMatch() }
-                        .disabled(state.isWorking)
-                    Button("全部替换") { appState.replaceAllMatches() }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(state.isWorking)
-                }
+                Button("替换") { appState.replaceCurrentMatch() }
+                    .disabled(actionsDisabled)
+                Button("全部替换") { appState.replaceAllMatches() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(actionsDisabled)
             }
         }
         .padding(20)
-        .frame(width: 520, height: state.mode == .replace ? 260 : 220)
+        .frame(width: 560, height: 244)
         .onAppear {
-            focusQueryField()
+            focusRequestedField()
         }
         .onChange(of: state.focusRequestID) {
-            focusQueryField()
+            focusRequestedField()
         }
-        .onChange(of: state.mode) { _, mode in
-            modeChanged(mode)
-        }
+        .onDisappear { showsEscapeHelp = false }
         .onChange(of: state.query) {
             appState.cancelFindReplaceTask()
         }
@@ -140,9 +149,15 @@ struct FindReplaceView: View {
         }
     }
 
-    private func focusQueryField() {
+    private var actionsDisabled: Bool { state.query.isEmpty || state.isWorking }
+
+    private var escapeHelp: String {
+        #"可用转义字符：\n 换行，\r 回车，\t 制表符，\s 空格，\0 空字符，\\ 反斜杠。查找与替换内容均适用。"#
+    }
+
+    private func focusRequestedField() {
         DispatchQueue.main.async {
-            focusedField = .query
+            focusedField = state.mode == .replace ? .replacement : .query
         }
     }
 }
@@ -155,7 +170,7 @@ final class FindReplaceWindowController: NSWindowController, NSWindowDelegate {
 
     init(appState: AppState) {
         let findWindow = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 220),
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 244),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -167,6 +182,7 @@ final class FindReplaceWindowController: NSWindowController, NSWindowDelegate {
         findWindow.identifier = FindReplaceWindowIdentity.identifier
         findWindow.title = "查找与替换"
         findWindow.isReleasedWhenClosed = false
+        findWindow.tabbingMode = .disallowed
         findWindow.animationBehavior = .documentWindow
         findWindow.collectionBehavior.insert(.fullScreenAuxiliary)
         findWindow.delegate = self
@@ -176,9 +192,6 @@ final class FindReplaceWindowController: NSWindowController, NSWindowDelegate {
                 state: appState.findReplace,
                 close: { [weak self] in
                     self?.window?.performClose(nil)
-                },
-                modeChanged: { [weak self] mode in
-                    self?.resize(for: mode, animated: true)
                 }
             )
             .environmentObject(appState)
@@ -192,7 +205,7 @@ final class FindReplaceWindowController: NSWindowController, NSWindowDelegate {
     func present(mode: FindReplaceMode, relativeTo parentWindow: NSWindow) {
         guard let findWindow = window else { return }
 
-        resize(for: mode, animated: findWindow.isVisible)
+        state?.mode = mode
         if !hasPositionedWindow {
             position(over: parentWindow)
             hasPositionedWindow = true
@@ -210,21 +223,6 @@ final class FindReplaceWindowController: NSWindowController, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         appState?.cancelFindReplaceTask()
-    }
-
-    private func resize(for mode: FindReplaceMode, animated: Bool) {
-        guard let panel = window else { return }
-        let contentSize = NSSize(
-            width: 520,
-            height: mode == .replace ? 260 : 220
-        )
-        let contentRect = NSRect(origin: .zero, size: contentSize)
-        let targetSize = panel.frameRect(forContentRect: contentRect).size
-        var frame = panel.frame
-        let top = frame.maxY
-        frame.size = targetSize
-        frame.origin.y = top - targetSize.height
-        panel.setFrame(frame, display: true, animate: animated)
     }
 
     private func position(over parentWindow: NSWindow) {
