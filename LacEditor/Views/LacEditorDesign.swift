@@ -13,7 +13,9 @@ enum LacEditorDesign {
     static let structuralAnimation = Animation.easeOut(duration: 0.18)
     static let chromeAnimation = Animation.easeInOut(duration: 0.16)
     static let hoverAnimation = Animation.easeOut(duration: 0.09)
-    static let sidebarDisclosureAnimation = Animation.easeInOut(duration: 0.22)
+    // One non-overshooting curve in both directions: a reversal starts from
+    // the visible state without a spring's momentum or a delayed collapse.
+    static let sidebarDisclosureAnimation = Animation.timingCurve(0.25, 0.1, 0.25, 1, duration: 0.20)
 
     static let accent = Color(nsColor: NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
@@ -154,11 +156,12 @@ struct SidebarDisclosure<Content: View>: View {
                 .transaction { $0.animation = nil }
         }
         .clipped()
+        // SwiftUI clipping affects drawing, not hit testing. Rows below the
+        // animated reveal must not intercept the following header or a drop.
+        .contentShape(Rectangle())
         .allowsHitTesting(isExpanded)
         .accessibilityHidden(!isExpanded)
-        .animation(reduceMotion ? nil : (isExpanded
-            ? .timingCurve(0.22, 1, 0.36, 1, duration: 0.22)
-            : .easeInOut(duration: 0.18)), value: isExpanded)
+        .animation(reduceMotion ? nil : LacEditorDesign.sidebarDisclosureAnimation, value: isExpanded)
     }
 }
 

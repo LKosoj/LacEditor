@@ -5,6 +5,38 @@ import XCTest
 
 @MainActor
 final class SidebarDragTests: XCTestCase {
+    func testDetachingScrollAttachmentCancelsDisplayLinkAndPendingExpansion() async throws {
+        _ = NSApplication.shared
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let library = SidebarLibraryStore(storageURL: folder.appendingPathComponent("sidebar.json"))
+        let group = try XCTUnwrap(library.createGroup(named: "不应展开"))
+        library.setExpanded(false, for: group)
+        let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 260, height: 400),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 260, height: 400))
+        let document = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 800))
+        scroll.documentView = document
+        window.contentView = scroll
+        window.orderFront(nil)
+        defer { window.close() }
+        let point = window.convertPoint(toScreen: scroll.contentView.convert(NSPoint(x: 100, y: 200), to: nil))
+        var state: SidebarDragState? = SidebarDragState(mouseLocation: { point }, isDragging: { true })
+        weak var released = state
+        let attachment = SidebarDragScrollAttachment.Attachment(state: state!)
+        document.addSubview(attachment)
+        state?.hover(.group(group), placement: .inside, library: library)
+        XCTAssertTrue(state?.isTrackingDrag == true)
+        attachment.removeFromSuperview()
+        XCTAssertNil(state?.target)
+        XCTAssertFalse(state?.isTrackingDrag == true)
+        state = nil
+        XCTAssertNil(released, "The display-link target must not retain its sidebar")
+        try await Task.sleep(for: .milliseconds(650))
+        XCTAssertFalse(library.groups[0].isExpanded)
+    }
+
     func testHoverExpansionCancelsPreviousGroupAndStopsOnRelease() async throws {
         _ = NSApplication.shared
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -41,7 +73,7 @@ final class SidebarDragTests: XCTestCase {
         XCTAssertEqual(library.groups.map(\.id), [first, second])
     }
 
-    func testDragTimerScrollsEdgeAndStopsAfterCancellationOrHiddenWindow() async throws {
+    func testDisplayLinkedDragScrollsEdgeAndStopsAfterCancellationOrHiddenWindow() async throws {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 200, y: 200, width: 260, height: 400),
                               styleMask: [.titled], backing: .buffered, defer: false)
@@ -60,6 +92,12 @@ final class SidebarDragTests: XCTestCase {
         state.hover(.favoritesHeader, placement: .inside, library: library)
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertGreaterThan(scroll.contentView.bounds.minY, 0)
+        let beforeRowExit = scroll.contentView.bounds.minY
+        state.leave(.favoritesHeader)
+        XCTAssertNil(state.target)
+        XCTAssertTrue(state.isTrackingDrag, "Crossing rows must not restart scroll acceleration")
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertGreaterThan(scroll.contentView.bounds.minY, beforeRowExit)
         state.finish()
         let stopped = scroll.contentView.bounds.minY
         try await Task.sleep(for: .milliseconds(100))
@@ -139,13 +177,30 @@ final class SidebarDragTests: XCTestCase {
     }
 
     func testEdgeAutoscrollIsBoundedAndLeavesMiddleUntouched() {
-        XCTAssertEqual(SidebarDragState.scrollDelta(y: -1, viewportHeight: 400), 0)
-        XCTAssertEqual(SidebarDragState.scrollDelta(y: 401, viewportHeight: 400), 0)
-        XCTAssertEqual(SidebarDragState.scrollDelta(y: 200, viewportHeight: 400), 0)
-        XCTAssertEqual(SidebarDragState.scrollDelta(y: 0, viewportHeight: 400), -14)
-        XCTAssertEqual(SidebarDragState.scrollDelta(y: 400, viewportHeight: 400), 14)
-        XCTAssertGreaterThan(SidebarDragState.scrollDelta(y: 390, viewportHeight: 400), 0)
-        XCTAssertEqual(SidebarDragState.scrollDelta(y: 0, viewportHeight: 0), 0)
+        XCTAssertEqual(SidebarDragState.scrollVelocity(y: -1, viewportHeight: 400), 0)
+        XCTAssertEqual(SidebarDragState.scrollVelocity(y: 401, viewportHeight: 400), 0)
+        XCTAssertEqual(SidebarDragState.scrollVelocity(y: 200, viewportHeight: 400), 0)
+        XCTAssertEqual(SidebarDragState.scrollVelocity(y: 0, viewportHeight: 400), -420)
+        XCTAssertEqual(SidebarDragState.scrollVelocity(y: 400, viewportHeight: 400), 420)
+        XCTAssertGreaterThan(SidebarDragState.scrollVelocity(y: 390, viewportHeight: 400), 0)
+        XCTAssertEqual(SidebarDragState.scrollVelocity(y: 0, viewportHeight: 0), 0)
+    }
+
+    func testEdgeScrollSpeedIsRefreshIndependentAndStopsWithoutMomentum() {
+        func distance(at framesPerSecond: Int) -> CGFloat {
+            var motion = SidebarEdgeScrollMotion()
+            return (0..<framesPerSecond).reduce(0) { total, _ in
+                total + motion.step(toward: 420, elapsed: 1 / Double(framesPerSecond))
+            }
+        }
+        XCTAssertEqual(distance(at: 60), distance(at: 120), accuracy: 1)
+        XCTAssertEqual(distance(at: 30), distance(at: 60), accuracy: 1)
+        var motion = SidebarEdgeScrollMotion()
+        for _ in 0..<10 { _ = motion.step(toward: 420, elapsed: 1.0 / 60) }
+        XCTAssertLessThan(motion.step(toward: -420, elapsed: 1.0 / 60), 0)
+        XCTAssertEqual(motion.step(toward: 0, elapsed: 1.0 / 60), 0)
+        XCTAssertEqual(motion.velocity, 0)
+        XCTAssertLessThanOrEqual(motion.step(toward: 420, elapsed: 2), 14)
     }
 
     func testPrivatePayloadRoundTripAndOrdinaryTextRejection() async throws {

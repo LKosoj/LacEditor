@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -165,8 +166,15 @@ enum SidebarDropTarget: Equatable {
 final class SidebarDragState: ObservableObject {
     @Published private(set) var target: SidebarDropTarget?
     @Published private(set) var placement: SidebarDropPlacement = .before
-    weak var scrollView: NSScrollView?
-    private var timer: Timer?
+    weak var scrollView: NSScrollView? {
+        didSet { if oldValue !== scrollView { finish() } }
+    }
+    private var displayLink: CADisplayLink?
+    private var displayLinkTarget: SidebarDragDisplayLinkTarget?
+    private var windowObservers: [NSObjectProtocol] = []
+    private var windowVisibilityObservation: NSKeyValueObservation?
+    private var scrollMotion = SidebarEdgeScrollMotion()
+    private var previousTimestamp: CFTimeInterval?
     private var expandWork: DispatchWorkItem?
     private let mouseLocation: () -> NSPoint
     private let isDragging: () -> Bool
@@ -177,7 +185,13 @@ final class SidebarDragState: ObservableObject {
         self.isDragging = isDragging
     }
 
-    deinit { timer?.invalidate(); expandWork?.cancel() }
+    deinit {
+        displayLink?.invalidate()
+        expandWork?.cancel()
+        windowObservers.forEach(NotificationCenter.default.removeObserver)
+    }
+
+    var isTrackingDrag: Bool { displayLink != nil }
 
     func hover(_ target: SidebarDropTarget, placement: SidebarDropPlacement, library: SidebarLibraryStore) {
         let changed = self.target != target || self.placement != placement
@@ -188,42 +202,69 @@ final class SidebarDragState: ObservableObject {
             if case let .group(id) = target, placement == .inside,
                library.groups.first(where: { $0.id == id })?.isExpanded == false {
                 let work = DispatchWorkItem { [weak self, weak library] in
-                    guard self?.target == target, self?.placement == .inside else { return }
+                    guard let self, self.target == target, self.placement == .inside,
+                          self.isDragging(), self.scrollView?.window?.isVisible == true,
+                          self.scrollView?.isHiddenOrHasHiddenAncestor == false else { return }
+                    self.expandWork = nil
                     library?.setExpanded(true, for: id)
                 }
                 expandWork = work
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.55, execute: work)
             }
         }
-        guard timer == nil else { return }
-        let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tick() }
+        guard displayLink == nil, let scrollView, let window = scrollView.window else { return }
+        let target = SidebarDragDisplayLinkTarget(owner: self)
+        let link = scrollView.displayLink(target: target, selector: #selector(SidebarDragDisplayLinkTarget.advance(_:)))
+        displayLinkTarget = target
+        displayLink = link
+        link.add(to: .main, forMode: .common)
+        windowVisibilityObservation = window.observe(\.isVisible, options: [.new]) { [weak self] window, _ in
+            MainActor.assumeIsolated { if !window.isVisible { self?.finish() } }
         }
-        self.timer = timer
-        RunLoop.main.add(timer, forMode: .common)
+        // A view's display link pauses when hidden. Cancel there explicitly,
+        // rather than leaving stale drop feedback until it is shown again.
+        for name in [NSWindow.willCloseNotification, NSWindow.didChangeOcclusionStateNotification,
+                     NSWindow.didMiniaturizeNotification] {
+            windowObservers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self, weak window] _ in
+                MainActor.assumeIsolated {
+                    if name == NSWindow.didChangeOcclusionStateNotification, window?.isVisible == true { return }
+                    self?.finish()
+                }
+            })
+        }
     }
 
     func leave(_ target: SidebarDropTarget) {
         guard self.target == target else { return }
-        finish()
+        expandWork?.cancel(); expandWork = nil
+        self.target = nil
+        // Leaving a row often means entering the next row as scrolling moves
+        // the list beneath the pointer. Keep the display link and its velocity
+        // until the pointer leaves the viewport or the drag ends.
     }
 
     func finish() {
-        timer?.invalidate(); timer = nil
+        displayLink?.invalidate(); displayLink = nil
+        displayLinkTarget = nil
+        windowVisibilityObservation = nil
+        windowObservers.forEach(NotificationCenter.default.removeObserver)
+        windowObservers.removeAll()
+        scrollMotion.reset()
+        previousTimestamp = nil
         expandWork?.cancel(); expandWork = nil
-        target = nil
+        if target != nil { target = nil }
     }
 
     /// Pure geometry shared by real scrolling and boundary tests.
-    static func scrollDelta(y: CGFloat, viewportHeight: CGFloat) -> CGFloat {
+    static func scrollVelocity(y: CGFloat, viewportHeight: CGFloat) -> CGFloat {
         let edge = min(36, viewportHeight / 3)
         guard edge > 0, y >= 0, y <= viewportHeight else { return 0 }
-        if y < edge { return -14 * (1 - y / edge) }
-        if y > viewportHeight - edge { return 14 * (1 - (viewportHeight - y) / edge) }
+        if y < edge { return -420 * (1 - y / edge) }
+        if y > viewportHeight - edge { return 420 * (1 - (viewportHeight - y) / edge) }
         return 0
     }
 
-    private func tick() {
+    fileprivate func tick(at timestamp: CFTimeInterval) {
         guard isDragging(), let scrollView, let window = scrollView.window,
               window.isVisible, !scrollView.isHiddenOrHasHiddenAncestor else {
             finish(); return
@@ -234,11 +275,41 @@ final class SidebarDragState: ObservableObject {
               point.y >= clip.bounds.minY, point.y <= clip.bounds.maxY else {
             finish(); return
         }
-        let delta = Self.scrollDelta(y: point.y - clip.bounds.minY, viewportHeight: clip.bounds.height)
+        let elapsed = previousTimestamp.map { timestamp - $0 } ?? 1.0 / 60
+        previousTimestamp = timestamp
+        let velocity = Self.scrollVelocity(y: point.y - clip.bounds.minY, viewportHeight: clip.bounds.height)
+        let delta = scrollMotion.step(toward: velocity, elapsed: elapsed)
         guard delta != 0, let document = scrollView.documentView else { return }
         let maximum = max(0, document.bounds.height - clip.bounds.height)
         clip.scroll(to: NSPoint(x: clip.bounds.minX, y: min(maximum, max(0, clip.bounds.minY + delta))))
         scrollView.reflectScrolledClipView(clip)
+    }
+}
+
+/// Only the small sidebar scroll viewport advances on a display refresh.
+/// The weak proxy avoids CADisplayLink retaining its owning sidebar state.
+@MainActor
+private final class SidebarDragDisplayLinkTarget: NSObject {
+    weak var owner: SidebarDragState?
+    init(owner: SidebarDragState) { self.owner = owner }
+    @objc func advance(_ link: CADisplayLink) { owner?.tick(at: link.targetTimestamp) }
+}
+
+struct SidebarEdgeScrollMotion {
+    private(set) var velocity: CGFloat = 0
+
+    mutating func reset() { velocity = 0 }
+
+    mutating func step(toward target: CGFloat, elapsed: TimeInterval) -> CGFloat {
+        guard target != 0 else { reset(); return 0 }
+        // No leap after a stalled frame, and no continuing in the old
+        // direction when the pointer changes edges.
+        let duration = min(max(elapsed, 0), 1.0 / 30)
+        if velocity * target < 0 { reset() }
+        let previous = velocity
+        let change = CGFloat(duration) * 4_200
+        velocity += min(max(target - velocity, -change), change)
+        return (previous + velocity) * 0.5 * CGFloat(duration)
     }
 }
 
@@ -332,6 +403,10 @@ struct SidebarDragScrollAttachment: NSViewRepresentable {
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
         override func viewDidMoveToSuperview() { super.viewDidMoveToSuperview(); attach() }
         override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); attach() }
+        override func viewWillMove(toWindow newWindow: NSWindow?) {
+            if newWindow == nil { state?.scrollView = nil }
+            super.viewWillMove(toWindow: newWindow)
+        }
         func attach() {
             if let enclosingScrollView { state?.scrollView = enclosingScrollView }
             else if window != nil {

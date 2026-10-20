@@ -139,6 +139,7 @@ struct SidebarLibraryView: View {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 8, weight: .semibold))
                             .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .animation(reduceMotion ? nil : LacEditorDesign.sidebarDisclosureAnimation, value: isExpanded)
                             .opacity(isHovering ? 1 : 0)
                             .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: isHovering)
                             .frame(width: 9)
@@ -148,6 +149,7 @@ struct SidebarLibraryView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("sidebar.section.\(section.rawValue)")
                 .disabled(filter.isActive)
                 .focused($focusedHeader, equals: title)
                 .accessibilityValue(isExpanded ? "已展开" : "已收起")
@@ -215,6 +217,7 @@ struct SidebarLibraryView: View {
 
 private struct SidebarGroupView: View {
     @EnvironmentObject private var windowManager: WindowManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let group: SidebarFileGroup
     @ObservedObject var library: SidebarLibraryStore
     var isFiltering = false
@@ -239,6 +242,7 @@ private struct SidebarGroupView: View {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 8, weight: .semibold))
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .animation(reduceMotion ? nil : LacEditorDesign.sidebarDisclosureAnimation, value: isExpanded)
                         .opacity(isHovering || isFocused ? 1 : 0)
                         .frame(width: 9)
                     Spacer()
@@ -258,6 +262,7 @@ private struct SidebarGroupView: View {
                 )
             }
             .buttonStyle(SoftRowButtonStyle())
+            .accessibilityIdentifier("sidebar.group.\(group.id.uuidString)")
             .disabled(isFiltering)
             .focused($isFocused)
             .accessibilityValue(isExpanded ? "已展开" : "已收起")
@@ -304,6 +309,14 @@ enum SidebarFileLocation: Equatable {
     case favorites
     case group(UUID)
     case recent
+
+    var accessibilityID: String {
+        switch self {
+        case .favorites: "favorites"
+        case .recent: "recent"
+        case let .group(id): "group.\(id.uuidString)"
+        }
+    }
 }
 
 private struct SidebarFileRow: View {
@@ -381,6 +394,7 @@ private struct SidebarFileRow: View {
             }
         }
         .buttonStyle(SoftRowButtonStyle())
+        .accessibilityIdentifier("sidebar.file.\(location.accessibilityID).\(url.path)")
         .onHover { isHovering = $0 }
         .animation(reduceMotion ? nil : LacEditorDesign.hoverAnimation, value: isHovering)
         .stableHelp(url.path)
