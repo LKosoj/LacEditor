@@ -22,6 +22,28 @@ enum SidebarLibrarySection: String, CaseIterable {
     case recent
 }
 
+/// Filename/group filtering uses only cached library paths, never file reads.
+struct SidebarLibraryFilter {
+    let query: String
+    var term: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
+    var isActive: Bool { !term.isEmpty }
+
+    func matches(_ value: String) -> Bool { !isActive || value.localizedStandardContains(term) }
+
+    func files(_ urls: [URL]) -> [URL] {
+        urls.filter { matches($0.lastPathComponent) || matches($0.deletingLastPathComponent().lastPathComponent) }
+    }
+
+    func groups(_ groups: [SidebarFileGroup]) -> [SidebarFileGroup] {
+        groups.compactMap { group in
+            if matches(group.name) { return group }
+            var result = group
+            result.paths = files(group.urls).map(\.path)
+            return result.paths.isEmpty ? nil : result
+        }
+    }
+}
+
 @MainActor
 final class SidebarLibraryStore: ObservableObject {
     @Published private(set) var favoritePaths: [String] = []

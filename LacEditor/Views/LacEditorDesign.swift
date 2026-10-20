@@ -25,6 +25,21 @@ enum LacEditorDesign {
     static let canvas = adaptiveColor(light: (0.953, 0.957, 0.969), dark: (0.12, 0.125, 0.14))
     static let surface = adaptiveColor(light: (1, 1, 1), dark: (0.16, 0.165, 0.185))
     static let outline = Color(nsColor: .separatorColor).opacity(0.4)
+    private static let dataFileTint = adaptiveColor(light: (0.23, 0.48, 0.44), dark: (0.48, 0.71, 0.64))
+    private static let scriptFileTint = adaptiveColor(light: (0.55, 0.43, 0.24), dark: (0.78, 0.68, 0.43))
+    private static let markupFileTint = adaptiveColor(light: (0.61, 0.39, 0.32), dark: (0.80, 0.58, 0.48))
+    private static let codeFileTint = adaptiveColor(light: (0.32, 0.46, 0.61), dark: (0.55, 0.69, 0.83))
+
+    static func fileTint(for language: EditorLanguage) -> Color {
+        switch language {
+        case .markdown: accent
+        case .json, .yaml, .sql: dataFileTint
+        case .javascript, .typescript: scriptFileTint
+        case .swift, .html, .css: markupFileTint
+        case .python, .cFamily, .shell: codeFileTint
+        case .plainText: .secondary
+        }
+    }
 
     private static func adaptiveColor(light: (CGFloat, CGFloat, CGFloat), dark: (CGFloat, CGFloat, CGFloat)) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
@@ -103,6 +118,26 @@ struct SoftRowButtonStyle: ButtonStyle {
             .background(configuration.isPressed ? LacEditorDesign.accent.opacity(0.15) : .clear,
                         in: RoundedRectangle(cornerRadius: 6))
             .animation(reduceMotion || configuration.isPressed ? nil : .easeOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+struct QuietActionButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { Feedback(configuration: configuration) }
+
+    private struct Feedback: View {
+        let configuration: ButtonStyleConfiguration
+        @State private var isHovering = false
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        var body: some View {
+            configuration.label
+                .background(configuration.isPressed ? LacEditorDesign.accent.opacity(0.13)
+                            : (isHovering ? LacEditorDesign.hoverFill : .clear),
+                            in: RoundedRectangle(cornerRadius: 6))
+                .onHover { isHovering = $0 }
+                .animation(reduceMotion || configuration.isPressed ? nil : LacEditorDesign.hoverAnimation,
+                           value: isHovering)
+        }
     }
 }
 

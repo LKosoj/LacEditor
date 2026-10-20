@@ -13,6 +13,7 @@ final class WindowManager: ObservableObject {
     let preferences: AppPreferences
     let recoveryStore: DocumentRecoveryStore?
     let workspaceStore: WorkspaceSessionStore?
+    let experimentSamples: ExperimentSampleLibrary?
     @Published private(set) var activeState: AppState?
     @Published private(set) var draggedDocumentID: UUID?
     /// Changes whenever the retained primary scene is reopened. Sidebar
@@ -68,12 +69,14 @@ final class WindowManager: ObservableObject {
         workspaceStore: WorkspaceSessionStore? = nil,
         preferences: AppPreferences? = nil,
         recentFiles: RecentFilesStore? = nil,
-        sidebarLibrary: SidebarLibraryStore? = nil
+        sidebarLibrary: SidebarLibraryStore? = nil,
+        experimentSamples: ExperimentSampleLibrary? = nil
     ) {
         self.recentFiles = recentFiles ?? RecentFilesStore()
         self.sidebarLibrary = sidebarLibrary ?? SidebarLibraryStore()
         self.recoveryStore = recoveryStore
         self.workspaceStore = workspaceStore
+        self.experimentSamples = experimentSamples
         self.preferences = preferences ?? AppPreferences()
         let recoverySnapshots = (try? recoveryStore?.startSession()) ?? []
         restoreInitialSession(
@@ -93,6 +96,20 @@ final class WindowManager: ObservableObject {
     func takeRecoveredDocuments() -> [EditorDocument] {
         defer { recoveredDocuments.removeAll() }
         return recoveredDocuments
+    }
+
+    func prepareExperimentSamples() async {
+        await experimentSamples?.prepare(in: sidebarLibrary)
+    }
+
+    func openExperimentWelcome(in state: AppState) {
+        guard let samples = experimentSamples, !samples.isPreparing else { return }
+        Task { [weak self, weak state] in
+            guard let self, let state else { return }
+            await samples.prepare(in: sidebarLibrary)
+            guard samples.errorMessage == nil else { return }
+            state.openFile(samples.welcomeURL)
+        }
     }
 
     func persistRecoverySnapshotsImmediately() {

@@ -84,6 +84,9 @@ struct MainWindowView: View {
                 )
                 .id(selectedDocument.id)
                 .animation(nil, value: appState.selectedDocumentID)
+                .overlay {
+                    if !selectedDocument.isPreviewEffectivelyEnabled { EditorStartHints(document: selectedDocument) }
+                }
 
                 if appState.isStatusBarVisible {
                     Divider()
@@ -102,6 +105,51 @@ struct MainWindowView: View {
         false // Native NSWindow tabs reserve their own titlebar space.
     }
 
+}
+
+/// Hints live above the empty canvas, without replacing its text view or
+/// first responder. Typing/undo updates this small observed view only.
+struct EditorStartHints: View {
+    @ObservedObject var document: EditorDocument
+    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var windowManager: WindowManager
+
+    var body: some View {
+        if document.isDisposableBlank, document.text.isEmpty, document.ioState == .idle {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("从一行文字开始").font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Text("直接输入，或打开一份文件。")
+                        .font(.system(size: 12)).foregroundStyle(.tertiary)
+                }.allowsHitTesting(false)
+                VStack(spacing: 4) {
+                    startAction("打开文件", symbol: "doc.badge.plus", detail: "⌘O") { appState.openFiles() }
+                    if windowManager.experimentSamples != nil {
+                        startAction("打开体验文档", symbol: "text.book.closed", detail: "Markdown · 代码 · 长文本") {
+                            windowManager.openExperimentWelcome(in: appState)
+                        }
+                    }
+                }
+                Text("文件可以直接拖到窗口中")
+                    .font(.system(size: 11)).foregroundStyle(.tertiary).allowsHitTesting(false)
+            }
+            .frame(width: 310)
+            .padding(20)
+            .accessibilityElement(children: .contain)
+        }
+    }
+
+    private func startAction(_ title: String, symbol: String, detail: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: symbol).foregroundStyle(LacEditorDesign.accent).frame(width: 20)
+                Text(title).font(.system(size: 13, weight: .medium))
+                Spacer(minLength: 8)
+                Text(detail).font(.system(size: 10)).foregroundStyle(.tertiary)
+            }.padding(.horizontal, 10).frame(height: 42).contentShape(Rectangle())
+        }.buttonStyle(QuietActionButtonStyle())
+    }
 }
 
 /// Hosts the editor in AppKit's native sidebar split controller. Keeping the

@@ -8,35 +8,52 @@ struct SidebarLibraryView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var recentFiles: RecentFilesStore
     @ObservedObject var library: SidebarLibraryStore
+    var query = ""
     @State private var hoveredSection: SidebarLibrarySection?
     @FocusState private var focusedHeader: String?
+
+    private var filter: SidebarLibraryFilter { SidebarLibraryFilter(query: query) }
+    private var favorites: [URL] { filter.files(library.favoriteURLs) }
+    private var groups: [SidebarFileGroup] { filter.groups(library.groups) }
+    private var recent: [URL] { filter.files(recentFiles.urls) }
 
     var body: some View {
         ScrollView(.vertical) {
             LazyVStack(alignment: .leading, spacing: 16) {
+            if filter.isActive, favorites.isEmpty, groups.isEmpty, recent.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("没有匹配的文件").font(.system(size: 13, weight: .medium))
+                    Text("试试文件名、扩展名或分组名称。")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }.padding(.horizontal, 8).padding(.vertical, 12)
+            } else {
             sidebarSection(
                 title: "收藏夹",
                 section: .favorites,
-                count: library.favoriteURLs.count
+                count: favorites.count
             ) {
-                if library.favoriteURLs.isEmpty {
-                    Text("可从文件右键菜单添加收藏")
+                if favorites.isEmpty {
+                    Text(filter.isActive ? "没有匹配的收藏" : "可从文件右键菜单添加收藏")
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 10)
                         .frame(height: 32)
                 } else {
-                    fileList(urls: library.favoriteURLs, location: .favorites)
+                    fileList(urls: favorites, location: .favorites)
                 }
             }
 
             sidebarSection(
                 title: "分组",
                 section: .groups,
-                count: library.groups.count
+                count: groups.count
             ) {
-                if library.groups.isEmpty {
+                if groups.isEmpty {
+                    if filter.isActive {
+                        Text("没有匹配的分组").font(.system(size: 11)).foregroundStyle(.tertiary)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10).frame(height: 32)
+                    } else {
                     Button("新建分组") {
                         windowManager.requestCreateSidebarGroup()
                     }
@@ -46,9 +63,10 @@ struct SidebarLibraryView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.leading, 30)
                     .frame(height: 26)
+                    }
                 } else {
-                    ForEach(library.groups) { group in
-                        SidebarGroupView(group: group, library: library)
+                    ForEach(groups) { group in
+                        SidebarGroupView(group: group, library: library, isFiltering: filter.isActive)
                     }
                     Color.clear
                         .frame(height: 5)
@@ -65,23 +83,25 @@ struct SidebarLibraryView: View {
             sidebarSection(
                 title: "最近文件",
                 section: .recent,
-                count: recentFiles.urls.count
+                count: recent.count
             ) {
-                if recentFiles.urls.isEmpty {
+                if recent.isEmpty {
                     VStack(spacing: 7) {
-                        Text("暂无最近文件")
+                        Text(filter.isActive ? "没有匹配的最近文件" : "暂无最近文件")
                             .font(.system(size: 11))
                             .foregroundStyle(.tertiary)
-                        Button("打开文件…") {
+                        if !filter.isActive { Button("打开文件…") {
                             appState.openFiles()
                         }
                         .controlSize(.small)
+                        }
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                 } else {
-                    fileList(urls: recentFiles.urls, location: .recent)
+                    fileList(urls: recent, location: .recent)
                 }
+            }
             }
             }
             .padding(.horizontal, 10)
@@ -99,7 +119,7 @@ struct SidebarLibraryView: View {
         count: Int,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        let isExpanded = library.isExpanded(section)
+        let isExpanded = filter.isActive || library.isExpanded(section)
         let isHovering = hoveredSection == section || focusedHeader?.hasPrefix(title) == true
         VStack(spacing: 4) {
             HStack(spacing: 6) {
@@ -109,7 +129,7 @@ struct SidebarLibraryView: View {
                     HStack(spacing: 6) {
                         Text(title)
                             .font(.system(size: 11, weight: .semibold))
-                            .tracking(0.3)
+                            .tracking(0.5)
                         if count > 0 {
                             Text("\(count)")
                                 .font(.system(size: 10, weight: .medium))
@@ -131,6 +151,7 @@ struct SidebarLibraryView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .disabled(filter.isActive)
                 .focused($focusedHeader, equals: title)
                 .accessibilityValue(isExpanded ? "已展开" : "已收起")
                 if section == .groups {
@@ -212,26 +233,28 @@ private struct SidebarGroupView: View {
     @EnvironmentObject private var windowManager: WindowManager
     let group: SidebarFileGroup
     @ObservedObject var library: SidebarLibraryStore
+    var isFiltering = false
     @State private var isHovering = false
     @FocusState private var isFocused: Bool
+    private var isExpanded: Bool { isFiltering || group.isExpanded }
 
     var body: some View {
         VStack(spacing: 2) {
             Button {
-                library.setExpanded(!group.isExpanded, for: group.id)
+                library.setExpanded(!isExpanded, for: group.id)
             } label: {
                 HStack(spacing: 5) {
-                    Image(systemName: group.isExpanded ? "folder.fill" : "folder")
+                    Image(systemName: isExpanded ? "folder.fill" : "folder")
                         .resizable()
                         .scaledToFit()
-                        .foregroundStyle(.secondary)
+            .foregroundStyle(.secondary)
                         .frame(width: 16, height: 16)
                     Text(group.name)
                         .font(.system(size: 13, weight: .medium))
                         .lineLimit(1)
                     Image(systemName: "chevron.right")
                         .font(.system(size: 8, weight: .semibold))
-                        .rotationEffect(.degrees(group.isExpanded ? 90 : 0))
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
                         .opacity(isHovering || isFocused ? 1 : 0)
                         .frame(width: 9)
                     Spacer()
@@ -251,8 +274,9 @@ private struct SidebarGroupView: View {
                 )
             }
             .buttonStyle(.plain)
+            .disabled(isFiltering)
             .focused($isFocused)
-            .accessibilityValue(group.isExpanded ? "已展开" : "已收起")
+            .accessibilityValue(isExpanded ? "已展开" : "已收起")
             .onHover { isHovering = $0 }
             .onDrag { SidebarDragPayload.group(group.id).itemProvider() }
             .onDrop(
@@ -275,7 +299,7 @@ private struct SidebarGroupView: View {
                 }
             }
 
-            SidebarDisclosure(isExpanded: group.isExpanded) {
+            SidebarDisclosure(isExpanded: isExpanded) {
                 VStack(spacing: 2) {
                     ForEach(group.urls, id: \.path) { url in
                         SidebarFileRow(url: url, location: .group(group.id))
@@ -344,36 +368,38 @@ private struct SidebarFileRow: View {
                 windowManager.requestRelocateSidebarFile(url)
             }
         } label: {
-            HStack(spacing: 7) {
+            HStack(spacing: 9) {
                 Image(systemName: exists
                       ? EditorLanguage.infer(from: url).icon
                       : "exclamationmark.triangle")
-                    .font(.system(size: 14))
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(
                         exists
-                            ? (isOpen && activeState != .inactive ? LacEditorDesign.accent : Color.secondary)
+                            ? (activeState == .inactive ? Color.secondary : LacEditorDesign.fileTint(for: EditorLanguage.infer(from: url)))
                             : Color.orange
                     )
-                    .frame(width: 24, height: 24)
-                    .background(isOpen ? LacEditorDesign.accent.opacity(0.08) : Color.primary.opacity(0.035),
-                                in: RoundedRectangle(cornerRadius: 5))
+                    .frame(width: 28, height: 28)
+                    .background(LacEditorDesign.fileTint(for: EditorLanguage.infer(from: url)).opacity(activeState == .inactive ? 0.035 : 0.08),
+                                in: RoundedRectangle(cornerRadius: 6))
 
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(url.lastPathComponent)
                         .font(.system(size: 13, weight: isOpen ? .semibold : .regular))
                         .lineLimit(1)
-                    if !exists {
-                    Text("文件已移动或删除")
+                    Text(exists ? url.deletingLastPathComponent().lastPathComponent : "文件已移动或删除")
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    }
+                        .lineLimit(1).truncationMode(.middle)
                 }
                 Spacer(minLength: 0)
+                if isOpen {
+                    Circle().fill(activeState == .inactive ? Color.secondary : LacEditorDesign.accent)
+                        .frame(width: 4, height: 4).accessibilityHidden(true)
+                }
             }
             .opacity(exists ? 1 : 0.65)
-            .padding(.horizontal, 6)
-            .frame(height: exists ? LacEditorDesign.sidebarRowHeight : 44)
+            .padding(.horizontal, 8)
+            .frame(height: 46)
             .contentShape(Rectangle())
             .background(
                 isOpen ? (activeState == .inactive ? Color.primary.opacity(0.07) : LacEditorDesign.selectionFill)
@@ -383,6 +409,12 @@ private struct SidebarFileRow: View {
                     style: .continuous
                 )
             )
+            .overlay(alignment: .leading) {
+                if isOpen {
+                    Capsule().fill(activeState == .inactive ? Color.secondary.opacity(0.4) : LacEditorDesign.accent)
+                        .frame(width: 2, height: 18).padding(.leading, 1)
+                }
+            }
         }
         .buttonStyle(SoftRowButtonStyle())
         .onHover { isHovering = $0 }

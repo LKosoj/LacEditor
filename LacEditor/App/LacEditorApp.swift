@@ -12,7 +12,8 @@ struct LacEditorApp: App {
     init() {
         let manager = WindowManager(
             recoveryStore: DocumentRecoveryStore(),
-            workspaceStore: WorkspaceSessionStore()
+            workspaceStore: WorkspaceSessionStore(),
+            experimentSamples: AppEnvironment.isExperiment ? ExperimentSampleLibrary() : nil
         )
         let recoveredDocuments = manager.takeRecoveredDocuments()
         let state = AppState(
@@ -36,6 +37,7 @@ struct LacEditorApp: App {
                 windowManager: windowManager,
                 windowID: primaryWindowID
             )
+            .task { await windowManager.prepareExperimentSamples() }
         }
         .defaultSize(width: 1180, height: 780)
         .commands {

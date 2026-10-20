@@ -6,6 +6,76 @@ import Darwin
 
 @MainActor
 final class UIExperimentTests: XCTestCase {
+    func testUI4SamplesFilterAndEmptyEditorRetainNativeEditor() async throws {
+        _ = NSApplication.shared
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let suite = "LacEditorTests.ui4.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let preferences = AppPreferences(defaults: defaults)
+        let samples = ExperimentSampleLibrary(rootURL: directory.appendingPathComponent("Examples"), defaults: defaults)
+        let manager = WindowManager(preferences: preferences, recentFiles: RecentFilesStore(defaults: defaults),
+                                    sidebarLibrary: SidebarLibraryStore(storageURL: directory.appendingPathComponent("library.json")),
+                                    experimentSamples: samples)
+        await manager.prepareExperimentSamples()
+        let document = EditorDocument()
+        let state = manager.openNewWindow(with: document)
+        state.isSidebarVisible = true
+        let window = try XCTUnwrap(state.hostWindow)
+        window.orderFrontRegardless()
+        XCTAssertTrue(window.isVisible)
+        defer {
+            window.delegate = nil
+            window.contentViewController = nil
+            window.close()
+        }
+        try await Task.sleep(for: .milliseconds(300))
+        let content = try XCTUnwrap(window.contentView)
+        let editor = try XCTUnwrap(descendants(in: content, of: LacTextView.self).first)
+        for theme: AppTheme in [.light, .dark] {
+            preferences.theme = theme
+            try await Task.sleep(for: .milliseconds(200))
+            try await captureFixture(window, name: "UI4-start-\(theme.rawValue)")
+        }
+        window.makeFirstResponder(editor)
+        editor.insertText("直接输入", replacementRange: NSRange(location: 0, length: 0))
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertTrue(descendants(in: content, of: LacTextView.self).first === editor)
+        XCTAssertEqual(editor.string, "直接输入")
+        XCTAssertTrue(window.firstResponder === editor)
+        editor.undoManager?.undo()
+        XCTAssertEqual(editor.string, "")
+        for index in 0..<50 {
+            manager.sidebarLibrary.setExpanded(index.isMultiple(of: 2), for: .groups)
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        manager.sidebarLibrary.setExpanded(true, for: .groups)
+        manager.openExperimentWelcome(in: state)
+        for _ in 0..<100 {
+            if state.selectedDocument?.url == samples.welcomeURL, state.selectedDocument?.ioState == .idle { break }
+            try await Task.sleep(for: .milliseconds(30))
+        }
+        XCTAssertEqual(state.selectedDocument?.url, samples.welcomeURL)
+        XCTAssertTrue(state.selectedDocument?.text.contains("给想法留一点空间") == true)
+        for theme: AppTheme in [.light, .dark] {
+            preferences.theme = theme
+            state.selectedDocument?.isPreviewVisible = true
+            try await Task.sleep(for: .milliseconds(350))
+            try await captureFixture(window, name: "UI4-samples-\(theme.rawValue)")
+        }
+        let filtered = SidebarLibraryView(recentFiles: manager.recentFiles, library: manager.sidebarLibrary, query: "JS")
+            .environmentObject(state).environmentObject(manager)
+        let filterHost = NSHostingView(rootView: filtered)
+        filterHost.frame = NSRect(x: 0, y: 0, width: 250, height: 500)
+        filterHost.layoutSubtreeIfNeeded()
+        XCTAssertGreaterThan(filterHost.fittingSize.height, 0)
+        XCTAssertEqual(manager.sidebarLibrary.groups.count, 3)
+    }
+
     func testNativeTabSwitchingRetainsEditorsAndPreview() async throws {
         let fixture = try UI2Fixture(text: "# 原生标签\n\n保留编辑与预览。", language: .markdown)
         defer { fixture.dispose() }
