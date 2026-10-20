@@ -50,87 +50,64 @@ struct TextTransformationView: View {
     let close: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 20) {
             if let preview = state.preview {
-                HStack {
-                    Label(preview.title, systemImage: "arrow.left.arrow.right")
-                        .font(.system(size: 13, weight: .semibold))
-                    Spacer()
-                    Text("仅在确认后修改正文")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-
+                UtilityHeading(title: preview.title, subtitle: "先预览，再决定是否替换正文。", symbol: "arrow.left.arrow.right")
                 HSplitView {
-                    previewPane(title: "原文", text: preview.input)
-                        .frame(minWidth: 240)
-                    previewPane(title: "结果", text: preview.output)
-                        .frame(minWidth: 240)
+                    previewPane(title: "原文", text: preview.input, result: false).frame(minWidth: 260)
+                    previewPane(title: "转换结果", text: preview.output, result: true).frame(minWidth: 260)
                 }
-
-                HStack {
-                    if let message = state.message {
-                        Text(message)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    Spacer()
-                    Button("关闭", action: close)
-                        .keyboardShortcut(.cancelAction)
-                    Button("复制结果") {
-                        appState.copyTextTransformationResult()
-                    }
-                    Button("替换原文") {
-                        appState.applyTextTransformationPreview()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!state.canReplace)
-                }
+                HStack(spacing: 10) {
+                    Text(state.message ?? "正文保持不变，直到你点击「替换原文」。")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .lineLimit(1).help(state.message ?? "")
+                    Spacer(minLength: 12)
+                    Button("关闭", action: close).keyboardShortcut(.cancelAction)
+                    Button("复制结果") { appState.copyTextTransformationResult() }
+                    Button("替换原文") { appState.applyTextTransformationPreview() }
+                        .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                        .disabled(!state.canReplace)
+                }.controlSize(.regular)
             } else {
-                ContentUnavailableView(
-                    "没有转换结果",
-                    systemImage: "text.badge.xmark"
-                )
+                ContentUnavailableView("没有转换结果", systemImage: "text.badge.xmark")
             }
         }
-        .padding(18)
-        .frame(minWidth: 600, minHeight: 420)
+        .padding(24)
+        .frame(minWidth: 640, minHeight: 420)
+        .background(LacEditorDesign.canvas)
     }
 
-    private func previewPane(title: String, text: String) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack {
-                Text(title)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
+    private func previewPane(title: String, text: String, result: Bool) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: result ? "text.badge.checkmark" : "text.alignleft")
+                    .foregroundStyle(result ? LacEditorDesign.accent : .secondary)
+                Text(title).fontWeight(.medium)
                 Spacer()
-                Text("\((text as NSString).length) 字符")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-            }
+                Text("\((text as NSString).length) 字符").foregroundStyle(.tertiary).monospacedDigit()
+            }.font(.system(size: 11)).padding(12)
+            Divider().opacity(0.5)
             ScrollView(.vertical) {
                 Text(previewText(text))
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.system(size: 13, design: .monospaced)).lineSpacing(4)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(9)
+                    .fixedSize(horizontal: false, vertical: true).padding(14)
             }
-            .background(Color(nsColor: .textBackgroundColor))
-            .overlay {
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(NativeScrollViewConfigurator())
         }
+        .background(LacEditorDesign.surface, in: RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(LacEditorDesign.outline, lineWidth: 0.5))
+        .padding(.horizontal, 4)
     }
 
     private func previewText(_ text: String) -> String {
         let limit = 20_000
-        guard text.count > limit else { return text }
-        return String(text.prefix(limit))
-            + "\n\n…预览已截断，替换仍会使用完整结果"
+        let prefix = text.prefix(limit + 1)
+        guard prefix.count > limit else { return text }
+        return String(prefix.prefix(limit)) + "\n\n…预览已截断，替换仍会使用完整结果"
     }
 }
 
@@ -140,7 +117,7 @@ final class TextTransformationWindowController: NSWindowController, NSWindowDele
 
     init(appState: AppState) {
         let panel = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: 480),
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 520),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
@@ -152,14 +129,13 @@ final class TextTransformationWindowController: NSWindowController, NSWindowDele
         panel.isReleasedWhenClosed = false
         panel.animationBehavior = .documentWindow
         panel.collectionBehavior.insert(.fullScreenAuxiliary)
-        panel.minSize = NSSize(width: 600, height: 420)
+        panel.contentMinSize = NSSize(width: 640, height: 420)
+        panel.tabbingMode = .disallowed
         panel.delegate = self
+        let content = TextTransformationView(state: appState.textTransformation,
+                                             close: { [weak panel] in panel?.performClose(nil) })
         panel.contentViewController = NSHostingController(
-            rootView: TextTransformationView(
-                state: appState.textTransformation,
-                close: { [weak panel] in panel?.performClose(nil) }
-            )
-            .environmentObject(appState)
+            rootView: UtilityWindowRoot(appState: appState) { content }
         )
     }
 

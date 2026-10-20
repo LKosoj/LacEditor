@@ -22,12 +22,12 @@ struct SidebarView: View {
                     Label("设置", systemImage: "gearshape")
                     Spacer()
                     if AppEnvironment.isExperiment {
-                        Text("UI 1")
+                        Text(AppEnvironment.experimentIteration)
                             .font(.system(size: 10, weight: .medium, design: .rounded))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
                             .background(LacEditorDesign.selectionFill, in: Capsule())
-                            .accessibilityLabel("界面实验第一轮")
+                            .accessibilityLabel("界面实验 \(AppEnvironment.experimentIteration)")
                     }
                 }
                     .font(.system(size: 13))

@@ -106,12 +106,16 @@ struct SidebarLibraryView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Text(title)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 11, weight: .semibold))
+                            .tracking(0.3)
                         if count > 0 {
                             Text("\(count)")
-                                .font(.system(size: 9, weight: .medium))
+                                .font(.system(size: 10, weight: .medium))
                                 .foregroundStyle(.tertiary)
                                 .monospacedDigit()
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 4))
                         }
                         Image(systemName: "chevron.right")
                             .font(.system(size: 8, weight: .semibold))
@@ -147,6 +151,7 @@ struct SidebarLibraryView: View {
                             .frame(width: 20, height: 20)
                     }
                     .buttonStyle(.plain)
+                    .opacity(isHovering ? 1 : 0)
                     .stableHelp("清除最近文件")
                 }
             }
@@ -311,6 +316,8 @@ private struct SidebarFileRow: View {
     @State private var isHovering = false
     @State private var fileExists = true
     @State private var fileIdentity: DocumentFileIdentity?
+    @Environment(\.controlActiveState) private var activeState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var exists: Bool { fileExists }
 
@@ -328,24 +335,22 @@ private struct SidebarFileRow: View {
             }
         } label: {
             HStack(spacing: 7) {
-                Capsule()
-                    .fill(isOpen ? LacEditorDesign.accent : .clear)
-                    .frame(width: 2, height: 17)
-
                 Image(systemName: exists
                       ? EditorLanguage.infer(from: url).icon
                       : "exclamationmark.triangle")
                     .font(.system(size: 14))
                     .foregroundStyle(
                         exists
-                            ? (isOpen ? LacEditorDesign.accent : Color.secondary)
+                            ? (isOpen && activeState != .inactive ? LacEditorDesign.accent : Color.secondary)
                             : Color.orange
                     )
-                    .frame(width: 16)
+                    .frame(width: 24, height: 24)
+                    .background(isOpen ? LacEditorDesign.accent.opacity(0.08) : Color.primary.opacity(0.035),
+                                in: RoundedRectangle(cornerRadius: 5))
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(url.lastPathComponent)
-                        .font(.system(size: 13, weight: isOpen ? .medium : .regular))
+                        .font(.system(size: 13, weight: isOpen ? .semibold : .regular))
                         .lineLimit(1)
                     if !exists {
                     Text("文件已移动或删除")
@@ -361,15 +366,17 @@ private struct SidebarFileRow: View {
             .frame(height: exists ? LacEditorDesign.sidebarRowHeight : 44)
             .contentShape(Rectangle())
             .background(
-                isOpen ? LacEditorDesign.selectionFill : (isHovering ? LacEditorDesign.hoverFill : .clear),
+                isOpen ? (activeState == .inactive ? Color.primary.opacity(0.07) : LacEditorDesign.selectionFill)
+                    : (isHovering ? LacEditorDesign.hoverFill : .clear),
                 in: RoundedRectangle(
                     cornerRadius: LacEditorDesign.compactCornerRadius,
                     style: .continuous
                 )
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SoftRowButtonStyle())
         .onHover { isHovering = $0 }
+        .animation(reduceMotion ? nil : LacEditorDesign.hoverAnimation, value: isHovering)
         .stableHelp(url.path)
         .accessibilityAddTraits(isOpen ? .isSelected : [])
         .task(id: url) {

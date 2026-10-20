@@ -4,52 +4,61 @@ struct StatusBarView: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject var document: EditorDocument
 
+    @State private var showsBusyIndicator = false
+
     var body: some View {
-        HStack(spacing: 10) {
-            if let ioStatus = document.ioState.statusText {
-                statusItem(ioStatus, icon: "arrow.triangle.2.circlepath", color: .secondary)
-            } else {
-                statusItem(
-                    document.isDirty ? "未保存" : "已保存",
-                    icon: document.isDirty ? "circle.fill" : "checkmark.circle.fill",
-                    color: document.isDirty ? .orange : .green
-                )
-            }
-            if document.isLargeFileMode {
-                performanceMenu
-            }
-            if let suggestion = document.textCodecSuggestionTitle {
-                Button {
-                    appState.presentTextTransformation(.smartDecode)
-                } label: {
-                    Label(suggestion, systemImage: "arrow.left.arrow.right")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+        GeometryReader { geometry in
+            HStack(spacing: 12) {
+                HStack(spacing: 6) {
+                    if showsBusyIndicator {
+                        ProgressView().controlSize(.mini).frame(width: 12, height: 12)
+                    } else {
+                        Image(systemName: document.isDirty ? "circle.fill" : "circle")
+                            .font(.system(size: 6))
+                            .foregroundStyle(document.isDirty ? LacEditorDesign.accent : Color.secondary.opacity(0.6))
+                    }
+                    Text(document.ioState.statusText ?? (document.isDirty ? "未保存" : "已保存"))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .help(document.ioState.statusText ?? (document.isDirty ? "有尚未保存的修改" : "文件已保存"))
+                }.layoutPriority(1)
+                if document.isLargeFileMode { performanceMenu }
+                if let suggestion = document.textCodecSuggestionTitle, geometry.size.width >= 600 {
+                    Button { appState.presentTextTransformation(.smartDecode) } label: {
+                        Label(suggestion, systemImage: "arrow.left.arrow.right")
+                    }.buttonStyle(.plain).lineLimit(1).help("预览解码结果")
                 }
-                .buttonStyle(.plain)
-                .fixedSize()
-                .help("预览解码结果")
+                if let message = document.statusMessage {
+                    Text(message).foregroundStyle(message.hasPrefix("JSON 无效") ? .red : .secondary)
+                        .lineLimit(1).help(message).layoutPriority(2)
+                }
+                Spacer(minLength: 0)
+                if geometry.size.width >= 420 { statusItem(document.encodingName).help("文件编码") }
+                if geometry.size.width >= 620, document.isWordCountEnabled {
+                    statusItem("\(document.wordCount) 字").help("文档字数")
+                }
+                statusItem(geometry.size.width >= 360
+                           ? "行 \(document.cursorLine)，列 \(document.cursorColumn)"
+                           : "\(document.cursorLine):\(document.cursorColumn)")
+                    .help("行 \(document.cursorLine)，列 \(document.cursorColumn)")
+                    .layoutPriority(3)
             }
-            if let message = document.statusMessage {
-                Text(message)
-                    .font(.system(size: 11))
-                    .foregroundStyle(message.hasPrefix("JSON 无效") ? .red : .secondary)
-                    .lineLimit(1)
-                    .help(message)
-            }
-            Spacer(minLength: 12)
-            statusItem(document.encodingName)
-            statusItem(document.language.displayName)
-            statusItem(
-                document.isWordCountEnabled
-                    ? "字数：\(document.wordCount)"
-                    : "字数统计已暂停"
-            )
-            statusItem("行 \(document.cursorLine)，列 \(document.cursorColumn)")
+            .font(.system(size: 11)).foregroundStyle(.secondary)
+            .monospacedDigit()
+            .padding(.horizontal, 10)
+            .frame(width: geometry.size.width, height: LacEditorDesign.statusBarHeight)
         }
-        .padding(.horizontal, 9)
         .frame(height: LacEditorDesign.statusBarHeight)
         .background(Color(nsColor: .lacEditorBackground))
+        .task(id: document.ioState) {
+            showsBusyIndicator = false
+            switch document.ioState {
+            case .opening, .saving:
+                do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
+                showsBusyIndicator = true
+            default: break
+            }
+        }
     }
 
     private var performanceMenu: some View {

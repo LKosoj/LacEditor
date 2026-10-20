@@ -1,6 +1,6 @@
 # LacEditor × FlClash UI 实验方案
 
-日期：2026-10-20。状态：UI0 构建隔离与 UI1 主界面第一轮已实施；UI2/UI3 待继续。安装与构建见 [实验版说明](UI_EXPERIMENT_README.md)，实际验证范围见 [UI1 验收记录](../AcceptanceReports/UI1-2026-10-20.md)。
+日期：2026-10-20。状态：UI0、UI1 及 UI2 已实施；UI3 待继续。安装与构建见 [实验版说明](UI_EXPERIMENT_README.md)，实际验证范围见 [UI2 验收记录](../AcceptanceReports/UI2-2026-10-20.md)，历史记录保留在 UI1 验收文档。
 
 ## 1. 目标与实验边界
 
@@ -10,7 +10,7 @@
 
 采用同一项目目录、单一实验分支，不新增 worktree。已从正式提交 `7024a03` 建立 `codex/flclash-ui-experiment`；聊天分支不等于 Git 分支。正式基线为 0.14.4（63），当前验收报告删除与未跟踪文件保留，不自动纳入界面变更。
 
-实验 App 显示名为“LacEditor 实验版”，Bundle ID 为 com.laceditor.ui-experiment，设置页显示“0.15.0 · UI1（构建 64）”。正式 App 暂不更新。技术路线已锁定为现有 SwiftUI + AppKit，不新增 Flutter 等开发环境。
+实验 App 显示名为“LacEditor 实验版”，Bundle ID 为 com.laceditor.ui-experiment，设置页显示“0.15.0 · UI2（构建 65）”。正式 App 暂不更新。技术路线已锁定为现有 SwiftUI + AppKit，不新增 Flutter 等开发环境。
 
 ## 2. 研究依据与取舍
 
@@ -236,7 +236,7 @@
 - 首次启动实验 App 使用空白工作区。可以提供明确的“一次性复制正式版设置与收藏”操作，复制后独立；不自动读写正式未保存内容。
 - 实验 App 不声明 Finder 文档关联，不注册默认打开方式；通过应用内打开/拖放测试即可。独立 UserDefaults 与近期文档入口也要核对。
 - 用户主动在两个 App 中打开同一磁盘文件仍会有编辑冲突，独立 Bundle ID 并不能隔离磁盘文件；保留外部版本检查，验收使用复制的测试文件。
-- 不覆盖 /Applications/LacEditor.app。交付 LacEditor-0.15.0-UI1-64-arm64.zip，实验 App 可以单独使用；项目内不长期保留各轮解压 App，避免重复“打开方式”登记。
+- 不覆盖 /Applications/LacEditor.app。当前交付 LacEditor-0.15.0-UI2-65-arm64.zip，实验 App 可以单独使用；项目内不长期保留各轮解压 App，避免重复“打开方式”登记。
 
 ## 15. 推进顺序与每轮交付
 

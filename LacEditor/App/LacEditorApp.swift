@@ -77,29 +77,34 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     static let shared = SettingsWindowController()
 
     private var windowController: NSWindowController?
+    private weak var presentedManager: WindowManager?
 
     func present(windowManager: WindowManager) {
         guard let state = windowManager.activeState else { return }
 
         if let window = windowController?.window {
-            window.contentViewController = NSHostingController(
-                rootView: SettingsHostView(
-                    fallbackState: state,
-                    windowManager: windowManager
+            if presentedManager !== windowManager {
+                window.contentViewController = NSHostingController(
+                    rootView: SettingsHostView(
+                        fallbackState: state,
+                        windowManager: windowManager
+                    )
                 )
-            )
+                presentedManager = windowManager
+            }
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 540, height: 570),
+            contentRect: NSRect(x: 0, y: 0, width: 820, height: 640),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "设置"
+        window.identifier = NSUserInterfaceItemIdentifier("LacEditor.SettingsWindow")
         window.tabbingMode = .disallowed
         window.contentViewController = NSHostingController(
             rootView: SettingsHostView(
@@ -107,12 +112,14 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
                 windowManager: windowManager
             )
         )
-        window.minSize = NSSize(width: 500, height: 420)
+        window.contentMinSize = NSSize(width: 720, height: 520)
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.center()
+        window.setFrameAutosaveName("LacEditor.UI2.Settings")
+        if !window.setFrameUsingName("LacEditor.UI2.Settings") { window.center() }
         let controller = NSWindowController(window: window)
         windowController = controller
+        presentedManager = windowManager
         controller.showWindow(nil)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -151,7 +158,7 @@ struct EditorWindowRoot: View {
     }
 }
 
-private struct WindowThemeCoordinator: NSViewRepresentable {
+struct WindowThemeCoordinator: NSViewRepresentable {
     let theme: AppTheme
     let systemAppearanceDidChange: () -> Void
 

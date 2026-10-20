@@ -5,6 +5,161 @@ import XCTest
 
 @MainActor
 final class UIExperimentTests: XCTestCase {
+    func testSettingsPagesFitMinimumWindowAndKeepNativeScrollContainers() async throws {
+        _ = NSApplication.shared
+        let fixture = try UI2Fixture()
+        defer { fixture.dispose() }
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
+                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.center()
+        defer { window.contentViewController = nil; window.close() }
+        for theme: AppTheme in [.light, .dark] {
+            fixture.preferences.theme = theme
+            for section in SettingsSection.allCases {
+                window.contentViewController = NSHostingController(rootView:
+                    UtilityWindowRoot(appState: fixture.state) { SettingsView(initialSection: section) })
+                window.setContentSize(NSSize(width: 720, height: 520))
+                window.makeKeyAndOrderFront(nil)
+                try await Task.sleep(for: .milliseconds(180))
+                let content = try XCTUnwrap(window.contentView)
+                content.layoutSubtreeIfNeeded()
+                XCTAssertEqual(content.bounds.width, 720, accuracy: 1)
+                XCTAssertEqual(content.bounds.height, 520, accuracy: 1)
+                let scrolls = descendants(in: content, of: NSScrollView.self)
+                XCTAssertFalse(scrolls.isEmpty, "Every settings page must remain scrollable")
+                for scroll in scrolls {
+                    XCTAssertLessThanOrEqual(scroll.bounds.width, 720)
+                    XCTAssertFalse(scroll.hasHorizontalScroller)
+                    XCTAssertEqual(scroll.scrollerStyle, .overlay)
+                }
+                XCTAssertEqual(window.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]),
+                               theme == .light ? .aqua : .darkAqua)
+                try await captureFixture(window, name: "settings-\(section.id)-\(theme.rawValue)")
+            }
+        }
+    }
+
+    func testUtilityWindowsRetainPresentationThemeAndPreviewInvalidation() async throws {
+        _ = NSApplication.shared
+        let fixture = try UI2Fixture()
+        defer { fixture.dispose() }
+        let parent = try XCTUnwrap(fixture.state.hostWindow)
+        try await Task.sleep(for: .milliseconds(250)) // Allow native window registration.
+        let settings = SettingsWindowController()
+        settings.present(windowManager: fixture.manager)
+        try await Task.sleep(for: .milliseconds(250))
+        let settingsWindow = try XCTUnwrap(NSApp.windows.first {
+            $0.identifier?.rawValue == "LacEditor.SettingsWindow" && $0.isVisible
+        })
+        let settingsRoot = settingsWindow.contentViewController
+        settings.present(windowManager: fixture.manager)
+        XCTAssertTrue(settingsWindow.contentViewController === settingsRoot,
+                      "Re-presenting settings must not reset its navigation and scroll state")
+        try await Task.sleep(for: .milliseconds(250))
+        // The command-line XCTest host does not participate in foreground
+        // application activation. Verify presentation here; real key-window
+        // routing remains an application-level acceptance check.
+        XCTAssertTrue(settingsWindow.isVisible && settingsWindow.canBecomeKey)
+        settingsWindow.performClose(nil)
+
+        let find = FindReplaceWindowController(appState: fixture.state)
+        let codec = TextTransformationWindowController(appState: fixture.state)
+        defer {
+            find.window?.contentViewController = nil
+            find.window?.delegate = nil
+            find.window?.close()
+            codec.dispose()
+        }
+        fixture.state.findReplace.query = "LacEditor"
+        fixture.state.findReplace.replacement = "轻装编辑"
+        fixture.state.textTransformation.present(TextTransformationPreview(
+            documentID: fixture.document.id, range: NSRange(location: 0, length: 9),
+            input: String(repeating: "%E4%BD%A0%E5%A5%BD%20LacEditor%0A", count: 80),
+            output: String(repeating: "你好 LacEditor\n", count: 80), editorRevision: 0,
+            operation: .urlDecode, detectedKind: .url))
+        for theme: AppTheme in [.light, .dark] {
+            fixture.preferences.theme = theme
+            find.present(mode: .replace, relativeTo: parent)
+            let findWindow = try XCTUnwrap(find.window)
+            findWindow.setContentSize(findWindow.contentMinSize)
+            try await Task.sleep(for: .milliseconds(250))
+            XCTAssertTrue(findWindow.isVisible && findWindow.canBecomeKey)
+            XCTAssertTrue(parent.isVisible)
+            XCTAssertNil(NSApp.modalWindow)
+            XCTAssertEqual(findWindow.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]),
+                           theme == .light ? .aqua : .darkAqua)
+            XCTAssertLessThanOrEqual(findWindow.contentView!.fittingSize.height,
+                                     findWindow.contentMinSize.height + 1)
+            try await captureFixture(findWindow, name: "find-\(theme.rawValue)")
+            find.dismiss()
+            codec.present(relativeTo: parent)
+            let codecWindow = try XCTUnwrap(codec.window)
+            codecWindow.setContentSize(codecWindow.contentMinSize)
+            try await Task.sleep(for: .milliseconds(250))
+            XCTAssertTrue(codecWindow.isVisible && codecWindow.canBecomeKey)
+            XCTAssertEqual(codecWindow.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]),
+                           theme == .light ? .aqua : .darkAqua)
+            let scrolls = descendants(in: codecWindow.contentView!, of: NSScrollView.self)
+            XCTAssertEqual(scrolls.count, 2)
+            XCTAssertTrue(scrolls.allSatisfy { !$0.hasHorizontalScroller })
+            try await captureFixture(codecWindow, name: "codec-\(theme.rawValue)")
+        }
+        fixture.state.textTransformation.invalidate(documentID: fixture.document.id)
+        XCTAssertFalse(fixture.state.textTransformation.canReplace)
+        XCTAssertNotNil(fixture.state.textTransformation.message)
+        XCTAssertEqual(fixture.document.text, "LacEditor 测试正文\n")
+        codec.window?.performClose(nil)
+        XCTAssertNil(fixture.state.textTransformation.preview)
+    }
+
+    private func descendants<T: NSView>(in view: NSView, of type: T.Type) -> [T] {
+        (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants(in: $0, of: type) }
+    }
+
+    func testStatusBarKeepsItsHeightWhenNarrowBusyOrShowingLongErrors() async throws {
+        _ = NSApplication.shared
+        let fixture = try UI2Fixture()
+        defer { fixture.dispose() }
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 24),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentViewController = NSHostingController(rootView:
+            UtilityWindowRoot(appState: fixture.state) {
+                StatusBarView(document: fixture.document)
+            })
+        window.center()
+        window.orderFront(nil)
+        defer { window.contentViewController = nil; window.close() }
+        fixture.document.performanceProfile = .large
+        fixture.document.statusMessage = "JSON 无效：第 128 行，第 24 列，缺少结束括号，请检查输入内容。"
+        for width: CGFloat in [360, 620, 900] {
+            window.setContentSize(NSSize(width: width, height: 24))
+            fixture.document.ioState = .saving
+            try await Task.sleep(for: .milliseconds(230))
+            let content = try XCTUnwrap(window.contentView)
+            content.layoutSubtreeIfNeeded()
+            XCTAssertEqual(content.bounds.height, 24, accuracy: 0.5)
+            XCTAssertLessThanOrEqual(content.fittingSize.width, width + 1)
+            try await captureFixture(window, name: "status-\(Int(width))")
+            fixture.document.ioState = .idle
+        }
+        XCTAssertEqual(fixture.document.text, "LacEditor 测试正文\n")
+    }
+
+    private func captureFixture(_ window: NSWindow, name: String) async throws {
+        guard ProcessInfo.processInfo.environment["LACEDITOR_UI_SNAPSHOTS"] == "1" else { return }
+        let output = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent(".build/UIExperimentSnapshots")
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        let capture = Process()
+        capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        capture.arguments = ["-x", "-l", String(window.windowNumber), output.appendingPathComponent("\(name).png").path]
+        try capture.run()
+        while capture.isRunning { try await Task.sleep(for: .milliseconds(50)) }
+        XCTAssertEqual(capture.terminationStatus, 0)
+    }
+
     func testDataNamespacesDoNotOverlap() {
         XCTAssertEqual(AppEnvironment.dataDirectoryName(for: "com.laceditor.app"), "LacEditor")
         XCTAssertEqual(AppEnvironment.dataDirectoryName(for: AppEnvironment.experimentIdentifier), "LacEditor-UI-Experiment")
@@ -161,6 +316,38 @@ final class UIExperimentTests: XCTestCase {
                 XCTAssertEqual(capture.terminationStatus, 0, "Window capture requires existing screen-recording access")
             }
         }
+    }
+}
+
+@MainActor
+private final class UI2Fixture {
+    let directory: URL
+    let suite: String
+    let defaults: UserDefaults
+    let preferences: AppPreferences
+    let manager: WindowManager
+    let document: EditorDocument
+    let state: AppState
+
+    init() throws {
+        directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        suite = "LacEditorTests.ui2.\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suite)!
+        preferences = AppPreferences(defaults: defaults)
+        manager = WindowManager(preferences: preferences, recentFiles: RecentFilesStore(defaults: defaults),
+                                sidebarLibrary: SidebarLibraryStore(storageURL: directory.appendingPathComponent("library.json")))
+        document = EditorDocument(text: "LacEditor 测试正文\n", language: .plainText)
+        state = manager.openNewWindow(with: document)
+    }
+
+    func dispose() {
+        state.closeAuxiliaryWindows()
+        state.hostWindow?.delegate = nil
+        state.hostWindow?.contentViewController = nil
+        state.hostWindow?.close()
+        defaults.removePersistentDomain(forName: suite)
+        try? FileManager.default.removeItem(at: directory)
     }
 }
 

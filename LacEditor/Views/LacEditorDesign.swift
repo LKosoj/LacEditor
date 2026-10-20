@@ -22,6 +22,88 @@ enum LacEditorDesign {
     })
     static let hoverFill = Color.primary.opacity(0.045)
     static let selectionFill = accent.opacity(0.12)
+    static let canvas = adaptiveColor(light: (0.953, 0.957, 0.969), dark: (0.12, 0.125, 0.14))
+    static let surface = adaptiveColor(light: (1, 1, 1), dark: (0.16, 0.165, 0.185))
+    static let outline = Color(nsColor: .separatorColor).opacity(0.4)
+
+    private static func adaptiveColor(light: (CGFloat, CGFloat, CGFloat), dark: (CGFloat, CGFloat, CGFloat)) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let rgb = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+            return NSColor(red: rgb.0, green: rgb.1, blue: rgb.2, alpha: 1)
+        })
+    }
+}
+
+/// Shared by settings and utility windows; the editor remains a flat canvas.
+struct PreferenceGroup<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: () -> Content
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary).padding(.leading, 3)
+            VStack(spacing: 0) { content() }
+                .background(LacEditorDesign.surface, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(LacEditorDesign.outline, lineWidth: 0.5))
+        }
+    }
+}
+
+struct PreferenceRow<Control: View>: View {
+    let title: String
+    let detail: String
+    @ViewBuilder var control: () -> Control
+    var body: some View {
+        HStack(spacing: 20) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title).font(.system(size: 13, weight: .medium))
+                if !detail.isEmpty {
+                    Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            control().controlSize(.regular).fixedSize(horizontal: true, vertical: false)
+        }.padding(16).frame(minHeight: 64)
+    }
+}
+
+struct UtilityHeading: View {
+    let title: String
+    let subtitle: String
+    let symbol: String
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol).font(.system(size: 18, weight: .medium))
+                .foregroundStyle(LacEditorDesign.accent).frame(width: 40, height: 40)
+                .background(LacEditorDesign.selectionFill, in: RoundedRectangle(cornerRadius: 10))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.system(size: 19, weight: .semibold))
+                Text(subtitle).font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+struct UtilityWindowRoot<Content: View>: View {
+    @ObservedObject var appState: AppState
+    @ViewBuilder var content: () -> Content
+    var body: some View {
+        content().environmentObject(appState)
+            .preferredColorScheme(appState.preferredColorScheme)
+            .tint(LacEditorDesign.accent)
+            .background(WindowThemeCoordinator(theme: appState.theme,
+                                               systemAppearanceDidChange: appState.refreshSystemAppearance))
+    }
+}
+
+struct SoftRowButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(configuration.isPressed ? LacEditorDesign.accent.opacity(0.15) : .clear,
+                        in: RoundedRectangle(cornerRadius: 6))
+            .animation(reduceMotion || configuration.isPressed ? nil : .easeOut(duration: 0.1), value: configuration.isPressed)
+    }
 }
 
 /// Animate only the clipped body. Headers never participate in the reveal's
