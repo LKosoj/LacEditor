@@ -100,7 +100,7 @@ struct SidebarLibraryView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 12)
-            .background(NativeScrollViewConfigurator())
+            .background(NativeScrollViewConfigurator(indicatorOpacity: 0.6))
             .background(SidebarDragScrollAttachment(state: dragState))
         }
         .scrollIndicators(.automatic)

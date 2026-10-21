@@ -287,19 +287,29 @@ struct SidebarMaterialBackground: NSViewRepresentable {
 /// Configures only the owning scroll view and respects the system's scrollbar
 /// policy, including users who choose to always show scrollbars.
 struct NativeScrollViewConfigurator: NSViewRepresentable {
+    var indicatorOpacity: CGFloat = 1
+
     func makeNSView(context: Context) -> ConfiguratorView {
-        ConfiguratorView()
+        let view = ConfiguratorView()
+        view.indicatorOpacity = indicatorOpacity
+        return view
     }
 
     func updateNSView(_ nsView: ConfiguratorView, context: Context) {
+        nsView.indicatorOpacity = indicatorOpacity
         nsView.configureScrollViews()
     }
 
     final class ConfiguratorView: NSView {
+        var indicatorOpacity: CGFloat = 1
         private weak var configuredScrollView: NSScrollView?
         private var pendingConfiguration: DispatchWorkItem?
+        private var preferenceObservers: [(NotificationCenter, NSObjectProtocol)] = []
 
-        deinit { pendingConfiguration?.cancel() }
+        deinit {
+            pendingConfiguration?.cancel()
+            preferenceObservers.forEach { $0.0.removeObserver($0.1) }
+        }
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -313,24 +323,46 @@ struct NativeScrollViewConfigurator: NSViewRepresentable {
 
         func configureScrollViews() {
             pendingConfiguration?.cancel()
+            if preferenceObservers.isEmpty {
+                for (center, name) in [
+                    (NotificationCenter.default, NSScroller.preferredScrollerStyleDidChangeNotification),
+                    (NSWorkspace.shared.notificationCenter, NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)
+                ] {
+                    let observer = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                        MainActor.assumeIsolated {
+                            self?.configuredScrollView = nil
+                            self?.configureScrollViews()
+                        }
+                    }
+                    preferenceObservers.append((center, observer))
+                }
+            }
             if let scrollView = enclosingScrollView {
-                guard configuredScrollView !== scrollView else { return }
-                configuredScrollView = scrollView
-                scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
-                scrollView.autohidesScrollers = true
+                apply(to: scrollView)
             } else if window != nil {
                 // SwiftUI attaches this bridge inside the scroll content. One
                 // deferred attempt handles attachment without walking a window.
                 let work = DispatchWorkItem { [weak self] in
-                    guard let self, let scrollView = self.enclosingScrollView,
-                          self.configuredScrollView !== scrollView else { return }
-                    self.configuredScrollView = scrollView
-                    scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
-                    scrollView.autohidesScrollers = true
+                    guard let self, let scrollView = self.enclosingScrollView else { return }
+                    self.apply(to: scrollView)
                 }
                 pendingConfiguration = work
                 DispatchQueue.main.async(execute: work)
             }
+        }
+
+        private func apply(to scrollView: NSScrollView) {
+            if configuredScrollView !== scrollView {
+                configuredScrollView = scrollView
+                scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
+                scrollView.autohidesScrollers = true
+            }
+            // Keep the system knob, geometry, fade and hit testing. Only the
+            // sidebar requests lower emphasis; increased contrast takes priority.
+            let opacity = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+                ? 1 : min(max(indicatorOpacity, 0), 1)
+            scrollView.verticalScroller?.alphaValue = opacity
+            scrollView.horizontalScroller?.alphaValue = opacity
         }
     }
 }

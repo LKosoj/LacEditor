@@ -2,13 +2,14 @@ import AppKit
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case editor = "编辑器", appearance = "外观", files = "文件与恢复", performance = "性能", about = "关于"
+    case editor = "编辑器", appearance = "外观", files = "文件与恢复", associations = "文件关联", performance = "性能", about = "关于"
     var id: String { rawValue }
     var symbol: String {
         switch self {
         case .editor: "text.cursor"
         case .appearance: "circle.lefthalf.filled"
         case .files: "clock.arrow.circlepath"
+        case .associations: "doc.badge.gearshape"
         case .performance: "gauge.with.dots.needle.33percent"
         case .about: "info.circle"
         }
@@ -18,6 +19,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .editor: "让文字的呈现和输入方式更合你的习惯。"
         case .appearance: "选择舒适的外观，让界面保持安静。"
         case .files: "离开之后，下次继续。"
+        case .associations: "选择哪些文本格式默认使用 LacEditor 打开。"
         case .performance: "按文档大小自动管理，优先保持编辑顺畅。"
         case .about: "一款专注于文本与代码的 macOS 编辑器。"
         }
@@ -104,6 +106,7 @@ struct SettingsView: View {
         case .editor: editorSettings
         case .appearance: appearanceSettings
         case .files: fileSettings
+        case .associations: FileAssociationSettingsView()
         case .performance: performanceSettings
         case .about: aboutSettings
         }
@@ -252,8 +255,9 @@ struct SettingsView: View {
         let info = Bundle.main.infoDictionary
         guard let version = info?["CFBundleShortVersionString"] as? String else { return "开发版本" }
         let iteration = (info?["LacEditorExperimentIteration"] as? String).map { " · \($0)" } ?? ""
+        let stage = (info?["LacEditorReleaseStage"] as? String).flatMap { $0.isEmpty ? nil : " · \($0)" } ?? ""
         let build = (info?["CFBundleVersion"] as? String).map { "（构建 \($0)）" } ?? ""
-        return "版本 \(version)\(iteration)\(build)"
+        return "版本 \(version)\(iteration)\(stage)\(build)"
     }
 }
 

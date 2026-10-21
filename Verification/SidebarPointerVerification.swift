@@ -151,6 +151,54 @@ struct SidebarPointerVerification {
         _ = AXUIElementPerformAction(window, kAXRaiseAction as CFString)
         try await Task.sleep(for: .milliseconds(300))
         print("Fixture frontmost=\(NSWorkspace.shared.frontmostApplication?.processIdentifier == pid)")
+        if ProcessInfo.processInfo.environment["LACEDITOR_TOOLTIP_POLISH"] == "1" {
+            func tooltipCount() -> Int {
+                let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
+                return windows.filter {
+                    guard ($0[kCGWindowOwnerPID as String] as? Int32) == pid,
+                          let bounds = $0[kCGWindowBounds as String] as? [String: Any],
+                          let width = bounds["Width"] as? Double,
+                          let height = bounds["Height"] as? Double else { return false }
+                    // AppKit assigns an attached child panel its parent's CG
+                    // layer. The isolated fixture has only one large editor;
+                    // every small on-screen window at hover is a help panel.
+                    return width <= 340 && height <= 300
+                }.count
+            }
+            func hoverFile(_ index: Int) async throws {
+                let rect = try frame(identified("sidebar.file.group.\(first.id.uuidString).\(files[index])"))
+                mouse(.mouseMoved, at: CGPoint(x: rect.midX, y: rect.midY))
+                try await Task.sleep(for: .milliseconds(850))
+                guard tooltipCount() == 1 else {
+                    let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
+                    print("UI9 window layers: \(windows.filter { ($0[kCGWindowOwnerPID as String] as? Int32) == pid })")
+                    if snapshots { try await snapshot(pid: pid, name: "UI9-tooltip-failure") }
+                    throw Failure.operation("expected one tooltip after hovering file \(index), got \(tooltipCount())")
+                }
+            }
+            for _ in 0..<3 {
+                try await hoverFile(0)
+                try await hoverFile(1)
+                // Let the system's native help delay elapse as well: it must
+                // not create a second tooltip over our persistent panel.
+                try await Task.sleep(for: .milliseconds(1400))
+                guard tooltipCount() == 1 else { throw Failure.operation("overlapping or disappearing help") }
+                let rect = try frame(window)
+                mouse(.mouseMoved, at: CGPoint(x: rect.maxX - 80, y: rect.midY))
+                try await Task.sleep(for: .milliseconds(120))
+                guard tooltipCount() == 0 else { throw Failure.operation("help remained after pointer left sidebar") }
+            }
+            try await hoverFile(0)
+            CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1,
+                    wheel1: -60, wheel2: 0, wheel3: 0)?.post(tap: .cghidEventTap)
+            try await Task.sleep(for: .milliseconds(120))
+            guard tooltipCount() == 0 else { throw Failure.operation("help remained after scrolling") }
+            let rect = try frame(window)
+            mouse(.mouseMoved, at: CGPoint(x: rect.minX + 240, y: rect.midY))
+            if snapshots { try await snapshot(pid: pid, name: "UI9-sidebar-scrollbar") }
+            print("UI9 pointer help: single panel, 3 cross-row cycles, long hover, pointer exit and scroll cancellation passed")
+            return
+        }
         for _ in 0..<3 {
             try await click(identified(firstID))
             try await Task.sleep(for: .milliseconds(65))

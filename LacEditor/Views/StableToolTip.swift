@@ -20,6 +20,10 @@ private struct StableToolTipBridge: NSViewRepresentable {
         nsView.update(text: text, shortcut: shortcut)
     }
 
+    static func dismantleNSView(_ nsView: ToolTipTrackingView, coordinator: ()) {
+        nsView.cancelAndClose()
+    }
+
     func sizeThatFits(
         _ proposal: ProposedViewSize,
         nsView: ToolTipTrackingView,
@@ -33,11 +37,16 @@ private struct StableToolTipBridge: NSViewRepresentable {
 }
 
 final class ToolTipTrackingView: NSView {
+    // Only one custom tooltip may be pending or visible across the application.
+    // A missed mouseExited during clipping/reflow must not leave an old panel.
+    private static weak var activeTrackingView: ToolTipTrackingView?
     private var text: String
     private var shortcut: String?
     private var showWorkItem: DispatchWorkItem?
     private var toolTipPanel: ToolTipPanel?
     private var windowObservers: [NSObjectProtocol] = []
+    private var eventMonitor: Any?
+    private var generation = UUID()
 
     var isPresentationPending: Bool { showWorkItem != nil }
 
@@ -45,7 +54,7 @@ final class ToolTipTrackingView: NSView {
         self.text = text
         self.shortcut = shortcut
         super.init(frame: .zero)
-        toolTip = displayText
+        // Do not also register an AppKit tooltip: it would overlap this panel.
     }
 
     required init?(coder: NSCoder) {
@@ -55,6 +64,7 @@ final class ToolTipTrackingView: NSView {
     deinit {
         showWorkItem?.cancel()
         windowObservers.forEach(NotificationCenter.default.removeObserver)
+        if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
         closePanel()
     }
 
@@ -67,7 +77,7 @@ final class ToolTipTrackingView: NSView {
         trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(
             rect: .zero,
-            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeInKeyWindow, .inVisibleRect],
             owner: self,
             userInfo: nil
         ))
@@ -83,15 +93,19 @@ final class ToolTipTrackingView: NSView {
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
         cancelAndClose()
-        windowObservers.forEach(NotificationCenter.default.removeObserver)
-        windowObservers.removeAll()
         super.viewWillMove(toWindow: newWindow)
     }
 
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
+    override func viewWillMove(toSuperview newSuperview: NSView?) {
+        cancelAndClose()
+        super.viewWillMove(toSuperview: newSuperview)
+    }
+
+    private func observeDismissal() {
         guard let window else { return }
-        for name in [NSWindow.didResignKeyNotification, NSWindow.willCloseNotification] {
+        for name in [NSWindow.didResignKeyNotification, NSWindow.willCloseNotification,
+                     NSWindow.willMoveNotification, NSWindow.willStartLiveResizeNotification,
+                     NSWindow.didResizeNotification, NSWindow.willMiniaturizeNotification] {
             windowObservers.append(NotificationCenter.default.addObserver(
                 forName: name, object: window, queue: .main
             ) { [weak self] _ in
@@ -103,37 +117,67 @@ final class ToolTipTrackingView: NSView {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.cancelAndClose() }
         })
+        windowObservers.append(NotificationCenter.default.addObserver(
+            forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.cancelAndClose() }
+        })
+        if let clipView = enclosingScrollView?.contentView {
+            clipView.postsBoundsChangedNotifications = true
+            windowObservers.append(NotificationCenter.default.addObserver(
+                forName: NSView.boundsDidChangeNotification, object: clipView, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.cancelAndClose() }
+            })
+        }
     }
 
     func update(text: String, shortcut: String?) {
         guard self.text != text || self.shortcut != shortcut else { return }
         self.text = text
         self.shortcut = shortcut
-        toolTip = displayText
         cancelAndClose()
     }
 
-    private var displayText: String {
-        shortcut.map { "\(text)    \($0)" } ?? text
-    }
-
     private func schedulePanel() {
-        showWorkItem?.cancel()
+        Self.activeTrackingView?.cancelAndClose()
+        Self.activeTrackingView = self
+        observeDismissal()
+        let request = UUID()
+        generation = request
         let workItem = DispatchWorkItem { [weak self] in
-            self?.showPanel()
+            guard let self, self.generation == request else { return }
+            self.showPanel()
         }
         showWorkItem = workItem
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [
+            .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged,
+            .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel, .keyDown
+        ]) { [weak self] event in
+            guard let self else { return event }
+            if event.type != .mouseMoved || event.window !== self.window || !self.containsPointer() {
+                self.cancelAndClose()
+            }
+            return event
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: workItem)
+    }
+
+    private func containsPointer() -> Bool {
+        guard let window, !isHiddenOrHasHiddenAncestor, !visibleRect.isEmpty else { return false }
+        let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        return visibleRect.contains(point)
     }
 
     private func showPanel() {
         showWorkItem = nil
         // Adding/ordering a child panel of a background editor can bring the
         // editor back above an auxiliary window. A tooltip never owns focus.
-        guard toolTipPanel == nil, NSApp.isActive, let window,
-              window.isKeyWindow, !isHiddenOrHasHiddenAncestor else { return }
-        let mouseLocation = convert(window.mouseLocationOutsideOfEventStream, from: nil)
-        guard bounds.contains(mouseLocation) else { return }
+        guard Self.activeTrackingView === self, toolTipPanel == nil, NSApp.isActive,
+              let window, window.isKeyWindow, containsPointer() else {
+            cancelAndClose()
+            return
+        }
 
         let panel = ToolTipPanel(text: text, shortcut: shortcut)
         let targetRect = window.convertToScreen(convert(bounds, to: nil))
@@ -155,9 +199,14 @@ final class ToolTipTrackingView: NSView {
         toolTipPanel = panel
     }
 
-    private func cancelAndClose() {
+    func cancelAndClose() {
+        generation = UUID()
         showWorkItem?.cancel()
         showWorkItem = nil
+        if Self.activeTrackingView === self { Self.activeTrackingView = nil }
+        if let eventMonitor { NSEvent.removeMonitor(eventMonitor); self.eventMonitor = nil }
+        windowObservers.forEach(NotificationCenter.default.removeObserver)
+        windowObservers.removeAll()
         closePanel()
     }
 
@@ -180,6 +229,7 @@ private final class ToolTipPanel: NSPanel {
             backing: .buffered,
             defer: true
         )
+        identifier = NSUserInterfaceItemIdentifier("LacEditor.HoverHelp")
 
         let effectView = NSVisualEffectView()
         effectView.material = .popover

@@ -7,7 +7,6 @@ struct LacEditorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appState: AppState
     @StateObject private var windowManager: WindowManager
-    private let primaryWindowID: UUID
 
     init() {
         let manager = WindowManager(
@@ -24,26 +23,23 @@ struct LacEditorApp: App {
         )
         state.windowManager = manager
         let windowID = UUID()
+        manager.preparePrimaryWindow(windowID: windowID, state: state)
         _appState = StateObject(wrappedValue: state)
         _windowManager = StateObject(wrappedValue: manager)
-        primaryWindowID = windowID
         AppDelegate.sharedManager = manager
     }
 
     var body: some Scene {
-        Window(AppEnvironment.displayName, id: "main") {
-            EditorWindowRoot(
-                appState: appState,
-                windowManager: windowManager,
-                windowID: primaryWindowID
-            )
-            .task { await windowManager.prepareExperimentSamples() }
+        // AppKit owns every editor window, including the first one. A file
+        // launch does not ask SwiftUI to instantiate a Window scene, so mixing
+        // scene-owned and manager-owned editors can leave queued files waiting
+        // for a window that is only created by a later Dock reopen event.
+        Settings {
+            SettingsHostView(fallbackState: appState, windowManager: windowManager)
         }
-        .defaultSize(width: 1180, height: 780)
         .commands {
             LacEditorCommands(windowManager: windowManager)
         }
-
     }
 }
 
@@ -293,12 +289,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Self.sharedManager?.reopenPrimaryWindow()
+        Task { @MainActor in
+            await Self.sharedManager?.prepareExperimentSamples()
+        }
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(
         _ sender: NSApplication
     ) -> Bool {
-        // Finder's document event can briefly close the SwiftUI scene while
-        // routing the file. Keep the application alive so the existing
-        // workspace and unsaved tabs are not discarded.
+        // Closing the final window keeps the app alive for Finder/Dock reopen.
         false
     }
 
@@ -652,7 +653,7 @@ struct WindowCloseCoordinator: NSViewRepresentable {
         }
 
         func windowDidBecomeKey(_ notification: Notification) {
-            // A SwiftUI Window scene may be reopened from the Dock after it
+            // The retained primary window can reopen from the Dock after it
             // was closed. Rebind the existing session before activating it so
             // menu commands and sidebar state target this window again.
             if let window = notification.object as? NSWindow {

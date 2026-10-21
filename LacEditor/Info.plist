@@ -16,6 +16,8 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LacEditorReleaseStage</key>
+	<string>$(LACEDITOR_RELEASE_STAGE)</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 	<key>NSHighResolutionCapable</key>
@@ -30,7 +32,7 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
-			<string>Owner</string>
+			<string>$(LACEDITOR_HANDLER_RANK)</string>
 			<key>CFBundleTypeExtensions</key>
 			<array>
 				<string>txt</string>

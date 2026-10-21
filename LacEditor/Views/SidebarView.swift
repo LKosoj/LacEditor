@@ -65,17 +65,13 @@ struct SidebarView: View {
                     .foregroundStyle(isSettingsHovering ? .primary : .secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 8)
+                    .frame(height: 40)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(SoftRowButtonStyle())
+            .buttonStyle(QuietActionButtonStyle())
             .focused($settingsFocused)
             .editorFocusRing(settingsFocused)
             .stableHelp("打开设置", shortcut: "⌘,")
-            .frame(height: 40)
-            .background(
-                isSettingsHovering ? LacEditorDesign.hoverFill : .clear,
-                in: RoundedRectangle(cornerRadius: 5, style: .continuous)
-            )
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .onHover { isSettingsHovering = $0 }
@@ -95,7 +91,7 @@ private struct SidebarOperationFeedback: View {
             if let item = state.item {
                 Image(systemName: item.symbol).foregroundStyle(.secondary)
                     .accessibilityHidden(true)
-                Text(item.title).lineLimit(1).help(item.title)
+                Text(item.title).lineLimit(1).stableHelp(item.title)
                     .accessibilityIdentifier("sidebar.feedback.message")
                 Spacer(minLength: 0)
                 if item.canUndo {
@@ -105,8 +101,6 @@ private struct SidebarOperationFeedback: View {
                         .accessibilityIdentifier("sidebar.feedback.undo")
                 }
             } else {
-                Text("右键文件可收藏或整理到分组").foregroundStyle(.tertiary)
-                    .lineLimit(1)
                 Spacer(minLength: 0)
             }
         }

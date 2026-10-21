@@ -71,7 +71,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         if let appState {
             self.appState = appState
         }
-        guard let appState else { return }
+        guard let appState = self.appState else { return }
 
         let document = appState.selectedDocument
         let manager = appState.hostWindow?.firstResponder?.undoManager
@@ -89,7 +89,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         guard presentation != lastPresentation else { return }
         // Items are materialized after makeToolbar returns. Do not cache an
         // unrendered presentation or the first real update would be skipped.
-        if sidebarItem != nil { lastPresentation = presentation }
+        if previewItem != nil { lastPresentation = presentation }
         titleField.stringValue = presentation.title
         titleField.toolTip = document?.url?.path ?? "未命名文档"
         if let window = appState.hostWindow {
@@ -102,6 +102,10 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         sidebarItem?.toolTip = appState.isSidebarVisible
             ? "隐藏侧边栏（⌃⌘B）"
             : "显示侧边栏（⌃⌘B）"
+        // AppKit synchronizes item insertion/removal across toolbars sharing
+        // an identifier. Native isHidden is explicitly local to each instance,
+        // so Markdown and code tabs can safely show different controls.
+        previewItem?.isHidden = document?.language != .markdown
 
         guard let document = appState.selectedDocument else {
             historyItem?.isEnabled = false
@@ -245,6 +249,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         )
         item.target = self
         item.action = #selector(togglePreview)
+        item.isHidden = appState?.selectedDocument?.language != .markdown
         previewItem = item
         return item
     }
@@ -343,6 +348,7 @@ func configureEditorWindowToolbar(_ window: NSWindow, appState: AppState) {
     let controller = EditorWindowToolbarController(appState: appState)
     let toolbar = controller.makeToolbar()
     window.toolbar = toolbar
+    controller.update()
     // AppKit may materialize the system items one run-loop turn after the
     // toolbar is assigned. Normalize them again after that materialization so
     // the accessibility label and tooltip never fall back to English.

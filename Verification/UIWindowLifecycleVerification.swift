@@ -55,10 +55,27 @@ struct UIWindowLifecycleVerification {
         CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left)?.post(tap: .cghidEventTap)
         // Keep the pointer over the button long enough to exercise its tooltip.
         try await Task.sleep(for: .milliseconds(700))
+        try captureEditor(pid: pid, name: "settings-hover")
         for type: CGEventType in [.leftMouseDown, .leftMouseUp] {
             CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: .left)?.post(tap: .cghidEventTap)
-            try await Task.sleep(for: .milliseconds(60))
+            try await Task.sleep(for: .milliseconds(180))
+            if type == .leftMouseDown { try captureEditor(pid: pid, name: "settings-pressed") }
         }
+    }
+
+    static func captureEditor(pid: pid_t, name: String) throws {
+        guard let folder = ProcessInfo.processInfo.environment["LACEDITOR_VERIFY_CAPTURE_DIR"] else { return }
+        let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        guard let window = info.first(where: {
+            $0[kCGWindowOwnerPID as String] as? pid_t == pid && $0[kCGWindowLayer as String] as? Int == 0
+        }), let id = window[kCGWindowNumber as String] as? Int else { throw Failure.missing("capture window") }
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-x", "-o", "-l", String(id), URL(fileURLWithPath: folder).appendingPathComponent(name + ".png").path]
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { throw Failure.missing("screenshot") }
     }
 
     static func closeWithKeyboard(pid: pid_t) {
@@ -91,7 +108,16 @@ struct UIWindowLifecycleVerification {
         defer { if let originalPointer { CGWarpMouseCursorPosition(originalPointer) } }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
+        let temporaryHome = ProcessInfo.processInfo.environment["LACEDITOR_VERIFY_TEMP_HOME"] == "1"
+            ? FileManager.default.temporaryDirectory.appendingPathComponent("LacEditor-UI-Window-\(UUID())") : nil
+        if let temporaryHome {
+            try FileManager.default.createDirectory(at: temporaryHome, withIntermediateDirectories: true)
+            configuration.environment = ["CFFIXED_USER_HOME": temporaryHome.path]
+            configuration.arguments = ["-ApplePersistenceIgnoreState", "YES"]
+        }
+        defer { if let temporaryHome { try? FileManager.default.removeItem(at: temporaryHome) } }
         let previousApp = NSWorkspace.shared.frontmostApplication
+        defer { _ = previousApp?.activate(options: []) }
         let app = try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)
         defer { if !app.isTerminated { _ = app.terminate() } }
         let application = AXUIElementCreateApplication(app.processIdentifier)

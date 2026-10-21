@@ -6,6 +6,18 @@ SCRIPT_DIR="${0:A:h}"
 PROJECT_ROOT="${SCRIPT_DIR:h}"
 cd "$PROJECT_ROOT"
 
+cleanup_association_registrations() {
+    for build_app in \
+        '.build/XcodeDerivedData/Build/Products/Release/LacEditor.app' \
+        '.build/XcodeDerivedData/Build/Products/Debug/LacEditor.app' \
+        '.build/AcceptanceDerivedData/Build/Products/Release/LacEditor.app'; do
+        if [[ -d "$build_app" ]]; then
+            zsh "$SCRIPT_DIR/file-associations.sh" --unregister-build "$PROJECT_ROOT/$build_app" || true
+        fi
+    done
+}
+trap cleanup_association_registrations EXIT
+
 fail() {
     print -u2 "验收失败：$1"
     exit 1
@@ -80,6 +92,8 @@ app_path=".build/XcodeDerivedData/Build/Products/Release/LacEditor.app"
 info_plist="$app_path/Contents/Info.plist"
 binary="$app_path/Contents/MacOS/LacEditor"
 [[ -d "$app_path" ]] || fail "缺少 Release App 产物。"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDocumentTypes:0:LSHandlerRank' "$info_plist")" == "None" ]] \
+    || fail "构建目录内的 Release App 不应参与文件打开推荐。"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$info_plist")" == "26.0" ]] \
     || fail "最低系统版本不是 macOS 26.0。"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$info_plist")" \
@@ -114,10 +128,16 @@ xcodebuild \
     -destination 'platform=macOS' \
     -derivedDataPath .build/AcceptanceDerivedData \
     PRODUCT_BUNDLE_IDENTIFIER=com.laceditor.acceptance \
+    INFOPLIST_FILE=Config/Info-Development.plist \
+    'LACEDITOR_DEVELOPMENT_NAME=LacEditor 验收版' \
     CODE_SIGNING_ALLOWED=NO \
     build >/dev/null
 
 acceptance_app=".build/AcceptanceDerivedData/Build/Products/Release/LacEditor.app"
 [[ -d "$acceptance_app" ]] || fail "隔离 UI 验收 App 构建失败。"
+if /usr/libexec/PlistBuddy -c 'Print :CFBundleDocumentTypes' "$acceptance_app/Contents/Info.plist" >/dev/null 2>&1; then
+    fail "验收 App 不应声明文件关联。"
+fi
+zsh "$SCRIPT_DIR/file-associations.sh" --self-test
 print
 print "自动化验收通过。UI 验收 App：$acceptance_app"

@@ -5,6 +5,123 @@ import XCTest
 
 @MainActor
 final class InteractionPolishTests: XCTestCase {
+    func testPreviewToolbarItemFollowsLanguageAndKeepsOtherControls() async throws {
+        _ = NSApplication.shared
+        let suite = "LacEditorTests.ui9.toolbar.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let document = EditorDocument(text: "# 正文", language: .plainText)
+        let state = AppState(initialDocument: document, recentFiles: RecentFilesStore(defaults: defaults),
+                             preferences: AppPreferences(defaults: defaults))
+        defer { state.closeAuxiliaryWindows() }
+        let controller = EditorWindowToolbarController(appState: state)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 600),
+                              styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let toolbar = controller.makeToolbar()
+        window.toolbar = toolbar
+        window.orderFront(nil)
+        try await Task.sleep(for: .milliseconds(150))
+        controller.update()
+        let preview = NSToolbarItem.Identifier("LacEditor.Preview")
+        let stableItems = toolbar.items.map(\.itemIdentifier).filter { $0 != preview }
+        XCTAssertFalse(stableItems.isEmpty, "AppKit must materialize the toolbar before checking it")
+        XCTAssertTrue(try XCTUnwrap(toolbar.items.first { $0.itemIdentifier == preview }).isHidden)
+        let otherState = AppState(initialDocument: EditorDocument(text: "# 另一标签", language: .markdown),
+                                  recentFiles: RecentFilesStore(defaults: defaults),
+                                  preferences: AppPreferences(defaults: defaults))
+        defer { otherState.closeAuxiliaryWindows() }
+        let otherController = EditorWindowToolbarController(appState: otherState)
+        let otherWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 600),
+                                   styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        otherWindow.isReleasedWhenClosed = false
+        defer { otherWindow.close() }
+        let otherToolbar = otherController.makeToolbar()
+        otherWindow.toolbar = otherToolbar
+        otherWindow.orderFront(nil)
+        try await Task.sleep(for: .milliseconds(100))
+        otherController.update()
+        for _ in 0..<3 {
+            for language in EditorLanguage.allCases {
+                document.language = language
+                controller.update()
+                XCTAssertEqual(toolbar.items.filter { $0.itemIdentifier == preview && !$0.isHidden }.count,
+                               language == .markdown ? 1 : 0, "Wrong toolbar for \(language)")
+                XCTAssertEqual(toolbar.items.map(\.itemIdentifier).filter { $0 != preview }, stableItems)
+                XCTAssertFalse(try XCTUnwrap(otherToolbar.items.first { $0.itemIdentifier == preview }).isHidden,
+                               "Another window's Markdown button must remain visible")
+            }
+        }
+        document.language = .markdown
+        controller.update()
+        otherState.selectedDocument?.language = .json
+        otherController.update()
+        XCTAssertFalse(try XCTUnwrap(toolbar.items.first { $0.itemIdentifier == preview }).isHidden)
+        XCTAssertTrue(try XCTUnwrap(otherToolbar.items.first { $0.itemIdentifier == preview }).isHidden)
+        XCTAssertEqual(document.text, "# 正文")
+        XCTAssertFalse(document.isDirty)
+    }
+
+    func testTooltipOwnershipScrollMenuResizeAndRelease() async throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 260, height: 200),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 260, height: 200))
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 800))
+        scroll.documentView = content
+        window.contentView = scroll
+        let first = ToolTipTrackingView(text: "文件一", shortcut: nil)
+        first.frame = NSRect(x: 0, y: 0, width: 100, height: 40)
+        content.addSubview(first)
+        var second: ToolTipTrackingView? = ToolTipTrackingView(text: "文件二", shortcut: "⌘,")
+        weak var released = second
+        content.addSubview(try XCTUnwrap(second))
+        let event = try XCTUnwrap(NSEvent.enterExitEvent(with: .mouseEntered, location: .zero,
+            modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+            context: nil, eventNumber: 0, trackingNumber: 0, userData: nil))
+        XCTAssertNil(first.toolTip, "Native and custom help must not appear together")
+        first.mouseEntered(with: event)
+        second?.mouseEntered(with: event)
+        XCTAssertFalse(first.isPresentationPending, "A new owner must cancel a missing mouseExited")
+        XCTAssertTrue(second?.isPresentationPending == true)
+        NotificationCenter.default.post(name: NSView.boundsDidChangeNotification, object: scroll.contentView)
+        XCTAssertFalse(second?.isPresentationPending == true)
+        for name in [NSMenu.didBeginTrackingNotification, NSWindow.didResizeNotification] {
+            first.mouseEntered(with: event)
+            NotificationCenter.default.post(name: name, object: name == NSMenu.didBeginTrackingNotification ? NSMenu() : window)
+            XCTAssertFalse(first.isPresentationPending)
+        }
+        second?.mouseEntered(with: event)
+        second?.removeFromSuperview()
+        second = nil
+        try await Task.sleep(for: .milliseconds(700))
+        XCTAssertNil(released, "Pending help and its event monitor must not retain a removed row")
+        XCTAssertTrue(window.childWindows?.isEmpty ?? true, "Cancelled delayed work must not recreate help")
+    }
+
+    func testSidebarScrollbarEmphasisIsLocalAndTracksSystemPolicy() {
+        let sidebar = NSScrollView(frame: NSRect(x: 0, y: 0, width: 250, height: 400))
+        sidebar.hasVerticalScroller = true
+        let editor = NSScrollView()
+        editor.hasVerticalScroller = true
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 250, height: 900))
+        let bridge = NativeScrollViewConfigurator.ConfiguratorView()
+        bridge.indicatorOpacity = 0.6
+        content.addSubview(bridge)
+        sidebar.documentView = content
+        bridge.configureScrollViews()
+        XCTAssertEqual(sidebar.verticalScroller?.alphaValue,
+                       NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast ? 1 : 0.6)
+        XCTAssertEqual(editor.verticalScroller?.alphaValue, 1)
+        NotificationCenter.default.post(name: NSScroller.preferredScrollerStyleDidChangeNotification, object: nil)
+        XCTAssertEqual(sidebar.scrollerStyle, NSScroller.preferredScrollerStyle)
+        XCTAssertTrue(sidebar.autohidesScrollers)
+        XCTAssertEqual(editor.verticalScroller?.alphaValue, 1)
+    }
+
     func testFeedbackExpiryReplacementPauseUndoAndRelease() async throws {
         var state: InlineFeedbackState? = InlineFeedbackState(duration: .milliseconds(100))
         weak var released = state

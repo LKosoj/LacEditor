@@ -5,6 +5,46 @@ import WebKit
 
 @MainActor
 final class NativeTabsTests: XCTestCase {
+    func testPreparedPrimaryDrainsEarlyFinderEventAndReopensSameSession() async throws {
+        _ = NSApplication.shared
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("cold-launch.txt")
+        try "cold-launch text".write(to: url, atomically: true, encoding: .utf8)
+        let manager = WindowManager()
+        let state = AppState(recentFiles: manager.recentFiles, preferences: manager.preferences)
+        let id = UUID()
+        manager.preparePrimaryWindow(windowID: id, state: state)
+        XCTAssertNil(state.hostWindow)
+        manager.openFilesFromFinder([url])
+        XCTAssertNil(state.hostWindow, "Early files wait until applicationDidFinishLaunching")
+        manager.reopenPrimaryWindow()
+        let window = try XCTUnwrap(state.hostWindow)
+        defer {
+            for member in window.tabGroup?.windows ?? [window] { member.delegate = nil; member.close() }
+        }
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertTrue(manager.activeState === state)
+        XCTAssertTrue(window.isVisible)
+        XCTAssertEqual(state.selectedDocument?.url, url)
+        XCTAssertEqual(state.selectedDocument?.text, "cold-launch text")
+        manager.reopenPrimaryWindow()
+        XCTAssertTrue(state.hostWindow === window)
+        XCTAssertEqual(manager.captureWorkspaceSnapshot().windows.flatMap(\.documents).count, 1)
+        state.closeSelectedDocument()
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertTrue(state.selectedDocument?.isDisposableBlank == true)
+        state.closeSelectedDocument()
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertFalse(window.isVisible)
+        manager.openFilesFromFinder([url])
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertTrue(window.isVisible)
+        XCTAssertTrue(state.hostWindow === window)
+        XCTAssertEqual(state.selectedDocument?.text, "cold-launch text")
+    }
+
     func testLastPopulatedTabBecomesBlankBeforeWindowCloses() async throws {
         _ = NSApplication.shared
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

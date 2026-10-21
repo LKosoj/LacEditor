@@ -135,6 +135,64 @@ final class UIExperimentTests: XCTestCase {
         return result == KERN_SUCCESS ? info.resident_size : 0
     }
 
+    func testCandidatePreviewEnduranceAndRelease() async throws {
+        guard ProcessInfo.processInfo.environment["LACEDITOR_RC_PREVIEW"] == "1" else {
+            throw XCTSkip("Enable LACEDITOR_RC_PREVIEW for the candidate preview workload")
+        }
+        _ = NSApplication.shared
+        let text = String(repeating: "## 中英文 Mixed text\n\n正文与 `code`。\n\n1. first\n2. second\n\n", count: 300)
+        var fixture: UI2Fixture? = try UI2Fixture(text: text, language: .markdown)
+        weak var releasedEditor: LacTextView?
+        weak var releasedWebView: MarkdownWebView?
+        var samples: [UInt64] = []
+        func workload(_ fixture: UI2Fixture) async throws {
+            fixture.preferences.wordWrapEnabled = true
+            fixture.document.isPreviewVisible = true
+            let window = try XCTUnwrap(fixture.state.hostWindow)
+            let content = try XCTUnwrap(window.contentView)
+            try await Task.sleep(for: .seconds(1))
+            let editor = try XCTUnwrap(descendants(in: content, of: LacTextView.self).first)
+            let web = try XCTUnwrap(descendants(in: content, of: MarkdownWebView.self).first)
+            releasedEditor = editor
+            releasedWebView = web
+            samples.append(hostResidentSize())
+            for cycle in 0..<60 {
+                fixture.document.text = text + "\nRC1-latest-\(cycle)\n"
+                fixture.state.togglePreview()
+                fixture.state.toggleSidebar()
+                if cycle.isMultiple(of: 3) {
+                    window.setContentSize(NSSize(width: cycle.isMultiple(of: 2) ? 1000 : 1180, height: 720))
+                }
+                if let scroll = editor.enclosingScrollView {
+                    let y = max(0, editor.bounds.height - scroll.contentSize.height) * CGFloat(cycle % 10) / 10
+                    scroll.contentView.scroll(to: NSPoint(x: 0, y: y))
+                    scroll.reflectScrolledClipView(scroll.contentView)
+                }
+                content.layoutSubtreeIfNeeded()
+                try await Task.sleep(for: .milliseconds(250))
+                if cycle.isMultiple(of: 10) { samples.append(hostResidentSize()) }
+                XCTAssertTrue(descendants(in: content, of: LacTextView.self).first === editor)
+                XCTAssertTrue(descendants(in: content, of: MarkdownWebView.self).first === web)
+            }
+            fixture.document.isPreviewVisible = true
+            fixture.document.text = text + "\nRC1-final-revision\n"
+            try await Task.sleep(for: .seconds(2))
+            let body = try await web.evaluateJavaScript("document.body.innerText") as? String
+            XCTAssertTrue(body?.contains("RC1-final-revision") == true, "Preview must show the final revision after repeated cancellation")
+            XCTAssertFalse(body?.contains("RC1-latest-") == true)
+            samples.append(hostResidentSize())
+            fixture.document.markSaved()
+        }
+        try await workload(try XCTUnwrap(fixture))
+        fixture?.dispose()
+        fixture = nil
+        try await Task.sleep(for: .seconds(2))
+        XCTAssertNil(releasedEditor)
+        XCTAssertNil(releasedWebView, "Closing the editor must release its WebKit view")
+        print("RC1_PREVIEW cycles=60 host_rss_bytes=\(samples) after_close_rss_bytes=\(hostResidentSize()) editor_and_webview_released=true")
+        fflush(stdout)
+    }
+
     func testSettingsPresentationFinishesOriginatingEventAndReleasesClosedHost() async throws {
         _ = NSApplication.shared
         let fixture = try UI2Fixture()

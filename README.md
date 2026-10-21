@@ -8,14 +8,16 @@ LacEditor 为日常文本、Markdown、JSON 和代码编辑而生：打开即写
 <p>
   <a href="https://github.com/kolmh/LacEditor/releases/latest">下载最新版</a>
   ·
-  <a href="https://github.com/kolmh/LacEditor/releases/tag/v0.14.4">查看更新日志</a>
+  <a href="https://github.com/kolmh/LacEditor/releases/tag/v0.15.0">查看更新日志</a>
   ·
   <a href="https://github.com/kolmh/LacEditor/issues">反馈问题</a>
 </p>
 
-> 当前版本：`0.14.4` · macOS 26+ · Apple Silicon
+> 最新正式发布：`0.15.0` · macOS 26+ · Apple Silicon
 
-当前分支正在进行 **0.15.0 · UI8（构建 71）界面实验**，提供独立 App 与数据存储，尚未替换以上正式版本。本轮补齐侧栏操作反馈与就地撤销、自定义控件键盘焦点、编解码复制确认，并过滤重复的界面状态通知；保留 UI7 动效与 8 份可编辑示例。安装、构建与变化见 [实验版说明](docs/UI_EXPERIMENT_README.md)。
+当前版本：**0.15.0（构建 76）**。本版带来更紧凑的侧栏、可撤销的文件整理、更稳定的悬停反馈与「文件关联」设置，并修复双击关联文件冷启动时不显示窗口的问题。沿用原有设置和工作区，不包含体验文档入口或自动示例。
+
+从 [GitHub Release](https://github.com/kolmh/LacEditor/releases/tag/v0.15.0) 下载 `LacEditor-0.15.0-arm64.zip`；退出旧版后解压，将 `LacEditor.app` 拖到「应用程序」替换。适用于 Apple Silicon、macOS 26 及以上。构建与验收见 [0.15.0 发布记录](AcceptanceReports/0.15.0-2026-10-21.md)。
 
 ## 为什么是 LacEditor？
 
@@ -47,6 +49,8 @@ LacEditor 为日常文本、Markdown、JSON 和代码编辑而生：打开即写
 支持多窗口、多标签、标签拖动排序、标签拖出成窗口、最近文件、收藏夹和自定义分组。同一个磁盘文件
 在多个窗口中只会打开一个可编辑实例，外部文件发生变化时默认不会静默覆盖。
 
+在「设置 > 文件关联」查看常见格式的默认打开应用，按需将其设为 LacEditor；不会在安装或启动时自动更改。
+
 ### 退出后继续工作
 
 默认退出时保留完整工作区，下次启动恢复窗口、标签、正文、未保存状态、选区、滚动位置和界面状态。
@@ -61,9 +65,10 @@ LacEditor 为日常文本、Markdown、JSON 和代码编辑而生：打开即写
 
 ## 从源码构建
 
-当前另有独立的 FlClash 风格 UI 实验分支，使用现有 SwiftUI + AppKit，无需安装 Flutter。
-实验版安装、Xcode scheme、打包命令与本轮范围见 [实验版说明](docs/UI_EXPERIMENT_README.md)。
-正式发行版本仍为上方所示版本，实验包不会覆盖正式 App 的设置和恢复数据。
+当前分支使用现有 SwiftUI + AppKit，无需安装 Flutter。
+`LacEditor` scheme 的 Debug 使用独立开发身份及数据；正式安装包通过 `zsh Scripts/package-release.sh` 生成。
+`LacEditor-UI-Experiment` scheme 保留独立实验身份，详情见 [实验版说明](docs/UI_EXPERIMENT_README.md)。
+正式安装包沿用正式数据，独立实验包的数据不会自动迁移。RC 候选阶段的打包与验证说明保留在 [候选阶段文档](docs/RELEASE_CANDIDATE.md)。
 
 环境要求：
 

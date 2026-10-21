@@ -13,7 +13,7 @@ struct LacEditorCommands: Commands {
     }
 
     var body: some Commands {
-        CommandGroup(after: .appInfo) {
+        CommandGroup(replacing: .appSettings) {
             Button {
                 SettingsWindowController.shared.present(windowManager: windowManager)
             } label: {

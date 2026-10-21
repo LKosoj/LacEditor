@@ -16,7 +16,7 @@ final class WindowManager: ObservableObject {
     let experimentSamples: ExperimentSampleLibrary?
     @Published private(set) var activeState: AppState?
     @Published private(set) var draggedDocumentID: UUID?
-    /// Changes whenever the retained primary scene is reopened. Sidebar
+    /// Changes whenever the retained primary window is reopened. Sidebar
     /// scroll views use this identity to discard stale content offsets from a
     /// window that was closed after its last tab was removed.
     @Published private(set) var primaryReopenGeneration = 0
@@ -37,9 +37,8 @@ final class WindowManager: ObservableObject {
 
     private var states: [UUID: AppState] = [:]
     private var windowControllers: [UUID: NSWindowController] = [:]
-    // SwiftUI's primary Window scene can be closed and later reopened from
-    // the Dock without recreating its AppState. Keep that state registered so
-    // commands and sidebar bindings become active again when the scene returns.
+    // Retain the initial editor state and its native window across closing the
+    // last window. App, document, and Dock launches share this single owner.
     private var primaryWindowID: UUID?
     private var transferringDocumentIDs: Set<UUID> = []
     private var activeTabDrag: ActiveTabDrag?
@@ -98,6 +97,13 @@ final class WindowManager: ObservableObject {
         return recoveredDocuments
     }
 
+    func preparePrimaryWindow(windowID: UUID, state: AppState) {
+        precondition(primaryWindowID == nil)
+        primaryWindowID = windowID
+        states[windowID] = state
+        state.windowManager = self
+    }
+
     func prepareExperimentSamples() async {
         await experimentSamples?.prepare(in: sidebarLibrary)
     }
@@ -150,8 +156,8 @@ final class WindowManager: ObservableObject {
     }
 
     /// Routes files opened from Finder into the already registered editor
-    /// window. Finder can send this event while SwiftUI is still constructing
-    /// the primary scene, so retain the URLs until registration completes
+    /// window. Finder can send this event before applicationDidFinishLaunching,
+    /// so retain the URLs until primary window registration completes
     /// instead of creating a temporary second window.
     func openFilesFromFinder(_ urls: [URL]) {
         let files = urls.filter(\.isFileURL)
@@ -195,15 +201,10 @@ final class WindowManager: ObservableObject {
         guard let state = states[windowID] else { return }
         state.closeAuxiliaryWindows()
 
-        // The primary SwiftUI scene is reusable after its last tab closes.
-        // Removing it here leaves the reopened window with visible content but
-        // no active AppState, which disables Command+T/Command+W and blanks the
-        // sidebar. Secondary native windows still leave the manager normally.
+        // Reuse the primary editor after its final blank tab closes. Its state
+        // must remain registered so sidebar and commands target it on reopen.
         if windowID == primaryWindowID {
             state.resetClosedWindow()
-            // SwiftUI commonly reuses this NSWindow when the app is reopened
-            // from the Dock. Keep the weak reference so the reopen handler can
-            // bring the existing workspace back instead of losing its route.
             setActiveState(states.values.first(where: {
                 $0 !== state && $0.hostWindow?.isVisible == true
             }) ?? state)
@@ -219,12 +220,16 @@ final class WindowManager: ObservableObject {
         }
     }
 
-    /// Re-show the retained primary SwiftUI scene after the last editor
-    /// window was closed and the application was reopened from the Dock.
+    /// Create or re-show the same primary editor for app/file launch and Dock
+    /// reopen. Never wait for a SwiftUI Window scene to bootstrap this state.
     func reopenPrimaryWindow() {
         guard let primaryWindowID,
-              let state = states[primaryWindowID],
-              let window = state.hostWindow else { return }
+              let state = states[primaryWindowID] else { return }
+        guard let window = state.hostWindow else {
+            showNativeWindow(windowID: primaryWindowID, state: state, near: nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
         primaryReopenGeneration &+= 1
         register(windowID: primaryWindowID, state: state, window: window)
         activate(windowID: primaryWindowID)
@@ -260,6 +265,11 @@ final class WindowManager: ObservableObject {
         state.windowManager = self
         states[windowID] = state
 
+        showNativeWindow(windowID: windowID, state: state, near: screenPoint)
+        return state
+    }
+
+    private func showNativeWindow(windowID: UUID, state: AppState, near screenPoint: NSPoint?) {
         let rootView = EditorWindowRoot(
             appState: state,
             windowManager: self,
@@ -285,8 +295,6 @@ final class WindowManager: ObservableObject {
         }
         window.isReleasedWhenClosed = false
 
-        // Register before showing: native tab insertion must not depend on
-        // an asynchronous SwiftUI representable callback.
         state.hostWindow = window
 
         let controller = NSWindowController(window: window)
@@ -295,11 +303,14 @@ final class WindowManager: ObservableObject {
         controller.showWindow(nil)
         window.tabbingMode = .preferred
         window.makeKeyAndOrderFront(nil)
+        // Register synchronously once visible, so restoration can insert and
+        // select native tabs without the factory showing the first tab again.
+        // Do not depend on the later SwiftUI representable callback.
+        register(windowID: windowID, state: state, window: window)
         DispatchQueue.main.async { [weak window, weak state] in
             guard let window, let state else { return }
             configureEditorWindowChrome(window, appState: state)
         }
-        return state
     }
 
     private func openRestoredWindow(_ restoration: RestoredWindow) {

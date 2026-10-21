@@ -5,6 +5,14 @@ SCRIPT_DIR="${0:A:h}"
 PROJECT_ROOT="${SCRIPT_DIR:h}"
 cd "$PROJECT_ROOT"
 
+app_path='.build/XcodeDerivedData/Build/Products/Experimental/LacEditor 实验版.app'
+cleanup() {
+    if [[ -d "$app_path" ]]; then
+        zsh "$SCRIPT_DIR/file-associations.sh" --unregister-build "$PROJECT_ROOT/$app_path" || true
+    fi
+}
+trap cleanup EXIT
+
 # Reuse the existing dependency/build cache; never install over the formal App.
 xcodebuild -quiet \
     -project LacEditor.xcodeproj \
@@ -14,7 +22,6 @@ xcodebuild -quiet \
     -derivedDataPath .build/XcodeDerivedData \
     CODE_SIGNING_ALLOWED=NO build
 
-app_path='.build/XcodeDerivedData/Build/Products/Experimental/LacEditor 实验版.app'
 info_plist="$app_path/Contents/Info.plist"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$info_plist")" \
     == 'com.laceditor.ui-experiment' ]] || { print -u2 '实验版标识校验失败。'; exit 1; }

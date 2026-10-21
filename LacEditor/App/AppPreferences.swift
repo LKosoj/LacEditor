@@ -6,13 +6,21 @@ import Foundation
 enum AppEnvironment {
     static let experimentIdentifier = "com.laceditor.ui-experiment"
     static var isExperiment: Bool { Bundle.main.bundleIdentifier == experimentIdentifier }
-    static var displayName: String { isExperiment ? "LacEditor 实验版" : "LacEditor" }
+    static var displayName: String {
+        switch Bundle.main.bundleIdentifier {
+        case experimentIdentifier: "LacEditor 实验版"
+        case "com.laceditor.development": "LacEditor 开发版"
+        case "com.laceditor.acceptance": "LacEditor 验收版"
+        default: "LacEditor"
+        }
+    }
     static var experimentIteration: String { Bundle.main.object(forInfoDictionaryKey: "LacEditorExperimentIteration") as? String ?? "UI8" }
 
     static func dataDirectoryName(for identifier: String?) -> String {
         switch identifier {
         case experimentIdentifier: "LacEditor-UI-Experiment"
         case "com.laceditor.acceptance": "LacEditor-Acceptance"
+        case "com.laceditor.development": "LacEditor-Development"
         default: "LacEditor"
         }
     }
