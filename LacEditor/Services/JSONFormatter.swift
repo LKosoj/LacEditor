@@ -41,13 +41,24 @@ enum JSONFormatter {
     ) -> String {
         let prefix = text.utf8.prefix(max(0, index))
         let decodedPrefix = String(decoding: prefix, as: UTF8.self)
-        let line = decodedPrefix.reduce(into: 1) { count, character in
-            if character == "\n" { count += 1 }
+        var line = 1
+        var lineText = ""
+        var previousWasCR = false
+        for scalar in decodedPrefix.unicodeScalars {
+            if scalar == "\r" {
+                line += 1
+                lineText = ""
+                previousWasCR = true
+            } else if scalar == "\n" {
+                if !previousWasCR { line += 1 }
+                lineText = ""
+                previousWasCR = false
+            } else {
+                lineText.unicodeScalars.append(scalar)
+                previousWasCR = false
+            }
         }
-        let column = decodedPrefix.split(
-            separator: "\n",
-            omittingEmptySubsequences: false
-        ).last?.count ?? 0
+        let column = lineText.count
         return L10n.tr("JSON 无效") + L10n.tr("：第 %@ 行，第 %@ 列。%@", String(describing: line), String(describing: column + 1), description)
     }
 

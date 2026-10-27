@@ -12,13 +12,27 @@ struct SidebarLibraryView: View {
     @State private var hoveredSection: SidebarLibrarySection?
     @FocusState private var focusedHeader: String?
     @StateObject private var dragState = SidebarDragState()
+    @StateObject private var selection = SidebarSelection()
 
     private var filter: SidebarLibraryFilter { SidebarLibraryFilter(query: query) }
     private var favorites: [URL] { filter.files(library.favoriteURLs) }
     private var groups: [SidebarFileGroup] { filter.groups(library.groups) }
     private var recent: [URL] { filter.files(recentFiles.urls) }
+    private var visibleSelectionURLs: [URL] {
+        switch selection.location {
+        case .favorites: return library.favoriteSectionExpanded || filter.isActive ? favorites : []
+        case .recent: return library.recentSectionExpanded || filter.isActive ? recent : []
+        case let .group(id):
+            guard library.groupsSectionExpanded || filter.isActive,
+                  let group = groups.first(where: { $0.id == id }),
+                  group.isExpanded || filter.isActive else { return [] }
+            return group.urls
+        case nil: return []
+        }
+    }
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView(.vertical) {
             LazyVStack(alignment: .leading, spacing: 16) {
             if filter.isActive, favorites.isEmpty, groups.isEmpty, recent.isEmpty {
@@ -106,7 +120,17 @@ struct SidebarLibraryView: View {
         .scrollIndicators(.automatic)
         .scrollContentBackground(.hidden)
         .environmentObject(dragState)
+        .environmentObject(selection)
+        .onChange(of: visibleSelectionURLs) { _, urls in
+            if let location = selection.location { selection.reconcile(in: location, urls: urls) }
+        }
         .onDisappear { dragState.finish() }
+        .onChange(of: selection.focused) { _, focused in
+            if let focused {
+                proxy.scrollTo(focused.location.accessibilityID + focused.path)
+            }
+        }
+        }
     }
 
     @ViewBuilder
@@ -205,7 +229,7 @@ struct SidebarLibraryView: View {
     ) -> some View {
         VStack(spacing: 2) {
             ForEach(urls, id: \.path) { url in
-                SidebarFileRow(url: url, location: location)
+                SidebarFileRow(url: url, location: location, urls: urls)
                     .onDrag {
                         SidebarDragPayload.file(url, location: location).itemProvider()
                     }
@@ -289,7 +313,7 @@ private struct SidebarGroupView: View {
             SidebarDisclosure(isExpanded: isExpanded) {
                 VStack(spacing: 2) {
                     ForEach(group.urls, id: \.path) { url in
-                        SidebarFileRow(url: url, location: .group(group.id))
+                        SidebarFileRow(url: url, location: .group(group.id), urls: group.urls)
                             .padding(.leading, 15)
                             .onDrag {
                                 SidebarDragPayload.file(
@@ -323,11 +347,69 @@ enum SidebarFileLocation: Equatable {
     }
 }
 
+@MainActor
+final class SidebarSelection: ObservableObject {
+    @Published var location: SidebarFileLocation?
+    @Published var paths: Set<String> = []
+    struct Focus: Equatable {
+        let location: SidebarFileLocation
+        let path: String
+    }
+
+    @Published var focused: Focus?
+    private var anchor: String?
+
+    func select(_ url: URL, in location: SidebarFileLocation, urls: [URL], command: Bool, shift: Bool) {
+        let path = url.path
+        if self.location != location { paths = []; anchor = nil }
+        self.location = location
+        if shift, let anchor, let start = urls.firstIndex(where: { $0.path == anchor }),
+           let end = urls.firstIndex(where: { $0.path == path }) {
+            paths = Set(urls[min(start, end)...max(start, end)].map(\.path))
+        } else if command {
+            if paths.contains(path) { paths.remove(path) } else { paths.insert(path) }
+            anchor = path
+        } else {
+            paths = [path]
+            anchor = path
+        }
+        focused = Focus(location: location, path: path)
+    }
+
+    func selectAll(in location: SidebarFileLocation, urls: [URL], focused: URL) {
+        self.location = location
+        paths = Set(urls.map(\.path))
+        anchor = focused.path
+        self.focused = Focus(location: location, path: focused.path)
+    }
+
+    func selected(_ url: URL, in location: SidebarFileLocation) -> Bool {
+        self.location == location && paths.contains(url.path)
+    }
+
+    func reconcile(in location: SidebarFileLocation, urls: [URL]) {
+        if self.location == location {
+            paths.formIntersection(Set(urls.map(\.path)))
+            if let anchor, !urls.contains(where: { $0.path == anchor }) { self.anchor = nil }
+        }
+        if let focused, focused.location == location, !urls.contains(where: { $0.path == focused.path }) {
+            self.focused = nil
+        }
+    }
+}
+
 private struct SidebarFileRow: View {
+    private struct MetadataRequest: Equatable {
+        let url: URL
+        let windowIsActive: Bool
+    }
+
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var windowManager: WindowManager
     let url: URL
     let location: SidebarFileLocation
+    let urls: [URL]
+    @EnvironmentObject private var selection: SidebarSelection
     @State private var isHovering = false
     @FocusState private var isFocused: Bool
     @State private var fileExists = true
@@ -344,11 +426,12 @@ private struct SidebarFileRow: View {
 
     var body: some View {
         Button {
-            if FileManager.default.fileExists(atPath: url.path) {
-                appState.openFile(url)
-            } else {
-                windowManager.requestRelocateSidebarFile(url)
-            }
+            let modifiers = NSApp.currentEvent?.modifierFlags ?? []
+            let modified = modifiers.contains(.command) || modifiers.contains(.shift)
+            selection.select(url, in: location, urls: urls, command: modifiers.contains(.command),
+                             shift: modifiers.contains(.shift))
+            if modified { return }
+            openFile()
         } label: {
             HStack(spacing: 9) {
                 Image(systemName: exists
@@ -384,7 +467,7 @@ private struct SidebarFileRow: View {
             .frame(height: 46)
             .contentShape(Rectangle())
             .background(
-                isOpen ? (activeState == .inactive ? Color.primary.opacity(0.07) : LacEditorDesign.selectionFill)
+                selection.selected(url, in: location) ? (activeState == .inactive ? Color.primary.opacity(0.07) : LacEditorDesign.selectionFill)
                     : (isHovering ? LacEditorDesign.hoverFill : .clear),
                 in: RoundedRectangle(
                     cornerRadius: LacEditorDesign.compactCornerRadius,
@@ -401,12 +484,33 @@ private struct SidebarFileRow: View {
         .buttonStyle(SoftRowButtonStyle())
         .focused($isFocused)
         .editorFocusRing(isFocused)
+        .id(location.accessibilityID + url.path)
         .accessibilityIdentifier("sidebar.file.\(location.accessibilityID).\(url.path)")
         .onHover { isHovering = $0 }
         .animation(reduceMotion ? nil : LacEditorDesign.hoverAnimation, value: isHovering)
         .stableHelp(url.path)
-        .accessibilityAddTraits(isOpen ? .isSelected : [])
-        .task(id: url) {
+        .accessibilityAddTraits(selection.selected(url, in: location) ? .isSelected : [])
+        .accessibilityValue(isOpen ? L10n.tr("已打开") : "")
+        .onChange(of: selection.focused) { _, focused in
+            if focused == SidebarSelection.Focus(location: location, path: url.path) { isFocused = true }
+        }
+        .onChange(of: isFocused) { _, focused in
+            if focused { selection.focused = SidebarSelection.Focus(location: location, path: url.path) }
+        }
+        .onChange(of: urls) { _, newURLs in selection.reconcile(in: location, urls: newURLs) }
+        .onKeyPress(.upArrow) { moveFocus(-1) }
+        .onKeyPress(.downArrow) { moveFocus(1) }
+        .onKeyPress(.return) {
+            selection.select(url, in: location, urls: urls, command: false, shift: false)
+            openFile()
+            return .handled
+        }
+        .onKeyPress("a") { press in
+            guard press.modifiers.contains(.command) else { return .ignored }
+            selection.selectAll(in: location, urls: urls, focused: url)
+            return .handled
+        }
+        .task(id: MetadataRequest(url: url, windowIsActive: activeState != .inactive)) {
             let url = url
             let metadata = await Task.detached(priority: .utility) {
                 (FileManager.default.fileExists(atPath: url.path), DocumentFileIdentity.resolve(url))
@@ -415,12 +519,55 @@ private struct SidebarFileRow: View {
             fileExists = metadata.0
             fileIdentity = metadata.1
         }
-        .contextMenu { contextMenu }
+        .contextMenu {
+            contextMenu.onAppear {
+                if !selection.selected(url, in: location) {
+                    selection.select(url, in: location, urls: urls, command: false, shift: false)
+                }
+            }
+        }
+    }
+
+    private func openFile() {
+        if FileManager.default.fileExists(atPath: url.path) {
+            appState.openFile(url)
+        } else {
+            windowManager.requestRelocateSidebarFile(url)
+        }
+    }
+
+    private func moveFocus(_ offset: Int) -> KeyPress.Result {
+        guard let index = urls.firstIndex(of: url) else { return .ignored }
+        let next = max(0, min(urls.count - 1, index + offset))
+        selection.select(urls[next], in: location, urls: urls, command: false,
+                         shift: NSApp.currentEvent?.modifierFlags.contains(.shift) == true)
+        return .handled
+    }
+
+    private var selectedURLs: [URL] {
+        selection.selected(url, in: location) ? urls.filter { selection.paths.contains($0.path) } : [url]
     }
 
     @ViewBuilder
     private var contextMenu: some View {
-        if exists {
+        let exists = FileManager.default.fileExists(atPath: url.path)
+        if selectedURLs.count > 1 {
+            let existing = selectedURLs.filter { FileManager.default.fileExists(atPath: $0.path) }
+            if !existing.isEmpty {
+                Button(L10n.tr("将所选文件添加到收藏夹")) { appState.addSidebarFavorites(existing) }
+                Menu(L10n.tr("将所选文件添加到分组")) {
+                    ForEach(windowManager.sidebarLibrary.groups) { group in
+                        Button(group.name) { appState.addSidebarFiles(existing, toGroup: group.id) }
+                    }
+                }
+                Button(L10n.tr("在 Finder 中显示所选文件")) {
+                    NSWorkspace.shared.activateFileViewerSelecting(existing)
+                }
+            }
+            Button(L10n.tr("从列表中移除所选文件"), role: .destructive) {
+                appState.removeSidebarFiles(selectedURLs, location: location)
+            }
+        } else if exists {
             Button {
                 appState.openFile(url)
             } label: {
@@ -493,6 +640,7 @@ private struct SidebarFileRow: View {
             }
         }
 
+        if selectedURLs.count <= 1 {
         Divider()
 
         switch location {
@@ -514,6 +662,7 @@ private struct SidebarFileRow: View {
             } label: {
                 Label(L10n.tr("从最近文件中删除"), systemImage: "trash")
             }
+        }
         }
     }
 }

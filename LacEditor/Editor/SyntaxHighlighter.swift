@@ -27,17 +27,20 @@ enum SyntaxHighlighter {
 
     final class IncrementalContext {
         fileprivate let codeLexicalContext = CodeLexicalScanner.IncrementalContext()
+        fileprivate let markupContext = MarkupContext()
 
         func reset() {
             codeLexicalContext.reset()
+            markupContext.reset()
         }
 
         func invalidate(after location: Int) {
             codeLexicalContext.invalidate(after: location)
+            markupContext.invalidate(after: location)
         }
 
         var preparedThrough: Int {
-            codeLexicalContext.preparedThrough
+            max(codeLexicalContext.preparedThrough, markupContext.preparedThrough)
         }
     }
 
@@ -53,10 +56,6 @@ enum SyntaxHighlighter {
         let kind: TokenKind
         let group: Int
     }
-
-    // HTML 属性字符串仍使用这组轻量扫描类型；代码语言统一由
-    // CodeLexicalScanner 管理增量词法状态。
-    private static let contextPadding = 64 * 1_024
 
     static func apply(
         to storage: NSTextStorage,
@@ -141,7 +140,10 @@ enum SyntaxHighlighter {
         } ?? fullRange
         guard highlightRange.length > 0 else { return [] }
 
-        return SyntaxParserRegistry.backend(for: language).tokens(
+        let backend: any SyntaxParserBackend = string.utf8.count > 20 * 1_024 * 1_024
+            ? LexicalSyntaxParserBackend()
+            : SyntaxParserRegistry.backend(for: language)
+        return backend.tokens(
             in: string,
             language: language,
             range: highlightRange,
@@ -167,7 +169,7 @@ enum SyntaxHighlighter {
         case .plainText:
             return []
         case .markdown:
-            return markdownTokens(in: nsString, range: highlightRange)
+            return markdownTokens(in: nsString, range: highlightRange, context: context?.markupContext, revision: revision, isCancelled: isCancelled)
         case .json:
             return jsonTokens(
                 in: string,
@@ -177,7 +179,7 @@ enum SyntaxHighlighter {
                 isCancelled: isCancelled
             )
         case .html:
-            return htmlTokens(in: nsString, range: highlightRange)
+            return cachedHTMLTokens(in: nsString, range: highlightRange, context: context?.markupContext, revision: revision, isCancelled: isCancelled)
         default:
             var result = semanticTokens(
                 in: string,
@@ -198,32 +200,35 @@ enum SyntaxHighlighter {
 
     private static func markdownTokens(
         in string: NSString,
-        range: NSRange
+        range: NSRange,
+        context: MarkupContext?,
+        revision: UInt?,
+        isCancelled: () -> Bool
     ) -> [Token] {
+        guard !isCancelled() else { return [] }
         var result = semanticTokens(
             in: string as String,
             language: .markdown,
             range: range
         )
-        let scanRange = contextualRange(in: string, around: range)
-        let fenced = matches(
-            expression: markdownFenceExpression,
-            in: string as String,
-            range: scanRange,
-            kind: .string
-        )
-        result.append(contentsOf: fenced)
-
-        let fencedRanges = fenced.map(\.range)
-        let inline = matches(
-            expression: markdownInlineCodeExpression,
-            in: string as String,
-            range: scanRange,
-            kind: .string
-        ).filter { token in
-            !fencedRanges.contains(where: { NSIntersectionRange($0, token.range).length > 0 })
+        if context == nil || revision == nil {
+            let full = NSRange(location: 0, length: string.length)
+            let fenced = matches(expression: markdownFenceExpression, in: string as String,
+                                 range: full, kind: .string)
+            guard !isCancelled() else { return [] }
+            let inline = matches(expression: markdownInlineCodeExpression, in: string as String,
+                                 range: full, kind: .string).filter { token in
+                !fenced.contains { NSIntersectionRange($0.range, token.range).length > 0 }
+            }
+            guard !isCancelled() else { return [] }
+            result.append(contentsOf: (fenced + inline).filter {
+                NSIntersectionRange($0.range, range).length > 0
+            })
+            return result
         }
-        result.append(contentsOf: inline)
+        guard let cached = markupTokens(in: string, language: .markdown, range: range,
+                                        context: context, revision: revision, isCancelled: isCancelled) else { return [] }
+        result.append(contentsOf: cached)
         return result
     }
 
@@ -274,14 +279,20 @@ enum SyntaxHighlighter {
 
     private static func htmlTokens(
         in string: NSString,
-        range: NSRange
+        source: String? = nil,
+        range: NSRange,
+        isCancelled: () -> Bool
     ) -> [Token] {
-        let scanRange = contextualRange(in: string, around: range)
+        let source = source ?? (string as String)
+        let scanRange = range
         let end = NSMaxRange(scanRange)
         var location = scanRange.location
         var result: [Token] = []
+        var iterations = 0
 
         while location < end {
+            if iterations.isMultiple(of: 4_096), isCancelled() { return [] }
+            iterations += 1
             if hasPrefix("<!--", in: string, at: location, limit: end) {
                 let commentEnd = rangeOf(
                     "-->",
@@ -299,7 +310,7 @@ enum SyntaxHighlighter {
 
             guard string.character(at: location) == 0x3C,
                   isHTMLTagStart(in: string, at: location, limit: end),
-                  let tagEnd = htmlTagEnd(in: string, from: location, limit: end)
+                  let tagEnd = htmlTagEnd(in: string, from: location, limit: end, isCancelled: isCancelled)
             else {
                 location += 1
                 continue
@@ -341,13 +352,298 @@ enum SyntaxHighlighter {
             }
 
             result.append(contentsOf: CodeLexicalScanner.tokens(
-                in: string as String,
+                in: source,
                 language: .html,
-                range: tagRange
+                range: tagRange,
+                isCancelled: isCancelled
             ).map(syntaxToken))
             location = tagEnd
         }
+        guard !isCancelled() else { return [] }
         return result
+    }
+
+    fileprivate struct MarkupGroup {
+        let range: NSRange
+        let tokens: [Token]
+    }
+
+    fileprivate struct MarkupCursor: Equatable {
+        var position = 0
+        var openStart: Int?
+        var unresolvedStart: Int?
+    }
+
+    // Markdown has separate cursors for fences and inline code, as in the two rules.
+    fileprivate final class MarkupContext {
+        private let lock = NSLock()
+        private var language: EditorLanguage?
+        private var revision: UInt?
+        private var generation: UInt = 0
+        private var acceptsRevisionChange = false
+        private var cursors = [MarkupCursor(), MarkupCursor()]
+        private var groups: [[MarkupGroup]] = [[], []]
+
+        func reset() {
+            lock.lock()
+            resetLocked()
+            lock.unlock()
+        }
+
+        private func resetLocked() {
+            generation &+= 1
+            language = nil
+            revision = nil
+            acceptsRevisionChange = false
+            cursors = [MarkupCursor(), MarkupCursor()]
+            groups = [[], []]
+        }
+
+        func invalidate(after location: Int) {
+            lock.lock()
+            defer { lock.unlock() }
+            generation &+= 1
+            for index in 0..<2 {
+                var safe = min(cursors[index].position, max(0, location - 4))
+                if let open = cursors[index].openStart, safe < cursors[index].position {
+                    safe = min(safe, open)
+                }
+                if let unresolved = cursors[index].unresolvedStart {
+                    safe = min(safe, unresolved)
+                }
+                var low = 0
+                var high = groups[index].count
+                while low < high {
+                    let middle = (low + high) / 2
+                    if NSMaxRange(groups[index][middle].range) <= safe { low = middle + 1 }
+                    else { high = middle }
+                }
+                if low < groups[index].count {
+                    safe = min(safe, groups[index][low].range.location)
+                    groups[index].removeSubrange(low...)
+                }
+                if safe < cursors[index].position {
+                    cursors[index] = MarkupCursor(position: safe)
+                }
+            }
+            acceptsRevisionChange = true
+        }
+
+        var preparedThrough: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return cursors[0].position
+        }
+
+        fileprivate func prepare(language newLanguage: EditorLanguage, revision newRevision: UInt)
+            -> (cursors: [MarkupCursor], counts: [Int], generation: UInt)? {
+            lock.lock()
+            defer { lock.unlock() }
+            if language == newLanguage, let currentRevision = revision,
+               (newRevision < currentRevision || (acceptsRevisionChange && newRevision == currentRevision)) {
+                return nil
+            }
+            if language != newLanguage || (revision != newRevision &&
+                !(acceptsRevisionChange && revision.map { $0 &+ 1 == newRevision } == true)) {
+                resetLocked()
+                language = newLanguage
+                revision = newRevision
+            } else if revision != newRevision {
+                revision = newRevision
+                acceptsRevisionChange = false
+            }
+            return (cursors, groups.map(\.count), generation)
+        }
+
+        fileprivate func relevant(_ index: Int, range: NSRange, count: Int,
+                                  generation expectedGeneration: UInt) -> [MarkupGroup] {
+            lock.lock()
+            defer { lock.unlock() }
+            guard generation == expectedGeneration else { return [] }
+            return SyntaxHighlighter.intersectingGroups(groups[index], range: range, count: count)
+        }
+
+        fileprivate func commit(cursors oldCursors: [MarkupCursor], newCursors: [MarkupCursor],
+                                additions: [[MarkupGroup]], language expectedLanguage: EditorLanguage,
+                                revision expectedRevision: UInt, generation expectedGeneration: UInt) -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            guard language == expectedLanguage, revision == expectedRevision,
+                  generation == expectedGeneration else { return false }
+            // Another scan of the same version may already have extended the prefix.
+            // Its state wins; the locally computed tokens are still valid for this request.
+            if cursors == oldCursors {
+                cursors = newCursors
+                for index in 0..<2 {
+                    groups[index].append(contentsOf: additions[index])
+                }
+            }
+            return true
+        }
+    }
+
+    private static func intersectingGroups(_ groups: [MarkupGroup], range: NSRange, count: Int? = nil) -> [MarkupGroup] {
+        var low = 0
+        let end = min(count ?? groups.count, groups.count)
+        var high = end
+        while low < high {
+            let middle = (low + high) / 2
+            if NSMaxRange(groups[middle].range) <= range.location { low = middle + 1 }
+            else { high = middle }
+        }
+        var result: [MarkupGroup] = []
+        while low < end && groups[low].range.location < NSMaxRange(range) {
+            result.append(groups[low])
+            low += 1
+        }
+        return result
+    }
+
+    private static func cachedHTMLTokens(in string: NSString, range: NSRange,
+                                         context: MarkupContext?, revision: UInt?,
+                                         isCancelled: () -> Bool) -> [Token] {
+        if context == nil || revision == nil {
+            return htmlTokens(in: string, range: NSRange(location: 0, length: string.length),
+                              isCancelled: isCancelled).filter {
+                NSIntersectionRange($0.range, range).length > 0
+            }
+        }
+        return markupTokens(in: string, language: .html, range: range, context: context,
+                            revision: revision, isCancelled: isCancelled) ?? []
+    }
+
+    private static func markupTokens(in string: NSString, language: EditorLanguage, range: NSRange,
+                                     context: MarkupContext?, revision: UInt?,
+                                     isCancelled: () -> Bool) -> [Token]? {
+        let cache = revision == nil ? MarkupContext() : (context ?? MarkupContext())
+        guard let prepared = cache.prepare(language: language, revision: revision ?? 0) else { return nil }
+        let savedCursors = prepared.cursors
+        var cursors = savedCursors
+        let htmlSource: String? = language == .html ? (string as String) : nil
+        do {
+            var additions: [[MarkupGroup]] = [[], []]
+            let target = NSMaxRange(range)
+            let streams = language == .markdown ? [0, 1, 0] : [0]
+            var skipInline = false
+            var checks = 0
+            func cancelled() -> Bool {
+                checks += 1
+                return checks.isMultiple(of: 4096) && isCancelled()
+            }
+            func relevant(_ index: Int, _ requested: NSRange) -> [MarkupGroup] {
+                cache.relevant(index, range: requested, count: prepared.counts[index],
+                               generation: prepared.generation)
+                    + intersectingGroups(additions[index], range: requested)
+            }
+            guard !isCancelled() else { return nil }
+            for stream in streams {
+                if language == .markdown && stream == 1 {
+                    skipInline = relevant(0, range).contains {
+                        $0.range.location <= range.location && NSMaxRange($0.range) >= target
+                    } || (cursors[0].openStart.map {
+                        $0 <= range.location && cursors[0].position >= target
+                    } ?? false)
+                    if skipInline { continue }
+                }
+                var cursor = cursors[stream]
+                let streamTarget = language == .markdown && stream == 0 && !skipInline
+                    ? max(target, relevant(1, range).map { NSMaxRange($0.range) }.max() ?? target)
+                    : target
+                while cursor.position < streamTarget && cursor.position < string.length {
+                    if cancelled() { return nil }
+                    let start = cursor.position
+                    if let open = cursor.openStart {
+                        let closing = language == .markdown ? "```" : "-->"
+                        if hasPrefix(closing, in: string, at: start, limit: string.length) {
+                            cursor.position += 3
+                            let token = Token(range: NSRange(location: open, length: cursor.position - open),
+                                              kind: language == .markdown ? .string : .comment)
+                            additions[stream].append(MarkupGroup(range: token.range, tokens: [token]))
+                            cursor.openStart = nil
+                        } else {
+                            cursor.position += 1
+                        }
+                    } else if language == .markdown && stream == 0 &&
+                        hasPrefix("```", in: string, at: start, limit: string.length) {
+                        cursor.openStart = start
+                        cursor.position += 3
+                    } else if language == .markdown && stream == 1 && string.character(at: start) == 0x60 {
+                        var end = start + 1
+                        while end < string.length && string.character(at: end) != 0x60 && string.character(at: end) != 0x0A {
+                            if cancelled() { return nil }
+                            end += 1
+                        }
+                        if end > start + 1 && end < string.length && string.character(at: end) == 0x60 {
+                            cursor.position = end + 1
+                            let token = Token(range: NSRange(location: start, length: cursor.position - start), kind: .string)
+                            additions[stream].append(MarkupGroup(range: token.range, tokens: [token]))
+                        } else if end == string.length {
+                            cursor.unresolvedStart = start
+                            cursor.position = end
+                        } else if string.character(at: end) == 0x0A {
+                            cursor.position = end + 1
+                        } else {
+                            cursor.position += 1
+                        }
+                    } else if language == .html && hasPrefix("<!--", in: string, at: start, limit: string.length) {
+                        cursor.openStart = start
+                        cursor.position += 4
+                    } else if language == .html && string.character(at: start) == 0x3C &&
+                        isHTMLTagStart(in: string, at: start, limit: string.length) {
+                        var end = start + 1
+                        var quote: unichar?
+                        var foundEnd = false
+                        while end < string.length {
+                            if cancelled() { return nil }
+                            let character = string.character(at: end)
+                            if let active = quote {
+                                if character == active { quote = nil }
+                                else if character == 0x5C { end += 1 }
+                            } else if character == 0x22 || character == 0x27 { quote = character }
+                            else if character == 0x3E { end += 1; foundEnd = true; break }
+                            end += 1
+                        }
+                        if foundEnd {
+                            cursor.position = end
+                            let tagRange = NSRange(location: start, length: end - start)
+                            let tokens = htmlTokens(in: string, source: htmlSource, range: tagRange, isCancelled: isCancelled)
+                            guard !isCancelled() else { return nil }
+                            additions[stream].append(MarkupGroup(range: tagRange, tokens: tokens))
+                        } else {
+                            // Do not repeatedly rescan nested starts in an unfinished tag.
+                            cursor.unresolvedStart = start
+                            cursor.position = string.length
+                        }
+                    } else {
+                        cursor.position += 1
+                    }
+                }
+                cursors[stream] = cursor
+            }
+            guard !isCancelled() else { return nil }
+            var primary = relevant(0, range)
+            if let open = cursors[0].openStart {
+                let token = Token(range: NSRange(location: open, length: cursors[0].position - open),
+                                  kind: language == .markdown ? .string : .comment)
+                if NSIntersectionRange(token.range, range).length > 0 {
+                    primary.append(MarkupGroup(range: token.range, tokens: [token]))
+                }
+            }
+            let tokens: [Token]
+            if language == .html {
+                tokens = primary.flatMap(\.tokens).filter { NSIntersectionRange($0.range, range).length > 0 }
+            } else {
+                let inline = (skipInline ? [] : relevant(1, range)).filter { group in
+                    relevant(0, group.range).isEmpty &&
+                        !(cursors[0].openStart.map { $0 < NSMaxRange(group.range) && cursors[0].position > group.range.location } ?? false)
+                }
+                tokens = primary.flatMap(\.tokens) + inline.flatMap(\.tokens)
+            }
+            guard !isCancelled(), cache.commit(cursors: savedCursors, newCursors: cursors,
+                    additions: additions, language: language, revision: revision ?? 0,
+                    generation: prepared.generation) else { return nil }
+            return tokens
+        }
     }
 
     private static func semanticTokens(
@@ -367,22 +663,6 @@ enum SyntaxHighlighter {
             ))
         }
         return result
-    }
-
-    private static func contextualRange(
-        in string: NSString,
-        around range: NSRange
-    ) -> NSRange {
-        let tentativeStart = max(0, range.location - contextPadding)
-        let lineRange = string.lineRange(for: NSRange(
-            location: tentativeStart,
-            length: 0
-        ))
-        let end = min(string.length, NSMaxRange(range) + contextPadding)
-        return NSRange(
-            location: lineRange.location,
-            length: max(0, end - lineRange.location)
-        )
     }
 
     private static func isWhitespace(_ codeUnit: unichar) -> Bool {
@@ -467,11 +747,13 @@ enum SyntaxHighlighter {
     private static func htmlTagEnd(
         in string: NSString,
         from start: Int,
-        limit: Int
+        limit: Int,
+        isCancelled: () -> Bool
     ) -> Int? {
         var quote: unichar?
         var location = start + 1
         while location < limit {
+            if (location - start).isMultiple(of: 4_096), isCancelled() { return nil }
             let character = string.character(at: location)
             if let activeQuote = quote {
                 if character == activeQuote {

@@ -56,7 +56,9 @@ enum ListContinuationService {
                 scanRange = previousLineRange(before: candidateRange, in: text)
             }
             if let previousSiblingNumber {
-                expectedNumber = previousSiblingNumber + 1
+                let (next, overflow) = previousSiblingNumber.addingReportingOverflow(1)
+                guard !overflow else { return edits }
+                expectedNumber = next
             }
             edits.append(OrderedListEdit(
                 range: item.numberRange,
@@ -140,7 +142,9 @@ enum ListContinuationService {
             expression: continuationOrderedExpression,
             in: String(content)
         ), let number = Int(ordered[1]) {
-            return "\(number + 1)\(ordered[2]) "
+            let (next, overflow) = number.addingReportingOverflow(1)
+            guard !overflow else { return nil }
+            return "\(next)\(ordered[2]) "
         }
 
         if let unordered = firstMatch(
@@ -301,6 +305,7 @@ enum ListContinuationService {
         let sequence = Array(before.reversed()) + [candidate] + after
         guard sequence.count > 1 else { return nil }
         let startingNumber = sequence[0].number
+        guard !startingNumber.addingReportingOverflow(sequence.count - 1).overflow else { return nil }
         let edits = sequence.enumerated().compactMap { index, item -> OrderedListEdit? in
             let expectedNumber = startingNumber + index
             guard item.number != expectedNumber else { return nil }

@@ -5,6 +5,241 @@ import WebKit
 
 @MainActor
 final class NativeTabsTests: XCTestCase {
+    func testCancelledOpeningCanBeOpenedAgain() async throws {
+        let suiteName = "LacEditorIOTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("reopen.txt")
+        try "original".write(to: url, atomically: true, encoding: .utf8)
+        let state = AppState(recentFiles: RecentFilesStore(defaults: defaults), preferences: AppPreferences(defaults: defaults))
+        state.beginOpeningFile(url)
+        let first = try XCTUnwrap(state.selectedDocument)
+        XCTAssertEqual(first.ioState, .opening)
+        state.cancelOpening(first)
+        state.beginOpeningFile(url)
+        for _ in 0..<100 where state.hasPendingOpen {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertFalse(state.hasPendingOpen)
+        XCTAssertEqual(state.selectedDocument?.text, "original")
+        XCTAssertNotEqual(state.selectedDocument?.id, first.id)
+        XCTAssertNotNil(state.selectedDocument?.fileRevisionSnapshot)
+    }
+
+    func testPreparedReadKeepsOriginalRevisionForSelectedEncoding() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("encoded.txt")
+        try Data(repeating: 0xe9, count: 20 * 1_024 * 1_024 + 1).write(to: url)
+        guard case let .needsEncoding(data, byteCount, revision) = try FileService.prepareRead(url) else {
+            return XCTFail("Expected encoding selection")
+        }
+        try Data("new content".utf8).write(to: url, options: .atomic)
+        let decoded = try FileService.decode(data, encoding: .isoLatin1, encodingName: "Latin-1",
+                                             byteCount: byteCount, fileRevisionSnapshot: revision)
+        XCTAssertEqual(decoded.text.first, "é")
+        XCTAssertEqual(decoded.text.utf16.count, 20 * 1_024 * 1_024 + 1)
+        XCTAssertEqual(decoded.fileRevisionSnapshot, revision)
+        XCTAssertNotEqual(decoded.fileRevisionSnapshot, try FileRevisionSnapshot.capture(url))
+    }
+
+    func testCancelledOldReadCannotReplaceReopenedFile() async throws {
+        let suiteName = "LacEditorIOTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("late.txt")
+        try "old".write(to: url, atomically: true, encoding: .utf8)
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        let state = AppState(recentFiles: RecentFilesStore(defaults: defaults), preferences: AppPreferences(defaults: defaults), readFile: { url in
+            let result = try FileService.prepareRead(url)
+            if case let .decoded(file) = result, file.text == "old" {
+                started.signal()
+                release.wait()
+            }
+            return result
+        })
+        state.beginOpeningFile(url)
+        var readStarted = false
+        for _ in 0..<100 {
+            if started.wait(timeout: .now()) == .success { readStarted = true; break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertTrue(readStarted)
+        let old = try XCTUnwrap(state.selectedDocument)
+        state.cancelOpening(old)
+        try "new".write(to: url, atomically: true, encoding: .utf8)
+        state.beginOpeningFile(url)
+        release.signal()
+        for _ in 0..<100 where state.hasPendingOpen { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertFalse(state.hasPendingOpen)
+        XCTAssertEqual(state.selectedDocument?.text, "new")
+        XCTAssertNotEqual(state.selectedDocument?.id, old.id)
+    }
+
+    func testCancelledReloadKeepsLocalDocumentAndIgnoresLateResult() async throws {
+        let suiteName = "LacEditorIOTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("reload.txt")
+        try "disk".write(to: url, atomically: true, encoding: .utf8)
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        let document = EditorDocument(text: "local", url: url, isDirty: true)
+        let state = AppState(initialDocument: document, recentFiles: RecentFilesStore(defaults: defaults), preferences: AppPreferences(defaults: defaults), readFile: { url in
+            let result = try FileService.prepareRead(url)
+            started.signal()
+            release.wait()
+            return result
+        })
+        state.reloadFromDisk(document, at: url)
+        var readStarted = false
+        for _ in 0..<100 {
+            if started.wait(timeout: .now()) == .success { readStarted = true; break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertTrue(readStarted)
+        state.cancelOpening(document)
+        release.signal()
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertTrue(state.selectedDocument === document)
+        XCTAssertEqual(document.text, "local")
+        XCTAssertTrue(document.isDirty)
+        XCTAssertEqual(document.ioState, .idle)
+    }
+
+    func testClosingDuringOpeningAllowsReopeningSameFile() async throws {
+        let suiteName = "LacEditorIOTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("closed.txt")
+        try "content".write(to: url, atomically: true, encoding: .utf8)
+        let state = AppState(recentFiles: RecentFilesStore(defaults: defaults), preferences: AppPreferences(defaults: defaults))
+        state.beginOpeningFile(url)
+        state.closeAuxiliaryWindows()
+        state.resetClosedWindow()
+        state.beginOpeningFile(url)
+        for _ in 0..<100 where state.hasPendingOpen { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertFalse(state.hasPendingOpen)
+        XCTAssertEqual(state.selectedDocument?.text, "content")
+    }
+
+    func testOpeningDocumentCannotBeTransferred() throws {
+        let suiteName = "LacEditorIOTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let document = EditorDocument(text: "existing")
+        document.ioState = .opening
+        let state = AppState(initialDocument: document, recentFiles: RecentFilesStore(defaults: defaults), preferences: AppPreferences(defaults: defaults))
+        let manager = WindowManager(
+            preferences: AppPreferences(defaults: defaults),
+            recentFiles: RecentFilesStore(defaults: defaults)
+        )
+        XCTAssertFalse(manager.beginTabDrag(document, from: state))
+        XCTAssertNil(manager.draggedDocumentID)
+        XCTAssertNil(state.takeDocumentForTransfer(document))
+        XCTAssertTrue(state.selectedDocument === document)
+    }
+
+    func testReloadKeepsPendingLiveEdit() async throws {
+        let suiteName = "LacEditorIOTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("live.txt")
+        try "disk".write(to: url, atomically: true, encoding: .utf8)
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        let document = EditorDocument(text: "original", url: url)
+        var liveText = "original"
+        document.attachLiveTextProvider(id: UUID(), provider: { liveText }, acknowledgement: { _ in })
+        let state = AppState(initialDocument: document, recentFiles: RecentFilesStore(defaults: defaults), preferences: AppPreferences(defaults: defaults), readFile: { url in
+            let result = try FileService.prepareRead(url)
+            started.signal()
+            release.wait()
+            return result
+        })
+        state.reloadFromDisk(document, at: url)
+        var readStarted = false
+        for _ in 0..<100 {
+            if started.wait(timeout: .now()) == .success { readStarted = true; break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertTrue(readStarted)
+        liveText = "unsynchronized edit"
+        document.noteLiveEdit(isEmpty: false)
+        release.signal()
+        for _ in 0..<100 where state.hasPendingOpen { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertFalse(state.hasPendingOpen)
+        XCTAssertEqual(document.text, "unsynchronized edit")
+        XCTAssertTrue(document.isDirty)
+    }
+
+    func testEditedPlaceholderIsNotOverwrittenByCompletionOrRetry() async throws {
+        let suiteName = "LacEditorIOTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: url) }
+        try "disk".write(to: url, atomically: true, encoding: .utf8)
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        let state = AppState(recentFiles: RecentFilesStore(defaults: defaults),
+                             preferences: AppPreferences(defaults: defaults), readFile: { url in
+            let result = try FileService.prepareRead(url)
+            started.signal()
+            release.wait()
+            return result
+        })
+        state.beginOpeningFile(url)
+        let document = try XCTUnwrap(state.selectedDocument)
+        document.text = "kept"
+        release.signal()
+        for _ in 0..<100 where state.hasPendingOpen { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertFalse(state.hasPendingOpen)
+        XCTAssertEqual(document.text, "kept")
+        state.beginOpeningFile(url)
+        XCTAssertEqual(document.text, "kept")
+        XCTAssertFalse(state.hasPendingOpen)
+    }
+
+    func testPreparedReadRejectsFileChangedDuringRead() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("changed.txt")
+        try "old".write(to: url, atomically: true, encoding: .utf8)
+        XCTAssertThrowsError(try FileService.prepareRead(url, readData: { url, options in
+            let data = try Data(contentsOf: url, options: options)
+            try "new version".write(to: url, atomically: true, encoding: .utf8)
+            return data
+        }))
+    }
+
+    func testPreparedReadFailsWhenFileDoesNotExist() {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        XCTAssertThrowsError(try FileService.prepareRead(url))
+    }
+
     func testPreparedPrimaryDrainsEarlyFinderEventAndReopensSameSession() async throws {
         _ = NSApplication.shared
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

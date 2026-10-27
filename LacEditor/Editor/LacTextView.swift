@@ -69,6 +69,9 @@ final class LacTextView: NSTextView {
     private var paragraphRefreshGeneration: UInt = 0
     private var paragraphRefreshLocation = 0
     private var paragraphRefreshWorkItem: DispatchWorkItem?
+    private var paragraphRefreshChunkSize = 32 * 1_024
+    private var paragraphRefreshPaused = false
+    private var pendingTextMetrics: (() -> Void)?
 
     var editorLineHeight: CGFloat {
         (layoutManager as? FoldLayoutManager)?.editorLineHeight
@@ -395,12 +398,49 @@ final class LacTextView: NSTextView {
         enclosingScrollView?.lineScroll = editorLineHeight
     }
 
+    func applyOrDeferTextMetrics(_ update: (() -> Void)?) {
+        pendingTextMetrics = update
+        if !hasMarkedText() {
+            pendingTextMetrics = nil
+            update?()
+        }
+    }
+
+    override func unmarkText() {
+        super.unmarkText()
+        resumeAfterComposition()
+    }
+
+    override func insertText(_ insertString: Any, replacementRange: NSRange) {
+        super.insertText(insertString, replacementRange: replacementRange)
+        resumeAfterComposition()
+    }
+
+    private func resumeAfterComposition() {
+        guard pendingTextMetrics != nil || paragraphRefreshPaused else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !hasMarkedText() else { return }
+            let update = pendingTextMetrics
+            pendingTextMetrics = nil
+            update?()
+            if paragraphRefreshPaused {
+                paragraphRefreshPaused = false
+                applyParagraphStyleChunk(
+                    generation: paragraphRefreshGeneration,
+                    chunkSize: paragraphRefreshChunkSize
+                )
+            }
+        }
+    }
+
     /// Apply paragraph attributes in cancellable chunks so large documents do
     /// not block typing and window resizing for one long main-thread turn.
     func scheduleParagraphStyleRefresh(chunkSize: Int = 32 * 1_024) {
         paragraphRefreshWorkItem?.cancel()
         paragraphRefreshGeneration &+= 1
         paragraphRefreshLocation = 0
+        paragraphRefreshChunkSize = chunkSize
+        paragraphRefreshPaused = false
         let generation = paragraphRefreshGeneration
         let work = DispatchWorkItem { [weak self] in
             self?.applyParagraphStyleChunk(
@@ -416,7 +456,14 @@ final class LacTextView: NSTextView {
         generation: UInt,
         chunkSize: Int
     ) {
-        guard generation == paragraphRefreshGeneration,
+        guard generation == paragraphRefreshGeneration else { return }
+        if hasMarkedText() {
+            paragraphRefreshWorkItem = nil
+            paragraphRefreshPaused = true
+            paragraphRefreshLocation = 0
+            return
+        }
+        guard
               paragraphRefreshWorkItem?.isCancelled != true,
               let storage = textStorage,
               let style = defaultParagraphStyle,
@@ -454,6 +501,7 @@ final class LacTextView: NSTextView {
         paragraphRefreshWorkItem?.cancel()
         paragraphRefreshWorkItem = nil
         paragraphRefreshGeneration &+= 1
+        paragraphRefreshPaused = false
     }
 
     override func insertNewline(_ sender: Any?) {

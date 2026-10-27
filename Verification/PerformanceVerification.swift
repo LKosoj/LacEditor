@@ -255,6 +255,13 @@ struct PerformanceVerification {
         )
 
         let extendedLineIndex = LogicalLineIndex(text: extendedSource)
+        let crlfSource = NSString(string: String(repeating: "long line before CR\r\n", count: 80_000))
+        let crlfIndex = LogicalLineIndex(text: crlfSource as String)
+        let crlfEdit = measure {
+            crlfIndex.applyEdit(range: NSRange(location: 19, length: 0), replacement: "x", in: crlfSource)
+        }
+        require(crlfIndex.lineNumber(at: 22) == 2, "line index after insertion before CRLF")
+        print("Insertion before CRLF: \(crlfEdit.seconds)s")
         let mutableExtendedSource = NSMutableString(string: extendedSource)
         let indexedPositionResult = measure {
             var checksum = 0

@@ -291,6 +291,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if let error = Self.sharedManager?.startupError {
+            let alert = NSAlert()
+            alert.alertStyle = .critical
+            alert.messageText = L10n.tr("无法恢复工作区")
+            alert.informativeText = L10n.tr("LacEditor 无法安全恢复工作区，已取消启动。原有数据未被删除。\n\n%@", error.localizedDescription)
+            alert.runModal()
+            NSApp.terminate(nil)
+            return
+        }
         Self.sharedManager?.reopenPrimaryWindow()
         Task { @MainActor in
             await Self.sharedManager?.prepareExperimentSamples()
@@ -359,6 +368,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidResignActive(_ notification: Notification) {
+        guard Self.sharedManager?.startupError == nil else { return }
         Self.sharedManager?.persistRecoverySnapshotsImmediately()
     }
 
@@ -376,6 +386,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let manager = Self.sharedManager else { return .terminateNow }
+        guard manager.startupError == nil else { return .terminateNow }
         let finish = { shouldTerminate in
             sender.reply(toApplicationShouldTerminate: shouldTerminate)
         }

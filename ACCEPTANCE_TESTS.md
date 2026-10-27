@@ -53,6 +53,10 @@
 | AUTO-BUILD-04 | P1 | 版本一致性 | `VERSION`、Xcode、Info.plist、CHANGELOG 一致 |
 | AUTO-BUILD-05 | P1 | App 图标 | 16 至 1024 像素资源完整 |
 | AUTO-BUILD-06 | P1 | Xcode 静态分析 | Release Analyze 完成且无分析器错误 |
+| AUTO-ROADMAP-01 | P1 | 增量高亮边界 | RoadmapHighlightTests 验证长多行结构、UTF-16、版本/取消、未处理范围及可见区刷新；测试通过后才算验收 |
+| AUTO-ROADMAP-02 | P1 | 可取消任务 | DocumentMetricsTaskTests、FoldTaskTests、MarkdownPreviewTests 验证迟到注册、旧结果拒绝、顺序解析和取消 |
+| AUTO-ROADMAP-03 | P1 | 侧栏多选 | SidebarSelectionTests 验证范围、列表隔离、Cmd+A 锚点、批量撤销和后续修改保护；实际菜单/焦点另做 GUI 验收 |
+| AUTO-ROADMAP-04 | P0 | 渐进恢复 | ProgressiveRestorationTests 验证文件交接、旧 JSON、clean/dirty、异常优先级、队列、取消、转移和读取失败；结合原窗口/恢复测试执行 |
 | AUTO-ASSOCIATION-01 | P1 | 默认应用写入 | 注入式测试验证只修改选中内容类型、失败/取消回读、重复点击保护与未安装副本禁用；测试不修改用户系统默认应用 |
 | AUTO-ASSOCIATION-02 | P1 | 构建隔离 | Debug 独立身份/数据目录且无文档声明，验收/实验无文档声明；安装 ZIP 保留正式身份及 Alternate 文档关联 |
 | AUTO-ASSOCIATION-03 | P1 | 本机登记与归档 | 精确清理后只有已安装正式版参与文件关联；历史 ZIP 完整性与 Info.plist/可执行文件回读一致，源代码与现有安装包保留 |

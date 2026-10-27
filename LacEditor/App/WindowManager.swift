@@ -21,6 +21,7 @@ final class WindowManager: ObservableObject {
     /// window that was closed after its last tab was removed.
     @Published private(set) var primaryReopenGeneration = 0
     private(set) var terminationApproved = false
+    private(set) var startupError: Error?
 
     private final class ActiveTabDrag {
         let documentID: UUID
@@ -56,6 +57,11 @@ final class WindowManager: ObservableObject {
     }
     private var initialRestoredWindow: RestoredWindow?
     private var pendingRestoredWindows: [RestoredWindow] = []
+    private var restorationReferences: [UUID: DocumentRecoveryReference] = [:]
+    private var restorationOrder: [UUID] = []
+    private var restorationLoadingID: UUID?
+    private let restorationQueue = DispatchQueue(label: "com.laceditor.restore", qos: .utility)
+    private let readRestoration: @Sendable (DocumentRecoveryReference) throws -> DocumentRecoverySnapshot
     private var pendingFinderURLs: [URL] = []
     private var didApplyInitialRestoration = false
     private lazy var appearanceMenuController = AppearanceMenuController(
@@ -69,19 +75,42 @@ final class WindowManager: ObservableObject {
         preferences: AppPreferences? = nil,
         recentFiles: RecentFilesStore? = nil,
         sidebarLibrary: SidebarLibraryStore? = nil,
-        experimentSamples: ExperimentSampleLibrary? = nil
+        experimentSamples: ExperimentSampleLibrary? = nil,
+        readRestoration: @escaping @Sendable (DocumentRecoveryReference) throws -> DocumentRecoverySnapshot = DocumentRecoveryStore.read
     ) {
         self.recentFiles = recentFiles ?? RecentFilesStore()
         self.sidebarLibrary = sidebarLibrary ?? SidebarLibraryStore()
         self.recoveryStore = recoveryStore
         self.workspaceStore = workspaceStore
         self.experimentSamples = experimentSamples
+        self.readRestoration = readRestoration
         self.preferences = preferences ?? AppPreferences()
-        let recoverySnapshots = (try? recoveryStore?.startSession()) ?? []
-        restoreInitialSession(
-            workspace: try? workspaceStore?.loadAndConsume(),
-            recoverySnapshots: recoverySnapshots
-        )
+        do {
+            let recovered = try recoveryStore?.startSessionReferences() ?? []
+            let workspace = try workspaceStore?.loadReferences()
+            var references = Dictionary(uniqueKeysWithValues: recovered.map { ($0.snapshot.documentID, $0) })
+            if let workspace, let recoveryStore {
+                let handoff = workspace.windows.flatMap(\.documents).filter { references[$0.snapshot.documentID] == nil }
+                for reference in try recoveryStore.copyForWorkspaceHandoff(handoff) {
+                    references[reference.snapshot.documentID] = reference
+                }
+                try workspaceStore?.consume()
+            } else if let workspace {
+                for reference in workspace.windows.flatMap(\.documents) where references[reference.snapshot.documentID] == nil {
+                    let value = reference.snapshot
+                    references[value.documentID] = DocumentRecoveryReference(snapshot: DocumentRecoverySnapshot(
+                        documentID: value.documentID, text: "", sourceURL: value.sourceURL,
+                        language: value.language, encoding: value.encoding, revision: 0,
+                        selectionRange: value.selectionRange, scrollPositionRatio: value.scrollPositionRatio,
+                        isPreviewVisible: value.isPreviewVisible, fileRevisionSnapshot: value.fileRevisionSnapshot,
+                        capturedAt: Date(), isDirty: value.isDirty), contentURL: reference.contentURL)
+                }
+            }
+            restorationReferences = references
+            restoreInitialSession(workspace: workspace, recoverySnapshots: recovered)
+        } catch {
+            startupError = error
+        }
         recentFilesCancellable = self.recentFiles.objectWillChange.sink { [weak self] in
             self?.objectWillChange.send()
         }
@@ -146,6 +175,7 @@ final class WindowManager: ObservableObject {
             pendingRestoredWindows.removeAll()
             DispatchQueue.main.async { [weak self] in
                 additionalWindows.forEach { self?.openRestoredWindow($0) }
+                self?.loadNextRestoration()
                 self?.drainPendingFinderURLs()
             }
         } else {
@@ -160,6 +190,7 @@ final class WindowManager: ObservableObject {
     /// so retain the URLs until primary window registration completes
     /// instead of creating a temporary second window.
     func openFilesFromFinder(_ urls: [URL]) {
+        guard startupError == nil else { return }
         let files = urls.filter(\.isFileURL)
         guard !files.isEmpty else { return }
         guard activeState != nil else {
@@ -186,6 +217,7 @@ final class WindowManager: ObservableObject {
             state.isSidebarVisible = previous.isSidebarVisible
         }
         setActiveState(state)
+        if let id = state.selectedDocumentID { prioritizeRestoration(id) }
     }
 
     private func setActiveState(_ state: AppState?) {
@@ -223,6 +255,7 @@ final class WindowManager: ObservableObject {
     /// Create or re-show the same primary editor for app/file launch and Dock
     /// reopen. Never wait for a SwiftUI Window scene to bootstrap this state.
     func reopenPrimaryWindow() {
+        guard startupError == nil else { return }
         guard let primaryWindowID,
               let state = states[primaryWindowID] else { return }
         guard let window = state.hostWindow else {
@@ -525,9 +558,11 @@ final class WindowManager: ObservableObject {
         }
     }
 
-    func beginTabDrag(_ document: EditorDocument, from state: AppState) {
-        guard state.documents.contains(where: { $0.id == document.id }) else {
-            return
+    @discardableResult
+    func beginTabDrag(_ document: EditorDocument, from state: AppState) -> Bool {
+        guard state.canTransferDocument(document),
+              state.documents.contains(where: { $0.id == document.id }) else {
+            return false
         }
         activeTabDrag = ActiveTabDrag(
             documentID: document.id,
@@ -535,6 +570,7 @@ final class WindowManager: ObservableObject {
         )
         draggedDocumentID = document.id
         state.selectedDocumentID = document.id
+        return true
     }
 
     func setTabDragTarget(
@@ -565,7 +601,9 @@ final class WindowManager: ObservableObject {
         before targetDocumentID: UUID?
     ) -> Bool {
         guard let drag = activeTabDrag,
-              let sourceState = drag.sourceState else {
+              let sourceState = drag.sourceState,
+              let document = sourceState.documents.first(where: { $0.id == drag.documentID }),
+              sourceState.canTransferDocument(document) else {
             return false
         }
 
@@ -735,6 +773,16 @@ final class WindowManager: ObservableObject {
         }
     }
 
+    private func waitForPendingReadsAndSaves(completion: @escaping () -> Void) {
+        guard hasPendingSaves || states.values.contains(where: \.hasPendingOpen) else {
+            completion()
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.waitForPendingReadsAndSaves(completion: completion)
+        }
+    }
+
     private var hasDirtyDocuments: Bool {
         states.values.contains { state in
             state.documents.contains { $0.isDirty || $0.hasPendingLiveEdits }
@@ -772,8 +820,13 @@ final class WindowManager: ObservableObject {
         completion: @escaping (Bool) -> Void
     ) {
         terminationApproved = false
-        waitForPendingSaves { [weak self] in
+        waitForPendingReadsAndSaves { [weak self] in
             guard let self else {
+                completion(false)
+                return
+            }
+            guard !states.values.contains(where: \.hasFailedOpeningPlaceholder) else {
+                presentWorkspaceSaveError(CocoaError(.fileReadUnknown))
                 completion(false)
                 return
             }
@@ -789,14 +842,16 @@ final class WindowManager: ObservableObject {
                 }
                 switch result {
                 case .success:
-                    terminationApproved = true
-                    guard let recoveryStore else {
-                        completion(true)
+                    guard !hasPendingSaves,
+                          !states.values.contains(where: \.hasPendingOpen),
+                          !states.values.contains(where: \.hasFailedOpeningPlaceholder),
+                          captureWorkspaceSnapshot() == snapshot else {
+                        preserveWorkspaceAndTerminate(completion: completion)
                         return
                     }
-                    recoveryStore.finishCleanly {
-                        completion(true)
-                    }
+                    recoveryStore?.finishCleanlySynchronously()
+                    terminationApproved = true
+                    completion(true)
                 case let .failure(error):
                     presentWorkspaceSaveError(error)
                     completion(false)
@@ -947,21 +1002,21 @@ final class WindowManager: ObservableObject {
     }
 
     private func restoreInitialSession(
-        workspace: WorkspaceSessionSnapshot?,
-        recoverySnapshots: [DocumentRecoverySnapshot]
+        workspace: WorkspaceSessionReference?,
+        recoverySnapshots: [DocumentRecoveryReference]
     ) {
         var recoveryByID = Dictionary(
-            uniqueKeysWithValues: recoverySnapshots.map { ($0.documentID, $0) }
+            uniqueKeysWithValues: recoverySnapshots.map { ($0.snapshot.documentID, $0) }
         )
         if let workspace, !workspace.windows.isEmpty {
             let restored = workspace.windows.map { window in
                 let documents = window.documents.map { snapshot in
                     if let recovery = recoveryByID.removeValue(
-                        forKey: snapshot.documentID
+                        forKey: snapshot.snapshot.documentID
                     ) {
-                        return Self.makeRecoveredDocument(from: recovery)
+                        return Self.makeRestorationPlaceholder(from: recovery.snapshot, recovered: true)
                     }
-                    return Self.makeWorkspaceDocument(from: snapshot)
+                    return Self.makeRestorationPlaceholder(from: restorationReferences[snapshot.snapshot.documentID]!.snapshot)
                 }
                 return RestoredWindow(
                     documents: documents,
@@ -973,8 +1028,8 @@ final class WindowManager: ObservableObject {
             var windows = restored
             if !recoveryByID.isEmpty {
                 let extras = recoveryByID.values
-                    .sorted { $0.capturedAt < $1.capturedAt }
-                    .map(Self.makeRecoveredDocument)
+                    .sorted { $0.snapshot.capturedAt < $1.snapshot.capturedAt }
+                    .map { Self.makeRestorationPlaceholder(from: $0.snapshot, recovered: true) }
                 if windows.isEmpty {
                     windows = [RestoredWindow(
                         documents: extras,
@@ -992,18 +1047,88 @@ final class WindowManager: ObservableObject {
                     )
                 }
             }
+            let selectedIDs = windows.compactMap { window in
+                window.documents.first(where: { $0.id == window.selectedDocumentID })?.id
+                    ?? window.documents.first?.id
+            }
+            restorationOrder = selectedIDs + windows.flatMap(\.documents).map(\.id)
+                .filter { !selectedIDs.contains($0) }
             initialRestoredWindow = windows.first
             pendingRestoredWindows = Array(windows.dropFirst())
             recoveredDocuments = windows.first?.documents ?? []
             return
         }
-        let recovered = recoverySnapshots.map(Self.makeRecoveredDocument)
+        let recovered = recoverySnapshots.map { Self.makeRestorationPlaceholder(from: $0.snapshot, recovered: true) }
+        restorationOrder = recovered.map(\.id)
         recoveredDocuments = recovered
         if !recovered.isEmpty {
             initialRestoredWindow = RestoredWindow(
                 documents: recovered, selectedDocumentID: recovered.first?.id,
                 isSidebarVisible: true, frame: nil
             )
+        }
+    }
+
+    private static func makeRestorationPlaceholder(from snapshot: DocumentRecoverySnapshot, recovered: Bool = false) -> EditorDocument {
+        let document = EditorDocument(id: snapshot.documentID, url: snapshot.sourceURL,
+            language: snapshot.language, fileEncoding: snapshot.encoding,
+            fileRevisionSnapshot: snapshot.fileRevisionSnapshot, isDirty: snapshot.isDirty,
+            requiresExplicitSave: snapshot.isDirty)
+        document.ioState = .opening
+        if snapshot.isDirty {
+            document.statusMessage = recovered
+                ? L10n.tr("已从上次异常退出中恢复，请确认后保存")
+                : L10n.tr("已恢复上次工作区，尚未保存")
+        }
+        return document
+    }
+
+    func prioritizeRestoration(_ id: UUID) {
+        guard restorationLoadingID != nil, restorationOrder.contains(id) else { return }
+        restorationOrder.removeAll { $0 == id }
+        restorationOrder.insert(id, at: 0)
+    }
+
+    func isRestorationPlaceholder(_ document: EditorDocument) -> Bool {
+        restorationReferences[document.id] != nil
+    }
+
+    func cancelRestoration(_ document: EditorDocument) -> Bool {
+        guard restorationReferences.removeValue(forKey: document.id) != nil else { return false }
+        restorationOrder.removeAll { $0 == document.id }
+        return true
+    }
+
+    private func loadNextRestoration() {
+        guard restorationLoadingID == nil else { return }
+        while let id = restorationOrder.first {
+            restorationOrder.removeFirst()
+            guard let reference = restorationReferences[id],
+                  states.values.contains(where: { $0.documents.contains(where: { $0.id == id }) }) else { continue }
+            restorationLoadingID = id
+            let readRestoration = self.readRestoration
+            restorationQueue.async { [weak self] in
+                let result = Result {
+                    let snapshot = try readRestoration(reference)
+                    return (snapshot, snapshot.text.utf8.count, EditorDocument.countLines(in: snapshot.text))
+                }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.restorationLoadingID = nil
+                    if self.restorationReferences[id] != nil,
+                       let state = self.states.values.first(where: { $0.documents.contains(where: { $0.id == id }) }),
+                       let document = state.documents.first(where: { $0.id == id }), document.ioState == .opening {
+                        switch result {
+                        case let .success((snapshot, byteCount, lineCount)):
+                            self.restorationReferences.removeValue(forKey: id)
+                            state.finishRestoring(document, snapshot: snapshot, byteCount: byteCount, lineCount: lineCount)
+                        case let .failure(error): document.ioState = .failed(error.localizedDescription)
+                        }
+                    }
+                    self.loadNextRestoration()
+                }
+            }
+            return
         }
     }
 

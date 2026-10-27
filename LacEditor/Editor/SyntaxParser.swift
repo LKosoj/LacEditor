@@ -505,6 +505,7 @@ private final class TreeSitterCodeCache: @unchecked Sendable {
         var tree: MutableTree
         var text: String
         var revision: UInt?
+        var changedRanges: [NSRange]?
 
         init(parser: Parser, tree: MutableTree, text: String, revision: UInt?) {
             self.parser = parser
@@ -558,15 +559,20 @@ private final class TreeSitterCodeCache: @unchecked Sendable {
                     at: edit.editedRange.location + edit.replacementLength
                 )
             )
+            entries.removeValue(forKey: key)
             previous.tree.edit(inputEdit)
             guard !isCancelled(),
                   let updatedTree = previous.parser.parse(
                       tree: previous.tree,
                       string: string
-                  ) else { return nil }
+                  ), !isCancelled() else { return nil }
+            previous.changedRanges = updatedTree.changedRanges(from: previous.tree).map {
+                UTF16TreeRange.range(for: $0.bytes, stringLength: (string as NSString).length)
+            }
             previous.tree = updatedTree
             previous.text = string
             previous.revision = revision
+            entries[key] = previous
             return (previous.parser, previous.tree)
         }
 
@@ -583,6 +589,14 @@ private final class TreeSitterCodeCache: @unchecked Sendable {
             entries.removeValue(forKey: firstKey)
         }
         return (entry.parser, entry.tree)
+    }
+
+    func changedRanges(documentID: UUID, namespace: String, revision: UInt) -> [NSRange]? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let entry = entries[Key(documentID: documentID, namespace: namespace)],
+              entry.revision == revision else { return nil }
+        return entry.changedRanges
     }
 
     private func editMatchesCachedText(
@@ -739,6 +753,27 @@ private struct TreeSitterPointMap {
 #endif
 
 enum SyntaxParserRegistry {
+    static func changedRanges(documentID: UUID, revision: UInt, language: EditorLanguage) -> [NSRange]? {
+#if canImport(SwiftTreeSitter) && canImport(TreeSitterJavaScript) && canImport(TreeSitterTypeScript) && canImport(TreeSitterPython) && canImport(TreeSitterCSS) && canImport(TreeSitterHTML) && canImport(TreeSitterSwift) && canImport(TreeSitterBash) && canImport(TreeSitterYAML) && canImport(TreeSitterC) && canImport(TreeSitterCPP) && canImport(TreeSitterSQL)
+        let namespace: String
+        switch language {
+        case .javascript: namespace = "javascript"
+        case .typescript: namespace = "typescript"
+        case .python: namespace = "python"
+        case .css: namespace = "css"
+        case .html: namespace = "html"
+        case .swift: namespace = "swift"
+        case .shell: namespace = "bash"
+        case .yaml: namespace = "yaml"
+        case .cFamily: namespace = "cpp"
+        case .sql: namespace = "sql"
+        default: return nil
+        }
+        return TreeSitterCodeCache.shared.changedRanges(documentID: documentID, namespace: namespace, revision: revision)
+#else
+        return nil
+#endif
+    }
     /// Route each document to exactly one parser. Tree-sitter handles supported
     /// code languages under the same size gate; JSON and Markdown retain their
     /// dedicated parsers and large documents retain the lightweight fallback.

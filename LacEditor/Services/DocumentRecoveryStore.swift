@@ -12,6 +12,30 @@ struct DocumentRecoverySnapshot: Equatable, Sendable {
     let isPreviewVisible: Bool
     let fileRevisionSnapshot: FileRevisionSnapshot?
     let capturedAt: Date
+    let isDirty: Bool
+
+    init(documentID: UUID, text: String, sourceURL: URL?, language: EditorLanguage,
+         encoding: String.Encoding, revision: UInt, selectionRange: NSRange,
+         scrollPositionRatio: CGFloat, isPreviewVisible: Bool,
+         fileRevisionSnapshot: FileRevisionSnapshot?, capturedAt: Date, isDirty: Bool = true) {
+        self.documentID = documentID
+        self.text = text
+        self.sourceURL = sourceURL
+        self.language = language
+        self.encoding = encoding
+        self.revision = revision
+        self.selectionRange = selectionRange
+        self.scrollPositionRatio = scrollPositionRatio
+        self.isPreviewVisible = isPreviewVisible
+        self.fileRevisionSnapshot = fileRevisionSnapshot
+        self.capturedAt = capturedAt
+        self.isDirty = isDirty
+    }
+}
+
+struct DocumentRecoveryReference: Sendable {
+    let snapshot: DocumentRecoverySnapshot
+    let contentURL: URL
 }
 
 final class DocumentRecoveryStore: @unchecked Sendable {
@@ -35,6 +59,7 @@ final class DocumentRecoveryStore: @unchecked Sendable {
         let fileSize: Int?
         let capturedAt: Date
         let contentFileName: String
+        let isDirty: Bool?
     }
 
     private let rootURL: URL
@@ -54,6 +79,24 @@ final class DocumentRecoveryStore: @unchecked Sendable {
     }
 
     func startSession() throws -> [DocumentRecoverySnapshot] {
+        try startSessionReferences().map { reference in
+            try Self.read(reference)
+        }
+    }
+
+    static func read(_ reference: DocumentRecoveryReference) throws -> DocumentRecoverySnapshot {
+        let snapshot = reference.snapshot
+        let text = try String(contentsOf: reference.contentURL, encoding: .utf8)
+        return DocumentRecoverySnapshot(
+            documentID: snapshot.documentID, text: text, sourceURL: snapshot.sourceURL,
+            language: snapshot.language, encoding: snapshot.encoding, revision: snapshot.revision,
+            selectionRange: snapshot.selectionRange, scrollPositionRatio: snapshot.scrollPositionRatio,
+            isPreviewVisible: snapshot.isPreviewVisible, fileRevisionSnapshot: snapshot.fileRevisionSnapshot,
+            capturedAt: snapshot.capturedAt, isDirty: snapshot.isDirty
+        )
+    }
+
+    func startSessionReferences() throws -> [DocumentRecoveryReference] {
         try queue.sync {
             if currentSessionID != nil { return [] }
             try fileManager.createDirectory(
@@ -62,22 +105,28 @@ final class DocumentRecoveryStore: @unchecked Sendable {
             )
 
             let previousSessionID = try readMarker()?.sessionID
-            let recovered = previousSessionID.map(loadSnapshots) ?? []
+            let recovered = try previousSessionID.map(loadReferences) ?? []
             let sessionID = UUID()
-            currentSessionID = sessionID
-            try fileManager.createDirectory(
-                at: sessionURL(for: sessionID),
-                withIntermediateDirectories: true
-            )
+            do {
+                try fileManager.createDirectory(
+                    at: sessionURL(for: sessionID),
+                    withIntermediateDirectories: true
+                )
 
-            // Copy recovered records into the new session before switching the
-            // marker, so another crash during launch still leaves one complete set.
-            for snapshot in recovered {
-                try persistLocked(snapshot)
+                // Copy recovered records before switching the marker.
+                for snapshot in recovered {
+                    try copyLocked(snapshot, sessionID: sessionID)
+                }
+                try writeMarker(SessionMarker(sessionID: sessionID))
+            } catch {
+                try? fileManager.removeItem(at: sessionURL(for: sessionID))
+                throw error
             }
-            try writeMarker(SessionMarker(sessionID: sessionID))
+            currentSessionID = sessionID
             removeSessionDirectories(except: sessionID)
-            return recovered
+            return recovered.map { reference in
+                DocumentRecoveryReference(snapshot: reference.snapshot, contentURL: sessionURL(for: sessionID).appendingPathComponent("\(reference.snapshot.documentID.uuidString.lowercased())-\(reference.snapshot.revision).utf8"))
+            }
         }
     }
 
@@ -85,6 +134,64 @@ final class DocumentRecoveryStore: @unchecked Sendable {
         queue.async { [weak self] in
             guard let self else { return }
             try? persistLocked(snapshot)
+        }
+    }
+
+    func persistForWorkspaceHandoff(_ snapshots: [DocumentRecoverySnapshot]) throws {
+        try queue.sync {
+            guard let sessionID = currentSessionID else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            for snapshot in snapshots {
+                try persistLocked(snapshot, sessionID: sessionID)
+            }
+        }
+    }
+
+    func copyForWorkspaceHandoff(_ references: [WorkspaceDocumentReference]) throws -> [DocumentRecoveryReference] {
+        try queue.sync {
+            guard let sessionID = currentSessionID else { throw CocoaError(.fileWriteUnknown) }
+            return try references.map { reference in
+                let value = reference.snapshot
+                let snapshot = DocumentRecoverySnapshot(
+                    documentID: value.documentID, text: "", sourceURL: value.sourceURL,
+                    language: value.language, encoding: value.encoding, revision: 0,
+                    selectionRange: value.selectionRange, scrollPositionRatio: value.scrollPositionRatio,
+                    isPreviewVisible: value.isPreviewVisible, fileRevisionSnapshot: value.fileRevisionSnapshot,
+                    capturedAt: Date(), isDirty: value.isDirty
+                )
+                let recovery = DocumentRecoveryReference(snapshot: snapshot, contentURL: reference.contentURL)
+                try copyLocked(recovery, sessionID: sessionID)
+                let name = "\(value.documentID.uuidString.lowercased())-0.utf8"
+                return DocumentRecoveryReference(snapshot: snapshot, contentURL: sessionURL(for: sessionID).appendingPathComponent(name))
+            }
+        }
+    }
+
+    private func copyLocked(_ reference: DocumentRecoveryReference, sessionID: UUID) throws {
+        let snapshot = reference.snapshot
+        let directory = sessionURL(for: sessionID)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let stem = snapshot.documentID.uuidString.lowercased()
+        let name = "\(stem)-\(snapshot.revision).utf8"
+        let target = directory.appendingPathComponent(name)
+        try fileManager.copyItem(at: reference.contentURL, to: target)
+        let baseline = snapshot.fileRevisionSnapshot
+        let metadata = SnapshotMetadata(
+            documentID: snapshot.documentID, sourcePath: snapshot.sourceURL?.standardizedFileURL.path,
+            language: snapshot.language.rawValue, encodingRawValue: snapshot.encoding.rawValue,
+            revision: snapshot.revision, selectionLocation: snapshot.selectionRange.location,
+            selectionLength: snapshot.selectionRange.length, scrollPositionRatio: Double(snapshot.scrollPositionRatio),
+            isPreviewVisible: snapshot.isPreviewVisible, canonicalPath: baseline?.identity.canonicalPath,
+            resourceIdentifier: baseline?.identity.resourceIdentifier, modificationDate: baseline?.modificationDate,
+            fileSize: baseline?.fileSize, capturedAt: snapshot.capturedAt, contentFileName: name,
+            isDirty: snapshot.isDirty
+        )
+        do {
+            try JSONEncoder().encode(metadata).write(to: directory.appendingPathComponent("\(stem).json"), options: .atomic)
+        } catch {
+            try? fileManager.removeItem(at: target)
+            throw error
         }
     }
 
@@ -106,13 +213,12 @@ final class DocumentRecoveryStore: @unchecked Sendable {
     func finishCleanly(completion: @escaping @Sendable () -> Void) {
         queue.async { [weak self] in
             defer { DispatchQueue.main.async(execute: completion) }
-            guard let self, let sessionID = currentSessionID else { return }
-            try? fileManager.removeItem(at: sessionURL(for: sessionID))
-            if (try? readMarker()?.sessionID) == sessionID {
-                try? fileManager.removeItem(at: markerURL)
-            }
-            currentSessionID = nil
+            self?.finishCleanlyLocked()
         }
+    }
+
+    func finishCleanlySynchronously() {
+        queue.sync { finishCleanlyLocked() }
     }
 
     func flushForTesting() {
@@ -120,18 +226,24 @@ final class DocumentRecoveryStore: @unchecked Sendable {
     }
 
     func finishCleanlyForTesting() {
-        queue.sync {
-            guard let sessionID = currentSessionID else { return }
-            try? fileManager.removeItem(at: sessionURL(for: sessionID))
-            if (try? readMarker()?.sessionID) == sessionID {
-                try? fileManager.removeItem(at: markerURL)
-            }
-            currentSessionID = nil
+        finishCleanlySynchronously()
+    }
+
+    private func finishCleanlyLocked() {
+        guard let sessionID = currentSessionID else { return }
+        try? fileManager.removeItem(at: sessionURL(for: sessionID))
+        if (try? readMarker()?.sessionID) == sessionID {
+            try? fileManager.removeItem(at: markerURL)
         }
+        currentSessionID = nil
     }
 
     private func persistLocked(_ snapshot: DocumentRecoverySnapshot) throws {
         guard let sessionID = currentSessionID else { return }
+        try persistLocked(snapshot, sessionID: sessionID)
+    }
+
+    private func persistLocked(_ snapshot: DocumentRecoverySnapshot, sessionID: UUID) throws {
         let directory = sessionURL(for: sessionID)
         try fileManager.createDirectory(
             at: directory,
@@ -159,7 +271,8 @@ final class DocumentRecoveryStore: @unchecked Sendable {
             modificationDate: baseline?.modificationDate,
             fileSize: baseline?.fileSize,
             capturedAt: snapshot.capturedAt,
-            contentFileName: contentFileName
+            contentFileName: contentFileName,
+            isDirty: snapshot.isDirty
         )
         let metadataURL = directory.appendingPathComponent("\(stem).json")
         try JSONEncoder().encode(metadata).write(to: metadataURL, options: .atomic)
@@ -174,30 +287,20 @@ final class DocumentRecoveryStore: @unchecked Sendable {
         }
     }
 
-    private func loadSnapshots(sessionID: UUID) -> [DocumentRecoverySnapshot] {
+    private func loadReferences(sessionID: UUID) throws -> [DocumentRecoveryReference] {
         let directory = sessionURL(for: sessionID)
-        let metadataURLs = ((try? fileManager.contentsOfDirectory(
+        let metadataURLs = try fileManager.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: nil
-        )) ?? [])
+        )
         .filter { $0.pathExtension == "json" }
         .sorted { $0.lastPathComponent < $1.lastPathComponent }
 
-        return metadataURLs.compactMap { metadataURL in
-            guard let metadataData = try? Data(contentsOf: metadataURL),
-                  let metadata = try? JSONDecoder().decode(
-                    SnapshotMetadata.self,
-                    from: metadataData
-                  ),
-                  let text = try? String(
-                    contentsOf: directory.appendingPathComponent(
-                        metadata.contentFileName
-                    ),
-                    encoding: .utf8
-                  ),
-                  let language = EditorLanguage(rawValue: metadata.language)
-            else {
-                return nil
+        return try metadataURLs.map { metadataURL in
+            let metadataData = try Data(contentsOf: metadataURL)
+            let metadata = try JSONDecoder().decode(SnapshotMetadata.self, from: metadataData)
+            guard let language = EditorLanguage(rawValue: metadata.language) else {
+                throw CocoaError(.fileReadCorruptFile)
             }
             let sourceURL = metadata.sourcePath.map {
                 URL(fileURLWithPath: $0).standardizedFileURL
@@ -215,9 +318,9 @@ final class DocumentRecoveryStore: @unchecked Sendable {
             } else {
                 baseline = nil
             }
-            return DocumentRecoverySnapshot(
+            return DocumentRecoveryReference(snapshot: DocumentRecoverySnapshot(
                 documentID: metadata.documentID,
-                text: text,
+                text: "",
                 sourceURL: sourceURL,
                 language: language,
                 encoding: String.Encoding(rawValue: metadata.encodingRawValue),
@@ -229,10 +332,11 @@ final class DocumentRecoveryStore: @unchecked Sendable {
                 scrollPositionRatio: CGFloat(metadata.scrollPositionRatio),
                 isPreviewVisible: metadata.isPreviewVisible,
                 fileRevisionSnapshot: baseline,
-                capturedAt: metadata.capturedAt
-            )
+                capturedAt: metadata.capturedAt,
+                isDirty: metadata.isDirty ?? true
+            ), contentURL: directory.appendingPathComponent(metadata.contentFileName))
         }
-        .sorted { $0.capturedAt < $1.capturedAt }
+        .sorted { $0.snapshot.capturedAt < $1.snapshot.capturedAt }
     }
 
     private func discardLocked(documentID: UUID) {

@@ -1,18 +1,20 @@
 import Foundation
 
 enum FoldService {
-    static func foldableRange(in text: String, at cursor: Int, language: EditorLanguage) -> NSRange? {
+    static func foldableRange(in text: String, at cursor: Int, language: EditorLanguage,
+                              isCancelled: () -> Bool = { false }) -> NSRange? {
+        guard !isCancelled() else { return nil }
         switch language {
         case .markdown:
-            markdownRange(in: text, at: cursor)
+            return markdownRange(in: text, at: cursor, isCancelled: isCancelled)
         case .json:
-            jsonRange(in: text, at: cursor)
+            return jsonRange(in: text, at: cursor, isCancelled: isCancelled)
         default:
-            nil
+            return nil
         }
     }
 
-    private static func markdownRange(in text: String, at cursor: Int) -> NSRange? {
+    private static func markdownRange(in text: String, at cursor: Int, isCancelled: () -> Bool) -> NSRange? {
         let nsText = text as NSString
         guard cursor <= nsText.length else { return nil }
         let currentLine = nsText.lineRange(for: NSRange(location: cursor, length: 0))
@@ -22,6 +24,7 @@ enum FoldService {
         var end = NSMaxRange(currentLine)
 
         while end < nsText.length {
+            if isCancelled() { return nil }
             let candidateRange = nsText.lineRange(for: NSRange(location: end, length: 0))
             let candidate = nsText.substring(with: candidateRange)
             if let heading = candidate.range(of: #"^(#{1,6})\s+"#, options: .regularExpression) {
@@ -35,7 +38,7 @@ enum FoldService {
         return NSRange(location: bodyStart, length: end - bodyStart)
     }
 
-    private static func jsonRange(in text: String, at cursor: Int) -> NSRange? {
+    private static func jsonRange(in text: String, at cursor: Int, isCancelled: () -> Bool) -> NSRange? {
         let characters = text as NSString
         guard characters.length > 0 else { return nil }
         let safeCursor = min(max(cursor, 0), characters.length - 1)
@@ -69,6 +72,7 @@ enum FoldService {
 
         if safeCursor > 0 {
             for position in 0..<safeCursor {
+                if position.isMultiple(of: 4096), isCancelled() { return nil }
                 consume(at: position)
             }
         }
@@ -83,6 +87,7 @@ enum FoldService {
         isInString = false
         isEscaped = false
         for position in start..<characters.length {
+            if (position - start).isMultiple(of: 4096), isCancelled() { return nil }
             let value = characters.character(at: position)
             if isInString {
                 if isEscaped {

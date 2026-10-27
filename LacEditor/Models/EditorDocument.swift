@@ -80,6 +80,7 @@ final class DocumentTaskCoordinator: @unchecked Sendable {
         case save
         case listNormalization
         case delimiterMatch
+        case folding
         case textTransformation
     }
 
@@ -122,6 +123,16 @@ final class DocumentTaskCoordinator: @unchecked Sendable {
             return
         }
         operations[kind] = operation
+    }
+
+    func attachTask(_ task: Task<Void, Never>, kind: Kind, generation: UInt) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard generations[kind] == generation else {
+            task.cancel()
+            return
+        }
+        taskCancellers[kind] = { task.cancel() }
     }
 
     func isCurrent(_ generation: UInt, for kind: Kind) -> Bool {
@@ -202,13 +213,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     private var pendingLiveTextIsEmpty: Bool?
     private var isUpdatingDirtyState = false
     private var metricsGeneration: UInt = 0
-    private let metricsQueue: OperationQueue = {
-        let queue = OperationQueue()
-        queue.maxConcurrentOperationCount = 1
-        queue.qualityOfService = .utility
-        return queue
-    }()
-    private var metricsOperation: BlockOperation?
+    private var metricsSuspended = false
     private var metricsDebounceWorkItem: DispatchWorkItem?
 
     init(
@@ -250,8 +255,6 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     deinit {
         taskCoordinator.cancelAll()
         metricsDebounceWorkItem?.cancel()
-        metricsOperation?.cancel()
-        metricsQueue.cancelAllOperations()
     }
 
     var displayName: String {
@@ -275,7 +278,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         let isEmpty = hasPendingLiveEdits
             ? pendingLiveTextIsEmpty ?? text.isEmpty
             : text.isEmpty
-        return url == nil && isEmpty && !isDirty
+        return ioState == .idle && url == nil && isEmpty && !isDirty
     }
 
     var lineCount: Int {
@@ -329,7 +332,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         }
     }
 
-    private static func countLines(in text: String) -> Int {
+    static func countLines(in text: String) -> Int {
         var count = 1
         var previousWasCR = false
         // Sequential UTF-16 iteration avoids NSString random-access bridging
@@ -466,11 +469,13 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     private func scheduleMetricsRefresh() {
         metricsGeneration &+= 1
         let generation = metricsGeneration
+        let revision = textRevision
         let snapshot = text
         metricsDebounceWorkItem?.cancel()
         metricsDebounceWorkItem = nil
-        metricsOperation?.cancel()
-        metricsOperation = nil
+        taskCoordinator.cancel(.metrics)
+
+        guard !metricsSuspended else { return }
 
         guard isWordCountEnabled else {
             wordCount = 0
@@ -486,7 +491,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
             guard let self,
                   metricsGeneration == generation else { return }
             metricsDebounceWorkItem = nil
-            startMetricsRefresh(for: snapshot, generation: generation)
+            startMetricsRefresh(for: snapshot, generation: generation, revision: revision)
         }
         metricsDebounceWorkItem = workItem
         DispatchQueue.main.asyncAfter(
@@ -497,31 +502,46 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
 
     private func startMetricsRefresh(
         for snapshot: String,
-        generation: UInt
+        generation: UInt,
+        revision: UInt
     ) {
-        let operation = BlockOperation()
-        operation.addExecutionBlock { [weak self, weak operation] in
-            guard let operation,
-                  !operation.isCancelled,
+        let coordinator = taskCoordinator
+        let taskGeneration = coordinator.begin(.metrics)
+        let task = Task.detached(priority: .utility) { [weak self] in
+            guard !Task.isCancelled,
                   let count = Self.countWords(
                       in: snapshot,
-                      isCancelled: { operation.isCancelled }
+                      isCancelled: { Task.isCancelled }
                   ),
-                  !operation.isCancelled else {
+                  !Task.isCancelled,
+                  coordinator.isCurrent(taskGeneration, for: .metrics) else {
                 return
             }
-            DispatchQueue.main.async {
+            await MainActor.run { [weak self] in
                 guard let self,
                       self.metricsGeneration == generation,
-                      !operation.isCancelled else { return }
+                      self.textRevision == revision,
+                      !Task.isCancelled,
+                      coordinator.isCurrent(taskGeneration, for: .metrics) else { return }
                 self.wordCount = count
-                if self.metricsOperation === operation {
-                    self.metricsOperation = nil
-                }
+                coordinator.finish(.metrics, generation: taskGeneration)
             }
         }
-        metricsOperation = operation
-        metricsQueue.addOperation(operation)
+        coordinator.attachTask(task, kind: .metrics, generation: taskGeneration)
+    }
+
+    func cancelMetricsRefresh() {
+        metricsSuspended = true
+        metricsGeneration &+= 1
+        metricsDebounceWorkItem?.cancel()
+        metricsDebounceWorkItem = nil
+        taskCoordinator.cancel(.metrics)
+    }
+
+    func resumeMetricsRefresh() {
+        guard metricsSuspended else { return }
+        metricsSuspended = false
+        scheduleMetricsRefresh()
     }
 
     private static func countWords(in text: String) -> Int {

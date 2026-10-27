@@ -68,8 +68,63 @@ final class DocumentRecoveryStoreTests: XCTestCase {
         ])
 
         try store.saveForTesting(snapshot)
-        XCTAssertEqual(try store.loadAndConsume(), snapshot)
-        XCTAssertNil(try store.loadAndConsume())
+        XCTAssertEqual(try store.load(), snapshot)
+        XCTAssertEqual(try store.load(), snapshot)
+        try store.consume()
+        XCTAssertNil(try store.load())
+    }
+
+    func testWorkspaceHandoffSurvivesCrashAndDiscardDoesNotRestoreDocument() throws {
+        let directory = makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let workspace = WorkspaceSessionStore(rootURL: directory.appendingPathComponent("Workspace"))
+        let recoveryURL = directory.appendingPathComponent("Recovery")
+        let documentID = UUID()
+        let document = WorkspaceDocumentSnapshot(
+            documentID: documentID, text: "unsaved", sourceURL: nil,
+            language: .markdown, encoding: .utf8, isDirty: true,
+            selectionRange: NSRange(location: 0, length: 0), scrollPositionRatio: 0,
+            isPreviewVisible: false, fileRevisionSnapshot: nil
+        )
+        let snapshot = WorkspaceSessionSnapshot(windows: [WorkspaceWindowSnapshot(
+            documents: [document], selectedDocumentID: documentID,
+            isSidebarVisible: true, frame: nil
+        )])
+        try workspace.saveForTesting(snapshot)
+        let recovery = DocumentRecoveryStore(rootURL: recoveryURL)
+        XCTAssertTrue(try recovery.startSession().isEmpty)
+        XCTAssertEqual(try workspace.load(), snapshot)
+        try recovery.persistForWorkspaceHandoff([makeSnapshot(documentID: documentID, text: "unsaved", revision: 1)])
+        XCTAssertEqual(try workspace.load(), snapshot)
+        try workspace.consume()
+        XCTAssertNil(try workspace.load())
+
+        let afterCrash = DocumentRecoveryStore(rootURL: recoveryURL)
+        XCTAssertEqual(try afterCrash.startSession().first?.text, "unsaved")
+        afterCrash.discard(documentID: documentID)
+        afterCrash.flushForTesting()
+        let afterCloseAndCrash = DocumentRecoveryStore(rootURL: recoveryURL)
+        XCTAssertTrue(try afterCloseAndCrash.startSession().isEmpty)
+        afterCloseAndCrash.finishCleanlyForTesting()
+    }
+
+    func testWorkspaceHandoffFailsWithoutActiveRecoverySession() throws {
+        let directory = makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let recovery = DocumentRecoveryStore(rootURL: directory.appendingPathComponent("Recovery"))
+        XCTAssertThrowsError(try recovery.persistForWorkspaceHandoff([makeSnapshot(text: "unsaved", revision: 1)]))
+    }
+
+    func testWorkspaceConsumeFailureKeepsSnapshot() throws {
+        let directory = makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileManager = FailingRecoveryFileManager()
+        let workspace = WorkspaceSessionStore(rootURL: directory, fileManager: fileManager)
+        let snapshot = WorkspaceSessionSnapshot(windows: [])
+        try workspace.saveForTesting(snapshot)
+        fileManager.failRemoval = directory.appendingPathComponent("CurrentWorkspace.json")
+        XCTAssertThrowsError(try workspace.consume())
+        XCTAssertEqual(try workspace.load(), snapshot)
     }
 
     func testAbnormalSessionRestoresLatestAtomicSnapshot() throws {
@@ -142,6 +197,96 @@ final class DocumentRecoveryStoreTests: XCTestCase {
         let recovered = try nextLaunch.startSession()
         XCTAssertEqual(recovered.map(\.documentID), [retainedID])
         nextLaunch.finishCleanlyForTesting()
+    }
+
+    func testFailedSessionCopyKeepsPreviousSessionAndCanRetry() throws {
+        let directory = makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let recoveryURL = directory.appendingPathComponent("Recovery")
+        let original = DocumentRecoveryStore(rootURL: recoveryURL)
+        _ = try original.startSession()
+        let documentID = UUID()
+        original.persist(makeSnapshot(documentID: documentID, text: "original", revision: 1))
+        original.flushForTesting()
+
+        let fileManager = FailingRecoveryFileManager()
+        fileManager.failOnSessionDirectoryCall = 2
+        let retrying = DocumentRecoveryStore(rootURL: recoveryURL, fileManager: fileManager)
+        XCTAssertThrowsError(try retrying.startSession())
+        retrying.persist(makeSnapshot(documentID: documentID, text: "must not persist", revision: 2))
+        retrying.flushForTesting()
+        fileManager.failOnSessionDirectoryCall = nil
+        XCTAssertEqual(try retrying.startSession().first?.text, "original")
+        retrying.finishCleanlyForTesting()
+    }
+
+    func testUnreadableRecoverySnapshotKeepsPreviousSession() throws {
+        let directory = makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let recoveryURL = directory.appendingPathComponent("Recovery")
+        let original = DocumentRecoveryStore(rootURL: recoveryURL)
+        _ = try original.startSession()
+        original.persist(makeSnapshot(text: "original", revision: 1))
+        original.flushForTesting()
+        let markerURL = recoveryURL.appendingPathComponent("ActiveSession.json")
+        let marker = try Data(contentsOf: markerURL)
+        let sessionURL = try XCTUnwrap(FileManager.default.contentsOfDirectory(
+            at: recoveryURL, includingPropertiesForKeys: nil
+        ).first { $0.lastPathComponent.hasPrefix("Session-") })
+        let metadataURL = try XCTUnwrap(FileManager.default.contentsOfDirectory(
+            at: sessionURL, includingPropertiesForKeys: nil
+        ).first { $0.pathExtension == "json" })
+        let metadata = try Data(contentsOf: metadataURL)
+        try Data("invalid".utf8).write(to: metadataURL)
+
+        let retrying = DocumentRecoveryStore(rootURL: recoveryURL)
+        XCTAssertThrowsError(try retrying.startSession())
+        XCTAssertEqual(try Data(contentsOf: markerURL), marker)
+        try metadata.write(to: metadataURL)
+        XCTAssertEqual(try retrying.startSession().first?.text, "original")
+        retrying.finishCleanlyForTesting()
+    }
+
+    func testFailedSessionDirectoryKeepsPreviousSession() throws {
+        let directory = makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let recoveryURL = directory.appendingPathComponent("Recovery")
+        let original = DocumentRecoveryStore(rootURL: recoveryURL)
+        _ = try original.startSession()
+        original.persist(makeSnapshot(text: "original", revision: 1))
+        original.flushForTesting()
+
+        let fileManager = FailingRecoveryFileManager()
+        fileManager.failOnSessionDirectoryCall = 1
+        let retrying = DocumentRecoveryStore(rootURL: recoveryURL, fileManager: fileManager)
+        XCTAssertThrowsError(try retrying.startSession())
+        fileManager.failOnSessionDirectoryCall = nil
+        XCTAssertEqual(try retrying.startSession().first?.text, "original")
+        retrying.finishCleanlyForTesting()
+    }
+
+    func testFailedMarkerWriteDoesNotActivateSessionAndCanRetry() throws {
+        let directory = makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let recoveryURL = directory.appendingPathComponent("Recovery")
+        try FileManager.default.createDirectory(at: recoveryURL, withIntermediateDirectories: true)
+        let markerURL = recoveryURL.appendingPathComponent("ActiveSession.json")
+        // Install an obstruction after startSession reads the absent marker.
+        let fileManager = FailingRecoveryFileManager()
+        fileManager.obstructMarker = markerURL
+        let retrying = DocumentRecoveryStore(rootURL: recoveryURL, fileManager: fileManager)
+        XCTAssertThrowsError(try retrying.startSession())
+        retrying.persist(makeSnapshot(text: "must not persist", revision: 1))
+        retrying.flushForTesting()
+        try FileManager.default.removeItem(at: markerURL)
+        fileManager.obstructMarker = nil
+        XCTAssertTrue(try retrying.startSession().isEmpty)
+        retrying.persist(makeSnapshot(text: "persisted after retry", revision: 2))
+        retrying.flushForTesting()
+        let relaunched = DocumentRecoveryStore(rootURL: recoveryURL)
+        XCTAssertEqual(try relaunched.startSession().first?.text, "persisted after retry")
+        relaunched.finishCleanlyForTesting()
+        retrying.finishCleanlyForTesting()
     }
 
     @MainActor
@@ -230,5 +375,30 @@ final class DocumentRecoveryStoreTests: XCTestCase {
             .appendingPathComponent("LacEditorRecoveryTests-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+}
+
+private final class FailingRecoveryFileManager: FileManager, @unchecked Sendable {
+    var failOnSessionDirectoryCall: Int?
+    var obstructMarker: URL?
+    var failRemoval: URL?
+    private var sessionDirectoryCalls = 0
+
+    override func createDirectory(at url: URL, withIntermediateDirectories createIntermediates: Bool, attributes: [FileAttributeKey: Any]? = nil) throws {
+        if url.lastPathComponent.hasPrefix("Session-") {
+            sessionDirectoryCalls += 1
+            if sessionDirectoryCalls == failOnSessionDirectoryCall {
+                throw CocoaError(.fileWriteNoPermission)
+            }
+            if let marker = obstructMarker {
+                try super.createDirectory(at: marker, withIntermediateDirectories: true, attributes: nil)
+            }
+        }
+        try super.createDirectory(at: url, withIntermediateDirectories: createIntermediates, attributes: attributes)
+    }
+
+    override func removeItem(at URL: URL) throws {
+        if URL == failRemoval { throw CocoaError(.fileWriteNoPermission) }
+        try super.removeItem(at: URL)
     }
 }

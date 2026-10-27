@@ -132,6 +132,9 @@ final class LogicalLineIndex {
         if contextEnd > contextStart {
             for location in contextStart..<contextEnd {
                 let character = originalText.character(at: location)
+                if character == 0x0D, location == NSMaxRange(range) {
+                    continue
+                }
                 if character == 0x0D || character == 0x2028 || character == 0x2029 {
                     return true
                 }

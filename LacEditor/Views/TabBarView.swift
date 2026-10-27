@@ -291,7 +291,7 @@ private struct EditorTabView: View {
     let dropTargetEdge: TabDropEdge?
     let select: () -> Void
     let close: () -> Void
-    let beginDrag: () -> Void
+    let beginDrag: () -> Bool
     let finishDrag: (NSPoint) -> Void
     let dropTargetChanged: (TabDropEdge) -> Void
     let dropExited: (TabDropEdge) -> Void

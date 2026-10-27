@@ -25,6 +25,7 @@ private func documentTaskSignpostName(
     case .save: "FileSave"
     case .listNormalization: "ListNormalization"
     case .delimiterMatch: "DelimiterMatch"
+    case .folding: "Folding"
     case .textTransformation: "TextTransformation"
     }
 }
@@ -146,6 +147,9 @@ final class AppState: ObservableObject {
     private var searchMatchCache = SearchMatchCacheStore()
     @Published var selectedDocumentID: UUID? {
         didSet {
+            if oldValue != selectedDocumentID, let selectedDocumentID {
+                windowManager?.prioritizeRestoration(selectedDocumentID)
+            }
             guard oldValue != selectedDocumentID,
                   findReplace.isWorking,
                   let activeID = findReplace.activeDocumentID,
@@ -211,10 +215,6 @@ final class AppState: ObservableObject {
     private var findReplaceWindowController: FindReplaceWindowController?
     private var textTransformationWindowController: TextTransformationWindowController?
     private let fileService = FileService()
-    private let fileReadQueue = DispatchQueue(
-        label: "com.laceditor.file-reading",
-        qos: .userInitiated
-    )
     private let fileOpeningQueue: OperationQueue = {
         let queue = OperationQueue()
         queue.name = "com.laceditor.file-opening"
@@ -239,21 +239,24 @@ final class AppState: ObservableObject {
     private var documentsBeingSnapshotted: Set<UUID> = []
     private var openingFileURLs: Set<URL> = []
     private var openingOperations: [URL: Operation] = [:]
-    private var cancelledOpeningURLs: Set<URL> = []
+    private var openingPlaceholderIDs: Set<UUID> = []
     private var contentChangeObserver: NSObjectProtocol?
     private var preferencesCancellable: AnyCancellable?
     private let recoveryStore: DocumentRecoveryStore?
+    private let readFile: @Sendable (URL) throws -> PreparedFileRead
 
     init(
         initialDocument: EditorDocument? = nil,
         initialDocuments: [EditorDocument] = [],
         recentFiles: RecentFilesStore,
         preferences: AppPreferences,
-        recoveryStore: DocumentRecoveryStore? = nil
+        recoveryStore: DocumentRecoveryStore? = nil,
+        readFile: @escaping @Sendable (URL) throws -> PreparedFileRead = { try FileService.prepareRead($0) }
     ) {
         self.recentFiles = recentFiles
         self.preferences = preferences
         self.recoveryStore = recoveryStore
+        self.readFile = readFile
         isSidebarVisible = UserDefaults.standard.object(
             forKey: "isSidebarVisible"
         ) as? Bool ?? true
@@ -261,10 +264,12 @@ final class AppState: ObservableObject {
             self?.objectWillChange.send()
         }
         if !initialDocuments.isEmpty {
+            openingPlaceholderIDs.formUnion(initialDocuments.filter { $0.ioState == .opening && $0.text.isEmpty }.map(\.id))
             documents = initialDocuments
             selectedDocumentID = initialDocuments.first?.id
             initialDocuments.forEach(observe)
         } else if let initialDocument {
+            if initialDocument.ioState == .opening && initialDocument.text.isEmpty { openingPlaceholderIDs.insert(initialDocument.id) }
             documents = [initialDocument]
             selectedDocumentID = initialDocument.id
             observe(initialDocument)
@@ -315,6 +320,18 @@ final class AppState: ObservableObject {
     var selectedDocumentIndex: Int? {
         guard let selectedDocumentID else { return nil }
         return documents.firstIndex { $0.id == selectedDocumentID }
+    }
+
+    func isOpeningPlaceholder(_ document: EditorDocument) -> Bool {
+        openingPlaceholderIDs.contains(document.id)
+    }
+
+    var hasPendingOpen: Bool {
+        documents.contains { $0.ioState == .opening }
+    }
+
+    var hasFailedOpeningPlaceholder: Bool {
+        documents.contains { openingPlaceholderIDs.contains($0.id) && $0.ioState != .opening }
     }
 
     var hasPendingSave: Bool {
@@ -392,7 +409,10 @@ final class AppState: ObservableObject {
             $0.fileIdentity?.matches(DocumentFileIdentity.resolve(normalized)) == true
         }) {
             selectedDocumentID = existing.id
-            if case .failed = existing.ioState {
+            if case .failed = existing.ioState, openingPlaceholderIDs.contains(existing.id) {
+                guard windowManager?.isRestorationPlaceholder(existing) != true else { return }
+                _ = existing.synchronizedText()
+                guard !existing.isDirty, !existing.hasPendingLiveEdits, existing.text.isEmpty else { return }
                 retryPlaceholder = existing
                 openingFileURLs.remove(normalized)
             } else {
@@ -426,10 +446,12 @@ final class AppState: ObservableObject {
                 documents.removeAll()
             }
             documents.append(placeholder)
+            openingPlaceholderIDs.insert(placeholder.id)
             observe(placeholder)
         }
         selectedDocumentID = placeholder.id
 
+        let readFile = self.readFile
         let operation = BlockOperation()
         operation.addExecutionBlock { [weak self, weak operation] in
             guard operation?.isCancelled == false else { return }
@@ -440,7 +462,7 @@ final class AppState: ObservableObject {
                 name: "FileOpen",
                 signpostID: readSignpostID
             )
-            let result = Result { try FileService.prepareRead(normalized) }
+            let result = Result { try readFile(normalized) }
             os_signpost(
                 .end,
                 log: filePerformanceLog,
@@ -450,7 +472,8 @@ final class AppState: ObservableObject {
             guard operation?.isCancelled == false else { return }
             DispatchQueue.main.async { [weak self, weak operation] in
                 guard operation?.isCancelled == false else { return }
-                self?.finishOpeningFile(normalized, result: result)
+                guard let self, let operation, self.openingOperations[normalized] === operation else { return }
+                self.finishOpeningFile(normalized, operation: operation, result: result)
             }
         }
         openingOperations[normalized] = operation
@@ -459,38 +482,44 @@ final class AppState: ObservableObject {
 
     private func finishOpeningFile(
         _ url: URL,
+        operation: Operation,
         result: Result<PreparedFileRead, Error>
     ) {
-        openingFileURLs.remove(url)
-        openingOperations.removeValue(forKey: url)
-        if cancelledOpeningURLs.remove(url) != nil {
-            removeOpeningPlaceholder(for: url)
-            return
-        }
         do {
             let prepared = try result.get()
             let decoded: DecodedFile
             switch prepared {
             case let .decoded(value):
                 decoded = value
-            case let .needsEncoding(data, byteCount):
+            case let .needsEncoding(data, byteCount, fileRevisionSnapshot):
                 guard let choice = fileService.chooseEncoding(for: url) else {
+                    guard openingOperations[url] === operation else { return }
+                    openingFileURLs.remove(url)
+                    openingOperations.removeValue(forKey: url)
                     removeOpeningPlaceholder(for: url)
                     return
                 }
+                guard openingOperations[url] === operation, !operation.isCancelled else { return }
                 decodeOpeningFileInBackground(
                     data,
                     choice: choice,
                     byteCount: byteCount,
+                    fileRevisionSnapshot: fileRevisionSnapshot,
                     url: url
                 )
                 return
             }
+            openingFileURLs.remove(url)
+            openingOperations.removeValue(forKey: url)
             insertOpenedFile(decoded, at: url)
         } catch CocoaError.userCancelled {
+            openingFileURLs.remove(url)
+            openingOperations.removeValue(forKey: url)
             removeOpeningPlaceholder(for: url)
             return
         } catch {
+            openingFileURLs.remove(url)
+            openingOperations.removeValue(forKey: url)
             if let placeholder = documents.first(where: {
                 $0.url?.standardizedFileURL == url && $0.ioState == .opening
             }) {
@@ -504,6 +533,7 @@ final class AppState: ObservableObject {
         _ data: Data,
         choice: FileEncodingChoice,
         byteCount: Int,
+        fileRevisionSnapshot: FileRevisionSnapshot,
         url: URL
     ) {
         openingFileURLs.insert(url)
@@ -515,19 +545,16 @@ final class AppState: ObservableObject {
                     data,
                     encoding: choice.encoding,
                     encodingName: choice.name,
-                    byteCount: byteCount
+                    byteCount: byteCount,
+                    fileRevisionSnapshot: fileRevisionSnapshot
                 )
             }
             guard operation?.isCancelled == false else { return }
             DispatchQueue.main.async { [weak self, weak operation] in
                 guard let self else { return }
-                guard operation?.isCancelled == false else { return }
+                guard let operation, !operation.isCancelled, self.openingOperations[url] === operation else { return }
                 self.openingFileURLs.remove(url)
                 self.openingOperations.removeValue(forKey: url)
-                if self.cancelledOpeningURLs.remove(url) != nil {
-                    self.removeOpeningPlaceholder(for: url)
-                    return
-                }
                 do {
                     self.insertOpenedFile(try result.get(), at: url)
                 } catch {
@@ -545,10 +572,33 @@ final class AppState: ObservableObject {
     }
 
     func cancelOpening(_ document: EditorDocument) {
+        if windowManager?.isRestorationPlaceholder(document) == true {
+            close(document)
+            return
+        }
         guard document.ioState == .opening, let url = document.url else { return }
-        openingOperations.removeValue(forKey: url.standardizedFileURL)?.cancel()
-        cancelledOpeningURLs.insert(url.standardizedFileURL)
-        removeOpeningPlaceholder(for: url.standardizedFileURL)
+        let normalized = url.standardizedFileURL
+        openingOperations.removeValue(forKey: normalized)?.cancel()
+        openingFileURLs.remove(normalized)
+        if openingPlaceholderIDs.contains(document.id) {
+            removeOpeningPlaceholder(for: normalized)
+        } else {
+            document.ioState = .idle
+        }
+    }
+
+    func finishRestoring(_ document: EditorDocument, snapshot: DocumentRecoverySnapshot, byteCount: Int, lineCount: Int) {
+        guard documents.contains(where: { $0 === document }), openingPlaceholderIDs.contains(document.id),
+              document.ioState == .opening else { return }
+        document.text = snapshot.text
+        document.updatePerformanceProfile(byteCount: byteCount, lineCount: lineCount)
+        document.selectionRange = snapshot.selectionRange
+        document.scrollPositionRatio = snapshot.scrollPositionRatio
+        document.isPreviewVisible = snapshot.language == .markdown && snapshot.isPreviewVisible
+            && document.performanceProfile == .standard
+        if !snapshot.isDirty { document.markSaved(snapshot: snapshot.text, revision: document.textRevision) }
+        openingPlaceholderIDs.remove(document.id)
+        document.ioState = .idle
     }
 
     private func insertOpenedFile(_ decoded: DecodedFile, at url: URL) {
@@ -556,12 +606,18 @@ final class AppState: ObservableObject {
             $0.url?.standardizedFileURL == url
         }) {
             if existing.ioState == .opening {
+                _ = existing.synchronizedText()
+                guard !existing.isDirty, !existing.hasPendingLiveEdits, existing.text.isEmpty else {
+                    existing.ioState = .failed(L10n.tr("重新载入期间内容已变化，已保留本地修改"))
+                    return
+                }
                 existing.text = decoded.text
                 existing.updateFileEncoding(decoded.encoding)
                 existing.updateFileRevisionSnapshot(
-                    try? FileRevisionSnapshot.capture(url)
+                    decoded.fileRevisionSnapshot
                 )
                 existing.ioState = .idle
+                openingPlaceholderIDs.remove(existing.id)
                 existing.updatePerformanceProfile(
                     byteCount: decoded.byteCount,
                     lineCount: decoded.lineCount
@@ -579,7 +635,7 @@ final class AppState: ObservableObject {
             url: url,
             language: EditorLanguage.infer(from: url),
             fileEncoding: decoded.encoding,
-            fileRevisionSnapshot: try? FileRevisionSnapshot.capture(url),
+            fileRevisionSnapshot: decoded.fileRevisionSnapshot,
             byteCount: decoded.byteCount,
             lineCount: decoded.lineCount
         )
@@ -615,6 +671,10 @@ final class AppState: ObservableObject {
         encoding: String.Encoding,
         completion: ((Bool) -> Void)?
     ) -> Bool {
+        guard !openingPlaceholderIDs.contains(document.id) else {
+            completion?(false)
+            return false
+        }
         guard let url = fileService.chooseSaveURL(
             suggestedName: suggestedFilename(for: document)
         ) else {
@@ -719,11 +779,20 @@ final class AppState: ObservableObject {
         selectedDocumentID = sourceID
     }
 
+    func canTransferDocument(_ document: EditorDocument) -> Bool {
+        if windowManager?.isRestorationPlaceholder(document) == true {
+            return document.ioState == .opening
+        }
+        return document.ioState != .opening && !openingPlaceholderIDs.contains(document.id)
+    }
+
     func takeDocumentForTransfer(_ document: EditorDocument) -> EditorDocument? {
-        guard let index = documents.firstIndex(where: { $0.id == document.id }) else {
+        guard canTransferDocument(document),
+              let index = documents.firstIndex(where: { $0.id == document.id }) else {
             return nil
         }
-        document.refreshDirtyState()
+        if !openingPlaceholderIDs.contains(document.id) { document.refreshDirtyState() }
+        openingPlaceholderIDs.remove(document.id)
         stopObserving(document)
         documents.remove(at: index)
         if documents.isEmpty {
@@ -756,6 +825,9 @@ final class AppState: ObservableObject {
             documents.firstIndex(where: { $0.id == targetID })
         } ?? documents.endIndex
         documents.insert(document, at: destination)
+        if windowManager?.isRestorationPlaceholder(document) == true {
+            openingPlaceholderIDs.insert(document.id)
+        }
         observe(document)
         selectedDocumentID = document.id
     }
@@ -977,6 +1049,11 @@ final class AppState: ObservableObject {
         dismissFindReplace()
         openingOperations.values.forEach { $0.cancel() }
         openingOperations.removeAll()
+        openingFileURLs.removeAll()
+        for document in documents where openingPlaceholderIDs.contains(document.id) {
+            _ = windowManager?.cancelRestoration(document)
+        }
+        openingPlaceholderIDs.removeAll()
         documentTaskQueue.cancelAllOperations()
         documents.forEach { $0.taskCoordinator.cancelAll() }
         textTransformationWindowController?.dispose()
@@ -1240,7 +1317,61 @@ final class AppState: ObservableObject {
         }
     }
 
+    func addSidebarFavorites(_ urls: [URL]) {
+        guard let library = windowManager?.sidebarLibrary else { return }
+        let previous = library.favoritePaths
+        for url in urls where !library.isFavorite(url) { library.toggleFavorite(url) }
+        let expected = library.favoritePaths
+        guard previous != expected else { return }
+        sidebarFeedback.show(L10n.tr("已更新所选文件")) { [weak library] in
+            library?.restoreFavorites(previous, ifUnchanged: expected) ?? false
+        }
+    }
+
+    func addSidebarFiles(_ urls: [URL], toGroup id: UUID) {
+        guard let library = windowManager?.sidebarLibrary,
+              let group = library.groups.first(where: { $0.id == id }) else { return }
+        for url in urls where !library.groupsContaining(url).contains(id) { library.add(url, toGroup: id) }
+        let expected = library.groups.first(where: { $0.id == id })?.paths ?? []
+        guard group.paths != expected else { return }
+        sidebarFeedback.show(L10n.tr("已更新所选文件")) { [weak library] in
+            library?.restoreGroupFiles(group.paths, in: id, ifUnchanged: expected) ?? false
+        }
+    }
+
+    func removeSidebarFiles(_ urls: [URL], location: SidebarFileLocation) {
+        switch location {
+        case .favorites:
+            guard let library = windowManager?.sidebarLibrary else { return }
+            let previous = library.favoritePaths
+            for url in urls where library.isFavorite(url) { library.toggleFavorite(url) }
+            let expected = library.favoritePaths
+            guard previous != expected else { return }
+            sidebarFeedback.show(L10n.tr("已更新所选文件")) { [weak library] in
+                library?.restoreFavorites(previous, ifUnchanged: expected) ?? false
+            }
+        case let .group(id):
+            guard let library = windowManager?.sidebarLibrary,
+                  let group = library.groups.first(where: { $0.id == id }) else { return }
+            for url in urls { library.remove(url, fromGroup: id) }
+            let expected = library.groups.first(where: { $0.id == id })?.paths ?? []
+            guard group.paths != expected else { return }
+            sidebarFeedback.show(L10n.tr("已更新所选文件")) { [weak library] in
+                library?.restoreGroupFiles(group.paths, in: id, ifUnchanged: expected) ?? false
+            }
+        case .recent:
+            let previous = recentFiles.urls
+            for url in urls { recentFiles.remove(url) }
+            let expected = recentFiles.urls
+            guard previous != expected else { return }
+            sidebarFeedback.show(L10n.tr("已更新所选文件")) { [weak recentFiles] in
+                recentFiles?.restore(previous, ifUnchanged: expected) ?? false
+            }
+        }
+    }
+
     private func observe(_ document: EditorDocument) {
+        document.resumeMetricsRefresh()
         documentCancellables[document.id] = Publishers.MergeMany([
             document.$url.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
             document.$language.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
@@ -1275,7 +1406,8 @@ final class AppState: ObservableObject {
         document.taskCoordinator.cancel(.replace)
         document.taskCoordinator.cancel(.json)
         document.taskCoordinator.cancel(.preview)
-        document.taskCoordinator.cancel(.metrics)
+        document.taskCoordinator.cancel(.folding)
+        document.cancelMetricsRefresh()
         document.taskCoordinator.cancel(.textTransformation)
         textTransformation.invalidate(documentID: document.id)
         documentCancellables.removeValue(forKey: document.id)?.cancel()
@@ -1287,7 +1419,7 @@ final class AppState: ObservableObject {
         for document: EditorDocument,
         delay: TimeInterval? = nil
     ) {
-        guard let recoveryStore else { return }
+        guard let recoveryStore, !openingPlaceholderIDs.contains(document.id) else { return }
         recoveryWorkItems.removeValue(forKey: document.id)?.cancel()
         guard document.isDirty else {
             recoveryStore.discard(documentID: document.id)
@@ -1636,6 +1768,10 @@ final class AppState: ObservableObject {
         bypassExternalConflict: Bool = false,
         completion: ((Bool) -> Void)? = nil
     ) -> Bool {
+        guard !openingPlaceholderIDs.contains(document.id) else {
+            completion?(false)
+            return false
+        }
         guard document.ioState != .saving else {
             document.statusMessage = L10n.tr("已有保存任务正在进行")
             completion?(false)
@@ -1787,88 +1923,107 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func reloadFromDisk(_ document: EditorDocument, at url: URL) {
+    func reloadFromDisk(_ document: EditorDocument, at url: URL) {
+        _ = document.synchronizedText()
         let expectedRevision = document.textRevision
+        let normalized = url.standardizedFileURL
         document.ioState = .opening
-        fileReadQueue.async { [weak self, weak document] in
-            let result = Result { try FileService.prepareRead(url) }
-            DispatchQueue.main.async {
-                guard let self, let document else { return }
+        let readFile = self.readFile
+        let operation = BlockOperation()
+        operation.addExecutionBlock { [weak self, weak document, weak operation] in
+            guard operation?.isCancelled == false else { return }
+            let result = Result { try readFile(normalized) }
+            DispatchQueue.main.async { [weak self, weak document, weak operation] in
+                guard let self, let document, let operation, !operation.isCancelled,
+                      self.openingOperations[normalized] === operation else { return }
                 do {
-                    let prepared = try result.get()
-                    switch prepared {
+                    switch try result.get() {
                     case let .decoded(decoded):
-                        guard document.textRevision == expectedRevision else {
-                            document.ioState = .idle
-                            document.statusMessage = L10n.tr("重新载入期间内容已变化，已保留本地修改")
-                            return
-                        }
-                        document.text = decoded.text
-                        document.updateFileEncoding(decoded.encoding)
-                        document.updateFileRevisionSnapshot(try? FileRevisionSnapshot.capture(url))
-                        document.markSaved()
-                        document.ioState = .idle
-                        self.scheduleRecoverySnapshot(for: document, delay: 0)
-                    case let .needsEncoding(data, byteCount):
-                        guard let choice = self.fileService.chooseEncoding(for: url) else {
+                        self.openingOperations.removeValue(forKey: normalized)
+                        self.finishReload(
+                            decoded, document: document, expectedRevision: expectedRevision
+                        )
+                    case let .needsEncoding(data, byteCount, fileRevisionSnapshot):
+                        let choice = self.fileService.chooseEncoding(for: normalized)
+                        guard self.openingOperations[normalized] === operation, !operation.isCancelled else { return }
+                        guard let choice else {
+                            self.openingOperations.removeValue(forKey: normalized)
                             document.ioState = .idle
                             return
                         }
                         self.decodeReloadInBackground(
-                            data,
-                            choice: choice,
-                            byteCount: byteCount,
-                            document: document,
-                            url: url,
-                            expectedRevision: expectedRevision
+                            data, choice: choice, byteCount: byteCount,
+                            fileRevisionSnapshot: fileRevisionSnapshot, document: document,
+                            url: normalized, expectedRevision: expectedRevision
                         )
                     }
                 } catch {
+                    self.openingOperations.removeValue(forKey: normalized)
                     document.ioState = .failed(error.localizedDescription)
                     self.presentError(title: L10n.tr("无法重新载入文件"), error: error)
                 }
             }
         }
+        openingOperations[normalized] = operation
+        fileOpeningQueue.addOperation(operation)
     }
 
     private func decodeReloadInBackground(
         _ data: Data,
         choice: FileEncodingChoice,
         byteCount: Int,
+        fileRevisionSnapshot: FileRevisionSnapshot,
         document: EditorDocument,
         url: URL,
         expectedRevision: UInt
     ) {
-        fileReadQueue.async { [weak self, weak document] in
+        let operation = BlockOperation()
+        operation.addExecutionBlock { [weak self, weak document, weak operation] in
+            guard operation?.isCancelled == false else { return }
             let result = Result {
                 try FileService.decode(
                     data,
                     encoding: choice.encoding,
                     encodingName: choice.name,
-                    byteCount: byteCount
+                    byteCount: byteCount,
+                    fileRevisionSnapshot: fileRevisionSnapshot
                 )
             }
-            DispatchQueue.main.async {
-                guard let self, let document else { return }
+            DispatchQueue.main.async { [weak self, weak document, weak operation] in
+                guard let self, let document, let operation, !operation.isCancelled,
+                      self.openingOperations[url] === operation else { return }
+                self.openingOperations.removeValue(forKey: url)
                 do {
-                    let decoded = try result.get()
-                    guard document.textRevision == expectedRevision else {
-                        document.ioState = .idle
-                        document.statusMessage = L10n.tr("重新载入期间内容已变化，已保留本地修改")
-                        return
-                    }
-                    document.text = decoded.text
-                    document.updateFileEncoding(decoded.encoding)
-                    document.updateFileRevisionSnapshot(try? FileRevisionSnapshot.capture(url))
-                    document.markSaved()
-                    document.ioState = .idle
-                    self.scheduleRecoverySnapshot(for: document, delay: 0)
+                    self.finishReload(
+                        try result.get(), document: document, expectedRevision: expectedRevision
+                    )
                 } catch {
                     document.ioState = .failed(error.localizedDescription)
                     self.presentError(title: L10n.tr("无法重新载入文件"), error: error)
                 }
             }
         }
+        openingOperations[url] = operation
+        fileOpeningQueue.addOperation(operation)
+    }
+
+    private func finishReload(
+        _ decoded: DecodedFile,
+        document: EditorDocument,
+        expectedRevision: UInt
+    ) {
+        _ = document.synchronizedText()
+        guard document.textRevision == expectedRevision, !document.hasPendingLiveEdits else {
+            document.ioState = .idle
+            document.statusMessage = L10n.tr("重新载入期间内容已变化，已保留本地修改")
+            return
+        }
+        document.text = decoded.text
+        document.updateFileEncoding(decoded.encoding)
+        document.updateFileRevisionSnapshot(decoded.fileRevisionSnapshot)
+        document.markSaved()
+        document.ioState = .idle
+        scheduleRecoverySnapshot(for: document, delay: 0)
     }
 
     private func handleSaveError(
@@ -1899,6 +2054,21 @@ final class AppState: ObservableObject {
         _ document: EditorDocument,
         completion: @escaping (Bool) -> Void
     ) {
+        if openingPlaceholderIDs.contains(document.id) {
+            guard document.isDirty else { completion(true); return }
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = L10n.tr("要保存对“%@”的更改吗？", String(describing: document.displayName))
+            alert.informativeText = L10n.tr("如果不保存，更改将会丢失。")
+            alert.addButton(withTitle: L10n.tr("不保存"))
+            alert.addButton(withTitle: L10n.tr("取消"))
+            let handle: (NSApplication.ModalResponse) -> Void = { response in
+                completion(response == .alertFirstButtonReturn)
+            }
+            if let hostWindow { alert.beginSheetModal(for: hostWindow, completionHandler: handle) }
+            else { handle(alert.runModal()) }
+            return
+        }
         document.refreshDirtyState()
         guard document.isDirty else {
             completion(true)
@@ -2006,6 +2176,12 @@ final class AppState: ObservableObject {
 
     private func removeDocument(_ document: EditorDocument) {
         guard let index = documents.firstIndex(where: { $0.id == document.id }) else { return }
+        _ = windowManager?.cancelRestoration(document)
+        if document.ioState == .opening, let url = document.url?.standardizedFileURL {
+            openingOperations.removeValue(forKey: url)?.cancel()
+            openingFileURLs.remove(url)
+        }
+        openingPlaceholderIDs.remove(document.id)
         stopObserving(document)
         recoveryStore?.discard(documentID: document.id)
         documents.remove(at: index)

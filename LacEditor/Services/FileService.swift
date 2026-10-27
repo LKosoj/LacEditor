@@ -9,6 +9,7 @@ struct DecodedFile {
     let encodingName: String
     let byteCount: Int
     let lineCount: Int
+    var fileRevisionSnapshot: FileRevisionSnapshot? = nil
 }
 
 struct DocumentFileIdentity: Hashable, Sendable {
@@ -38,13 +39,14 @@ struct FileRevisionSnapshot: Equatable, Sendable {
     let fileSize: Int?
 
     nonisolated static func capture(_ url: URL) throws -> Self {
-        let values = try url.resourceValues(forKeys: [
+        let freshURL = URL(fileURLWithPath: url.path)
+        let values = try freshURL.resourceValues(forKeys: [
             .fileResourceIdentifierKey,
             .contentModificationDateKey,
             .fileSizeKey
         ])
         return Self(
-            identity: DocumentFileIdentity.resolve(url),
+            identity: DocumentFileIdentity.resolve(freshURL),
             modificationDate: values.contentModificationDate,
             fileSize: values.fileSize
         )
@@ -58,7 +60,7 @@ struct FileEncodingChoice: Sendable {
 
 enum PreparedFileRead {
     case decoded(DecodedFile)
-    case needsEncoding(Data, byteCount: Int)
+    case needsEncoding(Data, byteCount: Int, fileRevisionSnapshot: FileRevisionSnapshot)
 }
 
 enum FileServiceError: LocalizedError {
@@ -121,22 +123,33 @@ final class FileService {
         return try decodeUsingSelectedEncoding(data, from: url)
     }
 
-    nonisolated static func prepareRead(_ url: URL) throws -> PreparedFileRead {
-        let byteCount = try fileByteCount(at: url)
+    nonisolated static func prepareRead(
+        _ url: URL,
+        readData: (URL, Data.ReadingOptions) throws -> Data = { try Data(contentsOf: $0, options: $1) }
+    ) throws -> PreparedFileRead {
+        let before = try FileRevisionSnapshot.capture(url)
+        let byteCount = before.fileSize ?? 0
         let options: Data.ReadingOptions = byteCount > 20 * 1_024 * 1_024
             ? .mappedIfSafe
             : []
-        let data = try Data(contentsOf: url, options: options)
+        let data = try readData(url, options)
+        let prepared: PreparedFileRead
         if let text = String(data: data, encoding: .utf8) {
-            return .decoded(DecodedFile(
+            prepared = .decoded(DecodedFile(
                 text: text,
                 encoding: .utf8,
                 encodingName: "UTF-8",
                 byteCount: byteCount,
-                lineCount: countLines(in: text)
+                lineCount: countLines(in: text),
+                fileRevisionSnapshot: before
             ))
+        } else {
+            let stableData = data.withUnsafeBytes { Data($0) }
+            prepared = .needsEncoding(stableData, byteCount: byteCount, fileRevisionSnapshot: before)
         }
-        return .needsEncoding(data, byteCount: byteCount)
+        let after = try FileRevisionSnapshot.capture(url)
+        guard before == after else { throw CocoaError(.fileReadUnknown) }
+        return prepared
     }
 
     nonisolated static func fileByteCount(at url: URL) throws -> Int {
@@ -180,7 +193,8 @@ final class FileService {
         _ data: Data,
         encoding: String.Encoding,
         encodingName: String,
-        byteCount: Int? = nil
+        byteCount: Int? = nil,
+        fileRevisionSnapshot: FileRevisionSnapshot? = nil
     ) throws -> DecodedFile {
         guard let text = String(data: data, encoding: encoding) else {
             throw FileServiceError.unsupportedEncoding
@@ -190,7 +204,8 @@ final class FileService {
             encoding: encoding,
             encodingName: encodingName,
             byteCount: byteCount ?? data.count,
-            lineCount: countLines(in: text)
+            lineCount: countLines(in: text),
+            fileRevisionSnapshot: fileRevisionSnapshot
         )
     }
 

@@ -5,6 +5,28 @@ import WebKit
 
 private let markdownPerformanceLog = OSLog(subsystem: "com.laceditor.LacEditor", category: "MarkdownPerformance")
 
+actor MarkdownRenderActor {
+    static let shared = MarkdownRenderActor()
+    private let renderer: @Sendable (String, Bool) -> MarkdownRenderedPage
+
+    init(renderer: @escaping @Sendable (String, Bool) -> MarkdownRenderedPage = {
+        MarkdownRenderer.renderPage($0, darkMode: $1)
+    }) {
+        self.renderer = renderer
+    }
+
+    func render(_ markdown: String, darkMode: Bool, coordinator: DocumentTaskCoordinator,
+                generation: UInt) -> MarkdownRenderedPage? {
+        guard !Task.isCancelled, coordinator.isCurrent(generation, for: .preview) else { return nil }
+        let signpost = OSSignpostID(log: markdownPerformanceLog)
+        os_signpost(.begin, log: markdownPerformanceLog, name: "MarkdownRender", signpostID: signpost)
+        let page = renderer(markdown, darkMode)
+        os_signpost(.end, log: markdownPerformanceLog, name: "MarkdownRender", signpostID: signpost)
+        guard !Task.isCancelled, coordinator.isCurrent(generation, for: .preview) else { return nil }
+        return page
+    }
+}
+
 private struct MarkdownPreviewActiveKey: EnvironmentKey {
     static let defaultValue = true
 }
@@ -82,18 +104,10 @@ struct MarkdownPreview: NSViewRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, WKNavigationDelegate {
-        private static let renderQueue: OperationQueue = {
-            let queue = OperationQueue()
-            queue.name = "com.laceditor.markdown-render"
-            queue.maxConcurrentOperationCount = 1
-            queue.qualityOfService = .userInitiated
-            return queue
-        }()
-
         weak var webView: WKWebView?
         weak var document: EditorDocument?
         private var debounce: DispatchWorkItem?
-        private var renderOperation: BlockOperation?
+        private var renderTask: Task<Void, Never>?
         private var taskGeneration: UInt?
         private var lastRequestedRevision: UInt?
         private var lastDarkMode: Bool?
@@ -110,7 +124,7 @@ struct MarkdownPreview: NSViewRepresentable {
 
         deinit {
             debounce?.cancel()
-            renderOperation?.cancel()
+            renderTask?.cancel()
         }
 
         func setActive(_ active: Bool) {
@@ -127,8 +141,8 @@ struct MarkdownPreview: NSViewRepresentable {
                document.taskCoordinator.isCurrent(taskGeneration, for: .preview) {
                 document.taskCoordinator.cancel(.preview)
             }
-            renderOperation?.cancel()
-            renderOperation = nil
+            renderTask?.cancel()
+            renderTask = nil
             taskGeneration = nil
             lastRequestedRevision = nil
         }
@@ -162,25 +176,22 @@ struct MarkdownPreview: NSViewRepresentable {
 
         private func beginRender(markdown: String, revision: UInt, darkMode: Bool, generation requestedGeneration: Int) {
             guard let document else { return }
-            let operation = BlockOperation()
             let coordinator = document.taskCoordinator
-            let task = coordinator.begin(.preview, operation: operation)
-            taskGeneration = task
-            renderOperation = operation
-            operation.addExecutionBlock { [weak self, weak operation, weak document] in
-                guard operation?.isCancelled == false, coordinator.isCurrent(task, for: .preview) else { return }
-                let signpost = OSSignpostID(log: markdownPerformanceLog)
-                os_signpost(.begin, log: markdownPerformanceLog, name: "MarkdownRender", signpostID: signpost)
-                let page = MarkdownRenderer.renderPage(markdown, darkMode: darkMode)
-                os_signpost(.end, log: markdownPerformanceLog, name: "MarkdownRender", signpostID: signpost)
-                guard operation?.isCancelled == false, coordinator.isCurrent(task, for: .preview) else { return }
-                DispatchQueue.main.async { [weak self, weak document] in
-                    guard let self, let document, self.isActive,
+            let taskGeneration = coordinator.begin(.preview)
+            self.taskGeneration = taskGeneration
+            let task = Task.detached(priority: .userInitiated) { [weak self, weak document] in
+                guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .preview) else { return }
+                guard let page = await MarkdownRenderActor.shared.render(
+                    markdown, darkMode: darkMode, coordinator: coordinator, generation: taskGeneration
+                ) else { return }
+                guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .preview) else { return }
+                await MainActor.run { [weak self, weak document] in
+                    guard !Task.isCancelled, let self, let document, self.document === document, self.isActive,
                           self.generation == requestedGeneration,
-                          document.taskCoordinator.isCurrent(task, for: .preview),
+                          coordinator.isCurrent(taskGeneration, for: .preview),
                           let webView = self.webView else { return }
-                    document.taskCoordinator.finish(.preview, generation: task)
-                    self.renderOperation = nil
+                    coordinator.finish(.preview, generation: taskGeneration)
+                    self.renderTask = nil
                     self.taskGeneration = nil
                     self.page = page
                     self.renderedRevision = revision
@@ -188,7 +199,8 @@ struct MarkdownPreview: NSViewRepresentable {
                     else if self.latestNavigation == nil { self.loadPage(in: webView) }
                 }
             }
-            Self.renderQueue.addOperation(operation)
+            renderTask = task
+            coordinator.attachTask(task, kind: .preview, generation: taskGeneration)
         }
 
         private func loadPage(in webView: WKWebView) {

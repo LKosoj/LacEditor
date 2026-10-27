@@ -80,7 +80,7 @@ final class StabilityTests: XCTestCase {
         ))
         XCTAssertEqual(
             accumulator.ranges,
-            [NSRange(location: 10, length: 5), NSRange(location: 18, length: 3)]
+            [NSRange(location: 10, length: 3), NSRange(location: 18, length: 3)]
         )
     }
 
@@ -105,7 +105,7 @@ final class StabilityTests: XCTestCase {
             changeInLength: 2,
             changedLineRange: nil
         ))
-        XCTAssertEqual(accumulator.ranges, [NSRange(location: 4, length: 3)])
+        XCTAssertEqual(accumulator.ranges, [NSRange(location: 4, length: 4)])
     }
 
     func testDirtyRangeAccumulatorUsesUTF16OffsetsForEmojiAndChineseText() {

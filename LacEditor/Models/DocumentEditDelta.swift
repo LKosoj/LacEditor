@@ -34,6 +34,22 @@ struct DirtyRangeAccumulator: Sendable, Equatable {
         mergeOverlappingRanges()
     }
 
+    mutating func remove(_ processed: NSRange) {
+        ranges = ranges.flatMap { range in
+            if range.length == 0, range.location >= processed.location,
+               range.location <= processed.upperBound { return [] }
+            guard NSIntersectionRange(range, processed).length > 0 else { return [range] }
+            var remaining: [NSRange] = []
+            if range.location < processed.location {
+                remaining.append(NSRange(location: range.location, length: processed.location - range.location))
+            }
+            if range.upperBound > processed.upperBound {
+                remaining.append(NSRange(location: processed.upperBound, length: range.upperBound - processed.upperBound))
+            }
+            return remaining
+        }
+    }
+
     mutating func append(_ edit: DocumentEditDelta) {
         // Existing ranges are stored in the post-edit coordinate space. The
         // newly edited span therefore uses the replacement length, while
@@ -46,7 +62,6 @@ struct DirtyRangeAccumulator: Sendable, Equatable {
 
         var updated: [NSRange] = []
         updated.reserveCapacity(ranges.count + 1)
-        var inserted = false
 
         for range in ranges {
             if range.upperBound <= edit.editedRange.location {
@@ -62,17 +77,14 @@ struct DirtyRangeAccumulator: Sendable, Equatable {
                 continue
             }
 
-            if replacementRange.touches(range) || edit.editedRange.touches(range) {
-                updated.append(range.union(replacementRange))
-                inserted = true
-            } else {
-                updated.append(range)
-            }
+            let start = min(range.location, edit.editedRange.location)
+            let end = range.upperBound > oldEnd
+                ? range.upperBound + edit.changeInLength
+                : replacementRange.upperBound
+            updated.append(NSRange(location: start, length: max(0, end - start)))
         }
 
-        if !inserted {
-            updated.append(replacementRange)
-        }
+        updated.append(replacementRange)
         ranges = updated
         mergeOverlappingRanges()
     }

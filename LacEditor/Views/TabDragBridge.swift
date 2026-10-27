@@ -7,7 +7,7 @@ struct NativeTabDragHandle: NSViewRepresentable {
     let iconName: String
     let isDirty: Bool
     let select: () -> Void
-    let beginDrag: () -> Void
+    let beginDrag: () -> Bool
     let finishDrag: (NSPoint) -> Void
     let canAcceptDrop: () -> Bool
     let dropTargetChanged: (TabDropEdge) -> Void
@@ -45,7 +45,7 @@ final class TabDragHandleView: NSView, NSDraggingSource {
     var iconName = "doc.plaintext"
     var isDirty = false
     var onSelect: (() -> Void)?
-    var onDragBegan: (() -> Void)?
+    var onDragBegan: (() -> Bool)?
     var onDragEnded: ((NSPoint) -> Void)?
     var canAcceptDrop: (() -> Bool)?
     var onDropTargetChanged: ((TabDropEdge) -> Void)?
@@ -99,8 +99,8 @@ final class TabDragHandleView: NSView, NSDraggingSource {
             return
         }
 
+        guard onDragBegan?() == true else { return }
         hasStartedDragging = true
-        onDragBegan?()
         NSCursor.closedHand.set()
 
         let item = NSPasteboardItem()

@@ -6,6 +6,157 @@ import XCTest
 
 @MainActor
 final class WindowAndSessionTests: XCTestCase {
+    func testWorkspaceExitWaitsForOpeningBeforeTakingSnapshot() async throws {
+        _ = NSApplication.shared
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let suiteName = "LacEditorWorkspaceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = AppPreferences(defaults: defaults)
+        let store = WorkspaceSessionStore(rootURL: directory)
+        let manager = WindowManager(
+            workspaceStore: store, preferences: preferences,
+            recentFiles: RecentFilesStore(defaults: defaults)
+        )
+        let document = EditorDocument(text: "loading")
+        document.ioState = .opening
+        let state = AppState(initialDocument: document, recentFiles: manager.recentFiles, preferences: preferences)
+        let window = makeWindow(title: "Opening")
+        let windowID = UUID()
+        manager.register(windowID: windowID, state: state, window: window)
+        window.orderFront(nil)
+        defer { manager.unregister(windowID: windowID); window.close() }
+        var result: Bool?
+        manager.requestApplicationTermination { result = $0 }
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertNil(result)
+        XCTAssertNil(try store.load())
+        document.text = "finished"
+        document.ioState = .idle
+        for _ in 0..<100 where result == nil {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(result, true)
+        XCTAssertEqual(try store.load()?.windows.first?.documents.first?.text, "finished")
+    }
+
+    func testWorkspaceExitRetriesWhenDocumentChangesDuringSave() async throws {
+        _ = NSApplication.shared
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let suiteName = "LacEditorWorkspaceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = AppPreferences(defaults: defaults)
+        let fileManager = PausedWorkspaceFileManager()
+        defer { fileManager.resume.signal() }
+        let store = WorkspaceSessionStore(rootURL: directory, fileManager: fileManager)
+        let manager = WindowManager(
+            workspaceStore: store, preferences: preferences,
+            recentFiles: RecentFilesStore(defaults: defaults)
+        )
+        let document = EditorDocument(text: "before")
+        let readStarted = DispatchSemaphore(value: 0)
+        let resumeRead = DispatchSemaphore(value: 0)
+        defer { resumeRead.signal() }
+        let state = AppState(
+            initialDocument: document, recentFiles: manager.recentFiles, preferences: preferences,
+            readFile: { url in
+                let prepared = try FileService.prepareRead(url)
+                readStarted.signal()
+                resumeRead.wait()
+                return prepared
+            }
+        )
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: url) }
+        try "opened".write(to: url, atomically: true, encoding: .utf8)
+        let window = makeWindow(title: "Save in progress")
+        let windowID = UUID()
+        manager.register(windowID: windowID, state: state, window: window)
+        window.orderFront(nil)
+        defer { manager.unregister(windowID: windowID); window.close() }
+        var result: Bool?
+        manager.requestApplicationTermination { result = $0 }
+        var saveStarted = false
+        for _ in 0..<100 {
+            if fileManager.started.wait(timeout: .now()) == .success { saveStarted = true; break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertTrue(saveStarted)
+        document.text = "after"
+        state.beginOpeningFile(url)
+        var didStartRead = false
+        for _ in 0..<100 {
+            if readStarted.wait(timeout: .now()) == .success { didStartRead = true; break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertTrue(didStartRead)
+        fileManager.resume.signal()
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertNil(result)
+        resumeRead.signal()
+        for _ in 0..<100 where result == nil { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(result, true)
+        XCTAssertEqual(try store.load()?.windows.first?.documents.map(\.text), ["after", "opened"])
+    }
+
+    func testWorkspaceExitRejectsFailedOpeningPlaceholder() async throws {
+        _ = NSApplication.shared
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("unreadable.txt")
+        try "original".write(to: url, atomically: true, encoding: .utf8)
+        let suiteName = "LacEditorWorkspaceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = AppPreferences(defaults: defaults)
+        let store = WorkspaceSessionStore(rootURL: directory.appendingPathComponent("workspace"))
+        let manager = WindowManager(
+            workspaceStore: store, preferences: preferences,
+            recentFiles: RecentFilesStore(defaults: defaults)
+        )
+        let state = AppState(recentFiles: manager.recentFiles, preferences: preferences, readFile: { _ in
+            throw CocoaError(.fileReadUnknown)
+        })
+        let window = makeWindow(title: "Failed opening")
+        let windowID = UUID()
+        manager.register(windowID: windowID, state: state, window: window)
+        window.orderFront(nil)
+        defer { manager.unregister(windowID: windowID); window.close() }
+        var modalTimedOut = false
+        let dismissModal = Task { @MainActor in
+            for _ in 0..<100 {
+                if let modal = NSApp.modalWindow {
+                    NSApp.stopModal()
+                    modal.orderOut(nil)
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(20))
+                if Task.isCancelled { return }
+            }
+            modalTimedOut = true
+            if let document = state.selectedDocument { state.cancelOpening(document) }
+        }
+        defer { dismissModal.cancel() }
+        state.beginOpeningFile(url)
+        await dismissModal.value
+        for _ in 0..<150 where state.hasPendingOpen { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertFalse(modalTimedOut, "Opening error dialog did not appear")
+        XCTAssertTrue(state.hasFailedOpeningPlaceholder)
+        let placeholder = try XCTUnwrap(state.selectedDocument)
+        XCTAssertFalse(manager.beginTabDrag(placeholder, from: state))
+        XCTAssertNil(state.takeDocumentForTransfer(placeholder))
+        XCTAssertFalse(state.save())
+        var result: Bool?
+        manager.requestApplicationTermination { result = $0 }
+        XCTAssertEqual(result, false)
+        XCTAssertNil(try store.load())
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "original")
+    }
+
     func testRepeatedActivationDoesNotPublishOrReplaceWorkspaceSubscription() {
         _ = NSApplication.shared
         let manager = WindowManager()
@@ -156,6 +307,20 @@ final class WindowAndSessionTests: XCTestCase {
         )
         let restored = restoredManager.takeRecoveredDocuments()
         XCTAssertEqual(restored.map(\.id), [first.id, second.id])
+        let restoredState = AppState(initialDocuments: Array(restored.prefix(1)),
+            recentFiles: restoredManager.recentFiles, preferences: preferences)
+        let restoredWindow = makeWindow(title: "Restored")
+        let restoredWindowID = UUID()
+        restoredManager.register(windowID: restoredWindowID, state: restoredState, window: restoredWindow)
+        defer {
+            for member in restoredWindow.tabGroup?.windows ?? [restoredWindow] {
+                member.delegate = nil
+                member.close()
+            }
+        }
+        for _ in 0..<100 where restored.contains(where: { $0.ioState == .opening }) {
+            try await Task.sleep(for: .milliseconds(20))
+        }
         XCTAssertEqual(restored.map(\.text), ["draft", #"{"z":1,"a":2}"#])
         XCTAssertTrue(restored[0].isDirty)
         XCTAssertFalse(restored[1].isDirty)
@@ -339,5 +504,24 @@ final class WindowAndSessionTests: XCTestCase {
         textView.string = text
         scrollView.documentView = textView
         return scrollView
+    }
+}
+
+private final class PausedWorkspaceFileManager: FileManager, @unchecked Sendable {
+    let started = DispatchSemaphore(value: 0)
+    let resume = DispatchSemaphore(value: 0)
+    private var hasPaused = false
+
+    override func createDirectory(
+        at url: URL,
+        withIntermediateDirectories createIntermediates: Bool,
+        attributes: [FileAttributeKey: Any]? = nil
+    ) throws {
+        if url.lastPathComponent.hasPrefix("Workspace-"), !hasPaused {
+            hasPaused = true
+            started.signal()
+            resume.wait()
+        }
+        try super.createDirectory(at: url, withIntermediateDirectories: createIntermediates, attributes: attributes)
     }
 }

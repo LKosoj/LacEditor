@@ -5,6 +5,43 @@ import XCTest
 
 @MainActor
 final class MarkdownPreviewTests: XCTestCase {
+    func testRenderActorSerializesAndSkipsCancelledWaitingWork() async {
+        let gate = RenderGate()
+        let started = expectation(description: "first render started")
+        let waiting = expectation(description: "second render queued")
+        let rendererActor = MarkdownRenderActor { text, darkMode in
+            gate.render(text, darkMode: darkMode, started: started)
+        }
+        let firstCoordinator = DocumentTaskCoordinator()
+        let secondCoordinator = DocumentTaskCoordinator()
+        let thirdCoordinator = DocumentTaskCoordinator()
+        let firstGeneration = firstCoordinator.begin(.preview)
+        let secondGeneration = secondCoordinator.begin(.preview)
+        let thirdGeneration = thirdCoordinator.begin(.preview)
+        let first = Task.detached {
+            await rendererActor.render("first", darkMode: false, coordinator: firstCoordinator, generation: firstGeneration)
+        }
+        await fulfillment(of: [started], timeout: 5)
+        let second = Task.detached {
+            waiting.fulfill()
+            return await rendererActor.render("second", darkMode: false, coordinator: secondCoordinator, generation: secondGeneration)
+        }
+        await fulfillment(of: [waiting], timeout: 5)
+        second.cancel()
+        let third = Task.detached {
+            await rendererActor.render("third", darkMode: false, coordinator: thirdCoordinator, generation: thirdGeneration)
+        }
+        gate.release.signal()
+        let firstPage = await first.value
+        let secondPage = await second.value
+        let thirdPage = await third.value
+        XCTAssertNotNil(firstPage)
+        XCTAssertNil(secondPage)
+        XCTAssertNotNil(thirdPage)
+        XCTAssertEqual(gate.calls, ["first", "third"])
+        XCTAssertEqual(gate.maximumActive, 1)
+    }
+
     func testEditsAndThemePatchExistingPageAndPreserveScroll() async throws {
         let text = String(repeating: "## 标题\n\n中英文 Mixed text，阅读与编辑。\n\n", count: 250)
         let fixture = PreviewFixture()
@@ -65,6 +102,35 @@ final class MarkdownPreviewTests: XCTestCase {
         XCTAssertTrue(resumed.contains("恢复后的内容"))
     }
 
+    func testStoppingCancelsDeferredRender() async throws {
+        let fixture = PreviewFixture()
+        defer { fixture.dispose() }
+        fixture.coordinator.render(markdown: "Исходный текст", revision: 1, darkMode: false, immediately: true)
+        try await fixture.waitForRevision(1)
+        fixture.coordinator.render(markdown: "Отложенный текст", revision: 2, darkMode: false)
+        fixture.coordinator.stop()
+        try await Task.sleep(for: .milliseconds(700))
+        let body: String = try await fixture.value("document.querySelector('article').innerText")
+        XCTAssertTrue(body.contains("Исходный текст"))
+        XCTAssertFalse(body.contains("Отложенный текст"))
+        fixture.coordinator.render(markdown: "Новый текст", revision: 3, darkMode: false, immediately: true)
+        try await fixture.waitForRevision(3)
+    }
+
+    func testNewRenderReplacesDeferredRender() async throws {
+        let fixture = PreviewFixture()
+        defer { fixture.dispose() }
+        fixture.coordinator.render(markdown: "Исходный текст", revision: 1, darkMode: false, immediately: true)
+        try await fixture.waitForRevision(1)
+        fixture.coordinator.render(markdown: "Старый текст", revision: 2, darkMode: false)
+        fixture.coordinator.render(markdown: "Последний текст", revision: 3, darkMode: false, immediately: true)
+        try await fixture.waitForRevision(3)
+        try await Task.sleep(for: .milliseconds(700))
+        let body: String = try await fixture.value("document.querySelector('article').innerText")
+        XCTAssertTrue(body.contains("Последний текст"))
+        XCTAssertFalse(body.contains("Старый текст"))
+    }
+
     func testNarrowPreviewContainsWideTablesAndCode() async throws {
         let fixture = PreviewFixture(width: 240)
         defer { fixture.dispose() }
@@ -82,6 +148,33 @@ final class MarkdownPreviewTests: XCTestCase {
         XCTAssertTrue(tableScrolls)
         XCTAssertTrue(codeScrolls)
         XCTAssertEqual(nested, "square")
+    }
+}
+
+private final class RenderGate: @unchecked Sendable {
+    let release = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var recordedCalls: [String] = []
+    private var active = 0
+    private var peak = 0
+
+    var calls: [String] { lock.lock(); defer { lock.unlock() }; return recordedCalls }
+    var maximumActive: Int { lock.lock(); defer { lock.unlock() }; return peak }
+
+    func render(_ text: String, darkMode: Bool, started: XCTestExpectation) -> MarkdownRenderedPage {
+        lock.lock()
+        recordedCalls.append(text)
+        active += 1
+        peak = max(peak, active)
+        lock.unlock()
+        if text == "first" {
+            started.fulfill()
+            _ = release.wait(timeout: .now() + 5)
+        }
+        lock.lock()
+        active -= 1
+        lock.unlock()
+        return MarkdownRenderedPage(body: text, darkMode: darkMode)
     }
 }
 

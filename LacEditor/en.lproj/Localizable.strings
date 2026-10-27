@@ -413,3 +413,12 @@
 "文件关联" = "File Associations";
 "性能" = "Performance";
 "关于" = "About";
+"无法恢复工作区" = "Unable to restore the workspace";
+"LacEditor 无法安全恢复工作区，已取消启动。原有数据未被删除。\n\n%@" = "LacEditor could not safely restore the workspace, so startup was cancelled. Existing data was not deleted.\n\n%@";
+
+"已更新所选文件" = "Updated selected files";
+"将所选文件添加到收藏夹" = "Add Selected Files to Favorites";
+"将所选文件添加到分组" = "Add Selected Files to Group";
+"在 Finder 中显示所选文件" = "Show Selected Files in Finder";
+"从列表中移除所选文件" = "Remove Selected Files from List";
+"已打开" = "Open";

@@ -52,6 +52,8 @@ In Settings > File Associations, view the default app for common formats and set
 
 By default, the complete workspace is saved on exit and windows, tabs, text, unsaved state, selections, scroll positions, and interface state are restored on the next launch. Workspace snapshots and crash recovery are stored separately, and disk files are not automatically rewritten. Settings also offer the traditional save confirmation before quitting.
 
+In the current source branch, quitting waits for file reads and saves and writes the session again if changes occur during the write. If the session cannot be safely restored at startup, the app reports the error and stops launching, preserving recovery data on disk. An unfinished or failed initial read cannot be saved over the source file or moved to another window before reading succeeds.
+
 ### Interface language
 
 The current source branch supports System, Chinese, English, and Russian in Settings > Appearance > Language. Changes take effect after restarting the app; this feature is not included in the published 0.15.0 release.
@@ -102,7 +104,8 @@ The full performance and architecture roadmap is in [docs/ROADMAP.md](docs/ROADM
 
 - Stage 1: Reduce full-text copies in Markdown preview, improve search caching, and add regression tests for line numbers and trailing empty lines.
 - Stage 2: Prune Tree-sitter work by changed ranges, split highlighting and folding tasks, and reduce main-thread work for long code files.
-- Stage 3: Abstract TextKit rendering attributes and evaluate TextKit 2 and a more native document lifecycle.
+- Stage 3: Architecture assessment completed using external sources; retain TextKit 1 and the current document lifecycle. The TextKit 2 experiment is excluded, while a shared rendering layer and large-class refactoring are deferred.
+The current working tree adds cancellable preview, statistics and folding tasks, sidebar keyboard selection and batch actions, and progressive workspace loading that prioritizes selected tabs. These changes are unreleased: Mac builds, XCTest, real UI checks and comparative measurements remain pending. See the [completion plan](docs/plans/roadmap-completion-plan.md) and [next optimization checklist](NEXT_OPTIMIZATIONS.md).
 
 Git, a plugin system, cloud sync, and bidirectional links are not currently part of LacEditor's core roadmap.
 

@@ -335,6 +335,7 @@ private struct DocumentEditorPane: View {
             isActive: true,
             requestTextTransformation: appState.presentTextTransformation
         )
+        .disabled(appState.isOpeningPlaceholder(document))
     }
 }
 

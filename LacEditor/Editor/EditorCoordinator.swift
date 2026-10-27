@@ -49,7 +49,9 @@ extension EditorTextView {
         private var delimiterHighlightRanges: [NSRange] = []
         private var highlightGeneration: UInt = 0
         private var contentRevision: UInt
+        private var pendingFoldSelection: NSRange?
         private var highlightedRevision: UInt?
+        private var appliedTreeChangeRevision: UInt?
         private var highlightedLanguage: EditorLanguage?
         private var highlightedFontSize: CGFloat?
         private var highlightedRanges: [NSRange] = []
@@ -96,6 +98,7 @@ extension EditorTextView {
         var isSessionActive: Bool { isActive }
 
         func indentCurrentListItem(outdent: Bool) -> Bool {
+            if textView?.hasMarkedText() == true { return true }
             guard currentLanguage == .markdown,
                   let textView,
                   let storage = textView.textStorage,
@@ -107,14 +110,17 @@ extension EditorTextView {
                         : String(repeating: " ", count: textView.tabWidth),
                     outdent: outdent
                   ) else { return false }
-            isApplyingAutomatedEdit = true
+            let selectionLocation = textView.selectedRange().location
+            let updatedText = NSMutableString(string: storage.string)
             for edit in edits.sorted(by: { $0.range.location > $1.range.location }) {
-                storage.replaceCharacters(in: edit.range, with: edit.replacement)
+                updatedText.replaceCharacters(in: edit.range, with: edit.replacement)
             }
-            let normalized = ListContinuationService.normalizeNestedLists(in: storage.string)
-            if normalized != storage.string {
-                storage.replaceCharacters(
-                    in: NSRange(location: 0, length: storage.length),
+            let normalized = outdent && edits.count == 1
+                ? updatedText as String
+                : ListContinuationService.normalizeNestedLists(in: updatedText as String)
+            if normalized != updatedText as String {
+                updatedText.replaceCharacters(
+                    in: NSRange(location: 0, length: updatedText.length),
                     with: normalized
                 )
             }
@@ -122,29 +128,60 @@ extension EditorTextView {
             // the next parent item immediately so its number does not remain
             // stale until a later edit.
             if !outdent {
-                let currentLine = storage.mutableString.lineRange(
-                    for: NSRange(location: min(textView.selectedRange().location, storage.length), length: 0)
+                let currentLine = updatedText.lineRange(
+                    for: NSRange(location: min(selectionLocation, updatedText.length), length: 0)
                 )
                 let nextLocation = NSMaxRange(currentLine)
-                if nextLocation < storage.length,
+                if nextLocation < updatedText.length,
                    let normalization = ListContinuationService.normalizeOrderedList(
-                    in: storage.string,
+                    in: updatedText as String,
                     aroundUTF16Location: nextLocation
                    ) {
                     for edit in normalization.edits.sorted(by: { $0.range.location > $1.range.location }) {
-                        storage.replaceCharacters(in: edit.range, with: edit.replacement)
+                        updatedText.replaceCharacters(in: edit.range, with: edit.replacement)
                     }
                 }
             }
-            isApplyingAutomatedEdit = false
+            let original = storage.string as NSString
+            var prefix = 0
+            while prefix < original.length, prefix < updatedText.length,
+                  original.character(at: prefix) == updatedText.character(at: prefix) {
+                prefix += 1
+            }
+            if prefix > 0, prefix < original.length,
+               (0xDC00...0xDFFF).contains(Int(original.character(at: prefix))) {
+                prefix -= 1
+            }
+            var suffix = 0
+            while suffix < original.length - prefix, suffix < updatedText.length - prefix,
+                  original.character(at: original.length - suffix - 1)
+                    == updatedText.character(at: updatedText.length - suffix - 1) {
+                suffix += 1
+            }
+            if suffix > 0, original.length - suffix < original.length,
+               (0xDC00...0xDFFF).contains(Int(original.character(at: original.length - suffix))) {
+                suffix -= 1
+            }
+            let changedRange = NSRange(location: prefix, length: original.length - prefix - suffix)
+            let replacement = updatedText.substring(with: NSRange(
+                location: prefix, length: updatedText.length - prefix - suffix
+            ))
+            isApplyingAutomatedEdit = true
+            defer { isApplyingAutomatedEdit = false }
+            guard textView.shouldChangeText(in: changedRange, replacementString: replacement) else {
+                return false
+            }
+            storage.replaceCharacters(in: changedRange, with: replacement)
+            textView.didChangeText()
             textView.setSelectedRange(NSRange(
                 location: max(0, min(
                     storage.length,
-                    textView.selectedRange().location
+                    selectionLocation
                         + edits.reduce(0) { $0 + ($1.replacement as NSString).length - $1.range.length }
                 )),
                 length: 0
             ))
+            textView.undoManager?.setActionName(L10n.tr("整理有序列表"))
             return true
         }
 
@@ -202,6 +239,7 @@ extension EditorTextView {
             delimiterMatchOperation?.cancel()
             delimiterMatchQueue.cancelAllOperations()
             document.taskCoordinator.cancel(.delimiterMatch)
+            document.taskCoordinator.cancel(.folding)
             rulerRefreshWorkItem?.cancel()
             liveResizeLayoutWorkItem?.cancel()
             selectionVisibilityWorkItem?.cancel()
@@ -684,6 +722,7 @@ extension EditorTextView {
                     window.makeFirstResponder(nil)
                 }
                 cancelPendingHighlight()
+                cancelFoldTask()
                 return
             }
             textView?.requestsFirstResponderWhenAttached = true
@@ -776,6 +815,7 @@ extension EditorTextView {
 
         func advanceContentRevision() {
             contentRevision &+= 1
+            cancelFoldTask()
             delimiterSnapshot = nil
             delimiterSnapshotRevision = nil
             delimiterMatchingContext.reset()
@@ -935,10 +975,12 @@ extension EditorTextView {
             )
             lastSyntaxEdit = editDelta
             pendingHighlightRanges.append(editDelta)
-            translateHighlightedRanges(
-                after: safeRange,
-                replacementLength: replacementLength
-            )
+            let affectedLineStart = nsText.lineRange(for: safeRange).location
+            pendingHighlightRanges.invalidate(NSRange(
+                location: affectedLineStart,
+                length: max(0, nsText.length + editDelta.changeInLength - affectedLineStart)
+            ))
+            translateHighlightedRanges(after: NSRange(location: affectedLineStart, length: 0))
             syntaxHighlightContext.invalidate(after: safeRange.location)
             delimiterMatchingContext.invalidate(after: safeRange.location)
             delimiterSnapshot = nil
@@ -1098,6 +1140,7 @@ extension EditorTextView {
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
+            cancelFoldIfSelectionChanged()
             guard !isApplyingExternalUpdate,
                   !isRestoringOffscreenEdit else { return }
             guard textView?.hasMarkedText() != true else {
@@ -1115,6 +1158,7 @@ extension EditorTextView {
         }
 
         func selectionDidChangeDuringTracking() {
+            cancelFoldIfSelectionChanged()
             guard !isRestoringOffscreenEdit else { return }
             guard textView?.hasMarkedText() != true else {
                 cancelDelimiterMatch(clearHighlight: true)
@@ -1344,7 +1388,7 @@ extension EditorTextView {
                 pendingHighlightRanges.clear()
             }
             let dirtyRange = pendingHighlightRanges.unionRange
-            let requestedRange = dirtyRange ?? visibleHighlightRange() ?? fullRange
+            let requestedRange = visibleHighlightRange() ?? dirtyRange ?? fullRange
             let targetRange = expandedHighlightRange(
                 requestedRange,
                 in: storage.length,
@@ -1353,7 +1397,9 @@ extension EditorTextView {
             if highlightedRanges.contains(where: {
                 targetRange.location >= $0.location
                     && NSMaxRange(targetRange) <= NSMaxRange($0)
-            }) && dirtyRange == nil {
+            }) && !pendingHighlightRanges.ranges.contains(where: {
+                NSIntersectionRange($0, targetRange).length > 0
+            }) {
                 return
             }
 
@@ -1361,6 +1407,8 @@ extension EditorTextView {
             let snapshot = (synchronizedSnapshot as NSString).length == storage.length
                 ? synchronizedSnapshot
                 : storage.string
+            let edit = lastSyntaxEdit
+            let documentID = document.id
             highlightOperation?.cancel()
             let operation = BlockOperation()
             operation.addExecutionBlock { [weak self, weak operation] in
@@ -1378,8 +1426,8 @@ extension EditorTextView {
                     range: targetRange,
                     context: self?.syntaxHighlightContext,
                     revision: revision,
-                    documentID: self?.document.id,
-                    edit: self?.lastSyntaxEdit,
+                    documentID: documentID,
+                    edit: edit,
                     isCancelled: { operation.isCancelled }
                 )
                 os_signpost(
@@ -1389,10 +1437,14 @@ extension EditorTextView {
                     signpostID: tokenizeSignpostID
                 )
                 guard !operation.isCancelled else { return }
+                let changedRanges = SyntaxParserRegistry.changedRanges(
+                    documentID: documentID, revision: revision, language: language
+                )
                 DispatchQueue.main.async { [weak self, weak operation] in
                     guard let operation, !operation.isCancelled else { return }
                     self?.applyHighlight(
                         tokens: tokens,
+                        changedRanges: changedRanges,
                         range: targetRange,
                         revision: revision,
                         language: language,
@@ -1407,6 +1459,7 @@ extension EditorTextView {
 
         private func applyHighlight(
             tokens: [SyntaxHighlighter.Token],
+            changedRanges: [NSRange]?,
             range: NSRange,
             revision: UInt,
             language: EditorLanguage,
@@ -1422,6 +1475,15 @@ extension EditorTextView {
                   !textView.hasMarkedText(),
                   let storage = textView.textStorage,
                   NSMaxRange(range) <= storage.length else { return }
+            if appliedTreeChangeRevision != revision, let changedRanges {
+                for changed in changedRanges {
+                    let bounded = NSIntersectionRange(changed, NSRange(location: 0, length: storage.length))
+                    guard bounded.length > 0 else { continue }
+                    pendingHighlightRanges.invalidate(bounded)
+                    highlightedRanges.removeAll { NSIntersectionRange($0, bounded).length > 0 }
+                }
+                appliedTreeChangeRevision = revision
+            }
             let applySignpostID = OSSignpostID(log: editorPerformanceLog)
             os_signpost(
                 .begin,
@@ -1445,32 +1507,26 @@ extension EditorTextView {
             highlightedFontSize = fontSize
             recordHighlightedRange(range)
             if revision == contentRevision {
-                pendingHighlightRanges.clear()
+                pendingHighlightRanges.remove(range)
             }
             highlightOperation = nil
             refreshRuler()
         }
 
-        private func translateHighlightedRanges(
-            after editedRange: NSRange,
-            replacementLength: Int
-        ) {
+        private func translateHighlightedRanges(after editedRange: NSRange) {
             guard !highlightedRanges.isEmpty else { return }
-            let delta = replacementLength - editedRange.length
-            let oldEnd = editedRange.upperBound
             var translated: [NSRange] = []
             translated.reserveCapacity(highlightedRanges.count)
             for range in highlightedRanges {
                 if range.upperBound <= editedRange.location {
                     translated.append(range)
-                } else if range.location >= oldEnd {
+                } else if range.location < editedRange.location {
                     translated.append(NSRange(
-                        location: max(0, range.location + delta),
-                        length: range.length
+                        location: range.location,
+                        length: editedRange.location - range.location
                     ))
                 }
-                // Ranges intersecting the edit are intentionally dropped. The
-                // next incremental pass removes and recomputes that region.
+                // An edit can change syntax throughout the following text.
             }
             highlightedRanges = translated
         }
@@ -1634,6 +1690,7 @@ extension EditorTextView {
         func resetSyntaxHighlightContext() {
             syntaxHighlightContext.reset()
             highlightedRevision = nil
+            appliedTreeChangeRevision = nil
             highlightedLanguage = nil
             highlightedFontSize = nil
             highlightedRanges.removeAll(keepingCapacity: true)
@@ -1710,23 +1767,62 @@ extension EditorTextView {
         private func toggleFold() {
             guard document.isFoldingEnabled,
                   let textView, textView.window?.firstResponder === textView,
+                  !textView.hasMarkedText(),
                   let foldLayoutManager else { return }
+            cancelFoldTask()
             if foldLayoutManager.foldedRange != nil {
                 clearFold()
-            } else if let range = FoldService.foldableRange(
-                in: textView.string,
-                at: textView.selectedRange().location,
-                language: document.language
-            ) {
-                foldLayoutManager.setFoldedRange(range)
+                return
             }
-            refreshFoldLayout()
+            let snapshot = textView.string
+            let selection = textView.selectedRange()
+            pendingFoldSelection = selection
+            let revision = contentRevision
+            let language = document.language
+            let targetDocument = document
+            let coordinator = targetDocument.taskCoordinator
+            let generation = coordinator.begin(.folding)
+            let task = Task.detached(priority: .userInitiated) { [weak self, weak targetDocument] in
+                let range = FoldService.foldableRange(
+                    in: snapshot, at: selection.location, language: language,
+                    isCancelled: { Task.isCancelled }
+                )
+                guard !Task.isCancelled, coordinator.isCurrent(generation, for: .folding) else { return }
+                await MainActor.run { [weak self, weak targetDocument] in
+                    guard !Task.isCancelled, let self, let targetDocument,
+                          self.document === targetDocument, self.isActive,
+                          coordinator.isCurrent(generation, for: .folding),
+                          self.contentRevision == revision, targetDocument.language == language,
+                          targetDocument.isFoldingEnabled, let textView = self.textView,
+                          textView.window?.firstResponder === textView,
+                          !textView.hasMarkedText(), textView.selectedRange() == selection,
+                          let layout = self.foldLayoutManager, layout.foldedRange == nil else { return }
+                    coordinator.finish(.folding, generation: generation)
+                    self.pendingFoldSelection = nil
+                    if let range {
+                        layout.setFoldedRange(range)
+                        self.refreshFoldLayout()
+                    }
+                }
+            }
+            coordinator.attachTask(task, kind: .folding, generation: generation)
         }
 
         func clearFold() {
+            cancelFoldTask()
             guard foldLayoutManager?.foldedRange != nil else { return }
             foldLayoutManager?.setFoldedRange(nil)
             refreshFoldLayout()
+        }
+
+        func cancelFoldTask() {
+            pendingFoldSelection = nil
+            document.taskCoordinator.cancel(.folding)
+        }
+
+        private func cancelFoldIfSelectionChanged() {
+            guard let pendingFoldSelection, textView?.selectedRange() != pendingFoldSelection else { return }
+            cancelFoldTask()
         }
 
         private func clearFoldIfNeeded(toReveal range: NSRange) {

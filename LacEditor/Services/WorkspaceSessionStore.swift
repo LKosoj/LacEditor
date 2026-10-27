@@ -24,6 +24,22 @@ struct WorkspaceDocumentSnapshot: Equatable, Sendable {
     let fileRevisionSnapshot: FileRevisionSnapshot?
 }
 
+struct WorkspaceDocumentReference: Sendable {
+    let snapshot: WorkspaceDocumentSnapshot
+    let contentURL: URL
+}
+
+struct WorkspaceWindowReference: Sendable {
+    let documents: [WorkspaceDocumentReference]
+    let selectedDocumentID: UUID?
+    let isSidebarVisible: Bool
+    let frame: WorkspaceWindowFrame?
+}
+
+struct WorkspaceSessionReference: Sendable {
+    let windows: [WorkspaceWindowReference]
+}
+
 struct WorkspaceWindowFrame: Codable, Equatable, Sendable {
     let x: Double
     let y: Double
@@ -92,7 +108,25 @@ final class WorkspaceSessionStore: @unchecked Sendable {
         }
     }
 
-    func loadAndConsume() throws -> WorkspaceSessionSnapshot? {
+    func load() throws -> WorkspaceSessionSnapshot? {
+        guard let reference = try loadReferences() else { return nil }
+        return WorkspaceSessionSnapshot(windows: try reference.windows.map { window in
+            WorkspaceWindowSnapshot(documents: try window.documents.map { reference in
+                let snapshot = reference.snapshot
+                let data = try Data(contentsOf: reference.contentURL, options: .mappedIfSafe)
+                return WorkspaceDocumentSnapshot(
+                    documentID: snapshot.documentID, text: String(decoding: data, as: UTF8.self),
+                    sourceURL: snapshot.sourceURL, language: snapshot.language, encoding: snapshot.encoding,
+                    isDirty: snapshot.isDirty, selectionRange: snapshot.selectionRange,
+                    scrollPositionRatio: snapshot.scrollPositionRatio, isPreviewVisible: snapshot.isPreviewVisible,
+                    fileRevisionSnapshot: snapshot.fileRevisionSnapshot
+                )
+            }, selectedDocumentID: window.selectedDocumentID,
+               isSidebarVisible: window.isSidebarVisible, frame: window.frame)
+        })
+    }
+
+    func loadReferences() throws -> WorkspaceSessionReference? {
         try queue.sync {
             guard let marker = try readMarker() else { return nil }
             let directory = workspaceURL(for: marker.workspaceID)
@@ -105,14 +139,10 @@ final class WorkspaceSessionStore: @unchecked Sendable {
                 throw CocoaError(.fileReadCorruptFile)
             }
             let windows = try manifest.windows.map { window in
-                WorkspaceWindowSnapshot(
+                WorkspaceWindowReference(
                     documents: try window.documents.map { document in
                         let contentURL = directory.appendingPathComponent(
                             document.contentFileName
-                        )
-                        let data = try Data(
-                            contentsOf: contentURL,
-                            options: .mappedIfSafe
                         )
                         let baseline = document.canonicalPath.map {
                             FileRevisionSnapshot(
@@ -124,9 +154,9 @@ final class WorkspaceSessionStore: @unchecked Sendable {
                                 fileSize: document.fileSize
                             )
                         }
-                        return WorkspaceDocumentSnapshot(
+                        return WorkspaceDocumentReference(snapshot: WorkspaceDocumentSnapshot(
                             documentID: document.documentID,
-                            text: String(decoding: data, as: UTF8.self),
+                            text: "",
                             sourceURL: document.sourcePath.map {
                                 URL(fileURLWithPath: $0).standardizedFileURL
                             },
@@ -145,17 +175,23 @@ final class WorkspaceSessionStore: @unchecked Sendable {
                             ),
                             isPreviewVisible: document.isPreviewVisible,
                             fileRevisionSnapshot: baseline
-                        )
+                        ), contentURL: contentURL)
                     },
                     selectedDocumentID: window.selectedDocumentID,
                     isSidebarVisible: window.isSidebarVisible,
                     frame: window.frame
                 )
             }
-            try? fileManager.removeItem(at: markerURL)
-            try? fileManager.removeItem(at: directory)
+            return WorkspaceSessionReference(windows: windows)
+        }
+    }
+
+    func consume() throws {
+        try queue.sync {
+            guard let marker = try readMarker() else { return }
+            try fileManager.removeItem(at: markerURL)
+            try? fileManager.removeItem(at: workspaceURL(for: marker.workspaceID))
             removeWorkspaceDirectories(except: nil)
-            return WorkspaceSessionSnapshot(windows: windows)
         }
     }
 

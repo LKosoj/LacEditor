@@ -8,6 +8,7 @@ let editorPerformanceLog = OSLog(
 )
 
 struct EditorTextView: NSViewRepresentable {
+    @Environment(\.isEnabled) private var isEnabled
     @ObservedObject var document: EditorDocument
     let sessionStore: EditorSessionStore
     let fontSize: CGFloat
@@ -26,6 +27,7 @@ struct EditorTextView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSScrollView {
         if let cachedView = sessionStore.cachedView(for: document.id) {
+            (cachedView.documentView as? NSTextView)?.isEditable = isEnabled
             os_signpost(
                 .event,
                 log: editorPerformanceLog,
@@ -81,6 +83,7 @@ struct EditorTextView: NSViewRepresentable {
             frame: NSRect(origin: .zero, size: initialSize),
             textContainer: textContainer
         )
+        textView.isEditable = isEnabled
         textView.isRichText = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
@@ -185,6 +188,7 @@ struct EditorTextView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = context.coordinator.textView else { return }
+        textView.isEditable = isEnabled
         textView.textTransformationHandler = requestTextTransformation
         let documentChanged = context.coordinator.document.id != document.id
         let fontChanged = context.coordinator.currentFontSize != fontSize
@@ -193,30 +197,40 @@ struct EditorTextView: NSViewRepresentable {
             .editorLineSpacing != lineSpacing
         let languageChanged = context.coordinator.currentLanguage != document.language
         if documentChanged || languageChanged {
+            context.coordinator.cancelFoldTask()
             context.coordinator.resetSyntaxHighlightContext()
         }
         context.coordinator.document = document
-        context.coordinator.currentFontSize = fontSize
-        context.coordinator.currentTabWidth = tabWidth
         context.coordinator.currentLanguage = document.language
-        context.coordinator.foldLayoutManager?.textFont = lacEditorFont(size: fontSize)
-        context.coordinator.foldLayoutManager?.editorLineSpacing = lineSpacing
-        textView.editorLineSpacing = lineSpacing
         textView.indentationStyle = indentationStyle
-        textView.tabWidth = tabWidth
-        if fontChanged {
-            textView.font = lacEditorFont(size: fontSize)
-        }
         let shouldRefreshTextMetrics = lineSpacingChanged
             || fontChanged
             || tabWidthChanged
-        if shouldRefreshTextMetrics, !textView.hasMarkedText() {
-            textView.configureTabStops()
-        }
-        if shouldRefreshTextMetrics,
-           !textView.hasMarkedText(),
-           textView.textStorage?.length ?? 0 > 0 {
-            textView.scheduleParagraphStyleRefresh()
+        if shouldRefreshTextMetrics {
+            let requestedFontSize = fontSize
+            let requestedLineSpacing = lineSpacing
+            let requestedTabWidth = tabWidth
+            let requestedWordWrap = wordWrap
+            textView.applyOrDeferTextMetrics { [weak textView, weak coordinator = context.coordinator] in
+                guard let textView, let coordinator else { return }
+                let fontChanged = coordinator.currentFontSize != requestedFontSize
+                let lineSpacingChanged = coordinator.foldLayoutManager?.editorLineSpacing != requestedLineSpacing
+                coordinator.currentFontSize = requestedFontSize
+                coordinator.currentTabWidth = requestedTabWidth
+                coordinator.foldLayoutManager?.textFont = lacEditorFont(size: requestedFontSize)
+                coordinator.foldLayoutManager?.editorLineSpacing = requestedLineSpacing
+                textView.editorLineSpacing = requestedLineSpacing
+                textView.tabWidth = requestedTabWidth
+                if fontChanged { textView.font = lacEditorFont(size: requestedFontSize) }
+                textView.configureTabStops()
+                if textView.textStorage?.length ?? 0 > 0 {
+                    textView.scheduleParagraphStyleRefresh()
+                }
+                coordinator.updateLayout(wordWrap: requestedWordWrap, force: lineSpacingChanged)
+                if fontChanged { coordinator.scheduleHighlight(delay: 0) }
+            }
+        } else {
+            textView.applyOrDeferTextMetrics(nil)
         }
         context.coordinator.updatePerformanceFeatures()
         context.coordinator.updateLineNumbersVisibility(showsLineNumbers)
