@@ -53,7 +53,7 @@ struct MarkdownPreview: NSViewRepresentable {
         view.navigationDelegate = context.coordinator
         // Native WebKit scrolling still underlaps the native titlebar (NT2).
         view.configurePageAppearance(darkMode: darkMode)
-        view.setAccessibilityLabel("Markdown 预览")
+        view.setAccessibilityLabel(L10n.tr("Markdown 预览"))
         context.coordinator.webView = view
         view.reloadRenderedContent = { [weak view, weak coordinator = context.coordinator] in
             guard let view, let coordinator else { return }

@@ -13,9 +13,9 @@ enum DocumentPerformanceProfile: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .standard: "标准模式"
-        case .large: "大文件模式"
-        case .extreme: "超大文件保护模式"
+        case .standard: L10n.tr("标准模式")
+        case .large: L10n.tr("大文件模式")
+        case .extreme: L10n.tr("超大文件保护模式")
         }
     }
 
@@ -53,8 +53,8 @@ enum DocumentIOState: Equatable {
     var statusText: String? {
         switch self {
         case .idle: nil
-        case .opening: "正在打开"
-        case .saving: "正在保存"
+        case .opening: L10n.tr("正在打开")
+        case .saving: L10n.tr("正在保存")
         case let .failed(message): message
         }
     }
@@ -255,7 +255,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     }
 
     var displayName: String {
-        url?.lastPathComponent ?? "未命名"
+        url?.lastPathComponent ?? L10n.tr("未命名")
     }
 
     var encodingName: String {

@@ -112,20 +112,20 @@ struct EditorStartHints: View {
         if document.isDisposableBlank, document.text.isEmpty, document.ioState == .idle {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("从一行文字开始").font(.system(size: 22, weight: .semibold))
+                    Text(L10n.tr("从一行文字开始")).font(.system(size: 22, weight: .semibold))
                         .foregroundStyle(.secondary)
-                    Text("直接输入，或打开一份文件。")
+                    Text(L10n.tr("直接输入，或打开一份文件。"))
                         .font(.system(size: 12)).foregroundStyle(.tertiary)
                 }.allowsHitTesting(false)
                 VStack(spacing: 4) {
-                    startAction("打开文件", symbol: "doc.badge.plus", detail: "⌘O") { appState.openFiles() }
+                    startAction(L10n.tr("打开文件"), symbol: "doc.badge.plus", detail: "⌘O") { appState.openFiles() }
                     if windowManager.experimentSamples != nil {
-                        startAction("打开体验文档", symbol: "text.book.closed", detail: "Markdown · 代码 · 长文本") {
+                        startAction(L10n.tr("打开体验文档"), symbol: "text.book.closed", detail: L10n.tr("Markdown · 代码 · 长文本")) {
                             windowManager.openExperimentWelcome(in: appState)
                         }
                     }
                 }
-                Text("文件可以直接拖到窗口中")
+                Text(L10n.tr("文件可以直接拖到窗口中"))
                     .font(.system(size: 11)).foregroundStyle(.tertiary).allowsHitTesting(false)
             }
             .frame(width: 310)
@@ -310,10 +310,10 @@ private struct DocumentEditorPane: View {
                 VStack(spacing: 12) {
                     ProgressView()
                         .controlSize(.small)
-                    Text("正在打开“\(document.displayName)”")
+                    Text(L10n.tr("正在打开“%@”", String(describing: document.displayName)))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
-                    Button("取消") {
+                    Button(L10n.tr("取消")) {
                         appState.cancelOpening(document)
                     }
                 }

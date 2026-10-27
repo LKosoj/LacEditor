@@ -73,7 +73,7 @@ struct FinderLaunchVerification {
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
         config.environment = ["CFFIXED_USER_HOME": home.path]
-        config.arguments = ["-ApplePersistenceIgnoreState", "YES"]
+        config.arguments = ["-ApplePersistenceIgnoreState", "YES", "-appLanguage", "zh-Hans", "-AppleLanguages", "(zh-Hans)"]
         let app: NSRunningApplication
         if files.isEmpty {
             app = try await NSWorkspace.shared.openApplication(at: appURL, configuration: config)
@@ -157,7 +157,9 @@ struct FinderLaunchVerification {
             try await wait("blank again") { text(app) == "" }
             key(13, app: app)
             try await wait("no window again") { windows(app).isEmpty }
-            let reopened = try await NSWorkspace.shared.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration())
+            let reopenConfiguration = NSWorkspace.OpenConfiguration()
+            reopenConfiguration.arguments = ["-appLanguage", "zh-Hans", "-AppleLanguages", "(zh-Hans)"]
+            let reopened = try await NSWorkspace.shared.openApplication(at: appURL, configuration: reopenConfiguration)
             try require(reopened.processIdentifier == app.processIdentifier, "Dock restarted App")
             try await wait("Dock reopens blank") { text(app) == "" }
             try await wait("sidebar rebound") {

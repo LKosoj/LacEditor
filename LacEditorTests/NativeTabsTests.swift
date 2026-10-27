@@ -65,7 +65,7 @@ final class NativeTabsTests: XCTestCase {
             if choice != "已保存" {
                 let sheet = try XCTUnwrap(window.attachedSheet)
                 func button(in view: NSView) -> NSButton? {
-                    if let button = view as? NSButton, button.title == choice { return button }
+                    if let button = view as? NSButton, button.title == L10n.tr(choice) { return button }
                     return view.subviews.lazy.compactMap { button(in: $0) }.first
                 }
                 try XCTUnwrap(button(in: try XCTUnwrap(sheet.contentView))).performClick(nil)
@@ -119,7 +119,7 @@ final class NativeTabsTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(250))
             let sheet = try XCTUnwrap(window.attachedSheet, "\(choice): missing confirmation")
             func button(in view: NSView) -> NSButton? {
-                if let button = view as? NSButton, button.title == choice { return button }
+                if let button = view as? NSButton, button.title == L10n.tr(choice) { return button }
                 return view.subviews.lazy.compactMap { button(in: $0) }.first
             }
             try XCTUnwrap(button(in: try XCTUnwrap(sheet.contentView))).performClick(nil)

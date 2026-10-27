@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D00700000000000000000001 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00700000000000000000002; };
 		D00600000000000000000001 /* FileAssociationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00600000000000000000002; };
 		D00600000000000000000003 /* FileAssociationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00600000000000000000004; };
 		D00500000000000000000001 /* SidebarDragSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00500000000000000000002 /* SidebarDragSupport.swift */; };
@@ -78,6 +79,10 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		D00700000000000000000002 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
+		D00700000000000000000003 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		D00700000000000000000004 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		D00700000000000000000005 /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/Localizable.strings; sourceTree = "<group>"; };
 		D00600000000000000000002 /* FileAssociationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileAssociationService.swift; sourceTree = "<group>"; };
 		D00600000000000000000004 /* FileAssociationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileAssociationSettingsView.swift; sourceTree = "<group>"; };
 		D00500000000000000000002 /* SidebarDragSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarDragSupport.swift; sourceTree = "<group>"; };
@@ -133,7 +138,7 @@
 		A00000000000000000000037 /* SyntaxParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxParser.swift; sourceTree = "<group>"; };
 		A00000000000000000000035 /* DocumentRecoveryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentRecoveryStore.swift; sourceTree = "<group>"; };
 		A00000000000000000000036 /* WorkspaceSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceSessionStore.swift; sourceTree = "<group>"; };
-		A00000000000000000000038 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = zh-Hans.lproj/Localizable.strings; sourceTree = "<group>"; };
+
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -190,7 +195,7 @@
 			path = LacEditor;
 			sourceTree = "<group>";
 		};
-		A00000000000000000000302 /* App */ = {isa = PBXGroup; children = (A00000000000000000000001, A00000000000000000000002, A0000000000000000000002C, A00000000000000000000003, A0000000000000000000001B); path = App; sourceTree = "<group>"; };
+		A00000000000000000000302 /* App */ = {isa = PBXGroup; children = (D00700000000000000000002, A00000000000000000000001, A00000000000000000000002, A0000000000000000000002C, A00000000000000000000003, A0000000000000000000001B); path = App; sourceTree = "<group>"; };
 		A00000000000000000000303 /* Models */ = {isa = PBXGroup; children = (A00000000000000000000004, A00000000000000000000005, A00000000000000000000006); path = Models; sourceTree = "<group>"; };
 		A00000000000000000000304 /* Services */ = {isa = PBXGroup; children = (A00000000000000000000007, A00000000000000000000035, A00000000000000000000036, A00000000000000000000008, A0000000000000000000002D, A00000000000000000000009, A00000000000000000000017, A0000000000000000000002A, D00400000000000000000002, D00600000000000000000002); path = Services; sourceTree = "<group>"; };
 		A00000000000000000000305 /* Editor */ = {isa = PBXGroup; children = (A0000000000000000000000A, A0000000000000000000000B, A0000000000000000000000C, A00000000000000000000026, A00000000000000000000028, A00000000000000000000029, A0000000000000000000000D, A0000000000000000000000E, A00000000000000000000034, A00000000000000000000037, A00000000000000000000030, A00000000000000000000019, A00000000000000000000025); path = Editor; sourceTree = "<group>"; };
@@ -247,9 +252,9 @@
 			};
 			buildConfigurationList = A00000000000000000000700 /* Build configuration list for PBXProject "LacEditor" */;
 			compatibilityVersion = "Xcode 14.0";
-			developmentRegion = zh-Hans;
+			developmentRegion = en;
 			hasScannedForEncodings = 0;
-			knownRegions = (Base, "zh-Hans", en);
+			knownRegions = (Base, "zh-Hans", en, ru);
 			mainGroup = A00000000000000000000300;
 			packageReferences = (
 				A0000000000000000000080E /* XCRemoteSwiftPackageReference "swift-cmark" */,
@@ -285,11 +290,16 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXVariantGroup section */
+		A00000000000000000000038 /* Localizable.strings */ = {isa = PBXVariantGroup; children = (D00700000000000000000003, D00700000000000000000004, D00700000000000000000005); name = Localizable.strings; sourceTree = "<group>"; };
+/* End PBXVariantGroup section */
+
 /* Begin PBXSourcesBuildPhase section */
 		A00000000000000000000200 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D00700000000000000000001,
 				A00000000000000000000101, A00000000000000000000102, A00000000000000000000103,
 				D00400000000000000000001,
 				D00500000000000000000001,

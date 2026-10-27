@@ -103,11 +103,11 @@ struct TabBarView: View {
                                     removal: .opacity
                                 ))
                                 .contextMenu {
-                                    Button("关闭") { appState.close(document) }
-                                    Button("关闭其他标签页") {
+                                    Button(L10n.tr("关闭")) { appState.close(document) }
+                                    Button(L10n.tr("关闭其他标签页")) {
                                         appState.closeOtherDocuments(keeping: document)
                                     }
-                                    Button("关闭右侧标签页") {
+                                    Button(L10n.tr("关闭右侧标签页")) {
                                         appState.closeDocumentsToRight(of: document)
                                     }
                                 }
@@ -208,7 +208,7 @@ struct TabBarView: View {
             .buttonStyle(.plain)
             .foregroundStyle(isAddButtonHovering ? .primary : .secondary)
             .onHover { isAddButtonHovering = $0 }
-            .stableHelp("新建标签页", shortcut: "⌘T")
+            .stableHelp(L10n.tr("新建标签页"), shortcut: "⌘T")
             .padding(.trailing, 5)
         }
         .coordinateSpace(name: "tabBar")
@@ -328,7 +328,7 @@ private struct EditorTabView: View {
                     .fill(Color.accentColor.opacity(0.82))
                     .frame(width: 6, height: 6)
                     .opacity(document.isDirty && !isHovering ? 1 : 0)
-                    .accessibilityLabel("未保存")
+                    .accessibilityLabel(L10n.tr("未保存"))
                     .accessibilityHidden(!document.isDirty)
 
                 Button(action: close) {
@@ -346,7 +346,7 @@ private struct EditorTabView: View {
                 .opacity(isHovering ? 1 : 0)
                 .allowsHitTesting(isHovering)
                 .accessibilityHidden(!isHovering)
-                .stableHelp("关闭标签页", shortcut: "⌘W")
+                .stableHelp(L10n.tr("关闭标签页"), shortcut: "⌘W")
             }
             .frame(width: 18, height: 18)
         }

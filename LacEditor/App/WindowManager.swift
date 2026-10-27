@@ -384,12 +384,10 @@ final class WindowManager: ObservableObject {
 
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "清除最近文件？"
-        alert.informativeText = """
-        这只会清空最近文件列表，不会删除磁盘上的任何文件。此操作无法撤销。
-        """
-        alert.addButton(withTitle: "清除")
-        alert.addButton(withTitle: "取消")
+        alert.messageText = L10n.tr("清除最近文件？")
+        alert.informativeText = L10n.tr("这只会清空最近文件列表，不会删除磁盘上的任何文件。此操作无法撤销。")
+        alert.addButton(withTitle: L10n.tr("清除"))
+        alert.addButton(withTitle: L10n.tr("取消"))
         isConfirmingRecentFilesClear = true
 
         if let window = activeState?.hostWindow {
@@ -411,10 +409,10 @@ final class WindowManager: ObservableObject {
 
     func requestCreateSidebarGroup(adding url: URL? = nil) {
         presentTextPrompt(
-            title: "新建分组",
-            message: "输入分组名称。",
-            initialValue: "新分组",
-            actionTitle: "创建"
+            title: L10n.tr("新建分组"),
+            message: L10n.tr("输入分组名称。"),
+            initialValue: L10n.tr("新分组"),
+            actionTitle: L10n.tr("创建")
         ) { [weak self] name in
             guard let self,
                   let id = sidebarLibrary.createGroup(named: name) else { return }
@@ -424,10 +422,10 @@ final class WindowManager: ObservableObject {
 
     func requestRenameSidebarGroup(_ group: SidebarFileGroup) {
         presentTextPrompt(
-            title: "重命名分组",
-            message: "输入新的分组名称。",
+            title: L10n.tr("重命名分组"),
+            message: L10n.tr("输入新的分组名称。"),
             initialValue: group.name,
-            actionTitle: "重命名"
+            actionTitle: L10n.tr("重命名")
         ) { [weak self] name in
             self?.sidebarLibrary.renameGroup(group.id, to: name)
         }
@@ -436,10 +434,10 @@ final class WindowManager: ObservableObject {
     func requestDeleteSidebarGroup(_ group: SidebarFileGroup) {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "删除分组“\(group.name)”？"
-        alert.informativeText = "只会删除侧边栏中的快捷入口，不会删除磁盘上的文件。"
-        alert.addButton(withTitle: "删除分组")
-        alert.addButton(withTitle: "取消")
+        alert.messageText = L10n.tr("删除分组“%@”？", String(describing: group.name))
+        alert.informativeText = L10n.tr("只会删除侧边栏中的快捷入口，不会删除磁盘上的文件。")
+        alert.addButton(withTitle: L10n.tr("删除分组"))
+        alert.addButton(withTitle: L10n.tr("取消"))
         present(alert) { [weak self] response in
             if response == .alertFirstButtonReturn {
                 self?.sidebarLibrary.deleteGroup(group.id)
@@ -449,8 +447,8 @@ final class WindowManager: ObservableObject {
 
     func requestRelocateSidebarFile(_ missingURL: URL) {
         let panel = NSOpenPanel()
-        panel.title = "重新定位“\(missingURL.lastPathComponent)”"
-        panel.message = "选择该文件当前所在的位置。"
+        panel.title = L10n.tr("重新定位“%@”", String(describing: missingURL.lastPathComponent))
+        panel.message = L10n.tr("选择该文件当前所在的位置。")
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = FileService.supportedContentTypes
@@ -477,7 +475,7 @@ final class WindowManager: ObservableObject {
         alert.messageText = title
         alert.informativeText = message
         alert.addButton(withTitle: actionTitle)
-        alert.addButton(withTitle: "取消")
+        alert.addButton(withTitle: L10n.tr("取消"))
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
         field.stringValue = initialValue
         alert.accessoryView = field
@@ -500,10 +498,10 @@ final class WindowManager: ObservableObject {
 
     func requestRenameFile(_ url: URL) {
         let alert = NSAlert()
-        alert.messageText = "重命名文件"
-        alert.informativeText = "请输入新的文件名。"
-        alert.addButton(withTitle: "重命名")
-        alert.addButton(withTitle: "取消")
+        alert.messageText = L10n.tr("重命名文件")
+        alert.informativeText = L10n.tr("请输入新的文件名。")
+        alert.addButton(withTitle: L10n.tr("重命名"))
+        alert.addButton(withTitle: L10n.tr("取消"))
 
         let nameField = NSTextField(
             frame: NSRect(x: 0, y: 0, width: 320, height: 24)
@@ -633,7 +631,7 @@ final class WindowManager: ObservableObject {
             sidebarLibrary.replace(url, with: newURL)
         } catch {
             let alert = NSAlert(error: error)
-            alert.messageText = "无法重命名文件"
+            alert.messageText = L10n.tr("无法重命名文件")
             if let window = activeState?.hostWindow {
                 alert.beginSheetModal(for: window)
             } else {
@@ -748,13 +746,11 @@ final class WindowManager: ObservableObject {
     ) {
         let alert = NSAlert()
         alert.alertStyle = .informational
-        alert.messageText = "退出并保留当前工作区？"
-        alert.informativeText = """
-        所有窗口、标签和未保存内容会在下次启动时恢复。磁盘文件不会被自动修改。
-        """
-        alert.addButton(withTitle: "保留并退出")
-        alert.addButton(withTitle: "检查未保存文件")
-        alert.addButton(withTitle: "取消")
+        alert.messageText = L10n.tr("退出并保留当前工作区？")
+        alert.informativeText = L10n.tr("所有窗口、标签和未保存内容会在下次启动时恢复。磁盘文件不会被自动修改。")
+        alert.addButton(withTitle: L10n.tr("保留并退出"))
+        alert.addButton(withTitle: L10n.tr("检查未保存文件"))
+        alert.addButton(withTitle: L10n.tr("取消"))
         present(alert) { [weak self] response in
             guard let self else {
                 completion(false)
@@ -859,8 +855,8 @@ final class WindowManager: ObservableObject {
     private func presentWorkspaceSaveError(_ error: Error) {
         let alert = NSAlert(error: error)
         alert.alertStyle = .critical
-        alert.messageText = "无法保留工作区"
-        alert.informativeText = "工作区没有完整写入，LacEditor 已取消退出。\n\n\(error.localizedDescription)"
+        alert.messageText = L10n.tr("无法保留工作区")
+        alert.informativeText = L10n.tr("工作区没有完整写入，LacEditor 已取消退出。\n\n%@", error.localizedDescription)
         if let window = activeState?.hostWindow {
             alert.beginSheetModal(for: window)
         } else {
@@ -1078,7 +1074,7 @@ final class WindowManager: ObservableObject {
             && snapshot.isPreviewVisible
             && document.performanceProfile == .standard
         if snapshot.isDirty {
-            document.statusMessage = "已恢复上次工作区，尚未保存"
+            document.statusMessage = L10n.tr("已恢复上次工作区，尚未保存")
         }
         return document
     }
@@ -1101,7 +1097,7 @@ final class WindowManager: ObservableObject {
         document.isPreviewVisible = snapshot.language == .markdown
             && snapshot.isPreviewVisible
             && document.performanceProfile == .standard
-        document.statusMessage = "已从上次异常退出中恢复，请确认后保存"
+        document.statusMessage = L10n.tr("已从上次异常退出中恢复，请确认后保存")
         return document
     }
 }

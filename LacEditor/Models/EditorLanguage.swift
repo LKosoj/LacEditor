@@ -19,7 +19,7 @@ enum EditorLanguage: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .plainText: "纯文本"
+        case .plainText: L10n.tr("纯文本")
         case .markdown: "Markdown"
         case .json: "JSON"
         case .html: "HTML"

@@ -159,7 +159,7 @@ final class WindowAndSessionTests: XCTestCase {
         XCTAssertEqual(restored.map(\.text), ["draft", #"{"z":1,"a":2}"#])
         XCTAssertTrue(restored[0].isDirty)
         XCTAssertFalse(restored[1].isDirty)
-        XCTAssertEqual(restored[0].statusMessage, "已恢复上次工作区，尚未保存")
+        XCTAssertEqual(restored[0].statusMessage, L10n.tr("已恢复上次工作区，尚未保存"))
     }
 
     func testRealWindowsRegisterAndCrossWindowTabDragMovesDocument() {

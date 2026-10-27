@@ -724,7 +724,7 @@ final class UIExperimentTests: XCTestCase {
         window.orderFront(nil)
         defer { window.contentViewController = nil; window.close() }
         fixture.document.performanceProfile = .large
-        fixture.document.statusMessage = "JSON 无效：第 128 行，第 24 列，缺少结束括号，请检查输入内容。"
+        fixture.document.statusMessage = L10n.tr("JSON 无效") + L10n.tr("：第 %@ 行，第 %@ 列。%@", "128", "24", "Missing closing bracket")
         for width: CGFloat in [360, 620, 900] {
             window.setContentSize(NSSize(width: width, height: 24))
             fixture.document.ioState = .saving

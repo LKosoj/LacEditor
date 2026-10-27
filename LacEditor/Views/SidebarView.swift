@@ -15,15 +15,15 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(.tertiary)
-                TextField("筛选文件", text: $filterQuery)
+                TextField(L10n.tr("筛选文件"), text: $filterQuery)
                     .textFieldStyle(.plain).font(.system(size: 12))
-                    .accessibilityLabel("筛选侧边栏文件")
+                    .accessibilityLabel(L10n.tr("筛选侧边栏文件"))
                     .focused($filterFocused)
                     .onExitCommand { filterQuery = "" }
                 if !filterQuery.isEmpty {
                     Button { filterQuery = "" } label: {
                         Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
-                    }.buttonStyle(.plain).accessibilityLabel("清除筛选")
+                    }.buttonStyle(.plain).accessibilityLabel(L10n.tr("清除筛选"))
                         .focused($clearFocused).editorFocusRing(clearFocused, radius: 3)
                 }
             }
@@ -31,7 +31,7 @@ struct SidebarView: View {
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 7))
             .editorFocusRing(filterFocused, radius: 7)
             .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 4)
-            .stableHelp("按文件名或分组筛选，不搜索文件正文")
+            .stableHelp(L10n.tr("按文件名或分组筛选，不搜索文件正文"))
 
             SidebarLibraryView(
                 recentFiles: appState.recentFiles,
@@ -50,7 +50,7 @@ struct SidebarView: View {
                 SettingsWindowController.shared.present(windowManager: windowManager)
             } label: {
                 HStack(spacing: 8) {
-                    Label("设置", systemImage: "gearshape")
+                    Label(L10n.tr("设置"), systemImage: "gearshape")
                     Spacer()
                     if AppEnvironment.isExperiment {
                         Text(AppEnvironment.experimentIteration)
@@ -58,7 +58,7 @@ struct SidebarView: View {
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
                             .background(LacEditorDesign.selectionFill, in: Capsule())
-                            .accessibilityLabel("界面实验 \(AppEnvironment.experimentIteration)")
+                            .accessibilityLabel(L10n.tr("界面实验 %@", String(describing: AppEnvironment.experimentIteration)))
                     }
                 }
                     .font(.system(size: 13))
@@ -71,7 +71,7 @@ struct SidebarView: View {
             .buttonStyle(QuietActionButtonStyle())
             .focused($settingsFocused)
             .editorFocusRing(settingsFocused)
-            .stableHelp("打开设置", shortcut: "⌘,")
+            .stableHelp(L10n.tr("打开设置"), shortcut: "⌘,")
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .onHover { isSettingsHovering = $0 }
@@ -95,7 +95,7 @@ private struct SidebarOperationFeedback: View {
                     .accessibilityIdentifier("sidebar.feedback.message")
                 Spacer(minLength: 0)
                 if item.canUndo {
-                    Button("撤销") { state.undo() }
+                    Button(L10n.tr("撤销")) { state.undo() }
                         .buttonStyle(.plain).foregroundStyle(LacEditorDesign.accent)
                         .padding(3).focused($undoFocused).editorFocusRing(undoFocused, radius: 3)
                         .accessibilityIdentifier("sidebar.feedback.undo")
@@ -126,7 +126,7 @@ private struct ExperimentSampleControls: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "text.book.closed")
-                    Text(samples.isPreparing ? "正在准备示例…" : "打开体验文档")
+                    Text(samples.isPreparing ? L10n.tr("正在准备示例…") : L10n.tr("打开体验文档"))
                     Spacer(minLength: 0)
                     Image(systemName: "arrow.up.right").font(.system(size: 9))
                 }.font(.system(size: 11)).padding(.horizontal, 9).frame(height: 32)
@@ -137,10 +137,10 @@ private struct ExperimentSampleControls: View {
             .foregroundStyle(.secondary)
             .disabled(samples.isPreparing)
             .contextMenu {
-                Button("补充缺失的示例文件", systemImage: "arrow.clockwise") {
+                Button(L10n.tr("补充缺失的示例文件"), systemImage: "arrow.clockwise") {
                     Task { await samples.prepare(in: windowManager.sidebarLibrary, supplement: true) }
                 }
-                Button("在 Finder 中显示", systemImage: "folder") {
+                Button(L10n.tr("在 Finder 中显示"), systemImage: "folder") {
                     NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: samples.rootURL.path)
                 }
             }

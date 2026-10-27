@@ -11,14 +11,14 @@ struct MarkdownRenderedPage: Sendable {
     var html: String {
         """
         <!doctype html>
-        <html lang="zh-CN" data-theme="\(darkMode ? "dark" : "light")">
+        <html lang="\(L10n.languageCode)" data-theme="\(darkMode ? "dark" : "light")">
         <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">
         <style>\(Self.styles)</style>
         </head>
-        <body><article aria-label="Markdown 预览">\(body)</article></body>
+        <body><article aria-label="\(L10n.tr("Markdown 预览"))">\(body)</article></body>
         </html>
         """
     }
@@ -108,9 +108,9 @@ enum MarkdownRenderer {
 
     static func renderPage(_ markdown: String, darkMode: Bool) -> MarkdownRenderedPage {
         let body = renderBody(markdown)
-            .replacingOccurrences(of: "<table>", with: "<div class=\"table-scroll\" role=\"region\" aria-label=\"表格，可横向滚动\" tabindex=\"0\"><table>")
+            .replacingOccurrences(of: "<table>", with: "<div class=\"table-scroll\" role=\"region\" aria-label=\"\(L10n.tr("表格，可横向滚动"))\" tabindex=\"0\"><table>")
             .replacingOccurrences(of: "</table>", with: "</table></div>")
-            .replacingOccurrences(of: "<pre>", with: "<pre tabindex=\"0\" aria-label=\"代码块，可横向滚动\">")
+            .replacingOccurrences(of: "<pre>", with: "<pre tabindex=\"0\" aria-label=\"\(L10n.tr("代码块，可横向滚动"))\">")
         return MarkdownRenderedPage(body: body, darkMode: darkMode)
     }
 

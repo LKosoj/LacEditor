@@ -17,30 +17,30 @@ struct StatusBarView: View {
                             .font(.system(size: 6))
                             .foregroundStyle(document.isDirty ? LacEditorDesign.accent : Color.secondary.opacity(0.6))
                     }
-                    Text(document.ioState.statusText ?? (document.isDirty ? "未保存" : "已保存"))
+                    Text(document.ioState.statusText ?? (document.isDirty ? L10n.tr("未保存") : L10n.tr("已保存")))
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
-                        .help(document.ioState.statusText ?? (document.isDirty ? "有尚未保存的修改" : "文件已保存"))
+                        .help(document.ioState.statusText ?? (document.isDirty ? L10n.tr("有尚未保存的修改") : L10n.tr("文件已保存")))
                 }.layoutPriority(1)
                 if document.isLargeFileMode { performanceMenu }
                 if let suggestion = document.textCodecSuggestionTitle, geometry.size.width >= 600 {
                     Button { appState.presentTextTransformation(.smartDecode) } label: {
                         Label(suggestion, systemImage: "arrow.left.arrow.right")
-                    }.buttonStyle(.plain).lineLimit(1).help("预览解码结果")
+                    }.buttonStyle(.plain).lineLimit(1).help(L10n.tr("预览解码结果"))
                 }
                 if let message = document.statusMessage {
-                    Text(message).foregroundStyle(message.hasPrefix("JSON 无效") ? .red : .secondary)
+                    Text(message).foregroundStyle(message.hasPrefix(L10n.tr("JSON 无效")) ? .red : .secondary)
                         .lineLimit(1).help(message).layoutPriority(2)
                 }
                 Spacer(minLength: 0)
-                if geometry.size.width >= 420 { statusItem(document.encodingName).help("文件编码") }
+                if geometry.size.width >= 420 { statusItem(document.encodingName).help(L10n.tr("文件编码")) }
                 if geometry.size.width >= 620, document.isWordCountEnabled {
-                    statusItem("\(document.wordCount) 字").help("文档字数")
+                    statusItem(L10n.tr("%@ 字", String(describing: document.wordCount))).help(L10n.tr("文档字数"))
                 }
                 statusItem(geometry.size.width >= 360
-                           ? "行 \(document.cursorLine)，列 \(document.cursorColumn)"
+                           ? L10n.tr("行 %@，列 %@", String(describing: document.cursorLine), String(describing: document.cursorColumn))
                            : "\(document.cursorLine):\(document.cursorColumn)")
-                    .help("行 \(document.cursorLine)，列 \(document.cursorColumn)")
+                    .help(L10n.tr("行 %@，列 %@", String(describing: document.cursorLine), String(describing: document.cursorColumn)))
                     .layoutPriority(3)
             }
             .font(.system(size: 11)).foregroundStyle(.secondary)
@@ -66,43 +66,43 @@ struct StatusBarView: View {
             Text(document.performanceProfile.displayName)
             Divider()
             featureButton(
-                "自动换行",
+                L10n.tr("自动换行"),
                 enabled: document.effectiveWordWrap(
                     globalDefault: appState.isWordWrapEnabled
                 ),
                 feature: .wordWrap
             )
             featureButton(
-                "Markdown 预览",
+                L10n.tr("Markdown 预览"),
                 enabled: document.isPreviewEffectivelyEnabled,
                 feature: .preview
             )
             .disabled(document.language != .markdown)
             featureButton(
-                "语法高亮",
+                L10n.tr("语法高亮"),
                 enabled: document.isSyntaxHighlightingEnabled,
                 feature: .syntaxHighlighting
             )
             featureButton(
-                "代码折叠",
+                L10n.tr("代码折叠"),
                 enabled: document.isFoldingEnabled,
                 feature: .folding
             )
             featureButton(
-                "实时字数统计",
+                L10n.tr("实时字数统计"),
                 enabled: document.isWordCountEnabled,
                 feature: .wordCount
             )
             Divider()
-            Text("这些设置仅对当前标签有效")
+            Text(L10n.tr("这些设置仅对当前标签有效"))
         } label: {
-            Label("大文件模式", systemImage: "gauge.with.dots.needle.33percent")
+            Label(L10n.tr("大文件模式"), systemImage: "gauge.with.dots.needle.33percent")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help("查看大文件模式的性能保护选项")
+        .help(L10n.tr("查看大文件模式的性能保护选项"))
     }
 
     private func featureButton(

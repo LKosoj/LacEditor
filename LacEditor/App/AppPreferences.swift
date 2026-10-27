@@ -8,9 +8,9 @@ enum AppEnvironment {
     static var isExperiment: Bool { Bundle.main.bundleIdentifier == experimentIdentifier }
     static var displayName: String {
         switch Bundle.main.bundleIdentifier {
-        case experimentIdentifier: "LacEditor 实验版"
-        case "com.laceditor.development": "LacEditor 开发版"
-        case "com.laceditor.acceptance": "LacEditor 验收版"
+        case experimentIdentifier: L10n.tr("LacEditor 实验版")
+        case "com.laceditor.development": L10n.tr("LacEditor 开发版")
+        case "com.laceditor.acceptance": L10n.tr("LacEditor 验收版")
         default: "LacEditor"
         }
     }
@@ -38,8 +38,8 @@ enum WorkspaceExitBehavior: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .preserveWorkspace: "保留工作区并退出"
-        case .askToSave: "每次检查未保存文件"
+        case .preserveWorkspace: L10n.tr("保留工作区并退出")
+        case .askToSave: L10n.tr("每次检查未保存文件")
         }
     }
 }

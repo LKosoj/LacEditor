@@ -21,14 +21,14 @@ struct FindReplaceView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            UtilityHeading(title: "查找与替换",
-                           subtitle: appState.selectedDocument.map { "当前文档：\($0.displayName)" } ?? "在当前文档中查找",
+            UtilityHeading(title: L10n.tr("查找与替换"),
+                           subtitle: appState.selectedDocument.map { L10n.tr("当前文档：%@", String(describing: $0.displayName)) } ?? L10n.tr("在当前文档中查找"),
                            symbol: "text.magnifyingglass")
             VStack(spacing: 16) {
                 Grid(alignment: .trailing, horizontalSpacing: 14, verticalSpacing: 12) {
                     GridRow {
-                        Text("查找").font(.system(size: 12, weight: .medium))
-                        TextField("输入要查找的内容", text: $state.query)
+                        Text(L10n.tr("查找")).font(.system(size: 12, weight: .medium))
+                        TextField(L10n.tr("输入要查找的内容"), text: $state.query)
                             .textFieldStyle(.roundedBorder).controlSize(.large)
                             .focused($focusedField, equals: .query)
                             .onKeyPress(keys: [.return], phases: .down) { press in
@@ -39,17 +39,17 @@ struct FindReplaceView: View {
                             }
                     }
                     GridRow {
-                        Text("替换为").font(.system(size: 12, weight: .medium))
-                        TextField("输入替换内容，留空表示删除", text: $state.replacement)
+                        Text(L10n.tr("替换为")).font(.system(size: 12, weight: .medium))
+                        TextField(L10n.tr("输入替换内容，留空表示删除"), text: $state.replacement)
                             .textFieldStyle(.roundedBorder).controlSize(.large)
                             .focused($focusedField, equals: .replacement)
                     }
                 }
                 HStack(spacing: 4) {
-                    Toggle("解释转义字符", isOn: $state.interpretsEscapes)
+                    Toggle(L10n.tr("解释转义字符"), isOn: $state.interpretsEscapes)
                     escapeInfo
                     Spacer()
-                    Toggle("区分大小写", isOn: $state.isCaseSensitive)
+                    Toggle(L10n.tr("区分大小写"), isOn: $state.isCaseSensitive)
                 }
                 .font(.system(size: 12)).toggleStyle(.checkbox).zIndex(1)
             }
@@ -61,30 +61,30 @@ struct FindReplaceView: View {
             HStack(spacing: 8) {
                 if state.isWorking {
                     ProgressView().controlSize(.small)
-                    Text(state.message ?? "正在查找…")
-                    Button("取消任务") { appState.cancelFindReplaceTask() }.buttonStyle(.borderless)
+                    Text(state.message ?? L10n.tr("正在查找…"))
+                    Button(L10n.tr("取消任务")) { appState.cancelFindReplaceTask() }.buttonStyle(.borderless)
                 } else {
-                    if state.message?.hasPrefix("已替换") == true {
+                    if state.message?.hasPrefix(L10n.tr("已替换")) == true {
                         Image(systemName: "checkmark.circle").accessibilityHidden(true)
                     }
-                    Text(state.message ?? "输入关键词，按回车查找下一处")
+                    Text(state.message ?? L10n.tr("输入关键词，按回车查找下一处"))
                         .lineLimit(1).help(state.message ?? "")
                         .accessibilityIdentifier("find.result.message")
                 }
                 Spacer(minLength: 0)
-                if !state.isWorking { Text("⇧↩ 上一个").foregroundStyle(.tertiary) }
+                if !state.isWorking { Text(L10n.tr("⇧↩ 上一个")).foregroundStyle(.tertiary) }
             }
             .font(.system(size: 11)).foregroundStyle(.secondary).frame(height: 20)
 
             HStack(spacing: 10) {
-                Button("关闭", action: close).keyboardShortcut(.cancelAction)
+                Button(L10n.tr("关闭"), action: close).keyboardShortcut(.cancelAction)
                 Spacer(minLength: 10)
-                Button { appState.findPrevious() } label: { Label("上一个", systemImage: "chevron.up") }
-                    .disabled(actionsDisabled).help("查找上一处（⇧⌘G）")
-                Button { appState.findNext() } label: { Label("下一个", systemImage: "chevron.down") }
-                    .keyboardShortcut(.defaultAction).disabled(actionsDisabled).help("查找下一处（⌘G）")
-                Button("替换") { appState.replaceCurrentMatch() }.disabled(actionsDisabled)
-                Button("全部替换") { appState.replaceAllMatches() }
+                Button { appState.findPrevious() } label: { Label(L10n.tr("上一个"), systemImage: "chevron.up") }
+                    .disabled(actionsDisabled).help(L10n.tr("查找上一处（⇧⌘G）"))
+                Button { appState.findNext() } label: { Label(L10n.tr("下一个"), systemImage: "chevron.down") }
+                    .keyboardShortcut(.defaultAction).disabled(actionsDisabled).help(L10n.tr("查找下一处（⌘G）"))
+                Button(L10n.tr("替换")) { appState.replaceCurrentMatch() }.disabled(actionsDisabled)
+                Button(L10n.tr("全部替换")) { appState.replaceAllMatches() }
                     .buttonStyle(.borderedProminent).disabled(actionsDisabled)
             }.controlSize(.regular)
         }
@@ -116,7 +116,7 @@ struct FindReplaceView: View {
                     }
                 } else { showsEscapeHelp = false }
             }
-            .accessibilityLabel("转义字符说明").accessibilityHint(escapeHelp)
+            .accessibilityLabel(L10n.tr("转义字符说明")).accessibilityHint(escapeHelp)
             .overlay(alignment: .topLeading) {
                 if showsEscapeHelp {
                     Text(escapeHelp).font(.system(size: 12)).padding(12)
@@ -130,7 +130,7 @@ struct FindReplaceView: View {
     }
     private var actionsDisabled: Bool { state.query.isEmpty || state.isWorking }
     private var escapeHelp: String {
-        #"可用转义字符：\n 换行，\r 回车，\t 制表符，\s 空格，\0 空字符，\\ 反斜杠。查找与替换内容均适用。"#
+        L10n.tr(#"可用转义字符：\n 换行，\r 回车，\t 制表符，\s 空格，\0 空字符，\\ 反斜杠。查找与替换内容均适用。"#)
     }
     private func focusRequestedField() {
         DispatchQueue.main.async { focusedField = state.mode == .replace ? .replacement : .query }
@@ -155,7 +155,7 @@ final class FindReplaceWindowController: NSWindowController, NSWindowDelegate {
         self.appState = appState
 
         findWindow.identifier = FindReplaceWindowIdentity.identifier
-        findWindow.title = "查找与替换"
+        findWindow.title = L10n.tr("查找与替换")
         findWindow.isReleasedWhenClosed = false
         findWindow.tabbingMode = .disallowed
         findWindow.contentMinSize = NSSize(width: 620, height: 350)

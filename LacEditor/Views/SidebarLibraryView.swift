@@ -23,18 +23,18 @@ struct SidebarLibraryView: View {
             LazyVStack(alignment: .leading, spacing: 16) {
             if filter.isActive, favorites.isEmpty, groups.isEmpty, recent.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("没有匹配的文件").font(.system(size: 13, weight: .medium))
-                    Text("试试文件名、扩展名或分组名称。")
+                    Text(L10n.tr("没有匹配的文件")).font(.system(size: 13, weight: .medium))
+                    Text(L10n.tr("试试文件名、扩展名或分组名称。"))
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }.padding(.horizontal, 8).padding(.vertical, 12)
             } else {
             sidebarSection(
-                title: "收藏夹",
+                title: L10n.tr("收藏夹"),
                 section: .favorites,
                 count: favorites.count
             ) {
                 if favorites.isEmpty {
-                    Text(filter.isActive ? "没有匹配的收藏" : "可从文件右键菜单添加收藏")
+                    Text(filter.isActive ? L10n.tr("没有匹配的收藏") : L10n.tr("可从文件右键菜单添加收藏"))
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -46,16 +46,16 @@ struct SidebarLibraryView: View {
             }
 
             sidebarSection(
-                title: "分组",
+                title: L10n.tr("分组"),
                 section: .groups,
                 count: groups.count
             ) {
                 if groups.isEmpty {
                     if filter.isActive {
-                        Text("没有匹配的分组").font(.system(size: 11)).foregroundStyle(.tertiary)
+                        Text(L10n.tr("没有匹配的分组")).font(.system(size: 11)).foregroundStyle(.tertiary)
                             .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10).frame(height: 32)
                     } else {
-                    Button("新建分组") {
+                    Button(L10n.tr("新建分组")) {
                         windowManager.requestCreateSidebarGroup()
                     }
                     .buttonStyle(.plain)
@@ -75,16 +75,16 @@ struct SidebarLibraryView: View {
             }
 
             sidebarSection(
-                title: "最近文件",
+                title: L10n.tr("最近文件"),
                 section: .recent,
                 count: recent.count
             ) {
                 if recent.isEmpty {
                     VStack(spacing: 7) {
-                        Text(filter.isActive ? "没有匹配的最近文件" : "暂无最近文件")
+                        Text(filter.isActive ? L10n.tr("没有匹配的最近文件") : L10n.tr("暂无最近文件"))
                             .font(.system(size: 11))
                             .foregroundStyle(.tertiary)
-                        if !filter.isActive { Button("打开文件…") {
+                        if !filter.isActive { Button(L10n.tr("打开文件…")) {
                             appState.openFiles()
                         }
                         .controlSize(.small)
@@ -153,7 +153,7 @@ struct SidebarLibraryView: View {
                 .disabled(filter.isActive)
                 .focused($focusedHeader, equals: title)
                 .editorFocusRing(focusedHeader == title)
-                .accessibilityValue(isExpanded ? "已展开" : "已收起")
+                .accessibilityValue(isExpanded ? L10n.tr("已展开") : L10n.tr("已收起"))
                 if section == .groups {
                     Button {
                         windowManager.requestCreateSidebarGroup()
@@ -166,8 +166,8 @@ struct SidebarLibraryView: View {
                     .focused($focusedHeader, equals: title + ".add")
                     .editorFocusRing(focusedHeader == title + ".add", radius: 4)
                     .opacity(isHovering ? 1 : 0)
-                    .stableHelp("新建分组")
-                    .accessibilityLabel("新建分组")
+                    .stableHelp(L10n.tr("新建分组"))
+                    .accessibilityLabel(L10n.tr("新建分组"))
                 }
                 if section == .recent, !recentFiles.urls.isEmpty, isExpanded {
                     Button {
@@ -181,8 +181,8 @@ struct SidebarLibraryView: View {
                     .focused($focusedHeader, equals: title + ".clear")
                     .editorFocusRing(focusedHeader == title + ".clear", radius: 4)
                     .opacity(isHovering ? 1 : 0)
-                    .stableHelp("清除最近文件")
-                    .accessibilityLabel("清除最近文件")
+                    .stableHelp(L10n.tr("清除最近文件"))
+                    .accessibilityLabel(L10n.tr("清除最近文件"))
                 }
             }
             .foregroundStyle(.secondary)
@@ -269,7 +269,7 @@ private struct SidebarGroupView: View {
             .disabled(isFiltering)
             .focused($isFocused)
             .editorFocusRing(isFocused)
-            .accessibilityValue(isExpanded ? "已展开" : "已收起")
+            .accessibilityValue(isExpanded ? L10n.tr("已展开") : L10n.tr("已收起"))
             .onHover { isHovering = $0 }
             .onDrag { SidebarDragPayload.group(group.id).itemProvider() }
             .sidebarDropArea(.group(group.id), height: 32, library: library, enabled: !isFiltering)
@@ -277,12 +277,12 @@ private struct SidebarGroupView: View {
                 Button {
                     windowManager.requestRenameSidebarGroup(group)
                 } label: {
-                    Label("重命名分组…", systemImage: "pencil")
+                    Label(L10n.tr("重命名分组…"), systemImage: "pencil")
                 }
                 Button(role: .destructive) {
                     windowManager.requestDeleteSidebarGroup(group)
                 } label: {
-                    Label("删除分组", systemImage: "trash")
+                    Label(L10n.tr("删除分组"), systemImage: "trash")
                 }
             }
 
@@ -368,7 +368,7 @@ private struct SidebarFileRow: View {
                     Text(url.lastPathComponent)
                         .font(.system(size: 13, weight: isOpen ? .semibold : .regular))
                         .lineLimit(1)
-                    Text(exists ? url.deletingLastPathComponent().lastPathComponent : "文件已移动或删除")
+                    Text(exists ? url.deletingLastPathComponent().lastPathComponent : L10n.tr("文件已移动或删除"))
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .lineLimit(1).truncationMode(.middle)
@@ -424,12 +424,12 @@ private struct SidebarFileRow: View {
             Button {
                 appState.openFile(url)
             } label: {
-                Label("打开", systemImage: "doc.text")
+                Label(L10n.tr("打开"), systemImage: "doc.text")
             }
             Button {
                 windowManager.openFileInNewWindow(url)
             } label: {
-                Label("用新窗口打开", systemImage: "macwindow.badge.plus")
+                Label(L10n.tr("用新窗口打开"), systemImage: "macwindow.badge.plus")
             }
 
             Divider()
@@ -439,8 +439,8 @@ private struct SidebarFileRow: View {
             } label: {
                 Label(
                     windowManager.sidebarLibrary.isFavorite(url)
-                        ? "取消收藏"
-                        : "添加到收藏夹",
+                        ? L10n.tr("取消收藏")
+                        : L10n.tr("添加到收藏夹"),
                     systemImage: windowManager.sidebarLibrary.isFavorite(url)
                         ? "star.slash"
                         : "star"
@@ -467,10 +467,10 @@ private struct SidebarFileRow: View {
                 Button {
                     windowManager.requestCreateSidebarGroup(adding: url)
                 } label: {
-                    Label("新建分组…", systemImage: "folder.badge.plus")
+                    Label(L10n.tr("新建分组…"), systemImage: "folder.badge.plus")
                 }
             } label: {
-                Label("添加到分组", systemImage: "folder")
+                Label(L10n.tr("添加到分组"), systemImage: "folder")
             }
 
             Divider()
@@ -478,18 +478,18 @@ private struct SidebarFileRow: View {
             Button {
                 windowManager.requestRenameFile(url)
             } label: {
-                Label("重命名…", systemImage: "pencil")
+                Label(L10n.tr("重命名…"), systemImage: "pencil")
             }
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             } label: {
-                Label("在 Finder 中显示", systemImage: "folder")
+                Label(L10n.tr("在 Finder 中显示"), systemImage: "folder")
             }
         } else {
             Button {
                 windowManager.requestRelocateSidebarFile(url)
             } label: {
-                Label("重新定位…", systemImage: "arrow.triangle.2.circlepath")
+                Label(L10n.tr("重新定位…"), systemImage: "arrow.triangle.2.circlepath")
             }
         }
 
@@ -500,19 +500,19 @@ private struct SidebarFileRow: View {
             Button(role: .destructive) {
                 appState.toggleSidebarFavorite(url)
             } label: {
-                Label("从收藏夹移除", systemImage: "star.slash")
+                Label(L10n.tr("从收藏夹移除"), systemImage: "star.slash")
             }
         case let .group(id):
             Button(role: .destructive) {
                 appState.removeSidebarFile(url, fromGroup: id)
             } label: {
-                Label("从分组中移除", systemImage: "minus.circle")
+                Label(L10n.tr("从分组中移除"), systemImage: "minus.circle")
             }
         case .recent:
             Button(role: .destructive) {
                 appState.removeRecentSidebarFile(url)
             } label: {
-                Label("从最近文件中删除", systemImage: "trash")
+                Label(L10n.tr("从最近文件中删除"), systemImage: "trash")
             }
         }
     }

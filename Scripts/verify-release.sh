@@ -42,6 +42,7 @@ if [[ "${LACEDITOR_SKIP_TESTS:-0}" != "1" ]]; then
 fi
 
 swiftc \
+    LacEditor/App/L10n.swift \
     LacEditor/Models/EditorLanguage.swift \
     LacEditor/Models/DocumentEditDelta.swift \
     LacEditor/Models/EditorDocument.swift \
@@ -69,6 +70,7 @@ swiftc \
 .build/fold-layout-verification
 
 swiftc \
+    LacEditor/App/L10n.swift \
     LacEditor/Editor/ListContinuationService.swift \
     LacEditor/Services/TextCodecService.swift \
     LacEditor/Editor/FoldLayoutManager.swift \

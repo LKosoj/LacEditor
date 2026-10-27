@@ -8,8 +8,8 @@ enum IndentationStyle: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .spaces: "使用空格"
-        case .tabs: "使用 Tab 字符"
+        case .spaces: L10n.tr("使用空格")
+        case .tabs: L10n.tr("使用 Tab 字符")
         }
     }
 }
@@ -235,15 +235,15 @@ final class LacTextView: NSTextView {
         if !menu.items.isEmpty { menu.addItem(.separator()) }
 
         let root = NSMenuItem(
-            title: "编码与解码",
+            title: L10n.tr("编码与解码"),
             action: nil,
             keyEquivalent: ""
         )
         root.image = NSImage(
             systemSymbolName: "arrow.left.arrow.right",
-            accessibilityDescription: "编码与解码"
+            accessibilityDescription: L10n.tr("编码与解码")
         )
-        let submenu = NSMenu(title: "编码与解码")
+        let submenu = NSMenu(title: L10n.tr("编码与解码"))
         if let text = textStorage?.mutableString,
            let candidate = TextCodecService.candidate(
                in: text,
@@ -256,7 +256,7 @@ final class LacTextView: NSTextView {
                allowsBase64: selectedRange().length > 0
            ) {
             submenu.addItem(transformationMenuItem(
-                "智能解码（\(detection.kind.rawValue)）",
+                L10n.tr("智能解码（%@）", L10n.tr(detection.kind.rawValue)),
                 operation: .smartDecode
             ))
             submenu.addItem(.separator())
@@ -274,11 +274,11 @@ final class LacTextView: NSTextView {
             ]
         ))
         submenu.addItem(categoryMenuItem(
-            title: "HTML 实体",
+            title: L10n.tr("HTML 实体"),
             operations: [.htmlEncode, .htmlDecode]
         ))
         submenu.addItem(categoryMenuItem(
-            title: "Unicode/JSON 转义",
+            title: L10n.tr("Unicode/JSON 转义"),
             operations: [.unicodeEncode, .unicodeDecode]
         ))
         root.submenu = submenu

@@ -71,7 +71,7 @@ struct ReleaseCandidateVerification {
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.environment = ["CFFIXED_USER_HOME": home.path]
         configuration.activates = true
-        configuration.arguments = ["-ApplePersistenceIgnoreState", "YES"]
+        configuration.arguments = ["-ApplePersistenceIgnoreState", "YES", "-appLanguage", "zh-Hans", "-AppleLanguages", "(zh-Hans)"]
         let app = try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)
         try require(app.bundleURL?.standardizedFileURL == url.standardizedFileURL, "wrong bundle launched")
         do {
@@ -252,7 +252,9 @@ struct ReleaseCandidateVerification {
         key(13, pid: fresh.processIdentifier)
         try await wait("last blank closed window") { windows(fresh).isEmpty }
         try require(!fresh.isTerminated, "closing window terminated App")
-        let reopened = try await NSWorkspace.shared.openApplication(at: candidateURL, configuration: NSWorkspace.OpenConfiguration())
+        let reopenConfiguration = NSWorkspace.OpenConfiguration()
+        reopenConfiguration.arguments = ["-appLanguage", "zh-Hans", "-AppleLanguages", "(zh-Hans)"]
+        let reopened = try await NSWorkspace.shared.openApplication(at: candidateURL, configuration: reopenConfiguration)
         try require(reopened.processIdentifier == fresh.processIdentifier, "Dock reopen restarted App")
         try await wait("Dock reopen editor and sidebar") {
             (try? editor(fresh)) != nil && windows(fresh).flatMap { elements($0) }.contains {

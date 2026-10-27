@@ -154,7 +154,7 @@ final class AppState: ObservableObject {
             documents.first(where: { $0.id == activeID })?.taskCoordinator.cancel(.replace)
             findReplace.isWorking = false
             findReplace.activeDocumentID = nil
-            findReplace.message = "目标标签已切换，查找已取消"
+            findReplace.message = L10n.tr("目标标签已切换，查找已取消")
         }
     }
     @Published var isSidebarVisible: Bool {
@@ -285,13 +285,13 @@ final class AppState: ObservableObject {
                 document.taskCoordinator.cancel(.json)
                 document.taskCoordinator.cancel(.listNormalization)
                 document.taskCoordinator.cancel(.textTransformation)
-                if document.statusMessage?.hasPrefix("正在格式化") == true
-                    || document.statusMessage?.hasPrefix("正在压缩") == true {
-                    document.statusMessage = "内容已变化，JSON 操作已取消"
+                if document.statusMessage?.hasPrefix(L10n.tr("正在格式化")) == true
+                    || document.statusMessage?.hasPrefix(L10n.tr("正在压缩")) == true {
+                    document.statusMessage = L10n.tr("内容已变化，JSON 操作已取消")
                 }
                 if self.findReplace.isWorking {
                     self.findReplace.isWorking = false
-                    self.findReplace.message = "内容已变化，任务已取消"
+                    self.findReplace.message = L10n.tr("内容已变化，任务已取消")
                 }
                 self.textTransformation.invalidate(documentID: documentID)
                 self.scheduleRecoverySnapshot(for: document)
@@ -496,7 +496,7 @@ final class AppState: ObservableObject {
             }) {
                 placeholder.ioState = .failed(error.localizedDescription)
             }
-            presentError(title: "无法打开文件", error: error)
+            presentError(title: L10n.tr("无法打开文件"), error: error)
         }
     }
 
@@ -536,7 +536,7 @@ final class AppState: ObservableObject {
                     }) {
                         placeholder.ioState = .failed(error.localizedDescription)
                     }
-                    self.presentError(title: "无法打开文件", error: error)
+                    self.presentError(title: L10n.tr("无法打开文件"), error: error)
                 }
             }
         }
@@ -629,9 +629,9 @@ final class AppState: ObservableObject {
             let error = NSError(
                 domain: "LacEditor",
                 code: 409,
-                userInfo: [NSLocalizedDescriptionKey: "该文件已在 LacEditor 的另一个标签中打开。"]
+                userInfo: [NSLocalizedDescriptionKey: L10n.tr("该文件已在 LacEditor 的另一个标签中打开。")]
             )
-            presentError(title: "无法另存为", error: error)
+            presentError(title: L10n.tr("无法另存为"), error: error)
             completion?(false)
             return false
         }
@@ -817,7 +817,7 @@ final class AppState: ObservableObject {
         let snapshot = document.synchronizedSnapshot()
         let source = snapshot.text
         let revision = snapshot.revision
-        document.statusMessage = pretty ? "正在格式化 JSON…" : "正在压缩 JSON…"
+        document.statusMessage = pretty ? L10n.tr("正在格式化 JSON…") : L10n.tr("正在压缩 JSON…")
         performCancellableDocumentTask(document, kind: .json) { isCancelled in
             Result {
                 try JSONFormatter.format(
@@ -835,9 +835,9 @@ final class AppState: ObservableObject {
                     formatted,
                     to: document,
                     selectionRange: document.selectionRange,
-                    actionName: pretty ? "格式化 JSON" : "压缩 JSON"
+                    actionName: pretty ? L10n.tr("格式化 JSON") : L10n.tr("压缩 JSON")
                 )
-                document.statusMessage = pretty ? "JSON 已格式化" : "JSON 已压缩"
+                document.statusMessage = pretty ? L10n.tr("JSON 已格式化") : L10n.tr("JSON 已压缩")
             case let .failure(error):
                 document.statusMessage = JSONFormatter.userFacingError(error, in: source)
             }
@@ -856,14 +856,14 @@ final class AppState: ObservableObject {
         )
         guard let snapshot = extraction.result else {
             document.statusMessage = operation == .smartDecode
-                ? "请将光标放在编码内容中，或先选择文本"
-                : "请先选择需要转换的文本"
+                ? L10n.tr("请将光标放在编码内容中，或先选择文本")
+                : L10n.tr("请先选择需要转换的文本")
             return
         }
 
         let inputByteCount = snapshot.text.utf8.count
         guard inputByteCount <= TextCodecService.maximumInputByteLimit else {
-            document.statusMessage = "选区超过 32 MB，请拆分后再转换"
+            document.statusMessage = L10n.tr("选区超过 32 MB，请拆分后再转换")
             return
         }
         if inputByteCount > TextCodecService.warningInputByteLimit,
@@ -875,7 +875,7 @@ final class AppState: ObservableObject {
             return
         }
 
-        document.statusMessage = "正在转换文本…"
+        document.statusMessage = L10n.tr("正在转换文本…")
         performCancellableDocumentTask(document, kind: .textTransformation) { isCancelled in
             Result { () -> TextTransformationPreview in
                 let detected = operation == .smartDecode
@@ -930,11 +930,11 @@ final class AppState: ObservableObject {
     func applyTextTransformationPreview() {
         guard textTransformation.canReplace,
               let preview = textTransformation.preview else {
-            textTransformation.message = "编辑内容已变化，请重新执行转换"
+            textTransformation.message = L10n.tr("编辑内容已变化，请重新执行转换")
             return
         }
         guard let document = documents.first(where: { $0.id == preview.documentID }) else {
-            textTransformation.message = "原文标签已关闭，请重新执行转换"
+            textTransformation.message = L10n.tr("原文标签已关闭，请重新执行转换")
             return
         }
         let request = EditorRangeReplacementRequest(
@@ -951,10 +951,10 @@ final class AppState: ObservableObject {
         )
         guard request.wasHandled else {
             textTransformation.message = request.failureMessage
-                ?? "编辑内容已变化，请重新执行转换"
+                ?? L10n.tr("编辑内容已变化，请重新执行转换")
             return
         }
-        document.statusMessage = "已完成 \(preview.operation.title)"
+        document.statusMessage = L10n.tr("已完成 %@", String(describing: preview.operation.title))
         dismissTextTransformation()
     }
 
@@ -962,9 +962,9 @@ final class AppState: ObservableObject {
         guard let output = textTransformation.preview?.output else { return }
         pasteboard.clearContents()
         if pasteboard.setString(output, forType: .string) {
-            textTransformation.copyFeedback.show("结果已复制")
+            textTransformation.copyFeedback.show(L10n.tr("结果已复制"))
         } else {
-            textTransformation.message = "无法写入剪贴板，请重试"
+            textTransformation.message = L10n.tr("无法写入剪贴板，请重试")
         }
     }
 
@@ -994,10 +994,10 @@ final class AppState: ObservableObject {
         let estimated = Int64(byteCount * multiplier)
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "转换较大的文本选区？"
-        alert.informativeText = "选区大小为 \(formatter.string(fromByteCount: Int64(byteCount)))，预计最多产生约 \(formatter.string(fromByteCount: estimated)) 的结果。转换期间可继续使用其他标签。"
-        alert.addButton(withTitle: "继续转换")
-        alert.addButton(withTitle: "取消")
+        alert.messageText = L10n.tr("转换较大的文本选区？")
+        alert.informativeText = L10n.tr("选区大小为 %@，预计最多产生约 %@ 的结果。转换期间可继续使用其他标签。", formatter.string(fromByteCount: Int64(byteCount)), formatter.string(fromByteCount: estimated))
+        alert.addButton(withTitle: L10n.tr("继续转换"))
+        alert.addButton(withTitle: L10n.tr("取消"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 
@@ -1063,7 +1063,7 @@ final class AppState: ObservableObject {
         let source = document.synchronizedSnapshot().text
         let query = interpretedSearchQuery()
         guard !query.isEmpty else {
-            findReplace.message = "请输入查找内容"
+            findReplace.message = L10n.tr("请输入查找内容")
             return
         }
         guard TextSearchService.selectionMatches(
@@ -1091,9 +1091,9 @@ final class AppState: ObservableObject {
             mutable as String,
             to: document,
             selectionRange: nextSelection,
-            actionName: "替换"
+            actionName: L10n.tr("替换")
         )
-        findReplace.message = "已替换 1 处"
+        findReplace.message = L10n.tr("已替换 1 处")
         findNext()
     }
 
@@ -1103,7 +1103,7 @@ final class AppState: ObservableObject {
         let source = snapshot.text
         let query = interpretedSearchQuery()
         guard !query.isEmpty else {
-            findReplace.message = "请输入查找内容"
+            findReplace.message = L10n.tr("请输入查找内容")
             return
         }
         let replacement = TextSearchService.interpreted(
@@ -1115,7 +1115,7 @@ final class AppState: ObservableObject {
         let caseSensitive = findReplace.isCaseSensitive
         findReplace.isWorking = true
         findReplace.activeDocumentID = document.id
-        findReplace.message = "正在替换…"
+        findReplace.message = L10n.tr("正在替换…")
         performCancellableDocumentTask(document, kind: .replace) { isCancelled in
             TextSearchService.replacingAll(
                 in: source,
@@ -1132,20 +1132,20 @@ final class AppState: ObservableObject {
             guard self.findReplace.query == rawQuery,
                   self.findReplace.isCaseSensitive == caseSensitive,
                   self.isTaskResultCurrent(document, revision: revision) else {
-                self.findReplace.message = "内容已变化，已取消替换"
+                self.findReplace.message = L10n.tr("内容已变化，已取消替换")
                 return
             }
             guard result.count > 0 else {
-                self.findReplace.message = "未找到匹配内容"
+                self.findReplace.message = L10n.tr("未找到匹配内容")
                 return
             }
             self.applyTextUpdate(
                 result.text,
                 to: document,
                 selectionRange: NSRange(location: 0, length: 0),
-                actionName: "全部替换"
+                actionName: L10n.tr("全部替换")
             )
-            self.findReplace.message = "已替换 \(result.count) 处"
+            self.findReplace.message = L10n.tr("已替换 %@ 处", String(result.count))
         }
     }
 
@@ -1157,7 +1157,7 @@ final class AppState: ObservableObject {
         document.taskCoordinator.cancel(.replace)
         findReplace.isWorking = false
         findReplace.activeDocumentID = nil
-        findReplace.message = "已取消"
+        findReplace.message = L10n.tr("已取消")
     }
 
     func increaseFontSize() {
@@ -1200,7 +1200,7 @@ final class AppState: ObservableObject {
         let wasFavorite = library.isFavorite(url)
         library.toggleFavorite(url)
         let expected = library.favoritePaths
-        sidebarFeedback.show(wasFavorite ? "已从收藏夹移除" : "已添加到收藏夹") { [weak library] in
+        sidebarFeedback.show(wasFavorite ? L10n.tr("已从收藏夹移除") : L10n.tr("已添加到收藏夹")) { [weak library] in
             library?.restoreFavorites(previous, ifUnchanged: expected) ?? false
         }
     }
@@ -1209,12 +1209,12 @@ final class AppState: ObservableObject {
         guard let library = windowManager?.sidebarLibrary,
               let group = library.groups.first(where: { $0.id == id }) else { return }
         guard !library.groupsContaining(url).contains(id) else {
-            sidebarFeedback.show("文件已在此分组中")
+            sidebarFeedback.show(L10n.tr("文件已在此分组中"))
             return
         }
         library.add(url, toGroup: id)
         let expected = library.groups.first(where: { $0.id == id })?.paths ?? []
-        sidebarFeedback.show("已添加到“\(group.name)”") { [weak library] in
+        sidebarFeedback.show(L10n.tr("已添加到“%@”", String(describing: group.name))) { [weak library] in
             library?.restoreGroupFiles(group.paths, in: id, ifUnchanged: expected) ?? false
         }
     }
@@ -1225,7 +1225,7 @@ final class AppState: ObservableObject {
         library.remove(url, fromGroup: id)
         let expected = library.groups.first(where: { $0.id == id })?.paths ?? []
         guard group.paths != expected else { return }
-        sidebarFeedback.show("已从“\(group.name)”移除") { [weak library] in
+        sidebarFeedback.show(L10n.tr("已从“%@”移除", String(describing: group.name))) { [weak library] in
             library?.restoreGroupFiles(group.paths, in: id, ifUnchanged: expected) ?? false
         }
     }
@@ -1235,7 +1235,7 @@ final class AppState: ObservableObject {
         recentFiles.remove(url)
         let expected = recentFiles.urls
         guard previous != expected else { return }
-        sidebarFeedback.show("已移除最近文件记录") { [weak recentFiles] in
+        sidebarFeedback.show(L10n.tr("已移除最近文件记录")) { [weak recentFiles] in
             recentFiles?.restore(previous, ifUnchanged: expected) ?? false
         }
     }
@@ -1356,19 +1356,19 @@ final class AppState: ObservableObject {
     private func suggestedFilename(for document: EditorDocument) -> String {
         if let existing = document.url?.lastPathComponent { return existing }
         return switch document.language {
-        case .markdown: "未命名.md"
-        case .json: "未命名.json"
-        case .html: "未命名.html"
-        case .javascript: "未命名.js"
-        case .typescript: "未命名.ts"
-        case .css: "未命名.css"
-        case .python: "未命名.py"
-        case .swift: "未命名.swift"
-        case .shell: "未命名.sh"
-        case .yaml: "未命名.yaml"
-        case .cFamily: "未命名.cpp"
-        case .sql: "未命名.sql"
-        case .plainText: "未命名.txt"
+        case .markdown: L10n.tr("未命名") + ".md"
+        case .json: L10n.tr("未命名") + ".json"
+        case .html: L10n.tr("未命名") + ".html"
+        case .javascript: L10n.tr("未命名") + ".js"
+        case .typescript: L10n.tr("未命名") + ".ts"
+        case .css: L10n.tr("未命名") + ".css"
+        case .python: L10n.tr("未命名") + ".py"
+        case .swift: L10n.tr("未命名") + ".swift"
+        case .shell: L10n.tr("未命名") + ".sh"
+        case .yaml: L10n.tr("未命名") + ".yaml"
+        case .cFamily: L10n.tr("未命名") + ".cpp"
+        case .sql: L10n.tr("未命名") + ".sql"
+        case .plainText: L10n.tr("未命名") + ".txt"
         }
     }
 
@@ -1396,7 +1396,7 @@ final class AppState: ObservableObject {
         )
         findReplace.isWorking = true
         findReplace.activeDocumentID = document.id
-        findReplace.message = "正在查找…"
+        findReplace.message = L10n.tr("正在查找…")
 
         if let cached = searchMatchCache.value(for: document.id, key: cacheKey) {
             let range = backwards
@@ -1508,15 +1508,15 @@ final class AppState: ObservableObject {
         guard findReplace.query == rawQuery,
               findReplace.isCaseSensitive == caseSensitive,
               isTaskResultCurrent(document, revision: revision) else {
-            findReplace.message = "内容已变化，已取消查找"
+            findReplace.message = L10n.tr("内容已变化，已取消查找")
             return
         }
         guard let range else {
-            findReplace.message = "未找到匹配内容"
+            findReplace.message = L10n.tr("未找到匹配内容")
             return
         }
         reveal(range, in: document)
-        findReplace.message = "已找到匹配内容"
+        findReplace.message = L10n.tr("已找到匹配内容")
     }
 
     private func performDocumentTask<Result>(
@@ -1637,7 +1637,7 @@ final class AppState: ObservableObject {
         completion: ((Bool) -> Void)? = nil
     ) -> Bool {
         guard document.ioState != .saving else {
-            document.statusMessage = "已有保存任务正在进行"
+            document.statusMessage = L10n.tr("已有保存任务正在进行")
             completion?(false)
             return false
         }
@@ -1653,7 +1653,7 @@ final class AppState: ObservableObject {
         let encodingName = document.encodingName
         let saveGeneration = document.taskCoordinator.begin(.save)
         document.ioState = .saving
-        document.statusMessage = "正在保存…"
+        document.statusMessage = L10n.tr("正在保存…")
         let signpostID = OSSignpostID(log: filePerformanceLog)
         fileWriteQueue.async { [weak self, weak document] in
             os_signpost(
@@ -1710,15 +1710,15 @@ final class AppState: ObservableObject {
                     document.markSaved(snapshot: text, revision: revision)
                     document.ioState = .idle
                     document.statusMessage = document.isDirty
-                        ? "已保存先前版本，仍有未保存更改"
+                        ? L10n.tr("已保存先前版本，仍有未保存更改")
                         : nil
                     self.recentFiles.record(url)
                     self.scheduleRecoverySnapshot(for: document, delay: 0)
                     completion?(!document.isDirty)
                 } else {
-                    let description = saveResult.errorDescription ?? "无法取得保存后的文件状态"
+                    let description = saveResult.errorDescription ?? L10n.tr("无法取得保存后的文件状态")
                     document.ioState = .failed(description)
-                    document.statusMessage = "保存失败：\(description)"
+                    document.statusMessage = L10n.tr("保存失败：%@", String(describing: description))
                     if let saveError {
                         self.handleSaveError(
                             saveError,
@@ -1750,12 +1750,12 @@ final class AppState: ObservableObject {
     ) {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "磁盘上的文件已发生变化"
-        alert.informativeText = "为避免覆盖其他程序的修改，LacEditor 已停止保存。你可以重新载入磁盘版本、另存为新文件，或明确覆盖。"
-        alert.addButton(withTitle: "取消")
-        alert.addButton(withTitle: "重新载入")
-        alert.addButton(withTitle: "另存为")
-        alert.addButton(withTitle: "仍然覆盖")
+        alert.messageText = L10n.tr("磁盘上的文件已发生变化")
+        alert.informativeText = L10n.tr("为避免覆盖其他程序的修改，LacEditor 已停止保存。你可以重新载入磁盘版本、另存为新文件，或明确覆盖。")
+        alert.addButton(withTitle: L10n.tr("取消"))
+        alert.addButton(withTitle: L10n.tr("重新载入"))
+        alert.addButton(withTitle: L10n.tr("另存为"))
+        alert.addButton(withTitle: L10n.tr("仍然覆盖"))
         let handle: (NSApplication.ModalResponse) -> Void = { [weak self, weak document] response in
             guard let self, let document else { return }
             switch response {
@@ -1800,7 +1800,7 @@ final class AppState: ObservableObject {
                     case let .decoded(decoded):
                         guard document.textRevision == expectedRevision else {
                             document.ioState = .idle
-                            document.statusMessage = "重新载入期间内容已变化，已保留本地修改"
+                            document.statusMessage = L10n.tr("重新载入期间内容已变化，已保留本地修改")
                             return
                         }
                         document.text = decoded.text
@@ -1825,7 +1825,7 @@ final class AppState: ObservableObject {
                     }
                 } catch {
                     document.ioState = .failed(error.localizedDescription)
-                    self.presentError(title: "无法重新载入文件", error: error)
+                    self.presentError(title: L10n.tr("无法重新载入文件"), error: error)
                 }
             }
         }
@@ -1854,7 +1854,7 @@ final class AppState: ObservableObject {
                     let decoded = try result.get()
                     guard document.textRevision == expectedRevision else {
                         document.ioState = .idle
-                        document.statusMessage = "重新载入期间内容已变化，已保留本地修改"
+                        document.statusMessage = L10n.tr("重新载入期间内容已变化，已保留本地修改")
                         return
                     }
                     document.text = decoded.text
@@ -1865,7 +1865,7 @@ final class AppState: ObservableObject {
                     self.scheduleRecoverySnapshot(for: document, delay: 0)
                 } catch {
                     document.ioState = .failed(error.localizedDescription)
-                    self.presentError(title: "无法重新载入文件", error: error)
+                    self.presentError(title: L10n.tr("无法重新载入文件"), error: error)
                 }
             }
         }
@@ -1877,16 +1877,16 @@ final class AppState: ObservableObject {
         completion: ((Bool) -> Void)?
     ) {
         guard case FileServiceError.unrepresentableCharacters = error else {
-            presentError(title: "无法保存文件", error: error)
+            presentError(title: L10n.tr("无法保存文件"), error: error)
             completion?(false)
             return
         }
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "当前编码无法保存这些字符"
-        alert.informativeText = "原文件没有被覆盖。你可以取消，或另存为 UTF-8 文件。"
-        alert.addButton(withTitle: "取消")
-        alert.addButton(withTitle: "另存为 UTF-8")
+        alert.messageText = L10n.tr("当前编码无法保存这些字符")
+        alert.informativeText = L10n.tr("原文件没有被覆盖。你可以取消，或另存为 UTF-8 文件。")
+        alert.addButton(withTitle: L10n.tr("取消"))
+        alert.addButton(withTitle: L10n.tr("另存为 UTF-8"))
         let response = alert.runModal()
         guard response == .alertSecondButtonReturn else {
             completion?(false)
@@ -1906,11 +1906,11 @@ final class AppState: ObservableObject {
         }
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "要保存对“\(document.displayName)”的更改吗？"
-        alert.informativeText = "如果不保存，更改将会丢失。"
-        alert.addButton(withTitle: "保存")
-        alert.addButton(withTitle: "不保存")
-        alert.addButton(withTitle: "取消")
+        alert.messageText = L10n.tr("要保存对“%@”的更改吗？", String(describing: document.displayName))
+        alert.informativeText = L10n.tr("如果不保存，更改将会丢失。")
+        alert.addButton(withTitle: L10n.tr("保存"))
+        alert.addButton(withTitle: L10n.tr("不保存"))
+        alert.addButton(withTitle: L10n.tr("取消"))
         let handle: (NSApplication.ModalResponse) -> Void = { [weak self, weak document] response in
             guard let self, let document else {
                 completion(false)
@@ -1997,10 +1997,10 @@ final class AppState: ObservableObject {
         formatter.countStyle = .file
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "打开超大文件？"
-        alert.informativeText = "“\(url.lastPathComponent)”大小为 \(formatter.string(fromByteCount: Int64(byteCount)))。LacEditor 将进入保护模式并关闭高亮、预览、换行、折叠和实时字数统计。"
-        alert.addButton(withTitle: "继续打开")
-        alert.addButton(withTitle: "取消")
+        alert.messageText = L10n.tr("打开超大文件？")
+        alert.informativeText = L10n.tr("“%@”大小为 %@。LacEditor 将进入保护模式并关闭高亮、预览、换行、折叠和实时字数统计。", url.lastPathComponent, formatter.string(fromByteCount: Int64(byteCount)))
+        alert.addButton(withTitle: L10n.tr("继续打开"))
+        alert.addButton(withTitle: L10n.tr("取消"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 

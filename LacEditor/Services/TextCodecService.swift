@@ -24,18 +24,18 @@ enum TextTransformationOperation: String, CaseIterable, Sendable {
 
     var title: String {
         switch self {
-        case .smartDecode: "智能解码"
-        case .urlEncodeComponent: "URL 组件编码"
-        case .urlDecode: "URL 解码"
-        case .formURLDecode: "表单 URL 解码"
-        case .base64Encode: "Base64 编码"
-        case .base64Decode: "Base64 解码"
-        case .base64URLEncode: "Base64URL 编码"
-        case .base64URLDecode: "Base64URL 解码"
-        case .htmlEncode: "HTML 实体编码"
-        case .htmlDecode: "HTML 实体解码"
-        case .unicodeEncode: "Unicode/JSON 转义"
-        case .unicodeDecode: "Unicode/JSON 反转义"
+        case .smartDecode: L10n.tr("智能解码")
+        case .urlEncodeComponent: L10n.tr("URL 组件编码")
+        case .urlDecode: L10n.tr("URL 解码")
+        case .formURLDecode: L10n.tr("表单 URL 解码")
+        case .base64Encode: L10n.tr("Base64 编码")
+        case .base64Decode: L10n.tr("Base64 解码")
+        case .base64URLEncode: L10n.tr("Base64URL 编码")
+        case .base64URLDecode: L10n.tr("Base64URL 解码")
+        case .htmlEncode: L10n.tr("HTML 实体编码")
+        case .htmlDecode: L10n.tr("HTML 实体解码")
+        case .unicodeEncode: L10n.tr("Unicode/JSON 转义")
+        case .unicodeDecode: L10n.tr("Unicode/JSON 反转义")
         }
     }
 
@@ -47,7 +47,7 @@ struct TextCodecDetection: Sendable, Equatable {
     let operation: TextTransformationOperation
     let output: String
 
-    var suggestionTitle: String { "检测到 \(kind.rawValue)" }
+    var suggestionTitle: String { L10n.tr("检测到 %@", L10n.tr(kind.rawValue)) }
 }
 
 enum TextCodecError: LocalizedError, Equatable {
@@ -61,13 +61,13 @@ enum TextCodecError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .emptyInput: "没有可转换的文本"
-        case .invalidPercentEncoding: "URL 编码无效，请检查百分号后的十六进制字符"
-        case .invalidBase64: "Base64 内容或填充格式无效"
-        case .nonTextBase64: "Base64 解码结果不是 UTF-8 文本"
-        case let .invalidHTMLEntity(entity): "HTML 实体无效：\(entity)"
-        case let .invalidUnicodeEscape(escape): "Unicode/JSON 转义无效：\(escape)"
-        case .noDetectedEncoding: "没有检测到可解码的内容"
+        case .emptyInput: L10n.tr("没有可转换的文本")
+        case .invalidPercentEncoding: L10n.tr("URL 编码无效，请检查百分号后的十六进制字符")
+        case .invalidBase64: L10n.tr("Base64 内容或填充格式无效")
+        case .nonTextBase64: L10n.tr("Base64 解码结果不是 UTF-8 文本")
+        case let .invalidHTMLEntity(entity): L10n.tr("HTML 实体无效：%@", entity)
+        case let .invalidUnicodeEscape(escape): L10n.tr("Unicode/JSON 转义无效：%@", escape)
+        case .noDetectedEncoding: L10n.tr("没有检测到可解码的内容")
         }
     }
 }
@@ -451,24 +451,24 @@ enum TextCodecService {
                     let next = parsed.nextIndex
                     guard next + 5 < scalars.count,
                           scalars[next] == "\\", scalars[next + 1] == "u" else {
-                        throw TextCodecError.invalidUnicodeEscape("高位代理项缺少低位代理项")
+                        throw TextCodecError.invalidUnicodeEscape(L10n.tr("高位代理项缺少低位代理项"))
                     }
                     let low = try parseUnicodeEscape(scalars, startingAt: next)
                     guard (0xDC00...0xDFFF).contains(low.value) else {
-                        throw TextCodecError.invalidUnicodeEscape("代理项组合无效")
+                        throw TextCodecError.invalidUnicodeEscape(L10n.tr("代理项组合无效"))
                     }
                     let combined = 0x10000
                         + ((parsed.value - 0xD800) << 10)
                         + (low.value - 0xDC00)
                     guard let scalar = UnicodeScalar(combined) else {
-                        throw TextCodecError.invalidUnicodeEscape("Unicode 标量超出范围")
+                        throw TextCodecError.invalidUnicodeEscape(L10n.tr("Unicode 标量超出范围"))
                     }
                     output.unicodeScalars.append(scalar)
                     index = low.nextIndex
                 } else {
                     guard !(0xDC00...0xDFFF).contains(parsed.value),
                           let scalar = UnicodeScalar(parsed.value) else {
-                        throw TextCodecError.invalidUnicodeEscape("Unicode 标量无效")
+                        throw TextCodecError.invalidUnicodeEscape(L10n.tr("Unicode 标量无效"))
                     }
                     output.unicodeScalars.append(scalar)
                     index = parsed.nextIndex
@@ -504,7 +504,7 @@ enum TextCodecService {
             return (value, cursor + 1)
         }
         guard index + 5 < scalars.count else {
-            throw TextCodecError.invalidUnicodeEscape("不完整的 \\u 转义")
+            throw TextCodecError.invalidUnicodeEscape(L10n.tr("不完整的 \\u 转义"))
         }
         let digits = String(String.UnicodeScalarView(scalars[(index + 2)...(index + 5)]))
         guard digits.unicodeScalars.allSatisfy({ Character($0).isHexDigit }),

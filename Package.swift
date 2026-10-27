@@ -4,7 +4,7 @@ import PackageDescription
 
 let package = Package(
     name: "LacEditor",
-    defaultLocalization: "zh-Hans",
+    defaultLocalization: "en",
     platforms: [
         .macOS("26.0")
     ],
@@ -50,6 +50,7 @@ let package = Package(
             ],
             path: "LacEditor",
             exclude: ["Assets.xcassets", "Info.plist"],
+            resources: [.process("zh-Hans.lproj"), .process("en.lproj"), .process("ru.lproj")],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("SwiftUI"),

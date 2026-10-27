@@ -15,15 +15,15 @@ enum JSONFormatter {
     }
 
     static func userFacingError(_ error: Error, in text: String) -> String {
-        if error is CancellationError { return "JSON 操作已取消" }
+        if error is CancellationError { return L10n.tr("JSON 操作已取消") }
         let nsError = error as NSError
         let description = nsError.localizedDescription
         if let debugDescription = nsError.userInfo["NSDebugDescription"] as? String,
            let location = lineAndColumn(from: debugDescription) {
-            return "JSON 无效：第 \(location.line) 行，第 \(location.column + 1) 列。\(description)"
+            return L10n.tr("JSON 无效") + L10n.tr("：第 %@ 行，第 %@ 列。%@", String(describing: location.line), String(describing: location.column + 1), description)
         }
         if let location = lineAndColumn(from: description) {
-            return "JSON 无效：第 \(location.line) 行，第 \(location.column) 列。\(description)"
+            return L10n.tr("JSON 无效") + L10n.tr("：第 %@ 行，第 %@ 列。%@", String(describing: location.line), String(describing: location.column), description)
         }
         if let index = nsError.userInfo["NSJSONSerializationErrorIndex"] as? Int {
             return message(forByteIndex: index, description: description, in: text)
@@ -31,7 +31,7 @@ enum JSONFormatter {
         if let index = byteIndex(from: description) {
             return message(forByteIndex: index, description: description, in: text)
         }
-        return "JSON 无效：\(description)"
+        return L10n.tr("JSON 无效") + L10n.tr("：%@", description)
     }
 
     private static func message(
@@ -48,7 +48,7 @@ enum JSONFormatter {
             separator: "\n",
             omittingEmptySubsequences: false
         ).last?.count ?? 0
-        return "JSON 无效：第 \(line) 行，第 \(column + 1) 列。\(description)"
+        return L10n.tr("JSON 无效") + L10n.tr("：第 %@ 行，第 %@ 列。%@", String(describing: line), String(describing: column + 1), description)
     }
 
     private static func lineAndColumn(from description: String) -> (line: Int, column: Int)? {
@@ -105,10 +105,10 @@ private struct OrderedJSONFormatter {
     mutating func format() throws -> String {
         try checkCancellation(force: true)
         try skipWhitespace()
-        guard index < input.count else { throw syntaxError("内容为空") }
+        guard index < input.count else { throw syntaxError(L10n.tr("内容为空")) }
         try parseValue(depth: 0)
         try skipWhitespace()
-        guard index == input.count else { throw syntaxError("值后存在多余内容") }
+        guard index == input.count else { throw syntaxError(L10n.tr("值后存在多余内容")) }
         if pretty { output.append(.lineFeed) }
         return String(decoding: output, as: UTF8.self)
     }
@@ -116,10 +116,10 @@ private struct OrderedJSONFormatter {
     private mutating func parseValue(depth: Int) throws {
         try checkCancellation()
         guard depth <= Self.maximumDepth else {
-            throw syntaxError("嵌套层级超过 \(Self.maximumDepth) 层")
+            throw syntaxError(L10n.tr("嵌套层级超过 %@ 层", String(describing: Self.maximumDepth)))
         }
         try skipWhitespace()
-        guard let byte = currentByte else { throw syntaxError("缺少 JSON 值") }
+        guard let byte = currentByte else { throw syntaxError(L10n.tr("缺少 JSON 值")) }
         switch byte {
         case .leftBrace:
             try parseObject(depth: depth)
@@ -136,7 +136,7 @@ private struct OrderedJSONFormatter {
         case .lowerN:
             try copyLiteral([.lowerN, .lowerU, .lowerL, .lowerL], name: "null")
         default:
-            throw syntaxError("此处应为 JSON 值")
+            throw syntaxError(L10n.tr("此处应为 JSON 值"))
         }
     }
 
@@ -154,17 +154,17 @@ private struct OrderedJSONFormatter {
         while true {
             try checkCancellation()
             if !isFirst {
-                guard consume(.comma) else { throw syntaxError("对象成员之间缺少逗号") }
+                guard consume(.comma) else { throw syntaxError(L10n.tr("对象成员之间缺少逗号")) }
                 output.append(.comma)
                 if pretty { output.append(.lineFeed) }
                 try skipWhitespace()
-                guard currentByte != .rightBrace else { throw syntaxError("对象末尾不允许多余逗号") }
+                guard currentByte != .rightBrace else { throw syntaxError(L10n.tr("对象末尾不允许多余逗号")) }
             }
             if pretty { appendIndent(depth + 1) }
-            guard currentByte == .quote else { throw syntaxError("对象字段名必须是字符串") }
+            guard currentByte == .quote else { throw syntaxError(L10n.tr("对象字段名必须是字符串")) }
             try copyString()
             try skipWhitespace()
-            guard consume(.colon) else { throw syntaxError("字段名后缺少冒号") }
+            guard consume(.colon) else { throw syntaxError(L10n.tr("字段名后缺少冒号")) }
             if pretty {
                 output.append(.space)
                 output.append(.colon)
@@ -200,11 +200,11 @@ private struct OrderedJSONFormatter {
         while true {
             try checkCancellation()
             if !isFirst {
-                guard consume(.comma) else { throw syntaxError("数组元素之间缺少逗号") }
+                guard consume(.comma) else { throw syntaxError(L10n.tr("数组元素之间缺少逗号")) }
                 output.append(.comma)
                 if pretty { output.append(.lineFeed) }
                 try skipWhitespace()
-                guard currentByte != .rightBracket else { throw syntaxError("数组末尾不允许多余逗号") }
+                guard currentByte != .rightBracket else { throw syntaxError(L10n.tr("数组末尾不允许多余逗号")) }
             }
             if pretty { appendIndent(depth + 1) }
             try parseValue(depth: depth + 1)
@@ -234,55 +234,55 @@ private struct OrderedJSONFormatter {
                 return
             case .backslash:
                 index += 1
-                guard index < input.count else { throw syntaxError("字符串转义不完整") }
+                guard index < input.count else { throw syntaxError(L10n.tr("字符串转义不完整")) }
                 let escaped = input[index]
                 if escaped == .lowerU {
-                    guard index + 4 < input.count else { throw syntaxError("Unicode 转义不完整") }
+                    guard index + 4 < input.count else { throw syntaxError(L10n.tr("Unicode 转义不完整")) }
                     for hexIndex in (index + 1)...(index + 4) where !input[hexIndex].isHexDigit {
                         index = hexIndex
-                        throw syntaxError("Unicode 转义包含无效字符")
+                        throw syntaxError(L10n.tr("Unicode 转义包含无效字符"))
                     }
                     index += 5
                 } else if escaped.isSimpleJSONEscape {
                     index += 1
                 } else {
-                    throw syntaxError("字符串包含无效转义")
+                    throw syntaxError(L10n.tr("字符串包含无效转义"))
                 }
             case 0x00...0x1F:
-                throw syntaxError("字符串包含未转义的控制字符")
+                throw syntaxError(L10n.tr("字符串包含未转义的控制字符"))
             default:
                 index += 1
             }
         }
-        throw syntaxError("字符串缺少结束引号")
+        throw syntaxError(L10n.tr("字符串缺少结束引号"))
     }
 
     private mutating func copyNumber() throws {
         let start = index
         if consume(.minus) {
-            guard currentByte != nil else { throw syntaxError("负号后缺少数字") }
+            guard currentByte != nil else { throw syntaxError(L10n.tr("负号后缺少数字")) }
         }
 
         if consume(.zero) {
             if let byte = currentByte, byte.isDigit {
-                throw syntaxError("数字不允许包含前导零")
+                throw syntaxError(L10n.tr("数字不允许包含前导零"))
             }
         } else {
             guard let byte = currentByte, byte.isOneThroughNine else {
-                throw syntaxError("数字的整数部分无效")
+                throw syntaxError(L10n.tr("数字的整数部分无效"))
             }
             try copyDigits()
         }
 
         if consume(.period) {
-            guard currentByte?.isDigit == true else { throw syntaxError("小数点后缺少数字") }
+            guard currentByte?.isDigit == true else { throw syntaxError(L10n.tr("小数点后缺少数字")) }
             try copyDigits()
         }
 
         if currentByte == .lowerE || currentByte == .upperE {
             index += 1
             if currentByte == .plus || currentByte == .minus { index += 1 }
-            guard currentByte?.isDigit == true else { throw syntaxError("指数部分缺少数字") }
+            guard currentByte?.isDigit == true else { throw syntaxError(L10n.tr("指数部分缺少数字")) }
             try copyDigits()
         }
         output.append(contentsOf: input[start..<index])
@@ -291,7 +291,7 @@ private struct OrderedJSONFormatter {
     private mutating func copyLiteral(_ literal: [UInt8], name: String) throws {
         guard index + literal.count <= input.count,
               input[index..<(index + literal.count)].elementsEqual(literal) else {
-            throw syntaxError("无效的 \(name) 字面量")
+            throw syntaxError(L10n.tr("无效的 %@ 字面量", name))
         }
         output.append(contentsOf: literal)
         index += literal.count

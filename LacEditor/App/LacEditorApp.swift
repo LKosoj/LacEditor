@@ -9,6 +9,7 @@ struct LacEditorApp: App {
     @StateObject private var windowManager: WindowManager
 
     init() {
+        L10n.configure()
         let manager = WindowManager(
             recoveryStore: DocumentRecoveryStore(),
             workspaceStore: WorkspaceSessionStore(),
@@ -152,7 +153,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "设置"
+        window.title = L10n.tr("设置")
         window.identifier = NSUserInterfaceItemIdentifier("LacEditor.SettingsWindow")
         window.tabbingMode = .disallowed
         window.contentViewController = NSHostingController(
@@ -398,7 +399,7 @@ final class AppearanceMenuController: NSObject {
         ) { [weak self] notification in
             MainActor.assumeIsolated {
                 guard let menu = notification.object as? NSMenu,
-                      menu.items.contains(where: { $0.title == "外观" }) else {
+                      menu.items.contains(where: { $0.title == L10n.tr("外观") }) else {
                     return
                 }
                 self?.installNativeSubmenu(in: menu)
@@ -417,14 +418,14 @@ final class AppearanceMenuController: NSObject {
 
     private func installFromMainMenu() {
         guard let viewMenu = NSApp.mainMenu?.items.first(where: {
-            $0.title == "显示"
+            $0.title == L10n.tr("View")
         })?.submenu else { return }
         installNativeSubmenu(in: viewMenu)
     }
 
     private func installNativeSubmenu(in viewMenu: NSMenu) {
         guard let appearanceItem = viewMenu.items.first(where: {
-            $0.title == "外观"
+            $0.title == L10n.tr("外观")
         }) else { return }
 
         if appearanceItem.identifier?.rawValue == "LacEditor.Appearance",
@@ -434,14 +435,14 @@ final class AppearanceMenuController: NSObject {
             return
         }
 
-        let submenu = NSMenu(title: "外观")
+        let submenu = NSMenu(title: L10n.tr("外观"))
         submenu.autoenablesItems = false
         appearanceItem.identifier = NSUserInterfaceItemIdentifier(
             "LacEditor.Appearance"
         )
         for theme in AppTheme.allCases {
             let item = NSMenuItem(
-                title: theme.rawValue,
+                title: L10n.tr(theme.rawValue),
                 action: #selector(selectTheme(_:)),
                 keyEquivalent: ""
             )
@@ -515,11 +516,11 @@ final class MenuLocalizationController: NSObject {
     static func localizeMainMenu() {
         guard let menu = NSApp.mainMenu else { return }
         let translations = [
-            "File": "文件",
-            "Edit": "编辑",
-            "View": "显示",
-            "Window": "窗口",
-            "Help": "帮助"
+            "File": L10n.tr("File"),
+            "Edit": L10n.tr("Edit"),
+            "View": L10n.tr("View"),
+            "Window": L10n.tr("Window"),
+            "Help": L10n.tr("Help")
         ]
         for item in menu.items {
             if let translated = translations[item.title] {
@@ -679,7 +680,7 @@ struct WindowCloseCoordinator: NSViewRepresentable {
 func configureEditorWindowChrome(_ window: NSWindow, appState: AppState? = nil) {
     window.tabbingIdentifier = "com.laceditor.editor"
     window.tabbingMode = .preferred
-    window.tab.title = appState?.selectedDocument?.displayName ?? "未命名"
+    window.tab.title = appState?.selectedDocument?.displayName ?? L10n.tr("未命名")
     window.isDocumentEdited = appState?.selectedDocument?.isDirty == true
     // This is the same structure used by Finder: the native split sidebar is
     // allowed to extend through the titlebar, while one compact AppKit toolbar

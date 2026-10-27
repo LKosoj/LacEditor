@@ -78,7 +78,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         let presentation = Presentation(
             documentID: document?.id,
             url: document?.url,
-            title: document?.displayName ?? "未命名",
+            title: document?.displayName ?? L10n.tr("未命名"),
             language: document?.language,
             sidebar: appState.isSidebarVisible,
             dirty: document?.isDirty == true,
@@ -91,7 +91,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         // unrendered presentation or the first real update would be skipped.
         if previewItem != nil { lastPresentation = presentation }
         titleField.stringValue = presentation.title
-        titleField.toolTip = document?.url?.path ?? "未命名文档"
+        titleField.toolTip = document?.url?.path ?? L10n.tr("未命名文档")
         if let window = appState.hostWindow {
             if window.title != appState.windowTitle { window.title = appState.windowTitle }
             if window.tab.title != presentation.title { window.tab.title = presentation.title }
@@ -100,8 +100,8 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         undoItem?.isEnabled = presentation.canUndo
         redoItem?.isEnabled = presentation.canRedo
         sidebarItem?.toolTip = appState.isSidebarVisible
-            ? "隐藏侧边栏（⌃⌘B）"
-            : "显示侧边栏（⌃⌘B）"
+            ? L10n.tr("隐藏侧边栏（⌃⌘B）")
+            : L10n.tr("显示侧边栏（⌃⌘B）")
         // AppKit synchronizes item insertion/removal across toolbars sharing
         // an identifier. Native isHidden is explicitly local to each instance,
         // so Markdown and code tabs can safely show different controls.
@@ -127,12 +127,12 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
                 ? "rectangle.split.2x1.fill"
                 : "rectangle.split.2x1",
             accessibilityDescription: document.isPreviewEffectivelyEnabled
-                ? "隐藏 Markdown 预览"
-                : "显示 Markdown 预览"
+                ? L10n.tr("隐藏 Markdown 预览")
+                : L10n.tr("显示 Markdown 预览")
         )
         previewItem?.toolTip = document.isPreviewEffectivelyEnabled
-            ? "隐藏 Markdown 预览（⌥⌘P）"
-            : "显示 Markdown 预览（⌥⌘P）"
+            ? L10n.tr("隐藏 Markdown 预览（⌥⌘P）")
+            : L10n.tr("显示 Markdown 预览（⌥⌘P）")
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -178,11 +178,11 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
 
     private func makeSidebarItem() -> NSToolbarItem {
         let item = NSToolbarItem(itemIdentifier: .toggleSidebar)
-        item.label = "侧边栏"
-        item.paletteLabel = "侧边栏"
+        item.label = L10n.tr("侧边栏")
+        item.paletteLabel = L10n.tr("侧边栏")
         item.image = NSImage(
             systemSymbolName: "sidebar.left",
-            accessibilityDescription: "切换侧边栏"
+            accessibilityDescription: L10n.tr("切换侧边栏")
         )
         item.target = self
         item.action = #selector(toggleSidebar)
@@ -193,7 +193,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
 
     private func makeTitleItem() -> NSToolbarItem {
         let item = NSToolbarItem(itemIdentifier: ItemIdentifier.title)
-        item.label = "文档标题"
+        item.label = L10n.tr("文档标题")
         item.view = titleField
         item.visibilityPriority = .high
         return item
@@ -202,31 +202,31 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
     private func makeHistoryItem() -> NSToolbarItem {
         let undoImage = NSImage(
             systemSymbolName: "arrow.uturn.backward",
-            accessibilityDescription: "撤销"
+            accessibilityDescription: L10n.tr("撤销")
         ) ?? NSImage()
         let redoImage = NSImage(
             systemSymbolName: "arrow.uturn.forward",
-            accessibilityDescription: "重做"
+            accessibilityDescription: L10n.tr("重做")
         ) ?? NSImage()
         let undoItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("LacEditor.Undo"))
-        undoItem.label = "撤销"
+        undoItem.label = L10n.tr("撤销")
         undoItem.image = undoImage
         undoItem.target = self
         undoItem.action = #selector(performUndo)
-        undoItem.toolTip = "撤销（⌘Z）"
+        undoItem.toolTip = L10n.tr("撤销（⌘Z）")
         self.undoItem = undoItem
 
         let redoItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("LacEditor.Redo"))
-        redoItem.label = "重做"
+        redoItem.label = L10n.tr("重做")
         redoItem.image = redoImage
         redoItem.target = self
         redoItem.action = #selector(performRedo)
-        redoItem.toolTip = "重做（⇧⌘Z）"
+        redoItem.toolTip = L10n.tr("重做（⇧⌘Z）")
         self.redoItem = redoItem
 
         let item = NSToolbarItemGroup(itemIdentifier: ItemIdentifier.history)
         item.subitems = [undoItem, redoItem]
-        item.label = "编辑历史"
+        item.label = L10n.tr("编辑历史")
         item.controlRepresentation = .expanded
         historyItem = item
         return item
@@ -234,7 +234,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
 
     private func makeLanguageItem() -> NSToolbarItem {
         let item = NSToolbarItem(itemIdentifier: ItemIdentifier.language)
-        item.label = "语言模式"
+        item.label = L10n.tr("语言模式")
         item.view = languageButton
         item.visibilityPriority = .high
         return item
@@ -242,10 +242,10 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
 
     private func makePreviewItem() -> NSToolbarItem {
         let item = NSToolbarItem(itemIdentifier: ItemIdentifier.preview)
-        item.label = "Markdown 预览"
+        item.label = L10n.tr("Markdown 预览")
         item.image = NSImage(
             systemSymbolName: "rectangle.split.2x1",
-            accessibilityDescription: "切换 Markdown 预览"
+            accessibilityDescription: L10n.tr("切换 Markdown 预览")
         )
         item.target = self
         item.action = #selector(togglePreview)
@@ -273,7 +273,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         languageButton.imagePosition = .imageLeading
         languageButton.target = self
         languageButton.action = #selector(selectLanguage(_:))
-        languageButton.toolTip = "语言模式"
+        languageButton.toolTip = L10n.tr("语言模式")
         languageButton.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             languageButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 122),
@@ -295,7 +295,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
             systemSymbolName: language.icon,
             accessibilityDescription: language.displayName
         )
-        languageButton.setAccessibilityLabel("语言模式：\(language.displayName)")
+        languageButton.setAccessibilityLabel(L10n.tr("语言模式：%@", String(describing: language.displayName)))
     }
 
     @objc private func toggleSidebar() {
@@ -361,10 +361,10 @@ func configureEditorWindowToolbar(_ window: NSWindow, appState: AppState) {
 private func localizeNativeToolbarItems(in toolbar: NSToolbar) {
     for item in toolbar.items {
         guard item.itemIdentifier == .toggleSidebar else { continue }
-        item.label = "侧边栏"
-        item.paletteLabel = "侧边栏"
-        item.toolTip = "显示或隐藏侧边栏（⌃⌘B）"
-        item.view?.setAccessibilityLabel("侧边栏")
-        item.view?.setAccessibilityHelp("显示或隐藏侧边栏")
+        item.label = L10n.tr("侧边栏")
+        item.paletteLabel = L10n.tr("侧边栏")
+        item.toolTip = L10n.tr("显示或隐藏侧边栏（⌃⌘B）")
+        item.view?.setAccessibilityLabel(L10n.tr("侧边栏"))
+        item.view?.setAccessibilityHelp(L10n.tr("显示或隐藏侧边栏"))
     }
 }

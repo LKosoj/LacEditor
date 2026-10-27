@@ -8,3 +8,5 @@ DerivedData/
 *.xcresult
 *.xcuserstate
 xcuserdata/
+.cli-proxy/
+.cli-proxy/runtime/

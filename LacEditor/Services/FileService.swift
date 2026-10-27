@@ -70,13 +70,13 @@ enum FileServiceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unsupportedEncoding:
-            "无法使用所选编码读取文件。"
+            L10n.tr("无法使用所选编码读取文件。")
         case let .unrepresentableCharacters(encodingName):
-            "当前内容包含无法使用\(encodingName)保存的字符。"
+            L10n.tr("当前内容包含无法使用%@保存的字符。", encodingName)
         case .invalidFileName:
-            "文件名不能为空，也不能包含“/”。"
+            L10n.tr("文件名不能为空，也不能包含“/”。")
         case .destinationExists:
-            "同一文件夹中已存在同名文件。"
+            L10n.tr("同一文件夹中已存在同名文件。")
         }
     }
 }
@@ -164,10 +164,10 @@ final class FileService {
     func chooseEncoding(for url: URL) -> FileEncodingChoice? {
         let choices = Self.selectableEncodings
         let alert = NSAlert()
-        alert.messageText = "请选择文件编码"
-        alert.informativeText = "“\(url.lastPathComponent)”不是有效的 UTF-8 文件。请选择用于打开它的文本编码。"
-        alert.addButton(withTitle: "打开")
-        alert.addButton(withTitle: "取消")
+        alert.messageText = L10n.tr("请选择文件编码")
+        alert.informativeText = L10n.tr("“%@”不是有效的 UTF-8 文件。请选择用于打开它的文本编码。", url.lastPathComponent)
+        alert.addButton(withTitle: L10n.tr("打开"))
+        alert.addButton(withTitle: L10n.tr("取消"))
         let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 260, height: 26))
         popup.addItems(withTitles: choices.map(\.name))
         alert.accessoryView = popup
@@ -217,11 +217,11 @@ final class FileService {
     nonisolated static func encodingName(for encoding: String.Encoding) -> String {
         if encoding == .utf8 { return "UTF-8" }
         if encoding == .utf16 { return "UTF-16" }
-        if encoding == gb18030Encoding { return "简体中文（GB 18030）" }
-        if encoding == .isoLatin1 { return "西欧（ISO Latin 1）" }
-        if encoding == .windowsCP1252 { return "西欧（Windows Latin 1）" }
-        if encoding == .macOSRoman { return "Mac OS 罗马编码" }
-        return "编码 \(encoding.rawValue)"
+        if encoding == gb18030Encoding { return L10n.tr("简体中文（GB 18030）") }
+        if encoding == .isoLatin1 { return L10n.tr("西欧（ISO Latin 1）") }
+        if encoding == .windowsCP1252 { return L10n.tr("西欧（Windows Latin 1）") }
+        if encoding == .macOSRoman { return L10n.tr("Mac OS 罗马编码") }
+        return L10n.tr("编码 %@", String(describing: encoding.rawValue))
     }
 
     nonisolated static let gb18030Encoding = String.Encoding(
@@ -232,10 +232,10 @@ final class FileService {
 
     nonisolated static let selectableEncodings: [FileEncodingChoice] = [
         FileEncodingChoice(name: "UTF-16", encoding: .utf16),
-        FileEncodingChoice(name: "简体中文（GB 18030）", encoding: gb18030Encoding),
-        FileEncodingChoice(name: "西欧（ISO Latin 1）", encoding: .isoLatin1),
-        FileEncodingChoice(name: "西欧（Windows Latin 1）", encoding: .windowsCP1252),
-        FileEncodingChoice(name: "Mac OS 罗马编码", encoding: .macOSRoman)
+        FileEncodingChoice(name: L10n.tr("简体中文（GB 18030）"), encoding: gb18030Encoding),
+        FileEncodingChoice(name: L10n.tr("西欧（ISO Latin 1）"), encoding: .isoLatin1),
+        FileEncodingChoice(name: L10n.tr("西欧（Windows Latin 1）"), encoding: .windowsCP1252),
+        FileEncodingChoice(name: L10n.tr("Mac OS 罗马编码"), encoding: .macOSRoman)
     ]
 
     nonisolated private static func countLines(in text: String) -> Int {

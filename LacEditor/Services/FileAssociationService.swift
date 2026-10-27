@@ -95,10 +95,10 @@ final class FileAssociationService: ObservableObject {
             let name = url.map { url in
                 let base = url.deletingPathExtension().lastPathComponent
                 if Bundle(url: url)?.bundleIdentifier == "com.laceditor.app", !current {
-                    return base + "（其他位置）"
+                    return base + L10n.tr("（其他位置）")
                 }
                 return base
-            } ?? "未设置"
+            } ?? L10n.tr("未设置")
             return Row(format: format, applicationURL: url, applicationName: name, isCurrentApplication: current)
         }
     }
@@ -113,13 +113,13 @@ final class FileAssociationService: ObservableObject {
             try await client.setDefault(identity.url, format.type)
             refresh()
             if rows.first(where: { $0.id == id })?.isCurrentApplication == true {
-                message = "已将 \(format.title) 的默认打开应用设为 LacEditor。"
+                message = L10n.tr("已将 %@ 的默认打开应用设为 LacEditor。", String(describing: format.title))
             } else {
-                message = "系统尚未应用更改，请确认系统提示后点击「刷新状态」。"
+                message = L10n.tr("系统尚未应用更改，请确认系统提示后点击「刷新状态」。")
             }
         } catch {
             refresh()
-            message = "未更改默认应用：\(error.localizedDescription)"
+            message = L10n.tr("未更改默认应用：%@", String(describing: error.localizedDescription))
         }
     }
 }

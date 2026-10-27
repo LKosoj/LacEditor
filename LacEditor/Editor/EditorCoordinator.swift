@@ -398,7 +398,7 @@ extension EditorTextView {
             to textView: LacTextView
         ) {
             guard request.expectedEditorRevision == contentRevision else {
-                request.failureMessage = "编辑内容已变化，请重新执行转换"
+                request.failureMessage = L10n.tr("编辑内容已变化，请重新执行转换")
                 return
             }
             guard let storage = textView.textStorage,
@@ -406,11 +406,11 @@ extension EditorTextView {
                   NSMaxRange(request.range) <= storage.length,
                   storage.mutableString.substring(with: request.range)
                     == request.originalText else {
-                request.failureMessage = "原文位置已变化，请重新执行转换"
+                request.failureMessage = L10n.tr("原文位置已变化，请重新执行转换")
                 return
             }
             guard request.originalText != request.replacementText else {
-                request.failureMessage = "转换结果与原文相同"
+                request.failureMessage = L10n.tr("转换结果与原文相同")
                 return
             }
 
@@ -420,7 +420,7 @@ extension EditorTextView {
                 in: request.range,
                 replacementString: request.replacementText
             ) else {
-                request.failureMessage = "当前文本无法修改"
+                request.failureMessage = L10n.tr("当前文本无法修改")
                 return
             }
             request.wasHandled = true
@@ -1082,7 +1082,7 @@ extension EditorTextView {
                             ),
                             length: 0
                         ))
-                        textView.undoManager?.setActionName("整理有序列表")
+                        textView.undoManager?.setActionName(L10n.tr("整理有序列表"))
                         isApplyingAutomatedEdit = false
                     }
                 }

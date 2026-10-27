@@ -40,6 +40,7 @@ xcodebuild \
 
 print "[3/7] 文件读写与格式集成验证"
 swiftc \
+    LacEditor/App/L10n.swift \
     LacEditor/Models/EditorLanguage.swift \
     LacEditor/Services/FileService.swift \
     Verification/FileServiceVerification.swift \
@@ -48,6 +49,7 @@ swiftc \
 
 print "[4/7] 大文件性能基线"
 swiftc -O -parse-as-library \
+    LacEditor/App/L10n.swift \
     LacEditor/Models/EditorLanguage.swift \
     LacEditor/Models/DocumentEditDelta.swift \
     LacEditor/Models/EditorDocument.swift \
@@ -71,6 +73,7 @@ swiftc -O -parse-as-library \
 fixture_directory=".build/LargeFileFixtures"
 .build/large-fixture-generator "$fixture_directory"
 swiftc -O -parse-as-library \
+    LacEditor/App/L10n.swift \
     LacEditor/Models/EditorLanguage.swift \
     LacEditor/Models/DocumentEditDelta.swift \
     LacEditor/Models/EditorDocument.swift \

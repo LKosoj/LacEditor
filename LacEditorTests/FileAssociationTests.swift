@@ -58,7 +58,7 @@ final class FileAssociationTests: XCTestCase {
         let other = FileAssociationService(identity: installed, formats: [service.rows[0].format],
             client: .init(defaultApplication: { _ in otherURL }, setDefault: { _, _ in writes += 1 }))
         other.refresh()
-        XCTAssertEqual(other.rows[0].applicationName, "LacEditor（其他位置）")
+        XCTAssertEqual(other.rows[0].applicationName, "LacEditor" + L10n.tr("（其他位置）"))
         XCTAssertFalse(other.rows[0].isCurrentApplication)
         XCTAssertEqual(writes, 0)
     }
@@ -79,7 +79,7 @@ final class FileAssociationTests: XCTestCase {
         XCTAssertEqual(writes, [formats[0].id])
         XCTAssertTrue(service.rows[0].isCurrentApplication)
         XCTAssertFalse(service.rows[1].isCurrentApplication)
-        XCTAssertTrue(service.message?.contains("已将") == true)
+        XCTAssertEqual(service.message, L10n.tr("已将 %@ 的默认打开应用设为 LacEditor。", formats[0].title))
         XCTAssertNil(service.changingID)
     }
 
@@ -92,8 +92,8 @@ final class FileAssociationTests: XCTestCase {
             await service.setDefault(for: format.id)
             XCTAssertNil(service.changingID)
             XCTAssertFalse(service.rows[0].isCurrentApplication)
-            XCTAssertFalse(service.message?.contains("已将") == true)
-            XCTAssertTrue(service.message?.contains(fails ? "用户取消" : "尚未应用") == true)
+            XCTAssertNotEqual(service.message, L10n.tr("已将 %@ 的默认打开应用设为 LacEditor。", format.title))
+            XCTAssertEqual(service.message, fails ? L10n.tr("未更改默认应用：%@", "用户取消") : L10n.tr("系统尚未应用更改，请确认系统提示后点击「刷新状态」。"))
         }
     }
 

@@ -165,7 +165,7 @@ final class DocumentRecoveryStoreTests: XCTestCase {
         XCTAssertEqual(document.id, documentID)
         XCTAssertEqual(document.text, "unsaved text")
         XCTAssertTrue(document.isDirty)
-        XCTAssertEqual(document.statusMessage, "已从上次异常退出中恢复，请确认后保存")
+        XCTAssertEqual(document.statusMessage, L10n.tr("已从上次异常退出中恢复，请确认后保存"))
 
         document.refreshDirtyState()
         XCTAssertTrue(document.isDirty)

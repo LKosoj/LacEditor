@@ -112,6 +112,7 @@ struct SidebarPointerVerification {
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         configuration.environment = ["CFFIXED_USER_HOME": directory.path]
+        configuration.arguments = ["-appLanguage", "zh-Hans", "-AppleLanguages", "(zh-Hans)"]
         let previousApp = NSWorkspace.shared.frontmostApplication
         let running = try await NSWorkspace.shared.openApplication(at: appURL, configuration: configuration)
         defer {

@@ -36,7 +36,7 @@ final class TextTransformationPreviewState: ObservableObject {
     func invalidate(documentID: UUID) {
         guard preview?.documentID == documentID else { return }
         canReplace = false
-        message = "编辑内容已变化，请重新执行转换"
+        message = L10n.tr("编辑内容已变化，请重新执行转换")
     }
 
     func clear() {
@@ -55,24 +55,24 @@ struct TextTransformationView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             if let preview = state.preview {
-                UtilityHeading(title: preview.title, subtitle: "先预览，再决定是否替换正文。", symbol: "arrow.left.arrow.right")
+                UtilityHeading(title: preview.title, subtitle: L10n.tr("先预览，再决定是否替换正文。"), symbol: "arrow.left.arrow.right")
                 HSplitView {
-                    previewPane(title: "原文", text: preview.input, result: false).frame(minWidth: 260)
-                    previewPane(title: "转换结果", text: preview.output, result: true).frame(minWidth: 260)
+                    previewPane(title: L10n.tr("原文"), text: preview.input, result: false).frame(minWidth: 260)
+                    previewPane(title: L10n.tr("转换结果"), text: preview.output, result: true).frame(minWidth: 260)
                 }
                 HStack(spacing: 10) {
-                    Text(state.message ?? "正文保持不变，直到你点击「替换原文」。")
+                    Text(state.message ?? L10n.tr("正文保持不变，直到你点击「替换原文」。"))
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                         .lineLimit(1).help(state.message ?? "")
                     Spacer(minLength: 12)
-                    Button("关闭", action: close).keyboardShortcut(.cancelAction)
+                    Button(L10n.tr("关闭"), action: close).keyboardShortcut(.cancelAction)
                     CopyTransformationResultButton(feedback: state.copyFeedback) { appState.copyTextTransformationResult() }
-                    Button("替换原文") { appState.applyTextTransformationPreview() }
+                    Button(L10n.tr("替换原文")) { appState.applyTextTransformationPreview() }
                         .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                         .disabled(!state.canReplace)
                 }.controlSize(.regular)
             } else {
-                ContentUnavailableView("没有转换结果", systemImage: "text.badge.xmark")
+                ContentUnavailableView(L10n.tr("没有转换结果"), systemImage: "text.badge.xmark")
             }
         }
         .padding(24)
@@ -87,7 +87,7 @@ struct TextTransformationView: View {
                     .foregroundStyle(result ? LacEditorDesign.accent : .secondary)
                 Text(title).fontWeight(.medium)
                 Spacer()
-                Text("\((text as NSString).length) 字符").foregroundStyle(.tertiary).monospacedDigit()
+                Text(L10n.tr("%@ 字符", String(describing: (text as NSString).length))).foregroundStyle(.tertiary).monospacedDigit()
             }.font(.system(size: 11)).padding(12)
             Divider().opacity(0.5)
             ScrollView(.vertical) {
@@ -110,7 +110,7 @@ struct TextTransformationView: View {
         let limit = 20_000
         let prefix = text.prefix(limit + 1)
         guard prefix.count > limit else { return text }
-        return String(prefix.prefix(limit)) + "\n\n…预览已截断，替换仍会使用完整结果"
+        return String(prefix.prefix(limit)) + L10n.tr("\n\n…预览已截断，替换仍会使用完整结果")
     }
 }
 
@@ -121,12 +121,12 @@ private struct CopyTransformationResultButton: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Label(feedback.item == nil ? "复制结果" : "已复制",
+            Label(feedback.item == nil ? L10n.tr("复制结果") : L10n.tr("已复制"),
                   systemImage: feedback.item == nil ? "doc.on.doc" : "checkmark")
                 .frame(width: 82)
         }
         .accessibilityIdentifier("transformation.copy")
-        .accessibilityLabel(feedback.item == nil ? "复制转换结果" : "转换结果已复制")
+        .accessibilityLabel(feedback.item == nil ? L10n.tr("复制转换结果") : L10n.tr("转换结果已复制"))
         .onDisappear { feedback.setInteracting(false) }
     }
 }
@@ -144,7 +144,7 @@ final class TextTransformationWindowController: NSWindowController, NSWindowDele
         )
         super.init(window: panel)
         state = appState.textTransformation
-        panel.title = "编码与解码"
+        panel.title = L10n.tr("编码与解码")
         panel.identifier = TextTransformationWindowIdentity.identifier
         panel.isReleasedWhenClosed = false
         panel.animationBehavior = .documentWindow

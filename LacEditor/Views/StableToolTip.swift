@@ -3,7 +3,7 @@ import SwiftUI
 
 extension View {
     func stableHelp(_ text: String, shortcut: String? = nil) -> some View {
-        accessibilityHint(shortcut.map { "\(text)，快捷键 \($0)" } ?? text)
+        accessibilityHint(shortcut.map { L10n.tr("%@，快捷键 %@", String(describing: text), String(describing: $0)) } ?? text)
             .overlay(StableToolTipBridge(text: text, shortcut: shortcut))
     }
 }

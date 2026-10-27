@@ -81,7 +81,7 @@ do {
         fatalError("Verification failed: invalid JSON was accepted")
     } catch {
         require(
-            JSONFormatter.userFacingError(error, in: #"{"broken": }"#).hasPrefix("JSON 无效："),
+            JSONFormatter.userFacingError(error, in: #"{"broken": }"#).hasPrefix(L10n.tr("JSON 无效")),
             "invalid JSON message"
         )
     }
@@ -92,8 +92,7 @@ do {
         fatalError("Verification failed: multiline invalid JSON was accepted")
     } catch {
         let message = JSONFormatter.userFacingError(error, in: multilineInvalidJSON)
-        require(message.contains("第 4 行"), "invalid JSON line number")
-        require(message.contains("第 1 列"), "invalid JSON column number")
+        require(message.contains(L10n.tr("：第 %@ 行，第 %@ 列。%@", "4", "1", "")), "invalid JSON line and column")
     }
 } catch {
     fatalError("Verification failed: JSON formatter threw \(error)")

@@ -113,9 +113,10 @@ struct UIWindowLifecycleVerification {
         if let temporaryHome {
             try FileManager.default.createDirectory(at: temporaryHome, withIntermediateDirectories: true)
             configuration.environment = ["CFFIXED_USER_HOME": temporaryHome.path]
-            configuration.arguments = ["-ApplePersistenceIgnoreState", "YES"]
+            configuration.arguments = ["-ApplePersistenceIgnoreState", "YES", "-appLanguage", "zh-Hans", "-AppleLanguages", "(zh-Hans)"]
         }
         defer { if let temporaryHome { try? FileManager.default.removeItem(at: temporaryHome) } }
+        if configuration.arguments.isEmpty { configuration.arguments = ["-appLanguage", "zh-Hans", "-AppleLanguages", "(zh-Hans)"] }
         let previousApp = NSWorkspace.shared.frontmostApplication
         defer { _ = previousApp?.activate(options: []) }
         let app = try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)

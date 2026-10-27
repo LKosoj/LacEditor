@@ -36,8 +36,8 @@ final class InlineFeedbackState: ObservableObject {
     func undo() {
         guard let action = undoAction else { return }
         undoAction = nil
-        if action() { show("已撤销上次操作") }
-        else { show("列表已变化，未撤销", symbol: "info.circle") }
+        if action() { show(L10n.tr("已撤销上次操作")) }
+        else { show(L10n.tr("列表已变化，未撤销"), symbol: "info.circle") }
     }
 
     func clear() {
