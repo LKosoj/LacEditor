@@ -44,6 +44,7 @@ struct MainWindowView: View {
             }
 
             if let selectedDocument = appState.selectedDocument {
+                HSplitView {
                 DocumentEditorPane(
                     document: selectedDocument,
                     sessionStore: editorSessions,
@@ -54,17 +55,22 @@ struct MainWindowView: View {
                     wordWrap: selectedDocument.effectiveWordWrap(
                         globalDefault: appState.isWordWrapEnabled
                     ),
-                    showsLineNumbers: appState.isLineNumbersVisible,
+                    showsLineNumbers: appState.isLineNumbersVisible && !appState.isDistractionFree,
                     editorTopInset: showsTabBar ? 4 : 0,
                     darkMode: colorScheme == .dark
                 )
                 .id(selectedDocument.id)
                 .animation(nil, value: appState.selectedDocumentID)
                 .overlay {
-                    if !selectedDocument.isPreviewEffectivelyEnabled { EditorStartHints(document: selectedDocument) }
+                    if !appState.isDistractionFree && !selectedDocument.isPreviewEffectivelyEnabled { EditorStartHints(document: selectedDocument) }
+                }
+                if appState.isAIWritingVisible && !appState.isDistractionFree {
+                    AIWritingView(controller: appState.aiWriting)
+                        .frame(minWidth: 280, idealWidth: 340, maxWidth: 520)
+                }
                 }
 
-                if appState.isStatusBarVisible {
+                if appState.isStatusBarVisible && !appState.isDistractionFree {
                     Divider()
                     StatusBarView(document: selectedDocument)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -226,7 +232,7 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         context.coordinator.contentController = contentController
         context.coordinator.sidebarItem = sidebarItem
         context.coordinator.applyCollapseState(
-            isVisible: appState.isSidebarVisible
+            isVisible: appState.isSidebarEffectivelyVisible
         )
         context.coordinator.observeCollapseState(appState: appState)
         return controller
@@ -243,7 +249,7 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         )
         context.coordinator.contentController?.rootView = content
         context.coordinator.applyCollapseState(
-            isVisible: appState.isSidebarVisible
+            isVisible: appState.isSidebarEffectivelyVisible
         )
     }
 
@@ -260,7 +266,7 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
             collapseObservation = sidebarItem?.observe(\.isCollapsed, options: [.new]) {
                 [weak self, weak appState] item, _ in
                 MainActor.assumeIsolated {
-                    guard let self, let appState, !self.isApplyingCollapseState else { return }
+                    guard let self, let appState, !self.isApplyingCollapseState, !appState.isDistractionFree else { return }
                     let isVisible = !item.isCollapsed
                     if appState.isSidebarVisible != isVisible {
                         appState.isSidebarVisible = isVisible
@@ -297,7 +303,7 @@ private struct DocumentEditorPane: View {
         ZStack {
             NativeEditorSplit(
                 editor: AnyView(editor),
-                preview: document.isPreviewEffectivelyEnabled ? AnyView(
+                preview: document.isPreviewEffectivelyEnabled && !appState.isDistractionFree ? AnyView(
                     MarkdownPreview(
                         markdown: document.text,
                         revision: document.textRevision,
@@ -333,7 +339,11 @@ private struct DocumentEditorPane: View {
             showsLineNumbers: showsLineNumbers,
             topInset: editorTopInset,
             isActive: true,
-            requestTextTransformation: appState.presentTextTransformation
+            requestTextTransformation: appState.presentTextTransformation,
+            isOutlineVisible: appState.isSidebarEffectivelyVisible && appState.isMarkdownOutlineExpanded,
+            spellingEnabled: appState.preferences.systemSpellingEnabled,
+            grammarEnabled: appState.preferences.systemGrammarEnabled,
+            aiPreferences: appState.preferences
         )
         .disabled(appState.isOpeningPlaceholder(document))
     }

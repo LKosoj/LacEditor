@@ -335,8 +335,14 @@ final class DocumentRecoveryStoreTests: XCTestCase {
             recoveryStore: interruptedStore
         )
         let document = try XCTUnwrap(state.selectedDocument)
-        document.text = "typed immediately before losing focus"
-        document.refreshDirtyState()
+        var acknowledgedRevision: UInt?
+        document.attachLiveTextProvider(
+            id: UUID(),
+            provider: { "typed immediately before losing focus" },
+            acknowledgement: { acknowledgedRevision = $0 }
+        )
+        document.noteLiveEdit(isEmpty: false)
+        XCTAssertEqual(document.text, "")
         state.persistRecoverySnapshotsImmediately()
         try await Task.sleep(for: .milliseconds(50))
         interruptedStore.flushForTesting()
@@ -345,6 +351,10 @@ final class DocumentRecoveryStoreTests: XCTestCase {
         let recovered = try relaunchedStore.startSession()
         XCTAssertEqual(recovered.first?.documentID, document.id)
         XCTAssertEqual(recovered.first?.text, "typed immediately before losing focus")
+        XCTAssertNil(recovered.first?.sourceURL)
+        XCTAssertEqual(recovered.first?.revision, document.textRevision)
+        XCTAssertEqual(acknowledgedRevision, document.textRevision)
+        XCTAssertEqual(recovered.first?.isDirty, true)
         relaunchedStore.finishCleanlyForTesting()
     }
 

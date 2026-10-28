@@ -131,6 +131,73 @@ final class MarkdownPreviewTests: XCTestCase {
         XCTAssertFalse(body.contains("Старый текст"))
     }
 
+    func testMermaidDiagramsRenderAndThemeChangesKeepSource() async throws {
+        let fixture = PreviewFixture()
+        defer { fixture.dispose() }
+        let markdown = """
+        ```mermaid
+        flowchart LR
+          A[Start] --> B[End]
+        ```
+
+        ```mermaid
+        not a valid diagram
+        ```
+
+        ```swift
+        let x = 1
+        ```
+        """
+        fixture.coordinator.render(markdown: markdown, revision: 1, darkMode: false, immediately: true)
+        try await fixture.waitUntil("document.querySelectorAll('.mermaid-diagram svg').length === 1 && document.querySelectorAll('.mermaid-diagram[role=alert]').length === 1")
+        let original: String = try await fixture.value("document.querySelector('code.language-mermaid').textContent")
+        XCTAssertTrue(original.contains("flowchart LR"))
+        let error: String = try await fixture.value("document.querySelector('.mermaid-diagram[role=alert]').textContent")
+        XCTAssertEqual(error, L10n.tr("无法显示 Mermaid 图表"))
+        let codeVisible: Bool = try await fixture.value("!document.querySelector('code.language-swift').parentElement.hidden")
+        XCTAssertTrue(codeVisible)
+        let firstID: String = try await fixture.value("document.querySelector('.mermaid-diagram svg').id")
+        fixture.coordinator.render(markdown: markdown, revision: 1, darkMode: true, immediately: true)
+        try await fixture.waitUntil("document.documentElement.dataset.theme === 'dark' && document.querySelector('.mermaid-diagram svg')?.id !== '\(firstID)'")
+        let retained: String = try await fixture.value("document.querySelector('code.language-mermaid').textContent")
+        XCTAssertEqual(retained, original)
+        XCTAssertFalse(fixture.webView.configuration.defaultWebpagePreferences.allowsContentJavaScript)
+    }
+
+    func testMermaidKeepsLatestRevisionAfterHideAndShow() async throws {
+        let fixture = PreviewFixture()
+        defer { fixture.dispose() }
+        let first = "```mermaid\nflowchart LR\n  A[Old] --> B[Old end]\n```"
+        let latest = "```mermaid\nflowchart LR\n  A[New] --> B[New end]\n```"
+        fixture.coordinator.render(markdown: first, revision: 1, darkMode: false, immediately: true)
+        fixture.coordinator.render(markdown: latest, revision: 2, darkMode: false, immediately: true)
+        try await fixture.waitUntil("document.querySelector('.mermaid-diagram svg')?.textContent.includes('New end')")
+        fixture.coordinator.setActive(false)
+        fixture.coordinator.render(markdown: first, revision: 3, darkMode: false, immediately: true)
+        try await Task.sleep(for: .milliseconds(300))
+        let whileHidden: String = try await fixture.value("document.querySelector('code.language-mermaid').textContent")
+        XCTAssertTrue(whileHidden.contains("New end"))
+        fixture.coordinator.setActive(true)
+        fixture.coordinator.render(markdown: latest, revision: 4, darkMode: true, immediately: true)
+        try await fixture.waitUntil("document.documentElement.dataset.revision === '4' && document.querySelector('.mermaid-diagram svg')?.textContent.includes('New end')")
+    }
+
+    func testMermaidDiagramCannotOverrideLibraryLimits() async throws {
+        let fixture = PreviewFixture()
+        defer { fixture.dispose() }
+        let markdown = """
+        ```mermaid
+        %%{init: {'maxTextSize': 1, 'maxEdges': 0, 'suppressErrorRendering': false}}%%
+        flowchart LR
+          A[First] --> B[Second]
+        ```
+        """
+        fixture.coordinator.render(markdown: markdown, revision: 1, darkMode: false, immediately: true)
+        try await fixture.waitUntil("document.querySelector('.mermaid-diagram svg')?.textContent.includes('Second')")
+        let secured: Bool = try await fixture.value("['maxTextSize', 'maxEdges', 'suppressErrorRendering'].every(k => mermaid.mermaidAPI.getConfig().secure.includes(k))")
+        XCTAssertTrue(secured)
+    }
+
     func testNarrowPreviewContainsWideTablesAndCode() async throws {
         let fixture = PreviewFixture(width: 240)
         defer { fixture.dispose() }

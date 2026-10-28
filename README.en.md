@@ -4,7 +4,7 @@
 
 A quiet, fast text and code editor that feels at home on macOS.
 
-LacEditor is made for everyday text, Markdown, JSON, and code editing: open it and start writing, switch tabs easily, and show the preview only when you need it. Advanced features live in native menus and shortcuts. It requires no account, does not connect to the cloud, and does not collect your document contents.
+LacEditor is made for everyday text, Markdown, JSON, and code editing: open it and start writing, switch tabs easily, and show the preview only when you need it. Advanced features live in native menus and shortcuts. It requires no account for local editing. Optional AI and Jina features send the requested content only when you enable and use them.
 
 <p>
   <a href="https://github.com/kolmh/LacEditor/releases/latest">Download the latest release</a>
@@ -26,9 +26,28 @@ Download `LacEditor-0.15.0-arm64.zip` from [GitHub Release](https://github.com/k
 - **Focused but capable**: Tabs, find and replace, syntax highlighting, Markdown preview, and JSON tools are close at hand in a restrained interface.
 - **Natural on macOS**: Native windows, menus, file pickers, shortcuts, dark mode, and drag-and-drop follow system conventions.
 - **Works with large files**: Visible-area layout, background tasks, and graduated safeguards for long code and log files prioritize smooth typing and scrolling.
-- **Your content stays on your Mac**: Local files, local preview, and local recovery; no login, network connection, or document upload.
+- **Work with text locally**: Editing, preview, and recovery need no login or network connection. During export, Pandoc may fetch resources referenced by the document.
 
 ## Core experience
+
+### Writing assistant
+
+The current source branch provides commands in the AI Writing Assistant menu and its side panel. Settings → Artificial Intelligence has a separate switch for every feature; all start disabled, with another switch for background processing. Spelling and grammar use macOS system checking, with independent settings and no AI-model requests or automatic spelling replacement. Available languages and quality depend on macOS; grammar checking with spelling disabled still needs verification on a Mac.
+
+Implemented in source: clarity, rephrasing, shortening, expansion, translation, terminology, tone, structure, summaries, contradictions, action items, decisions, tables, and audience review. Compare the original and proposed change before accepting; accepted changes use normal undo. Edits invalidate old results. Terminology and contradiction reports link to both passages; summaries have an explicit insert button. Gray completion accepts Tab and dismisses with Esc or typing; it is disabled for large documents. Metadata suggestions can update after saving and can be edited; they live only in the current document object. Local provenance tracks events after enabling, does not guess unknown origins, and is not retained after restarting.
+
+Illustrations require an explicit request and are previewed before saving or inserting after the selection as an embedded Markdown image. Image descriptions receive the selected image bytes and require a text model with image input. Decision questions and extracting decisions from notes are separate features.
+
+Text, Decisions, and images have independent addresses, models, and protocols; keys are stored in the system Keychain. OpenAI uses `https://api.openai.com/v1`; compatible custom servers are configured manually. Source search and reading result pages use Jina, with separate switches, full endpoint URLs, and keys: defaults are `https://s.jina.ai/search` and `https://r.jina.ai/`. With Reader disabled, only unverified candidate links are shown; when enabled, quotes are checked against fetched content. This does not guarantee semantic correctness. Generated image binaries are downloaded normally; Jina reads web pages.
+
+Builds, XCTest, input, system checks, and interface behavior require verification on a Mac. Live model and Jina requests have not been tested here, nor has model quality across the three languages. [Plan and limitations](docs/plans/2026-10-28-ai-editor-design.md).
+
+Seven additional manual tools are implemented in source: review with selected documents (including unsaved tabs in other windows), exact comparison of two versions with an explanation, saved custom checks, image/PDF recognition, voice drafts, Mermaid generation, and explanation of a selection. Enable each tool separately and select it in the existing assistant panel. Context results provide verified quotations and source navigation; the app does not scan folders automatically. Each custom rule also has its own switch.
+
+Recognition and audio have independent profiles. Gateway PDF uses `/v1/pdf/convert` with `output=docx`, followed by bundled Pandoc; compatible vision models can instead use Responses or Chat Completions. Audio uses `/v1/audio/transcriptions`. Enter your endpoint and an available model; examples from the neighboring gateway configuration are `llmgateway/pdf-converter` and `llmgateway/whisper-large-v3`. The editor does not install or reconfigure the gateway.
+
+Record audio explicitly or choose an existing file; a separate command starts transcription, and microphone denial leaves file import available. Recognition, transcripts, and Mermaid blocks are inserted only on request with undo support; comparisons and explanations do not modify source files. Recognition and voice insertion also work in an empty document. Live models, recording, PDFKit, builds, and XCTest require verification on a Mac. [Seven-feature plan](docs/plans/2026-10-28-selected-ai-tools.md).
+
 
 ### Edit text and code
 
@@ -38,6 +57,29 @@ Supports common formats including TXT, Markdown, JSON, HTML, JavaScript, TypeScr
 
 Edit and preview side by side, with live rendering of headings, paragraphs, lists, blockquotes, horizontal rules, links, inline code, code blocks, tables, and GFM extensions. Close the preview whenever you like; long documents do not force you into a note-taking workflow.
 
+In the current source branch, code blocks marked `mermaid` render as diagrams in the preview (`⌥⌘P`). Mermaid 12.2.0 is bundled locally and needs no internet. Diagrams follow light and dark themes; invalid syntax shows the source and an error. Flowcharts and sequence diagrams have been checked in Chromium; WebKit on a Mac still requires verification. This is a preview feature: Pandoc export currently preserves Mermaid code.
+
+```mermaid
+flowchart LR
+    A[Start] --> B[End]
+```
+
+### Source and formatted Markdown
+
+In the current source branch, View → Markdown Editing switches between Markdown Source and Formatted Text. Both edit the same document; switching does not convert its text. The formatted view supports headings, bold, italics, strikethrough, inline code, links, blockquotes, and code blocks. Confirmed markup is hidden outside the edited paragraph and revealed around the selection; copying uses the Markdown source. List markers, tables, images, and ambiguous markup currently remain source text. The choice belongs to the current tab; restoring a session opens the source view. This is the first stage of formatted editing, not full Typora feature parity. Builds, cursor behavior, undo, Chinese input, and performance still require verification on a Mac; this feature is not included in release 0.15.0.
+
+### Formatting commands and outline
+
+In the current source branch, Markdown Format adds and removes bold (`⌘B`), italics (`⌘I`), strikethrough, inline code, headings 1–6, and blockquotes in both editing views. With no selection, inline commands insert paired markers; headings and blockquotes affect the selected lines. Each command is a separate undo action. Unconfirmed or escaped markers are not removed. Multi-paragraph selections for inline formatting and block commands inside code leave the text unchanged.
+
+The sidebar Outline section shows headings in the current Markdown document. Clicking moves the caret to a heading and expands folded content. After an edit the list updates in the background; stale entries cannot be used for navigation. Outline works in source and formatted views, sharing the existing parse in the latter. The section starts collapsed and does not retain its expansion between launches. Builds and interface behavior for these features still require verification on a Mac.
+
+### Document import and export
+
+In the current source branch, File → Export converts Markdown to HTML, Word (DOCX), ODT, RTF, EPUB, FB2, LaTeX, plain text, and PDF. Pandoc 3.13 is bundled with the app: no separate installation or startup download is needed. PDF still requires an additional engine, LaTeX by default. Export uses the current text, including unsaved edits and new documents without a path, and does not change the source document. A new document must have Markdown selected as its language. Pandoc converts GFM; formatting may differ from the preview. Export may fetch remote resources referenced by the document. HTML embeds images; relative LaTeX paths refer to the source file's folder.
+
+File → Import… accepts DOCX, ODT, RTF, EPUB, FB2, HTML, and LaTeX and creates a new unsaved Markdown tab. The source file stays unchanged. Recognized embedded and local images are included in the document text; remote image references remain links, are not fetched by the import filter, and are not displayed in the local preview. Complex formatting and image dimensions may not be preserved; complex LaTeX commands may also lose images. Embedded HTML pages are neither fetched nor displayed in the preview; relative file links remain relative. PDF input is unsupported; TXT and Markdown use the regular Open command. These features are not included in the published 0.15.0 release and still require build and interface verification on a Mac.
+
 ### JSON tools that preserve content
 
 Formatting and minification change only structural whitespace, preserving object field order, duplicate keys, numeric literals, and string escape forms. Invalid JSON reports the line and column when possible. All changes can be reverted in a single undo.
@@ -46,11 +88,15 @@ Formatting and minification change only structural whitespace, preserving object
 
 Supports multiple windows and tabs, drag-to-reorder tabs, dragging a tab out into a window, recent files, favorites, and custom groups. The same disk file has only one editable instance across windows; external changes are not silently overwritten by default.
 
+In the current source branch, show or hide the left sidebar through View, its toolbar button, or `⌃⌘B`. View → Enter Distraction-Free Mode (`⇧⌘J`) fills the window working area with the editor, hiding the sidebar, preview, line numbers, status bar, and toolbar. Repeat the command to restore their previous state without changing shared preferences. `⌃⌘B` also exits the mode and shows the sidebar. Native tabs and window buttons remain available; this does not enter system full screen. The mode belongs to the current window and is not restored after restarting. Builds and interface behavior still require verification on a Mac.
+
 In Settings > File Associations, view the default app for common formats and set LacEditor as needed. Installation and startup do not change associations automatically.
 
 ### Continue after quitting
 
 By default, the complete workspace is saved on exit and windows, tabs, text, unsaved state, selections, scroll positions, and interface state are restored on the next launch. Workspace snapshots and crash recovery are stored separately, and disk files are not automatically rewritten. Settings also offer the traditional save confirmation before quitting.
+
+This includes new documents that have never been saved to a file. After a crash, the last completed recovery snapshot is restored: writing is delayed by 2 seconds, or 5 seconds for large documents, so the latest edits may not be recovered. Explicitly discarding changes when closing a document removes its recovery data.
 
 In the current source branch, quitting waits for file reads and saves and writes the session again if changes occur during the write. If the session cannot be safely restored at startup, the app reports the error and stops launching, preserving recovery data on disk. An unfinished or failed initial read cannot be saved over the source file or moved to another window before reading succeeds.
 
@@ -80,9 +126,12 @@ Requirements:
 ```bash
 git clone https://github.com/kolmh/LacEditor.git
 cd LacEditor
+sh Scripts/prepare-pandoc.sh
 swift build
 swift test
 ```
+
+Preparation extracts the verified official archive from `Vendor/Pandoc` without downloading anything. Xcode runs this step automatically. The extracted Pandoc adds approximately 186 MiB to the app; its repository archive is about 41 MiB. Version, licensing, and source distribution details: [Vendor/Pandoc/README.md](Vendor/Pandoc/README.md).
 
 To run the full release acceptance checks:
 
@@ -114,3 +163,5 @@ Git, a plugin system, cloud sync, and bidirectional links are not currently part
 Report problems or suggest improvements through [Issues](https://github.com/kolmh/LacEditor/issues). Before submitting a feature change, describe the user scenario and run `swift test` and `./Scripts/run-acceptance.sh`.
 
 See [VERSIONING.md](VERSIONING.md) for versioning, commit, and release rules, and [CHANGELOG.md](CHANGELOG.md) for the full change history.
+
+Translate selected text by choosing one of 13 languages or entering another language. Review the result before accepting it, with normal undo. AI settings allow a separate model for every AI feature, including translation, and every custom check. A blank field inherits the default model; the endpoint, key and protocol come from the corresponding connection type. Local provenance and system grammar do not use a model.

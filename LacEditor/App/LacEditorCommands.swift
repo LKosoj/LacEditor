@@ -44,6 +44,12 @@ struct LacEditorCommands: Commands {
             }
                 .keyboardShortcut("o", modifiers: .command)
                 .disabled(appState == nil)
+            Button {
+                appState?.importDocument()
+            } label: {
+                Label(L10n.tr("导入…"), systemImage: "square.and.arrow.down")
+            }
+                .disabled(appState == nil)
             Menu {
                 if windowManager.recentFiles.urls.isEmpty {
                     Text(L10n.tr("无最近文件"))
@@ -82,6 +88,14 @@ struct LacEditorCommands: Commands {
             }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
                 .disabled(appState == nil)
+            Menu(L10n.tr("导出")) {
+                ForEach(PandocExportFormat.allCases) { format in
+                    Button(format.title) {
+                        appState?.exportMarkdown(as: format)
+                    }
+                }
+            }
+            .disabled(appState?.selectedDocument?.language != .markdown)
             Divider()
             Button {
                 if let keyWindow = NSApp.keyWindow,
@@ -98,17 +112,6 @@ struct LacEditorCommands: Commands {
         }
 
         CommandGroup(after: .pasteboard) {
-            Button {
-                appState?.toggleSidebar()
-            } label: {
-                Label(
-                    appState?.isSidebarVisible == true ? L10n.tr("隐藏侧边栏") : L10n.tr("显示侧边栏"),
-                    systemImage: "sidebar.left"
-                )
-            }
-            .keyboardShortcut("b", modifiers: [.command, .control])
-            .disabled(appState == nil)
-            Divider()
             Button {
                 appState?.presentFindReplace(mode: .find)
             } label: {
@@ -190,7 +193,61 @@ struct LacEditorCommands: Commands {
         // AppKit button beside the traffic lights instead.
         CommandGroup(replacing: .sidebar) {}
 
+        CommandMenu(L10n.tr("AI 写作助手")) {
+            Button(L10n.tr("显示或隐藏 AI 助手")) {
+                if appState?.isDistractionFree == true { appState?.toggleDistractionFree() }
+                appState?.isAIWritingVisible.toggle()
+            }
+            .disabled(appState == nil)
+            Divider()
+            ForEach(AIFeature.allCases) { feature in
+                Button(feature.title) {
+                    if appState?.isDistractionFree == true { appState?.toggleDistractionFree() }
+                    appState?.isAIWritingVisible = true
+                    if feature.isDocumentTool || feature == .translation || feature == .toneRewrite || feature == .audienceReview {
+                        appState?.aiWriting.prepare(feature)
+                    } else if feature == .imageDescription {
+                        appState?.isAIWritingVisible = true
+                        appState?.aiWriting.describeImage()
+                    } else {
+                        appState?.aiWriting.run(feature)
+                    }
+                }
+                .disabled(appState?.selectedDocument == nil || appState?.preferences.aiFeatures.contains(feature) != true)
+            }
+        }
+
         CommandGroup(after: .toolbar) {
+            Button {
+                appState?.toggleSidebar()
+            } label: {
+                Label(
+                    appState?.isSidebarEffectivelyVisible == true ? L10n.tr("隐藏侧边栏") : L10n.tr("显示侧边栏"),
+                    systemImage: "sidebar.left"
+                )
+            }
+            .keyboardShortcut("b", modifiers: [.command, .control])
+            .disabled(appState == nil)
+            Divider()
+            Button {
+                appState?.toggleDistractionFree()
+            } label: {
+                Label(
+                    appState?.isDistractionFree == true ? L10n.tr("退出专注模式") : L10n.tr("进入专注模式"),
+                    systemImage: "rectangle.inset.filled"
+                )
+            }
+            .keyboardShortcut("j", modifiers: [.command, .shift])
+            .disabled(appState?.hostWindow == nil)
+            Divider()
+            Picker(L10n.tr("Markdown 编辑方式"), selection: Binding(
+                get: { appState?.selectedDocument?.isMarkdownFormatted ?? false },
+                set: { appState?.selectedDocument?.isMarkdownFormatted = $0 }
+            )) {
+                Text(L10n.tr("Markdown 源码")).tag(false)
+                Text(L10n.tr("格式化文本")).tag(true)
+            }
+            .disabled(appState?.selectedDocument?.language != .markdown)
             Button {
                 appState?.togglePreview()
             } label: {
@@ -293,6 +350,25 @@ struct LacEditorCommands: Commands {
                     .tag(AppTheme.dark)
             }
             .disabled(appState == nil)
+        }
+
+        CommandMenu(L10n.tr("Markdown 格式")) {
+            Group {
+                Button(L10n.tr("加粗")) { appState?.formatMarkdown(.bold) }
+                    .keyboardShortcut("b", modifiers: .command)
+                Button(L10n.tr("斜体")) { appState?.formatMarkdown(.italic) }
+                    .keyboardShortcut("i", modifiers: .command)
+                Button(L10n.tr("删除线")) { appState?.formatMarkdown(.strikethrough) }
+                Button(L10n.tr("行内代码")) { appState?.formatMarkdown(.inlineCode) }
+                Divider()
+                ForEach(1...6, id: \.self) { level in
+                    Button(L10n.tr("标题 %@ 级", String(level))) {
+                        appState?.formatMarkdown(.heading(level))
+                    }
+                }
+                Button(L10n.tr("引用")) { appState?.formatMarkdown(.quote) }
+            }
+            .disabled(appState?.selectedDocument?.language != .markdown || appState?.selectedDocument?.ioState != .idle)
         }
 
         CommandMenu(L10n.tr("标签页")) {

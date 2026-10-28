@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case editor = "编辑器", appearance = "外观", files = "文件与恢复", associations = "文件关联", performance = "性能", about = "关于"
+    case editor = "编辑器", appearance = "外观", files = "文件与恢复", associations = "文件关联", performance = "性能", ai = "人工智能", about = "关于"
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -11,6 +11,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .files: "clock.arrow.circlepath"
         case .associations: "doc.badge.gearshape"
         case .performance: "gauge.with.dots.needle.33percent"
+        case .ai: "sparkles"
         case .about: "info.circle"
         }
     }
@@ -21,6 +22,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .files: L10n.tr("离开之后，下次继续。")
         case .associations: L10n.tr("选择哪些文本格式默认使用 LacEditor 打开。")
         case .performance: L10n.tr("按文档大小自动管理，优先保持编辑顺畅。")
+        case .ai: L10n.tr("配置文本、判断和图像服务。")
         case .about: L10n.tr("一款专注于文本与代码的 macOS 编辑器。")
         }
     }
@@ -109,6 +111,7 @@ struct SettingsView: View {
         case .files: fileSettings
         case .associations: FileAssociationSettingsView()
         case .performance: performanceSettings
+        case .ai: AISettingsView(preferences: appState.preferences, isActive: selection == .ai)
         case .about: aboutSettings
         }
     }

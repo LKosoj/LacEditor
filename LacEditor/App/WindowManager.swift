@@ -36,6 +36,7 @@ final class WindowManager: ObservableObject {
         }
     }
 
+    private var exportingDocumentIDs: Set<UUID> = []
     private var states: [UUID: AppState] = [:]
     private var windowControllers: [UUID: NSWindowController] = [:]
     // Retain the initial editor state and its native window across closing the
@@ -271,16 +272,21 @@ final class WindowManager: ObservableObject {
     }
 
     @discardableResult
-    func openNativeTab(from source: AppState? = nil) -> AppState {
+    func openNativeTab(from source: AppState? = nil, with document: EditorDocument? = nil) -> AppState {
         let source = source ?? activeState
         let parent = source?.hostWindow
-        let state = openNewWindow()
+        let state = openNewWindow(with: document)
         if let source { state.isSidebarVisible = source.isSidebarVisible }
         if let parent, parent.isVisible || parent.tabGroup?.windows.contains(where: { $0.isVisible }) == true, let window = state.hostWindow {
             parent.addTabbedWindow(window, ordered: .above)
             window.makeKeyAndOrderFront(nil)
         }
         return state
+    }
+
+    func ownsVisibleState(_ state: AppState, window: NSWindow) -> Bool {
+        states.values.contains { $0 === state } && state.hostWindow === window
+            && (window.isVisible || window.tabGroup?.windows.contains(where: { $0.isVisible }) == true)
     }
 
     @discardableResult
@@ -378,6 +384,26 @@ final class WindowManager: ObservableObject {
         }
         target.hostWindow?.makeKeyAndOrderFront(nil)
         target.beginOpeningFile(url)
+    }
+
+    func beginMarkdownExport(documentID: UUID) -> Bool {
+        exportingDocumentIDs.insert(documentID).inserted
+    }
+
+    func endMarkdownExport(documentID: UUID) {
+        exportingDocumentIDs.remove(documentID)
+    }
+
+    func stateContaining(_ document: EditorDocument) -> AppState? {
+        states.values.first { state in state.documents.contains { $0 === document } }
+    }
+
+    var documentsForAI: [EditorDocument] {
+        states.values.flatMap(\.documents)
+    }
+
+    var openDocumentURLs: [URL] {
+        states.values.flatMap { $0.documents.compactMap(\.url) }
     }
 
     func conflictingDocument(

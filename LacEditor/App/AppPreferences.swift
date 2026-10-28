@@ -99,11 +99,64 @@ final class AppPreferences: ObservableObject {
             defaults.set(workspaceExitBehavior.rawValue, forKey: Keys.exitBehavior)
         }
     }
+    @Published var aiConfiguration: AIConfiguration {
+        didSet {
+            if let data = try? JSONEncoder().encode(aiConfiguration) {
+                defaults.set(data, forKey: Keys.aiConfiguration)
+            }
+        }
+    }
+    @Published var jinaConfiguration: JinaConfiguration {
+        didSet {
+            if let data = try? JSONEncoder().encode(jinaConfiguration) {
+                defaults.set(data, forKey: Keys.jinaConfiguration)
+            }
+        }
+    }
+
+    @Published var aiFeatures: Set<AIFeature> {
+        didSet {
+            let values = aiFeatures.map(\.rawValue).sorted()
+            if let data = try? JSONEncoder().encode(values) { defaults.set(data, forKey: Keys.aiFeatures) }
+        }
+    }
+    @Published var aiFeatureModelIDs: [String: String] {
+        didSet { defaults.set(aiFeatureModelIDs, forKey: Keys.aiFeatureModelIDs) }
+    }
+    @Published var aiCustomChecks: [AICustomCheck] {
+        didSet {
+            if let data = try? JSONEncoder().encode(aiCustomChecks) { defaults.set(data, forKey: Keys.aiCustomChecks) }
+        }
+    }
+    @Published var aiBackgroundEnabled: Bool {
+        didSet { defaults.set(aiBackgroundEnabled, forKey: Keys.aiBackgroundEnabled) }
+    }
+    @Published var systemSpellingEnabled: Bool {
+        didSet { defaults.set(systemSpellingEnabled, forKey: Keys.systemSpellingEnabled) }
+    }
+    @Published var systemGrammarEnabled: Bool {
+        didSet { defaults.set(systemGrammarEnabled, forKey: Keys.systemGrammarEnabled) }
+    }
 
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        jinaConfiguration = defaults.data(forKey: Keys.jinaConfiguration)
+            .flatMap { try? JSONDecoder().decode(JinaConfiguration.self, from: $0) }
+            ?? JinaConfiguration()
+        let features = defaults.data(forKey: Keys.aiFeatures)
+            .flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? []
+        aiFeatures = Set(features.compactMap(AIFeature.init(rawValue:)))
+        aiFeatureModelIDs = defaults.dictionary(forKey: Keys.aiFeatureModelIDs) as? [String: String] ?? [:]
+        aiCustomChecks = defaults.data(forKey: Keys.aiCustomChecks)
+            .flatMap { try? JSONDecoder().decode([AICustomCheck].self, from: $0) } ?? []
+        aiBackgroundEnabled = defaults.bool(forKey: Keys.aiBackgroundEnabled)
+        systemSpellingEnabled = defaults.bool(forKey: Keys.systemSpellingEnabled)
+        systemGrammarEnabled = defaults.bool(forKey: Keys.systemGrammarEnabled)
+        aiConfiguration = defaults.data(forKey: Keys.aiConfiguration)
+            .flatMap { try? JSONDecoder().decode(AIConfiguration.self, from: $0) }
+            ?? AIConfiguration()
         wordWrapEnabled = defaults.object(forKey: Keys.wordWrap) as? Bool ?? true
         let storedFontSize = defaults.object(forKey: Keys.fontSize) as? Double
         editorFontSize = min(
@@ -133,6 +186,17 @@ final class AppPreferences: ObservableObject {
         ) ?? .preserveWorkspace
     }
 
+    func aiProfile(for feature: AIFeature, customCheck: AICustomCheck? = nil) -> AIModelProfile {
+        var profile = aiConfiguration[feature.role]
+        let featureModel = aiFeatureModelIDs[feature.rawValue]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !featureModel.isEmpty { profile.modelID = featureModel }
+        if feature == .customCheck {
+            let checkModel = customCheck?.modelID.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !checkModel.isEmpty { profile.modelID = checkModel }
+        }
+        return profile
+    }
+
     var hasConfirmedWorkspaceExitPrompt: Bool {
         defaults.bool(forKey: Keys.confirmedWorkspaceExitPrompt)
     }
@@ -152,5 +216,13 @@ final class AppPreferences: ObservableObject {
         static let theme = "appTheme"
         static let exitBehavior = "workspaceExitBehavior"
         static let confirmedWorkspaceExitPrompt = "hasConfirmedWorkspaceExitPrompt"
+        static let aiConfiguration = "aiConfiguration"
+        static let jinaConfiguration = "jinaConfiguration"
+        static let aiFeatures = "aiFeatures"
+        static let aiFeatureModelIDs = "aiFeatureModelIDs"
+        static let aiCustomChecks = "aiCustomChecks"
+        static let aiBackgroundEnabled = "aiBackgroundEnabled"
+        static let systemSpellingEnabled = "systemSpellingEnabled"
+        static let systemGrammarEnabled = "systemGrammarEnabled"
     }
 }

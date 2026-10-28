@@ -50,12 +50,16 @@ let package = Package(
             ],
             path: "LacEditor",
             exclude: ["Assets.xcassets", "Info.plist"],
-            resources: [.process("zh-Hans.lproj"), .process("en.lproj"), .process("ru.lproj")],
+            resources: [.process("zh-Hans.lproj"), .process("en.lproj"), .process("ru.lproj"), .copy("Resources/Pandoc"), .copy("Resources/Mermaid")],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("SwiftUI"),
                 .linkedFramework("UniformTypeIdentifiers"),
-                .linkedFramework("WebKit")
+                .linkedFramework("WebKit"),
+                .linkedFramework("Security"),
+                .linkedFramework("ImageIO"),
+                .linkedFramework("PDFKit"),
+                .linkedFramework("AVFoundation")
             ]
         ),
         .testTarget(

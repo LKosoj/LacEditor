@@ -24,6 +24,7 @@ fail() {
 }
 
 print "[1/7] XCTest 稳定性回归"
+sh "$SCRIPT_DIR/prepare-pandoc.sh"
 swift test
 
 print "[2/7] 发布门禁与静态分析"
@@ -53,10 +54,12 @@ swiftc -O -parse-as-library \
     LacEditor/Models/EditorLanguage.swift \
     LacEditor/Models/DocumentEditDelta.swift \
     LacEditor/Models/EditorDocument.swift \
+    LacEditor/Services/DocumentProvenance.swift \
     LacEditor/Services/FileService.swift \
     LacEditor/Services/TextSearchService.swift \
     LacEditor/Editor/ListContinuationService.swift \
     LacEditor/Editor/LogicalLineIndex.swift \
+    LacEditor/Models/MarkdownPresentation.swift \
     LacEditor/Editor/FoldLayoutManager.swift \
     LacEditor/Editor/CodeLexicalScanner.swift \
     LacEditor/Editor/DelimiterMatchingService.swift \
@@ -77,6 +80,7 @@ swiftc -O -parse-as-library \
     LacEditor/Models/EditorLanguage.swift \
     LacEditor/Models/DocumentEditDelta.swift \
     LacEditor/Models/EditorDocument.swift \
+    LacEditor/Services/DocumentProvenance.swift \
     LacEditor/Services/FileService.swift \
     LacEditor/Services/TextSearchService.swift \
     LacEditor/Editor/CodeLexicalScanner.swift \

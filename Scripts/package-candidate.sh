@@ -46,8 +46,10 @@ fi
 /usr/libexec/PlistBuddy -c 'Print :CFBundleDocumentTypes' "$info_plist" >/dev/null
 version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$info_plist")"
 build_number="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$info_plist")"
+codesign --force --sign - "$app_path/Contents/MacOS/pandoc"
 codesign --force --deep --sign - "$app_path"
 codesign --verify --deep --strict "$app_path"
+sh "$SCRIPT_DIR/verify-bundled-pandoc.sh" "$app_path"
 mkdir -p dist
 if $release_package; then
     archive_path="dist/LacEditor-${version}-arm64.zip"
@@ -56,6 +58,10 @@ else
 fi
 ditto -c -k --sequesterRsrc --keepParent "$app_path" "$archive_path"
 unzip -tq "$archive_path"
+unpacked="$stage_directory/unpacked"
+ditto -x -k "$archive_path" "$unpacked"
+codesign --verify --deep --strict "$unpacked/LacEditor.app"
+sh "$SCRIPT_DIR/verify-bundled-pandoc.sh" "$unpacked/LacEditor.app"
 if $release_package; then
     print "正式版：$version（构建 $build_number）"
 else

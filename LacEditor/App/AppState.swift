@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import os
 import SwiftUI
+import UniformTypeIdentifiers
 
 private let filePerformanceLog = OSLog(
     subsystem: "com.laceditor.LacEditor",
@@ -27,6 +28,11 @@ private func documentTaskSignpostName(
     case .delimiterMatch: "DelimiterMatch"
     case .folding: "Folding"
     case .textTransformation: "TextTransformation"
+    case .markdownPresentation: "MarkdownPresentation"
+    case .aiWriting: "AIWriting"
+    case .aiCompletion: "AICompletion"
+    case .aiMetadata: "AIMetadata"
+    case .aiDocumentTools: "AIDocumentTools"
     }
 }
 
@@ -47,6 +53,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
 }
 
 enum EditorCommandNotification {
+    static let formatMarkdown = Notification.Name("LacEditor.formatMarkdown")
     static let revealSelection = Notification.Name("LacEditor.revealSelection")
     static let toggleFold = Notification.Name("LacEditor.toggleFold")
     static let undo = Notification.Name("LacEditor.undo")
@@ -66,6 +73,11 @@ enum EditorCommandNotification {
 struct EditorSelectionRequest {
     let documentID: UUID
     let range: NSRange
+}
+
+struct MarkdownFormattingRequest {
+    let documentID: UUID
+    let command: MarkdownFormattingCommand
 }
 
 final class EditorTextUpdateRequest {
@@ -99,11 +111,15 @@ struct EditorTextSelectionSnapshot {
 final class EditorTextExtractionRequest {
     let documentID: UUID
     let allowsTokenAtCaret: Bool
+    let allowsWholeDocument: Bool
+    let allowsInsertionPoint: Bool
     var result: EditorTextSelectionSnapshot?
 
-    init(documentID: UUID, allowsTokenAtCaret: Bool) {
+    init(documentID: UUID, allowsTokenAtCaret: Bool, allowsWholeDocument: Bool = false, allowsInsertionPoint: Bool = false) {
         self.documentID = documentID
         self.allowsTokenAtCaret = allowsTokenAtCaret
+        self.allowsWholeDocument = allowsWholeDocument
+        self.allowsInsertionPoint = allowsInsertionPoint
     }
 }
 
@@ -115,6 +131,7 @@ final class EditorRangeReplacementRequest {
     let expectedEditorRevision: UInt
     let actionName: String
     var wasHandled = false
+    var isAIGenerated = false
     var failureMessage: String?
 
     init(
@@ -147,6 +164,7 @@ final class AppState: ObservableObject {
     private var searchMatchCache = SearchMatchCacheStore()
     @Published var selectedDocumentID: UUID? {
         didSet {
+            if oldValue != selectedDocumentID { aiWriting.selectedDocumentChanged() }
             if oldValue != selectedDocumentID, let selectedDocumentID {
                 windowManager?.prioritizeRestoration(selectedDocumentID)
             }
@@ -169,6 +187,8 @@ final class AppState: ObservableObject {
             )
         }
     }
+    @Published private(set) var isDistractionFree = false
+    @Published var isMarkdownOutlineExpanded = false
     var isWordWrapEnabled: Bool {
         get { preferences.wordWrapEnabled }
         set { preferences.wordWrapEnabled = newValue }
@@ -210,7 +230,15 @@ final class AppState: ObservableObject {
     let preferences: AppPreferences
     let findReplace = FindReplaceState()
     let textTransformation = TextTransformationPreviewState()
-    weak var hostWindow: NSWindow?
+    lazy var aiWriting = AIWritingController(appState: self)
+    @Published var isAIWritingVisible = false
+    weak var hostWindow: NSWindow? {
+        didSet {
+            if oldValue !== hostWindow && isDistractionFree { toggleDistractionFree() }
+        }
+    }
+    private weak var distractionFreeToolbar: NSToolbar?
+    private var previousToolbarVisibility: Bool?
     weak var windowManager: WindowManager?
     private var findReplaceWindowController: FindReplaceWindowController?
     private var textTransformationWindowController: TextTransformationWindowController?
@@ -237,6 +265,7 @@ final class AppState: ObservableObject {
     private var recoveryCancellables: [UUID: AnyCancellable] = [:]
     private var recoveryWorkItems: [UUID: DispatchWorkItem] = [:]
     private var documentsBeingSnapshotted: Set<UUID> = []
+    private var exportingDocumentIDs: Set<UUID> = []
     private var openingFileURLs: Set<URL> = []
     private var openingOperations: [URL: Operation] = [:]
     private var openingPlaceholderIDs: Set<UUID> = []
@@ -299,6 +328,7 @@ final class AppState: ObservableObject {
                     self.findReplace.message = L10n.tr("内容已变化，任务已取消")
                 }
                 self.textTransformation.invalidate(documentID: documentID)
+                self.aiWriting.documentChanged(documentID)
                 self.scheduleRecoverySnapshot(for: document)
             }
         }
@@ -375,8 +405,34 @@ final class AppState: ObservableObject {
         isSidebarVisible ? .pinned : .hidden
     }
 
+    var isSidebarEffectivelyVisible: Bool {
+        isSidebarVisible && !isDistractionFree
+    }
+
     func toggleSidebar() {
-        isSidebarVisible.toggle()
+        if isDistractionFree {
+            toggleDistractionFree()
+            isSidebarVisible = true
+        } else {
+            isSidebarVisible.toggle()
+        }
+    }
+
+    func toggleDistractionFree() {
+        if isDistractionFree {
+            if let previousToolbarVisibility {
+                distractionFreeToolbar?.isVisible = previousToolbarVisibility
+            }
+            distractionFreeToolbar = nil
+            previousToolbarVisibility = nil
+            isDistractionFree = false
+        } else {
+            let toolbar = hostWindow?.toolbar
+            distractionFreeToolbar = toolbar
+            previousToolbarVisibility = toolbar?.isVisible
+            toolbar?.isVisible = false
+            isDistractionFree = true
+        }
     }
 
     func newDocument() {
@@ -392,6 +448,36 @@ final class AppState: ObservableObject {
 
     func openFiles() {
         fileService.chooseFiles().forEach(openFile)
+    }
+
+    func importDocument() {
+        guard let manager = windowManager, let window = hostWindow,
+              let document = selectedDocument else { return }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = PandocImportService.extensions.compactMap { UTType(filenameExtension: $0) }
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let source = panel.url,
+              manager.ownsVisibleState(self, window: window),
+              documents.contains(where: { $0 === document }) else { return }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self, weak manager, weak window, weak document] in
+            let result = Result { try PandocImportService.convert(source: source) }
+            DispatchQueue.main.async {
+                guard let self, let manager, let window, let document,
+                      manager.ownsVisibleState(self, window: window),
+                      self.documents.contains(where: { $0 === document }) else { return }
+                switch result {
+                case let .success(imported):
+                    let importedDocument = EditorDocument(text: imported.text, language: .markdown,
+                                                          isDirty: true, requiresExplicitSave: true)
+                    if !imported.diagnostics.isEmpty {
+                        importedDocument.statusMessage = L10n.tr("Pandoc 提示：%@", imported.diagnostics)
+                    }
+                    manager.openNativeTab(from: self, with: importedDocument)
+                case let .failure(error):
+                    self.presentError(title: L10n.tr("无法导入"), error: error)
+                }
+            }
+        }
     }
 
     func openFile(_ url: URL) {
@@ -697,6 +783,87 @@ final class AppState: ObservableObject {
         }
         document.updateFileEncoding(encoding)
         return write(document, to: url, completion: completion)
+    }
+
+    func exportMarkdown(as format: PandocExportFormat) {
+        guard let document = selectedDocument, document.language == .markdown,
+              document.ioState == .idle, !exportingDocumentIDs.contains(document.id),
+              !openingPlaceholderIDs.contains(document.id) else { return }
+        let manager = windowManager
+        guard manager?.beginMarkdownExport(documentID: document.id) ?? true else { return }
+        exportingDocumentIDs.insert(document.id)
+        var started = false
+        defer {
+            if !started {
+                exportingDocumentIDs.remove(document.id)
+                manager?.endMarkdownExport(documentID: document.id)
+            }
+        }
+        let panel = NSSavePanel()
+        let baseName = document.url?.deletingPathExtension().lastPathComponent ?? L10n.tr("未命名")
+        panel.nameFieldStringValue = baseName + "." + format.fileExtension
+        if let type = UTType(filenameExtension: format.fileExtension) {
+            panel.allowedContentTypes = [type]
+        }
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let destination = panel.url,
+              documents.contains(where: { $0 === document }),
+              document.language == .markdown, document.ioState == .idle else { return }
+        let source = document.url
+        let openURLs = manager?.openDocumentURLs ?? documents.compactMap(\.url)
+        guard !PandocExportService.conflicts(destination: destination, source: source, openURLs: openURLs) else {
+            presentError(title: L10n.tr("无法导出"), error: PandocExportError.openDocument)
+            return
+        }
+        let snapshot = document.synchronizedSnapshot()
+        started = true
+        document.statusMessage = L10n.tr("正在导出…")
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
+            let result = Result {
+                try PandocExportService.prepare(
+                    text: snapshot.text, source: source, destination: destination, format: format,
+                    title: baseName
+                )
+            }
+            DispatchQueue.main.async { [self] in
+                exportingDocumentIDs.remove(document.id)
+                manager?.endMarkdownExport(documentID: document.id)
+                let owner = manager?.stateContaining(document)
+                let isOpen = owner != nil || (manager == nil && documents.contains(where: { $0 === document }))
+                func report(_ error: Error) {
+                    guard isOpen else { return }
+                    document.statusMessage = L10n.tr("导出失败：%@", error.localizedDescription)
+                    if let window = (owner ?? self).hostWindow {
+                        let alert = NSAlert(error: error)
+                        alert.messageText = L10n.tr("无法导出")
+                        alert.beginSheetModal(for: window)
+                    }
+                }
+                switch result {
+                case let .failure(error):
+                    report(error)
+                case let .success(prepared):
+                    defer { try? FileManager.default.removeItem(at: prepared.preparedURL.deletingLastPathComponent()) }
+                    do {
+                        let openURLs = manager?.openDocumentURLs ?? documents.compactMap(\.url)
+                        guard !PandocExportService.conflicts(destination: destination, source: source, openURLs: openURLs) else {
+                            throw PandocExportError.openDocument
+                        }
+                        try PandocExportService.install(prepared.preparedURL, at: destination)
+                        if isOpen {
+                            let message = format == .latex
+                                ? L10n.tr("导出完成。LaTeX 中的相对图片路径基于原始文件文件夹。")
+                                : L10n.tr("导出完成")
+                            document.statusMessage = prepared.diagnostics.isEmpty
+                                ? message
+                                : message + " " + L10n.tr("Pandoc 提示：%@", prepared.diagnostics)
+                        }
+                    } catch {
+                        report(error)
+                    }
+                }
+            }
+        }
     }
 
     func closeSelectedDocument() {
@@ -1410,6 +1577,7 @@ final class AppState: ObservableObject {
         document.cancelMetricsRefresh()
         document.taskCoordinator.cancel(.textTransformation)
         textTransformation.invalidate(documentID: document.id)
+        aiWriting.invalidate(documentID: document.id)
         documentCancellables.removeValue(forKey: document.id)?.cancel()
         recoveryCancellables.removeValue(forKey: document.id)?.cancel()
         recoveryWorkItems.removeValue(forKey: document.id)?.cancel()
@@ -1724,6 +1892,22 @@ final class AppState: ObservableObject {
             && !document.hasPendingLiveEdits
     }
 
+    func formatMarkdown(_ command: MarkdownFormattingCommand) {
+        guard let document = selectedDocument, document.language == .markdown,
+              document.ioState == .idle else { return }
+        NotificationCenter.default.post(
+            name: EditorCommandNotification.formatMarkdown,
+            object: MarkdownFormattingRequest(documentID: document.id, command: command)
+        )
+    }
+
+    func revealMarkdownHeading(_ heading: MarkdownHeading, in document: EditorDocument) {
+        guard selectedDocument === document, document.language == .markdown,
+              document.ioState == .idle, document.isMarkdownOutlineCurrent,
+              document.markdownHeadings.contains(heading) else { return }
+        reveal(NSRange(location: heading.range.location, length: 0), in: document)
+    }
+
     private func reveal(_ range: NSRange, in document: EditorDocument) {
         document.selectionRange = range
         NotificationCenter.default.post(
@@ -1850,6 +2034,7 @@ final class AppState: ObservableObject {
                         : nil
                     self.recentFiles.record(url)
                     self.scheduleRecoverySnapshot(for: document, delay: 0)
+                    self.aiWriting.didSave(documentID: document.id)
                     completion?(!document.isDirty)
                 } else {
                     let description = saveResult.errorDescription ?? L10n.tr("无法取得保存后的文件状态")

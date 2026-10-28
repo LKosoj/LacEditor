@@ -32,8 +32,10 @@ fi
 version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$info_plist")"
 iteration="$(/usr/libexec/PlistBuddy -c 'Print :LacEditorExperimentIteration' "$info_plist")"
 build_number="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$info_plist")"
+codesign --force --sign - "$app_path/Contents/MacOS/pandoc"
 codesign --force --deep --sign - "$app_path"
 codesign --verify --deep --strict "$app_path"
+sh "$SCRIPT_DIR/verify-bundled-pandoc.sh" "$app_path"
 mkdir -p dist
 archive_path="dist/LacEditor-${version}-${iteration}-${build_number}-arm64.zip"
 ditto -c -k --sequesterRsrc --keepParent "$app_path" "$archive_path"

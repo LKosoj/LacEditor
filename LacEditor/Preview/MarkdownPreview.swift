@@ -119,6 +119,18 @@ struct MarkdownPreview: NSViewRepresentable {
         private var isActive = true
         private var pendingScrollRatio = 0.0
         private var usesReloadFallback = false
+        private static let mermaidScript: String? = {
+            #if SWIFT_PACKAGE
+            let bundle = Bundle.module
+            #else
+            let bundle = Bundle.main
+            #endif
+            guard let libraryURL = bundle.url(forResource: "mermaid.min", withExtension: "js", subdirectory: "Mermaid"),
+                  let clientURL = bundle.url(forResource: "render", withExtension: "js", subdirectory: "Mermaid"),
+                  let library = try? String(contentsOf: libraryURL, encoding: .utf8),
+                  let client = try? String(contentsOf: clientURL, encoding: .utf8) else { return nil }
+            return library + "\n" + client + "\nvoid 0;"
+        }()
 
         init(document: EditorDocument) { self.document = document }
 
@@ -135,6 +147,10 @@ struct MarkdownPreview: NSViewRepresentable {
 
         func stop() {
             generation &+= 1
+            if pageIsReady, let webView {
+                webView.evaluateJavaScript("globalThis.lacMermaid?.invalidate(\(generation))",
+                                           in: nil, in: .defaultClient, completionHandler: nil)
+            }
             debounce?.cancel()
             debounce = nil
             if let taskGeneration, let document,
@@ -221,7 +237,8 @@ struct MarkdownPreview: NSViewRepresentable {
                 arguments: ["body": includingBody ? page.body as Any : NSNull(),
                             "dark": page.darkMode, "revision": String(renderedRevision),
                             "generation": requestedGeneration, "fallbackRatio": pendingScrollRatio,
-                            "restore": restoringScroll],
+                            "restore": restoringScroll,
+                            "mermaidError": L10n.tr("无法显示 Mermaid 图表")],
                 in: nil, in: .defaultClient) { [weak self, weak webView] result in
                 os_signpost(.end, log: markdownPerformanceLog, name: "MarkdownPageUpdate", signpostID: signpost)
                 guard let self, let webView, requestedGeneration == self.generation else { return }
@@ -251,6 +268,19 @@ struct MarkdownPreview: NSViewRepresentable {
             if (body !== null) article.innerHTML = body;
             root.dataset.generation = String(generation);
             root.dataset.revision = revision;
+            if (globalThis.lacMermaid) {
+                await globalThis.lacMermaid.render(generation, dark, mermaidError);
+            } else {
+                article.querySelectorAll('pre > code.language-mermaid').forEach(code => {
+                    if (code.parentElement.nextElementSibling?.classList.contains('mermaid-diagram')) return;
+                    const error = document.createElement('div');
+                    error.className = 'mermaid-diagram';
+                    error.setAttribute('role', 'alert');
+                    error.textContent = mermaidError;
+                    code.parentElement.after(error);
+                });
+            }
+            if (Number(root.dataset.generation) !== generation) return null;
             Array.from(document.querySelectorAll('pre, .table-scroll')).forEach((el, index) => {
                 el.scrollLeft = horizontal[index] || 0;
             });
@@ -260,14 +290,19 @@ struct MarkdownPreview: NSViewRepresentable {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             guard navigation === latestNavigation else { return }
-            latestNavigation = nil
-            pageIsReady = true
-            if usesReloadFallback {
-                webView.evaluateJavaScript("window.scrollTo(0, \(pendingScrollRatio) * Math.max(0, document.documentElement.scrollHeight - innerHeight))",
-                                           in: nil, in: .defaultClient, completionHandler: nil)
-            } else {
-                patchPage(includingBody: true, restoringScroll: true)
+            func finish() {
+                guard navigation === self.latestNavigation else { return }
+                self.latestNavigation = nil
+                guard self.isActive else { return }
+                self.pageIsReady = true
+                if self.usesReloadFallback {
+                    webView.evaluateJavaScript("window.scrollTo(0, \(self.pendingScrollRatio) * Math.max(0, document.documentElement.scrollHeight - innerHeight))",
+                                               in: nil, in: .defaultClient, completionHandler: nil)
+                }
+                self.patchPage(includingBody: !self.usesReloadFallback, restoringScroll: true)
             }
+            guard let script = Self.mermaidScript else { finish(); return }
+            webView.evaluateJavaScript(script, in: nil, in: .defaultClient) { _ in finish() }
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {

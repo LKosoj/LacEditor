@@ -20,6 +20,23 @@ struct EditorTextView: NSViewRepresentable {
     let topInset: CGFloat
     let isActive: Bool
     let requestTextTransformation: (TextTransformationOperation) -> Void
+    var isOutlineVisible = false
+    var spellingEnabled = false
+    var grammarEnabled = false
+    var aiPreferences: AppPreferences? = nil
+
+    static func applyWritingChecks(to textView: NSTextView, spellingEnabled: Bool, grammarEnabled: Bool) {
+        guard !textView.hasMarkedText() else { return }
+        if textView.isContinuousSpellCheckingEnabled != spellingEnabled {
+            textView.isContinuousSpellCheckingEnabled = spellingEnabled
+        }
+        if textView.isGrammarCheckingEnabled != grammarEnabled {
+            textView.isGrammarCheckingEnabled = grammarEnabled
+        }
+        if textView.isAutomaticSpellingCorrectionEnabled {
+            textView.isAutomaticSpellingCorrectionEnabled = false
+        }
+    }
 
     func makeCoordinator() -> Coordinator {
         sessionStore.coordinator(for: document)
@@ -27,7 +44,12 @@ struct EditorTextView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSScrollView {
         if let cachedView = sessionStore.cachedView(for: document.id) {
-            (cachedView.documentView as? NSTextView)?.isEditable = isEnabled
+            context.coordinator.configureWritingChecks(spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
+            context.coordinator.configureAIAssistance(preferences: aiPreferences)
+            if let textView = cachedView.documentView as? NSTextView {
+                textView.isEditable = isEnabled
+                Self.applyWritingChecks(to: textView, spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
+            }
             os_signpost(
                 .event,
                 log: editorPerformanceLog,
@@ -88,7 +110,7 @@ struct EditorTextView: NSViewRepresentable {
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
-        textView.isContinuousSpellCheckingEnabled = false
+        Self.applyWritingChecks(to: textView, spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
         textView.allowsUndo = true
         textView.usesFindPanel = true
         textView.usesFindBar = true
@@ -145,6 +167,8 @@ struct EditorTextView: NSViewRepresentable {
         scrollView.contentView.postsBoundsChangedNotifications = true
         scrollView.contentView.postsFrameChangedNotifications = true
         context.coordinator.textView = textView
+        context.coordinator.configureWritingChecks(spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
+        context.coordinator.configureAIAssistance(preferences: aiPreferences)
         context.coordinator.foldLayoutManager = layoutManager
         context.coordinator.ruler = ruler
         context.coordinator.attachLiveTextProvider()
@@ -161,15 +185,18 @@ struct EditorTextView: NSViewRepresentable {
         context.coordinator.currentFontSize = fontSize
         context.coordinator.currentTabWidth = tabWidth
         context.coordinator.currentLanguage = document.language
+        context.coordinator.isMarkdownOutlineVisible = isOutlineVisible
         context.coordinator.updatePerformanceFeatures()
         context.coordinator.lastSynchronizedRevision = document.textRevision
         context.coordinator.installObservers(scrollView: scrollView)
         context.coordinator.updateLineNumbersVisibility(showsLineNumbers)
         context.coordinator.updateLayout(wordWrap: wordWrap, force: true)
         context.coordinator.updateActivity(isActive)
+        context.coordinator.updateMarkdownPresentation()
         context.coordinator.synchronizeSelectionState()
         context.coordinator.scheduleHighlight(delay: 0)
         context.coordinator.restoreViewportState()
+        context.coordinator.applyPendingContextSelection()
         sessionStore.store(
             scrollView,
             coordinator: context.coordinator,
@@ -188,7 +215,10 @@ struct EditorTextView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = context.coordinator.textView else { return }
+        context.coordinator.configureWritingChecks(spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
+        context.coordinator.configureAIAssistance(preferences: aiPreferences)
         textView.isEditable = isEnabled
+        Self.applyWritingChecks(to: textView, spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
         textView.textTransformationHandler = requestTextTransformation
         let documentChanged = context.coordinator.document.id != document.id
         let fontChanged = context.coordinator.currentFontSize != fontSize
@@ -202,6 +232,7 @@ struct EditorTextView: NSViewRepresentable {
         }
         context.coordinator.document = document
         context.coordinator.currentLanguage = document.language
+        context.coordinator.isMarkdownOutlineVisible = isOutlineVisible
         textView.indentationStyle = indentationStyle
         let shouldRefreshTextMetrics = lineSpacingChanged
             || fontChanged
@@ -227,7 +258,10 @@ struct EditorTextView: NSViewRepresentable {
                     textView.scheduleParagraphStyleRefresh()
                 }
                 coordinator.updateLayout(wordWrap: requestedWordWrap, force: lineSpacingChanged)
-                if fontChanged { coordinator.scheduleHighlight(delay: 0) }
+                if fontChanged {
+                    coordinator.markdownMetricsChanged()
+                    coordinator.scheduleHighlight(delay: 0)
+                }
             }
         } else {
             textView.applyOrDeferTextMetrics(nil)
@@ -236,6 +270,7 @@ struct EditorTextView: NSViewRepresentable {
         context.coordinator.updateLineNumbersVisibility(showsLineNumbers)
         context.coordinator.updateTopInset(topInset)
         context.coordinator.updateActivity(isActive)
+        context.coordinator.updateMarkdownPresentation()
 
         // Marked text is owned by the input method. Replacing the string or its
         // attributes while it is composing cancels Chinese/Japanese/Korean input.
@@ -265,6 +300,7 @@ struct EditorTextView: NSViewRepresentable {
             ))
             context.coordinator.isApplyingExternalUpdate = false
             context.coordinator.lastSynchronizedRevision = document.textRevision
+            context.coordinator.updateMarkdownPresentation()
         }
 
         context.coordinator.updateLayout(
@@ -277,6 +313,7 @@ struct EditorTextView: NSViewRepresentable {
         if documentChanged || revisionChanged || languageChanged {
             context.coordinator.scheduleDelimiterMatch(delay: 0)
         }
+        context.coordinator.applyPendingContextSelection()
     }
 
 }

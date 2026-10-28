@@ -284,6 +284,14 @@ final class WindowAndSessionTests: XCTestCase {
             recentFiles: manager.recentFiles,
             preferences: preferences
         )
+        var acknowledgedRevision: UInt?
+        first.attachLiveTextProvider(
+            id: UUID(),
+            provider: { "latest draft" },
+            acknowledgement: { acknowledgedRevision = $0 }
+        )
+        first.noteLiveEdit(isEmpty: false)
+        XCTAssertEqual(first.text, "draft")
         state.selectedDocumentID = second.id
         state.isSidebarVisible = false
         let window = makeWindow(title: "Workspace")
@@ -298,6 +306,7 @@ final class WindowAndSessionTests: XCTestCase {
             }
         }
         XCTAssertTrue(shouldTerminate)
+        XCTAssertEqual(acknowledgedRevision, first.textRevision)
         manager.unregister(windowID: windowID)
         window.close()
 
@@ -321,7 +330,8 @@ final class WindowAndSessionTests: XCTestCase {
         for _ in 0..<100 where restored.contains(where: { $0.ioState == .opening }) {
             try await Task.sleep(for: .milliseconds(20))
         }
-        XCTAssertEqual(restored.map(\.text), ["draft", #"{"z":1,"a":2}"#])
+        XCTAssertEqual(restored.map(\.text), ["latest draft", #"{"z":1,"a":2}"#])
+        XCTAssertNil(restored[0].url)
         XCTAssertTrue(restored[0].isDirty)
         XCTAssertFalse(restored[1].isDirty)
         XCTAssertEqual(restored[0].statusMessage, L10n.tr("已恢复上次工作区，尚未保存"))

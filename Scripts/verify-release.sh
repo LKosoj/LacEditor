@@ -35,6 +35,7 @@ grep -Fq "## [$version] - " CHANGELOG.md || {
 
 print "验证 LacEditor $version ($build_numbers)"
 plutil -lint LacEditor.xcodeproj/project.pbxproj
+sh Scripts/prepare-pandoc.sh
 swift build
 swift build -c release
 if [[ "${LACEDITOR_SKIP_TESTS:-0}" != "1" ]]; then
@@ -46,6 +47,7 @@ swiftc \
     LacEditor/Models/EditorLanguage.swift \
     LacEditor/Models/DocumentEditDelta.swift \
     LacEditor/Models/EditorDocument.swift \
+    LacEditor/Services/DocumentProvenance.swift \
     LacEditor/Services/FileService.swift \
     LacEditor/Services/JSONFormatter.swift \
     LacEditor/Services/TextSearchService.swift \
@@ -53,6 +55,7 @@ swiftc \
     LacEditor/Editor/FoldService.swift \
     LacEditor/Editor/ListContinuationService.swift \
     LacEditor/Editor/LogicalLineIndex.swift \
+    LacEditor/Models/MarkdownPresentation.swift \
     LacEditor/Editor/FoldLayoutManager.swift \
     LacEditor/Editor/CodeLexicalScanner.swift \
     LacEditor/Editor/DelimiterMatchingService.swift \
@@ -63,6 +66,7 @@ swiftc \
 .build/core-verification
 
 swiftc \
+    LacEditor/Models/MarkdownPresentation.swift \
     LacEditor/Editor/FoldLayoutManager.swift \
     LacEditor/Editor/LogicalLineIndex.swift \
     Verification/FoldLayoutVerification.swift \
@@ -73,8 +77,10 @@ swiftc \
     LacEditor/App/L10n.swift \
     LacEditor/Editor/ListContinuationService.swift \
     LacEditor/Services/TextCodecService.swift \
+    LacEditor/Models/MarkdownPresentation.swift \
     LacEditor/Editor/FoldLayoutManager.swift \
     LacEditor/Editor/LacTextView.swift \
+    LacEditor/Services/DocumentProvenance.swift \
     Verification/EditorInteractionVerification.swift \
     -o .build/editor-interaction-verification
 .build/editor-interaction-verification

@@ -82,6 +82,11 @@ final class DocumentTaskCoordinator: @unchecked Sendable {
         case delimiterMatch
         case folding
         case textTransformation
+        case markdownPresentation
+        case aiWriting
+        case aiCompletion
+        case aiMetadata
+        case aiDocumentTools
     }
 
     private let lock = NSLock()
@@ -177,6 +182,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     let id: UUID
     @Published var text: String {
         didSet {
+            if isMarkdownOutlineCurrent { isMarkdownOutlineCurrent = false }
             hasPendingLiveEdits = false
             pendingLiveTextIsEmpty = nil
             textRevision &+= 1
@@ -193,7 +199,10 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     @Published var selectionRange = NSRange(location: 0, length: 0)
     @Published var statusMessage: String?
     @Published var textCodecSuggestionTitle: String?
+    @Published var markdownHeadings: [MarkdownHeading] = []
+    @Published var isMarkdownOutlineCurrent = false
     @Published var isPreviewVisible: Bool
+    @Published var isMarkdownFormatted = false
     @Published var performanceProfile: DocumentPerformanceProfile
     @Published var featureOverrides = DocumentFeatureOverrides()
     @Published var ioState: DocumentIOState = .idle
@@ -205,6 +214,9 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     private(set) var fileIdentity: DocumentFileIdentity?
     private(set) var fileRevisionSnapshot: FileRevisionSnapshot?
     let taskCoordinator = DocumentTaskCoordinator()
+    let provenance = DocumentProvenance()
+    var aiMetadata: String?
+    @Published var pendingAIContextSelection: (range: NSRange, revision: UInt)? = nil
     private var savedText: String?
     private var liveTextProviderID: UUID?
     private var liveTextProvider: (() -> String?)?

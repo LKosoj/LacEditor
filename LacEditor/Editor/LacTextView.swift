@@ -72,6 +72,7 @@ final class LacTextView: NSTextView {
     private var paragraphRefreshChunkSize = 32 * 1_024
     private var paragraphRefreshPaused = false
     private var pendingTextMetrics: (() -> Void)?
+    private var compositionCompletionScheduled = false
 
     var editorLineHeight: CGFloat {
         (layoutManager as? FoldLayoutManager)?.editorLineHeight
@@ -81,9 +82,36 @@ final class LacTextView: NSTextView {
 
     var currentLineColor: NSColor = .lacCurrentLineBackground
     var selectionTrackingHandler: (() -> Void)?
+    var compositionCompletionHandler: (() -> Void)?
     var requestsFirstResponderWhenAttached = false
     var textTransformationHandler: ((TextTransformationOperation) -> Void)?
     var listIndentationHandler: ((Bool) -> Bool)?
+    var completionText: String? { didSet { needsDisplay = true } }
+    var acceptAICompletion: (() -> Bool)?
+    var dismissAICompletion: (() -> Void)?
+    var editSource: DocumentProvenance.Source = .unknown
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard let completionText, !completionText.isEmpty, let window,
+              !hasMarkedText(), selectedRange().length == 0 else { return }
+        let screenRect = firstRect(forCharacterRange: selectedRange(), actualRange: nil)
+        let windowPoint = window.convertPoint(fromScreen: NSPoint(x: screenRect.minX, y: screenRect.maxY))
+        let point = convert(windowPoint, from: nil)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize),
+            .foregroundColor: NSColor.secondaryLabelColor
+        ]
+        (completionText as NSString).draw(at: point, withAttributes: attributes)
+    }
+
+    override func paste(_ sender: Any?) {
+        dismissAICompletion?()
+        let previous = editSource
+        editSource = .pasted
+        defer { editSource = previous }
+        super.paste(sender)
+    }
 
     /// NSTextView normally reports the fallback font used by the first glyph.
     /// When a document starts with Chinese, that can be PingFang even though
@@ -102,6 +130,9 @@ final class LacTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53, completionText != nil { dismissAICompletion?(); return }
+        if event.keyCode == 48, event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
+           !hasMarkedText(), acceptAICompletion?() == true { return }
         // Handle the physical Tab key before AppKit applies its paragraph
         // indentation command. This is especially important at column zero.
         if event.keyCode == 48, event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty {
@@ -407,16 +438,30 @@ final class LacTextView: NSTextView {
     }
 
     override func unmarkText() {
+        let wasMarked = hasMarkedText()
         super.unmarkText()
-        resumeAfterComposition()
+        resumeAfterComposition(wasMarked: wasMarked)
     }
 
     override func insertText(_ insertString: Any, replacementRange: NSRange) {
+        dismissAICompletion?()
+        let wasMarked = hasMarkedText()
+        let previous = editSource
+        if editSource == .unknown { editSource = .typed }
+        defer { editSource = previous }
         super.insertText(insertString, replacementRange: replacementRange)
-        resumeAfterComposition()
+        resumeAfterComposition(wasMarked: wasMarked)
     }
 
-    private func resumeAfterComposition() {
+    private func resumeAfterComposition(wasMarked: Bool) {
+        if wasMarked && !hasMarkedText() && !compositionCompletionScheduled {
+            compositionCompletionScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.compositionCompletionScheduled = false
+                if !self.hasMarkedText() { self.compositionCompletionHandler?() }
+            }
+        }
         guard pendingTextMetrics != nil || paragraphRefreshPaused else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self, !hasMarkedText() else { return }

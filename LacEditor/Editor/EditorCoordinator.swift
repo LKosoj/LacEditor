@@ -48,7 +48,22 @@ extension EditorTextView {
         private var delimiterSnapshotRevision: UInt?
         private var delimiterHighlightRanges: [NSRange] = []
         private var highlightGeneration: UInt = 0
+        var isMarkdownOutlineVisible = false
+        private var markdownPresentation: MarkdownPresentationController?
         private var contentRevision: UInt
+        private let aiCompletion = AICompletionController()
+        private weak var aiPreferences: AppPreferences?
+        private var aiSettings: AIConfiguration?
+        private var aiCompletionSettings: AIModelProfile?
+        private var aiFeatures: Set<AIFeature> = []
+        private var aiBackgroundEnabled = false
+        private var aiCompletionRevision: UInt?
+        private var aiCompletionCaret: Int?
+        private var aiCompletionProfile: AIModelProfile?
+        private var aiCompletionKey: String?
+        private var writingSpellingEnabled = false
+        private var writingGrammarEnabled = false
+        private var isApplyingAIGenerated = false
         private var pendingFoldSelection: NSRange?
         private var highlightedRevision: UInt?
         private var appliedTreeChangeRevision: UInt?
@@ -96,6 +111,128 @@ extension EditorTextView {
         }
 
         var isSessionActive: Bool { isActive }
+
+        func applyPendingContextSelection() {
+            guard isActive, let textView, !textView.hasMarkedText(),
+                  let pending = document.pendingAIContextSelection else { return }
+            document.pendingAIContextSelection = nil
+            let documentID = document.id
+            let revision = contentRevision
+            guard document.textRevision == pending.revision, !document.hasPendingLiveEdits,
+                  pending.range.location != NSNotFound,
+                  NSMaxRange(pending.range) <= (textView.textStorage?.length ?? 0) else { return }
+            DispatchQueue.main.async { [weak self, weak textView] in
+                guard let self, let textView, self.isActive, !textView.hasMarkedText(),
+                      self.document.id == documentID, self.contentRevision == revision,
+                      self.document.textRevision == pending.revision,
+                      !self.document.hasPendingLiveEdits else { return }
+                NotificationCenter.default.post(name: EditorCommandNotification.revealSelection,
+                    object: EditorSelectionRequest(documentID: documentID, range: pending.range))
+            }
+        }
+
+        func configureWritingChecks(spellingEnabled: Bool, grammarEnabled: Bool) {
+            writingSpellingEnabled = spellingEnabled
+            writingGrammarEnabled = grammarEnabled
+            if let textView {
+                EditorTextView.applyWritingChecks(to: textView, spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
+            }
+        }
+
+        func configureAIAssistance(preferences: AppPreferences?) {
+            let settings = preferences?.aiConfiguration
+            let completionSettings = preferences?.aiProfile(for: .completion)
+            let features = preferences?.aiFeatures ?? []
+            let background = preferences?.aiBackgroundEnabled ?? false
+            if aiSettings != settings || aiCompletionSettings != completionSettings || aiFeatures != features || aiBackgroundEnabled != background {
+                cancelAICompletion()
+            }
+            aiPreferences = preferences
+            aiSettings = settings
+            aiCompletionSettings = completionSettings
+            aiFeatures = features
+            aiBackgroundEnabled = background
+            if let textView {
+                document.provenance.configure(enabled: features.contains(.provenance), length: textView.textStorage?.length ?? 0)
+                textView.acceptAICompletion = { [weak self] in self?.acceptCompletion() ?? false }
+                textView.dismissAICompletion = { [weak self] in self?.cancelAICompletion() }
+            }
+        }
+
+        private func cancelAICompletion() {
+            aiCompletion.cancel()
+            aiCompletionRevision = nil
+            aiCompletionCaret = nil
+            aiCompletionProfile = nil
+            aiCompletionKey = nil
+            textView?.completionText = nil
+        }
+
+        private func scheduleAICompletion() {
+            cancelAICompletion()
+            guard isActive, !document.isLargeFileMode, aiBackgroundEnabled, aiFeatures.contains(.completion),
+                  let preferences = aiPreferences, let textView, !textView.hasMarkedText(),
+                  let text = textView.textStorage?.mutableString else { return }
+            let selection = textView.selectedRange()
+            guard selection.length == 0, selection.location <= text.length else { return }
+            let profile = preferences.aiProfile(for: .completion)
+            guard profile.isEnabled, profile.supports(.text) else { return }
+            let revision = contentRevision
+            let documentID = document.id
+            aiCompletion.schedule(inputProvider: { [weak textView] in
+                    guard let text = textView?.textStorage?.mutableString,
+                          selection.location <= text.length else { return nil }
+                    let line = text.lineRange(for: selection)
+                    let range = NSRange(location: line.location, length: selection.location - line.location)
+                    return range.length > 0 ? text.substring(with: range) : nil
+                }, keyProvider: {
+                    try AIKeychainStore().load(for: .text, baseURL: profile.baseURL)
+                }, coordinator: document.taskCoordinator, profile: profile,
+                isCurrent: { [weak self, weak textView] in
+                    guard let self, let textView, self.isActive, self.document.id == documentID,
+                          self.contentRevision == revision, !self.document.isLargeFileMode, !textView.hasMarkedText(),
+                          textView.selectedRange() == selection,
+                          self.aiBackgroundEnabled, self.aiFeatures.contains(.completion),
+                          self.aiPreferences?.aiProfile(for: .completion) == profile else { return false }
+                    return true
+                }, show: { [weak self, weak textView] completion, key in
+                    guard let self, let textView else { return }
+                    self.aiCompletionRevision = revision
+                    self.aiCompletionCaret = selection.location
+                    self.aiCompletionProfile = profile
+                    self.aiCompletionKey = key
+                    textView.completionText = completion
+                })
+        }
+
+        private func acceptCompletion() -> Bool {
+            guard isActive, !document.isLargeFileMode, let textView, !textView.hasMarkedText(),
+                  let completion = textView.completionText, let revision = aiCompletionRevision,
+                  let caret = aiCompletionCaret, revision == contentRevision,
+                  textView.selectedRange() == NSRange(location: caret, length: 0),
+                  aiBackgroundEnabled, aiFeatures.contains(.completion),
+                  let profile = aiCompletionProfile,
+                  aiPreferences?.aiProfile(for: .completion) == profile else { cancelAICompletion(); return false }
+            do {
+                guard try AIKeychainStore().load(for: .text, baseURL: profile.baseURL) == aiCompletionKey else {
+                    cancelAICompletion()
+                    return false
+                }
+            } catch {
+                cancelAICompletion()
+                return false
+            }
+            let request = EditorRangeReplacementRequest(documentID: document.id,
+                range: NSRange(location: caret, length: 0), originalText: "", replacementText: completion,
+                expectedEditorRevision: revision, actionName: AIFeature.completion.title)
+            request.isAIGenerated = true
+            cancelAICompletion()
+            apply(request, to: textView)
+            if request.wasHandled {
+                textView.setSelectedRange(NSRange(location: caret + (completion as NSString).length, length: 0))
+            }
+            return request.wasHandled
+        }
 
         func indentCurrentListItem(outdent: Bool) -> Bool {
             if textView?.hasMarkedText() == true { return true }
@@ -227,6 +364,7 @@ extension EditorTextView {
 #if canImport(SwiftTreeSitter) && canImport(TreeSitterJavaScript) && canImport(TreeSitterTypeScript) && canImport(TreeSitterPython) && canImport(TreeSitterCSS) && canImport(TreeSitterHTML)
             TreeSitterJavaScriptBackend.invalidate(documentID: document.id)
 #endif
+            markdownPresentation?.cancel()
             modelSyncWorkItem?.cancel()
             layoutPrefetchWorkItem?.cancel()
             listNormalizationWorkItem?.cancel()
@@ -240,6 +378,7 @@ extension EditorTextView {
             delimiterMatchQueue.cancelAllOperations()
             document.taskCoordinator.cancel(.delimiterMatch)
             document.taskCoordinator.cancel(.folding)
+            document.taskCoordinator.cancel(.aiCompletion)
             rulerRefreshWorkItem?.cancel()
             liveResizeLayoutWorkItem?.cancel()
             selectionVisibilityWorkItem?.cancel()
@@ -270,10 +409,14 @@ extension EditorTextView {
                 resetHorizontalScrollIfNeeded()
                 if sizeChanged {
                     scheduleResizeLayout(wordWrap: wordWrap)
+                    DispatchQueue.main.async { [weak self] in
+                        self?.markdownPresentation?.viewportChanged()
+                    }
                     return
                 }
                 guard originChanged else { return }
                 refreshRulerForViewportChange()
+                markdownPresentation?.viewportChanged()
                 scheduleHighlight()
                 scheduleDirectionalLayoutPrefetch()
             })
@@ -303,12 +446,10 @@ extension EditorTextView {
                       let request = notification.object as? EditorSelectionRequest,
                       request.documentID == document.id,
                       let textView else { return }
-                clearFoldIfNeeded(toReveal: request.range)
                 let length = textView.textStorage?.length ?? 0
-                let range = NSIntersectionRange(
-                    request.range,
-                    NSRange(location: 0, length: length)
-                )
+                let location = min(request.range.location, length)
+                let range = NSRange(location: location, length: min(request.range.length, length - location))
+                clearFoldIfNeeded(toReveal: range)
                 textView.setSelectedRange(range)
                 textView.scrollRangeToVisible(range)
                 textView.window?.makeFirstResponder(textView)
@@ -362,6 +503,16 @@ extension EditorTextView {
                 extractSelection(for: request)
             })
             observerTokens.append(NotificationCenter.default.addObserver(
+                forName: EditorCommandNotification.formatMarkdown,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let self,
+                      let request = notification.object as? MarkdownFormattingRequest,
+                      request.documentID == document.id else { return }
+                applyMarkdownFormatting(request.command)
+            })
+            observerTokens.append(NotificationCenter.default.addObserver(
                 forName: EditorCommandNotification.applyRangeReplacement,
                 object: nil,
                 queue: .main
@@ -372,6 +523,33 @@ extension EditorTextView {
                       let textView else { return }
                 apply(request, to: textView)
             })
+        }
+
+        private func applyMarkdownFormatting(_ command: MarkdownFormattingCommand) {
+            guard isActive, document.language == .markdown, document.ioState == .idle,
+                  let textView, textView.isEditable, !textView.hasMarkedText(),
+                  textView.selectedRanges.count == 1, let storage = textView.textStorage else { return }
+            let selection = textView.selectedRange()
+            let revision = contentRevision
+            guard let edit = MarkdownFormattingService.edit(in: storage.mutableString, selection: selection, command: command),
+                  revision == contentRevision, textView.selectedRange() == selection else { return }
+            let original = storage.mutableString.substring(with: edit.range)
+            guard original != edit.replacement else { return }
+            textView.breakUndoCoalescing()
+            let undoManager = textView.undoManager
+            undoManager?.beginUndoGrouping()
+            defer {
+                undoManager?.endUndoGrouping()
+                textView.breakUndoCoalescing()
+            }
+            isApplyingAutomatedEdit = true
+            defer { isApplyingAutomatedEdit = false }
+            guard textView.shouldChangeText(in: edit.range, replacementString: edit.replacement) else { return }
+            storage.replaceCharacters(in: edit.range, with: edit.replacement)
+            textView.didChangeText()
+            textView.setSelectedRange(edit.selectionRange)
+            textView.scrollRangeToVisible(edit.selectionRange)
+            undoManager?.setActionName(command.actionName)
         }
 
         func attachLiveTextProvider() {
@@ -411,10 +589,21 @@ extension EditorTextView {
         }
 
         private func extractSelection(for request: EditorTextExtractionRequest) {
-            guard isActive,
-                  let textView,
-                  let text = textView.textStorage?.mutableString,
-                  let candidate = TextCodecService.candidate(
+            guard isActive, let textView, !textView.hasMarkedText(),
+                  let text = textView.textStorage?.mutableString else { return }
+            if request.allowsInsertionPoint && textView.selectedRange().length == 0 {
+                request.result = EditorTextSelectionSnapshot(documentID: document.id,
+                    range: textView.selectedRange(), text: "", editorRevision: contentRevision,
+                    wasExplicitSelection: false)
+                return
+            }
+            if request.allowsWholeDocument && textView.selectedRange().length == 0 {
+                request.result = EditorTextSelectionSnapshot(documentID: document.id,
+                    range: NSRange(location: 0, length: text.length), text: text as String,
+                    editorRevision: contentRevision, wasExplicitSelection: false)
+                return
+            }
+            guard let candidate = TextCodecService.candidate(
                       in: text,
                       selection: textView.selectedRange(),
                       allowsTokenAtCaret: request.allowsTokenAtCaret,
@@ -435,6 +624,10 @@ extension EditorTextView {
             _ request: EditorRangeReplacementRequest,
             to textView: LacTextView
         ) {
+            guard isActive, textView.isEditable, !textView.hasMarkedText() else {
+                request.failureMessage = L10n.tr("当前文本无法修改")
+                return
+            }
             guard request.expectedEditorRevision == contentRevision else {
                 request.failureMessage = L10n.tr("编辑内容已变化，请重新执行转换")
                 return
@@ -453,7 +646,8 @@ extension EditorTextView {
             }
 
             isApplyingAutomatedEdit = true
-            defer { isApplyingAutomatedEdit = false }
+            isApplyingAIGenerated = request.isAIGenerated
+            defer { isApplyingAutomatedEdit = false; isApplyingAIGenerated = false }
             guard textView.shouldChangeText(
                 in: request.range,
                 replacementString: request.replacementText
@@ -543,7 +737,45 @@ extension EditorTextView {
             if !duringLiveResize {
                 ensureVisibleLayout()
             }
+            markdownPresentation?.viewportChanged()
         }
+
+        func updateMarkdownPresentation() {
+            guard let textView, let foldLayoutManager else { return }
+            if markdownPresentation == nil {
+                markdownPresentation = MarkdownPresentationController(textView: textView, layout: foldLayoutManager)
+                markdownPresentation?.geometryDidChange = { [weak self] in
+                    self?.ruler?.requestRedraw()
+                }
+                markdownPresentation?.restoreDelimiterHighlight = { [weak self] in
+                    guard let self, let layoutManager = self.textView?.layoutManager else { return }
+                    for range in self.delimiterHighlightRanges {
+                        layoutManager.addTemporaryAttribute(
+                            .backgroundColor, value: NSColor.lacDelimiterMatchBackground,
+                            forCharacterRange: range
+                        )
+                    }
+                }
+                textView.compositionCompletionHandler = { [weak self] in
+                    guard let self else { return }
+                    if let textView = self.textView {
+                        EditorTextView.applyWritingChecks(to: textView, spellingEnabled: self.writingSpellingEnabled, grammarEnabled: self.writingGrammarEnabled)
+                    }
+                    self.markdownPresentation?.compositionFinished(revision: self.contentRevision)
+                    self.applyPendingContextSelection()
+                }
+            }
+            markdownPresentation?.update(
+                document: document,
+                enabled: document.language == .markdown && document.isMarkdownFormatted,
+                outlineVisible: document.language == .markdown && isMarkdownOutlineVisible,
+                isActive: isActive,
+                revision: contentRevision,
+                currentRevision: { [weak self] in self?.contentRevision ?? 0 }
+            )
+        }
+
+        func markdownMetricsChanged() { markdownPresentation?.metricsChanged() }
 
         func updatePerformanceFeatures() {
             if let foldLayoutManager {
@@ -703,7 +935,10 @@ extension EditorTextView {
         func updateActivity(_ newValue: Bool) {
             guard isActive != newValue else { return }
             isActive = newValue
+            updateMarkdownPresentation()
             guard newValue else {
+                cancelAICompletion()
+                markdownPresentation?.cancel()
                 rulerRefreshWorkItem?.cancel()
                 rulerRefreshWorkItem = nil
                 rulerRefreshNeedsLayout = false
@@ -742,12 +977,19 @@ extension EditorTextView {
 
         func textDidChange(_ notification: Notification) {
             guard !isApplyingExternalUpdate, let textView else { return }
+            cancelAICompletion()
+            let revision = contentRevision
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.contentRevision == revision else { return }
+                self.scheduleAICompletion()
+            }
             if let text = textView.textStorage?.mutableString,
                lineIndex.textLength != text.length {
                 lineIndex.reset(with: text)
             }
             restorePendingOffscreenEdit(in: textView)
             document.noteLiveEdit(isEmpty: textView.textStorage?.length == 0)
+            markdownPresentation?.edited(revision: contentRevision)
             NotificationCenter.default.post(
                 name: EditorCommandNotification.documentContentDidChange,
                 object: document.id
@@ -814,7 +1056,13 @@ extension EditorTextView {
         }
 
         func advanceContentRevision() {
+            cancelAICompletion()
+            if document.provenance.isEnabled {
+                document.provenance.configure(enabled: false, length: 0)
+                document.provenance.configure(enabled: true, length: (document.text as NSString).length)
+            }
             contentRevision &+= 1
+            markdownPresentation?.edited(revision: contentRevision)
             cancelFoldTask()
             delimiterSnapshot = nil
             delimiterSnapshotRevision = nil
@@ -963,8 +1211,16 @@ extension EditorTextView {
                     nsText.length - safeLocation
                 )
             )
-            contentRevision &+= 1
             let replacementLength = (replacement as NSString).length
+            func recordProvenance() {
+                let source: DocumentProvenance.Source
+                if isApplyingAIGenerated { source = .generated }
+                else if isApplyingAutomatedEdit || textView.undoManager?.isUndoing == true || textView.undoManager?.isRedoing == true { source = .unknown }
+                else { source = (textView as? LacTextView)?.editSource ?? .unknown }
+                document.provenance.record(editedRange: safeRange, replacementLength: replacementLength, source: source)
+            }
+            cancelAICompletion()
+            contentRevision &+= 1
             let editDelta = DocumentEditDelta(
                 documentID: document.id,
                 revision: contentRevision,
@@ -1001,19 +1257,23 @@ extension EditorTextView {
             }
 
             if isApplyingAutomatedEdit {
+                markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength)
                 lineIndex.applyEdit(
                     range: safeRange,
                     replacement: replacement,
                     in: nsText
                 )
+                recordProvenance()
                 return true
             }
             guard document.language == .markdown else {
+                markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength)
                 lineIndex.applyEdit(
                     range: safeRange,
                     replacement: replacement,
                     in: nsText
                 )
+                recordProvenance()
                 return true
             }
 
@@ -1027,11 +1287,13 @@ extension EditorTextView {
                     range: safeRange,
                     replacement: replacement
                   ) else {
+                markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength)
                 lineIndex.applyEdit(
                     range: safeRange,
                     replacement: replacement,
                     in: nsText
                 )
+                recordProvenance()
                 return true
             }
 
@@ -1042,11 +1304,13 @@ extension EditorTextView {
                 aroundUTF16Location: safeRange.location
             ) {
                 pendingListNormalizationLocation = intendedCaretLocation
+                markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength)
                 lineIndex.applyEdit(
                     range: safeRange,
                     replacement: replacement,
                     in: nsText
                 )
+                recordProvenance()
                 return true
             }
 
@@ -1059,11 +1323,13 @@ extension EditorTextView {
                 from: textView.string,
                 to: normalization.text
             ) else {
+                markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength)
                 lineIndex.applyEdit(
                     range: safeRange,
                     replacement: replacement,
                     in: nsText
                 )
+                recordProvenance()
                 return true
             }
 
@@ -1140,6 +1406,7 @@ extension EditorTextView {
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
+            cancelAICompletion()
             cancelFoldIfSelectionChanged()
             guard !isApplyingExternalUpdate,
                   !isRestoringOffscreenEdit else { return }
@@ -1147,6 +1414,7 @@ extension EditorTextView {
                 cancelDelimiterMatch(clearHighlight: true)
                 return
             }
+            markdownPresentation?.selectionChanged()
             textView?.needsDisplay = true
             invalidateEntireRuler(
                 displayImmediately: true,
@@ -1158,12 +1426,14 @@ extension EditorTextView {
         }
 
         func selectionDidChangeDuringTracking() {
+            cancelAICompletion()
             cancelFoldIfSelectionChanged()
             guard !isRestoringOffscreenEdit else { return }
             guard textView?.hasMarkedText() != true else {
                 cancelDelimiterMatch(clearHighlight: true)
                 return
             }
+            markdownPresentation?.selectionChanged()
             textView?.needsDisplay = true
             invalidateEntireRuler(
                 displayImmediately: true,
@@ -1323,7 +1593,9 @@ extension EditorTextView {
                     )
                 }
             }
+            let clearedRanges = delimiterHighlightRanges
             delimiterHighlightRanges.removeAll(keepingCapacity: true)
+            markdownPresentation?.restoreBackground(in: clearedRanges)
         }
 
         private func cancelDelimiterMatch(
@@ -1827,7 +2099,8 @@ extension EditorTextView {
 
         private func clearFoldIfNeeded(toReveal range: NSRange) {
             guard let foldedRange = foldLayoutManager?.foldedRange,
-                  NSIntersectionRange(foldedRange, range).length > 0 else { return }
+                  NSIntersectionRange(foldedRange, range).length > 0 ||
+                    (range.length == 0 && NSLocationInRange(range.location, foldedRange)) else { return }
             clearFold()
         }
 

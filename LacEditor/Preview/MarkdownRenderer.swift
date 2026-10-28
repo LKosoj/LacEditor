@@ -81,6 +81,9 @@ struct MarkdownRenderedPage: Sendable {
         padding: 14px 16px; border-radius: 7px; tab-size: 4;
       }
       pre code { background: none; padding: 0; border-radius: 0; overflow-wrap: normal; white-space: pre; }
+      pre[hidden] { display: none; }
+      .mermaid-diagram { max-width: 100%; overflow-x: auto; margin: 1.1em 0; }
+      .mermaid-diagram svg { max-width: 100%; height: auto; }
       .table-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; margin: 1.1em 0; }
       table { width: 100%; border-collapse: collapse; font-size: .93em; }
       th, td { border: 1px solid var(--border); padding: .55em .8em; text-align: left; min-width: 5em; }

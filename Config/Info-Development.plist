@@ -2,6 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>录制你主动开始的语音草稿，供你预览并选择发送给所配置的语音识别服务。</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>连接你在设置中指定的本地 AI 或 Jina 服务。</string>
     <key>CFBundleDisplayName</key>
     <string>$(LACEDITOR_DEVELOPMENT_NAME)</string>
     <key>CFBundleName</key>

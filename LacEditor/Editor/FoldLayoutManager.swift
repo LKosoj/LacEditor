@@ -55,6 +55,117 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     }
 
     private(set) var foldedRange: NSRange?
+    private struct MarkdownMarker {
+        let range: NSRange
+        let owner: NSRange
+    }
+    private var markdownMarkers: [MarkdownMarker] = []
+    private var markdownMarkerEnds: [Int] = []
+    private var markdownContainers: [NSRange] = []
+    private var markdownContainerEnds: [Int] = []
+    private var markdownHeadings: [MarkdownPresentationSpan] = []
+    private var markdownRevealedRange: NSRange?
+
+    func setMarkdownPresentation(_ presentation: MarkdownPresentation?, revealedRange: NSRange?, invalidating range: NSRange? = nil) {
+        if presentation == nil && markdownMarkers.isEmpty && markdownHeadings.isEmpty && range != nil {
+            markdownRevealedRange = nil
+            return
+        }
+        let spans = presentation?.spans ?? []
+        markdownMarkers = spans.flatMap { span in
+            span.markerRanges.map { MarkdownMarker(range: $0, owner: span.range) }
+        }.sorted { $0.range.location < $1.range.location }
+        var end = 0
+        markdownMarkerEnds = markdownMarkers.map { marker in
+            end = max(end, NSMaxRange(marker.range))
+            return end
+        }
+        markdownContainers = spans.filter { !$0.markerRanges.isEmpty }.map(\.range)
+            .sorted { $0.location < $1.location }
+        end = 0
+        markdownContainerEnds = markdownContainers.map { range in
+            end = max(end, NSMaxRange(range))
+            return end
+        }
+        markdownHeadings = spans.filter {
+            if case .heading = $0.kind { return true }
+            return false
+        }.sorted { $0.range.location < $1.range.location }
+        markdownRevealedRange = revealedRange
+        invalidateMarkdownLayout(in: range ?? NSRange(location: 0, length: textStorage?.length ?? 0))
+    }
+
+    func invalidateMarkdownLayout(in range: NSRange) {
+        guard let safe = clampedRange(range) else { return }
+        invalidateFoldGlyphs(in: safe)
+        invalidateLayout(forCharacterRange: safe, actualCharacterRange: nil)
+        invalidateDisplay(forCharacterRange: safe)
+    }
+
+    func updateMarkdownRevealedRange(_ range: NSRange?) {
+        guard range != markdownRevealedRange else { return }
+        let previous = markdownRevealedRange
+        markdownRevealedRange = range
+        for affected in [previous, range].compactMap({ $0 }) {
+            var dirty = affected
+            var index = upperBound(affected.location + affected.length, count: markdownContainers.count) {
+                markdownContainers[$0].location
+            }
+            while index > 0 {
+                index -= 1
+                if markdownContainerEnds[index] < affected.location { break }
+                let container = markdownContainers[index]
+                if touches(container, affected) { dirty = NSUnionRange(dirty, container) }
+            }
+            invalidateFoldGlyphs(in: dirty)
+        }
+    }
+
+    func markdownHeadingFont(level: Int) -> NSFont {
+        let scale: CGFloat = level == 1 ? 1.6 : (level == 2 ? 1.4 : (level == 3 ? 1.2 : 1))
+        let bold = NSFontManager.shared.convert(textFont, toHaveTrait: .boldFontMask)
+        return NSFont(descriptor: bold.fontDescriptor, size: textFont.pointSize * scale) ?? bold
+    }
+
+    func isMarkdownMarkerHidden(at location: Int) -> Bool {
+        guard textContainers.first?.textView?.hasMarkedText() != true else { return false }
+        var index = upperBound(location, count: markdownMarkers.count) { markdownMarkers[$0].range.location }
+        while index > 0 {
+            index -= 1
+            if markdownMarkerEnds[index] <= location { break }
+            let marker = markdownMarkers[index]
+            if NSLocationInRange(location, marker.range),
+               !(markdownRevealedRange.map { touches(marker.owner, $0) } ?? false) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func touches(_ lhs: NSRange, _ rhs: NSRange) -> Bool {
+        if rhs.length == 0 { return rhs.location >= lhs.location && rhs.location <= NSMaxRange(lhs) }
+        return NSIntersectionRange(lhs, rhs).length > 0
+    }
+
+    private func upperBound(_ value: Int, count: Int, location: (Int) -> Int) -> Int {
+        var lower = 0, upper = count
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2
+            if location(middle) <= value { lower = middle + 1 } else { upper = middle }
+        }
+        return lower
+    }
+
+    private func markdownFont(in glyphRange: NSRange) -> NSFont? {
+        guard !markdownHeadings.isEmpty, glyphRange.length > 0 else { return nil }
+        let characters = characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+        let index = upperBound(NSMaxRange(characters) - 1, count: markdownHeadings.count) { markdownHeadings[$0].range.location }
+        guard index > 0 else { return nil }
+        let heading = markdownHeadings[index - 1]
+        guard NSIntersectionRange(characters, heading.range).length > 0,
+              case let .heading(level) = heading.kind else { return nil }
+        return markdownHeadingFont(level: level)
+    }
 
     override init() {
         super.init()
@@ -179,14 +290,14 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         font: NSFont,
         forGlyphRange glyphRange: NSRange
     ) -> Int {
-        guard let foldedRange else { return 0 }
+        guard foldedRange != nil || !markdownMarkers.isEmpty else { return 0 }
 
         var adjustedProperties = Array(
             UnsafeBufferPointer(start: properties, count: glyphRange.length)
         )
         var didFoldGlyph = false
-        for offset in adjustedProperties.indices
-        where NSLocationInRange(characterIndexes[offset], foldedRange) {
+        for offset in adjustedProperties.indices where isCharacterFolded(characterIndexes[offset])
+            || isMarkdownMarkerHidden(at: characterIndexes[offset]) {
             adjustedProperties[offset] = .null
             didFoldGlyph = true
         }
@@ -224,6 +335,14 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         in textContainer: NSTextContainer,
         forGlyphRange glyphRange: NSRange
     ) -> Bool {
+        if let font = markdownFont(in: glyphRange) {
+            let height = max(editorLineHeight, defaultLineHeight(for: font) + editorLineSpacing)
+            lineFragmentRect.pointee.size.height = height
+            lineFragmentUsedRect.pointee.size.height = height
+            baselineOffset.pointee = (height + defaultBaselineOffset(for: font)
+                - (font.ascender - font.capHeight)) / 2
+            return true
+        }
         lineFragmentRect.pointee.size.height = editorLineHeight
         lineFragmentUsedRect.pointee.size.height = editorLineHeight
         baselineOffset.pointee = editorBaselineOffset(

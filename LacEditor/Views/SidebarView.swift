@@ -13,6 +13,18 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let document = appState.selectedDocument, document.language == .markdown {
+                DisclosureGroup(isExpanded: $appState.isMarkdownOutlineExpanded) {
+                    MarkdownOutlineView(document: document) { heading in
+                        appState.revealMarkdownHeading(heading, in: document)
+                    }
+                } label: {
+                    Text(L10n.tr("文档大纲"))
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+            }
             HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(.tertiary)
                 TextField(L10n.tr("筛选文件"), text: $filterQuery)
