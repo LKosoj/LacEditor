@@ -37,11 +37,17 @@ struct EditorTextView: NSViewRepresentable {
 
     static func applyWritingChecks(to textView: NSTextView, spellingEnabled: Bool, grammarEnabled: Bool) {
         guard !textView.hasMarkedText() else { return }
-        if textView.isContinuousSpellCheckingEnabled != spellingEnabled {
-            textView.isContinuousSpellCheckingEnabled = spellingEnabled
+        let containsDataImage = (textView.string as NSString).range(
+            of: "data:image/",
+            options: [.caseInsensitive]
+        ).location != NSNotFound
+        let effectiveSpelling = spellingEnabled && !containsDataImage
+        let effectiveGrammar = grammarEnabled && !containsDataImage
+        if textView.isContinuousSpellCheckingEnabled != effectiveSpelling {
+            textView.isContinuousSpellCheckingEnabled = effectiveSpelling
         }
-        if textView.isGrammarCheckingEnabled != grammarEnabled {
-            textView.isGrammarCheckingEnabled = grammarEnabled
+        if textView.isGrammarCheckingEnabled != effectiveGrammar {
+            textView.isGrammarCheckingEnabled = effectiveGrammar
         }
         if textView.isAutomaticSpellingCorrectionEnabled {
             textView.isAutomaticSpellingCorrectionEnabled = false
@@ -129,7 +135,6 @@ struct EditorTextView: NSViewRepresentable {
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
-        Self.applyWritingChecks(to: textView, spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
         textView.allowsUndo = true
         textView.usesFindPanel = true
         textView.usesFindBar = true
@@ -150,6 +155,7 @@ struct EditorTextView: NSViewRepresentable {
         textView.tabWidth = tabWidth
         textView.configureTabStops()
         textView.string = document.text
+        Self.applyWritingChecks(to: textView, spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
         let textLength = (document.text as NSString).length
         let selectionLocation = min(document.selectionRange.location, textLength)
         textView.setSelectedRange(NSRange(

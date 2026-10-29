@@ -15,14 +15,83 @@ enum EditorLayoutPolicy {
         // TextKit 1 otherwise lays out continuously from the beginning of the
         // document. That makes deep scrolling and width changes progressively
         // more expensive even for files below the large-file threshold.
+        let usesViewportLayout = usesViewportLayout(textLength: textLength)
         layoutManager.allowsNonContiguousLayout = true
-        layoutManager.backgroundLayoutEnabled = !usesViewportLayout(
-            textLength: textLength
-        )
+        layoutManager.backgroundLayoutEnabled = !usesViewportLayout
+    }
+}
+
+private final class MarkdownCollapsingGlyphGenerator: NSGlyphGenerator {
+    weak var layoutManager: FoldLayoutManager?
+
+    init(layoutManager: FoldLayoutManager) {
+        self.layoutManager = layoutManager
+        super.init()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+
+    override func generateGlyphs(
+        for glyphStorage: any NSGlyphStorage,
+        desiredNumberOfCharacters numberOfCharacters: Int,
+        glyphIndex: UnsafeMutablePointer<Int>?,
+        characterIndex: UnsafeMutablePointer<Int>?
+    ) {
+        guard let glyphIndex, let characterIndex, let layoutManager else {
+            NSGlyphGenerator.shared.generateGlyphs(
+                for: glyphStorage,
+                desiredNumberOfCharacters: numberOfCharacters,
+                glyphIndex: glyphIndex,
+                characterIndex: characterIndex
+            )
+            return
+        }
+
+        let end = characterIndex.pointee + numberOfCharacters
+        while characterIndex.pointee < end {
+            guard let range = layoutManager.collapsibleMarkdownImageRange(
+                atOrAfter: characterIndex.pointee,
+                before: end
+            ) else {
+                NSGlyphGenerator.shared.generateGlyphs(
+                    for: glyphStorage,
+                    desiredNumberOfCharacters: end - characterIndex.pointee,
+                    glyphIndex: glyphIndex,
+                    characterIndex: characterIndex
+                )
+                return
+            }
+
+            if characterIndex.pointee < range.location {
+                NSGlyphGenerator.shared.generateGlyphs(
+                    for: glyphStorage,
+                    desiredNumberOfCharacters: range.location - characterIndex.pointee,
+                    glyphIndex: glyphIndex,
+                    characterIndex: characterIndex
+                )
+                continue
+            }
+
+            var glyph = NSGlyph(NSNullGlyph)
+            withUnsafePointer(to: &glyph) { pointer in
+                glyphStorage.insertGlyphs(
+                    pointer,
+                    length: 1,
+                    forStartingGlyphAt: glyphIndex.pointee,
+                    characterIndex: characterIndex.pointee
+                )
+            }
+            glyphIndex.pointee += 1
+            characterIndex.pointee = min(end, NSMaxRange(range))
+        }
     }
 }
 
 final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
+    private static let collapsedImageGlyphThreshold = 64 * 1024
+    private lazy var markdownGlyphGenerator = MarkdownCollapsingGlyphGenerator(layoutManager: self)
     static let defaultLineSpacing: CGFloat = 4
 
     /// The font selected by the user, not the fallback font AppKit may return
@@ -749,6 +818,18 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         invalidateMarkdownLayout(in: range)
     }
 
+    fileprivate func collapsibleMarkdownImageRange(atOrAfter location: Int, before end: Int) -> NSRange? {
+        markdownImages.lazy
+            .filter {
+                $0.range.length >= Self.collapsedImageGlyphThreshold
+                    && imageIsVisible($0.range)
+                    && NSMaxRange($0.range) > location
+                    && $0.range.location < end
+            }
+            .map(\.range)
+            .min { $0.location < $1.location }
+    }
+
     func clearMarkdownImages() {
         let ranges = markdownImages.map(\.range)
         markdownImages.removeAll()
@@ -1359,7 +1440,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             guard (replacement.kind == .smart || (replacement.kind == .spaces && replacement.text != " ")),
                   NSIntersectionRange(replacement.range, visible).length > 0,
                   textReplacement(at: replacement.range.location) != nil else { continue }
-            let glyphs = glyphRange(forCharacterRange: replacement.range, actualGlyphRange: nil)
+            let glyphs = glyphRange(forCharacterRange: replacement.range, actualCharacterRange: nil)
             guard glyphs.length > 0 else { continue }
             let rect = boundingRect(forGlyphRange: glyphs, in: container).offsetBy(dx: origin.x, dy: origin.y)
             (replacement.text as NSString).draw(in: rect, withAttributes: textReplacementAttributes(at: replacement.range.location, in: container))
@@ -1743,12 +1824,14 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
 
     override init() {
         super.init()
+        glyphGenerator = markdownGlyphGenerator
         delegate = self
         updateFontMetrics()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
+        glyphGenerator = markdownGlyphGenerator
         delegate = self
         updateFontMetrics()
     }
@@ -1865,6 +1948,35 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         forGlyphRange glyphRange: NSRange
     ) -> Int {
         guard foldedRange != nil || !markdownMarkers.isEmpty || !markdownTextReplacements.isEmpty || !markdownListMarkers.isEmpty || !markdownImages.isEmpty || !markdownBlockImages.isEmpty || !markdownInlineImages.isEmpty || !markdownMedia.isEmpty || !markdownTOCRanges.isEmpty || !markdownPageBreaks.isEmpty || !tableLines.isEmpty else { return 0 }
+
+        // A data-URI image can occupy many glyph-generation batches. Once a
+        // batch is wholly inside an installed block image, every glyph is
+        // hidden; avoid running all Markdown lookups for every Base64 unit.
+        if glyphRange.length > 0 {
+            let firstCharacter = characterIndexes[0]
+            let lastCharacter = characterIndexes[glyphRange.length - 1]
+            if markdownImages.contains(where: {
+                imageIsVisible($0.range)
+                    && NSLocationInRange(firstCharacter, $0.range)
+                    && NSLocationInRange(lastCharacter, $0.range)
+            }) {
+                let hiddenProperties = [NSLayoutManager.GlyphProperty](
+                    repeating: .null,
+                    count: glyphRange.length
+                )
+                hiddenProperties.withUnsafeBufferPointer { buffer in
+                    guard let baseAddress = buffer.baseAddress else { return }
+                    layoutManager.setGlyphs(
+                        glyphs,
+                        properties: baseAddress,
+                        characterIndexes: characterIndexes,
+                        font: font,
+                        forGlyphRange: glyphRange
+                    )
+                }
+                return glyphRange.length
+            }
+        }
 
         var adjustedProperties = Array(
             UnsafeBufferPointer(start: properties, count: glyphRange.length)

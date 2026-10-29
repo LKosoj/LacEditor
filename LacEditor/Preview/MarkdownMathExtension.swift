@@ -204,12 +204,12 @@ final class MarkdownMathExtension {
         guard let root = cmark_parser_finish(parser) else { return nil }
         defer { cmark_node_free(root) }
         if !strictMode {
-            guard let changes = MarkdownPresentationParser.recoverLooseLists(root, text: sourceForPositions ?? source, isCancelled: isCancelled) else { return nil }
+            guard let changes = MarkdownPresentationParser.recoverLooseLists(OpaquePointer(root), text: sourceForPositions ?? source, isCancelled: isCancelled) else { return nil }
             if isCancelled() { return nil }
             context.looseListRanges = changes.ranges
             context.looseIndents = changes.indents
         }
-        return body(root, ext, context.inline, parser)
+        return body(OpaquePointer(root), OpaquePointer(ext), context.inline, OpaquePointer(parser))
     }
 
     static func textOrigins(in extensionPointer: OpaquePointer) -> [MarkdownTextSourceCapture.Origin] {
@@ -247,7 +247,7 @@ final class MarkdownMathExtension {
         cmark_parser_advance_offset(parser, UnsafeRawPointer(input).assumingMemoryBound(to: CChar.self), Int32(first + count - offset), 0)
         guard let node = cmark_parser_add_child(parser, parent, CMARK_NODE_HEADING, Int32(first + count + 1)),
               cmark_node_set_heading_level(node, Int32(count)) != 0 else { return nil }
-        Unmanaged<Context>.fromOpaque(privateData).takeUnretainedValue().looseHeadings[node] = count
+        Unmanaged<Context>.fromOpaque(privateData).takeUnretainedValue().looseHeadings[OpaquePointer(node)] = count
         return node
     }
 
@@ -255,7 +255,7 @@ final class MarkdownMathExtension {
         guard let extensionPointer, let root,
               let pointer = cmark_syntax_extension_get_private(extensionPointer) else { return root }
         let context = Unmanaged<Context>.fromOpaque(pointer).takeUnretainedValue()
-        if context.capturesText { context.textOrigins = MarkdownTextSourceCapture.origins(in: root) }
+        if context.capturesText { context.textOrigins = MarkdownTextSourceCapture.origins(in: OpaquePointer(root)) }
         return root
     }
 
@@ -351,7 +351,7 @@ final class MarkdownMathExtension {
         }
         guard let semantic = String(bytes: text, encoding: .utf8),
               let node = cmark_node_new(CMARK_NODE_CUSTOM_INLINE) else { return nil }
-        context.inline.append(Inline(node: node, parent: parent, line: Int(cmark_inline_parser_get_line(parser)),
+        context.inline.append(Inline(node: OpaquePointer(node), parent: OpaquePointer(parent), line: Int(cmark_inline_parser_get_line(parser)),
                                      column: Int(cmark_inline_parser_get_column(parser)), byteLength: Int(end - start + 1), text: semantic))
         cmark_inline_parser_set_offset(parser, end + 1)
         return node

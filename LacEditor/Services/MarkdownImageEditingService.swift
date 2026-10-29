@@ -279,7 +279,7 @@ enum MarkdownImageEditingService {
             return item.0 + item.1[..<index].utf16.count
         }
         var result: [Node] = []
-        func visit(_ node: OpaquePointer) {
+        func visit(_ node: UnsafeMutablePointer<cmark_node>) {
             if let name = cmark_node_get_type_string(node) {
                 let kind = String(cString: name)
                 if ["image", "link", "code", "code_block"].contains(kind) {
@@ -300,7 +300,7 @@ enum MarkdownImageEditingService {
                         }
                     }
                     var alt = ""
-                    func append(_ current: OpaquePointer) {
+                    func append(_ current: UnsafeMutablePointer<cmark_node>) {
                         if let nodeType = cmark_node_get_type_string(current), String(cString: nodeType) == "text",
                            let value = cmark_node_get_literal(current) { alt += String(cString: value) }
                         var child = cmark_node_first_child(current)

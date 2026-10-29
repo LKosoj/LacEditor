@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 
 extension EditorTextView {
+    @preconcurrency @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         private enum ClipboardCopyMode: Sendable { case rich, markdown, html }
         var document: EditorDocument {
@@ -446,7 +447,7 @@ extension EditorTextView {
             }
         }
 
-        deinit {
+        isolated deinit {
             markdownLinkTask?.cancel()
 #if canImport(SwiftTreeSitter) && canImport(TreeSitterJavaScript) && canImport(TreeSitterTypeScript) && canImport(TreeSitterPython) && canImport(TreeSitterCSS) && canImport(TreeSitterHTML)
             TreeSitterJavaScriptBackend.invalidate(documentID: document.id)
@@ -875,8 +876,8 @@ extension EditorTextView {
                    abs(lastObservedMagnification - scrollView.magnification) > 0.0001 {
                     let scale = scrollView.magnification
                     lastObservedMagnification = scale
-                    DispatchQueue.main.async { [weak self, weak scrollView] in
-                        guard let self, let scrollView, self.isActive,
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.isActive,
                               abs(scrollView.magnification - scale) < 0.0001 else { return }
                         self.magnificationDidChange?(scale)
                     }
@@ -909,7 +910,9 @@ extension EditorTextView {
                 guard originChanged else { return }
                 applyVisibleLigatures()
                 refreshRulerForViewportChange()
-                markdownPresentation?.viewportChanged()
+                Task { @MainActor [weak self] in
+                    self?.markdownPresentation?.viewportChanged()
+                }
                 scheduleHighlight()
                 scheduleDirectionalLayoutPrefetch()
             })
@@ -1846,7 +1849,7 @@ extension EditorTextView {
                 guard !Task.isCancelled, blocks.count == 1, let block = blocks.first else { return }
                 await MainActor.run { [weak self] in
                     guard !Task.isCancelled, let self, let view = self.textView, let storage = view.textStorage else { return }
-                    func current() -> Bool {
+                    @MainActor func current() -> Bool {
                         !Task.isCancelled && self.isActive && self.document.id == documentID && self.document.language == .markdown &&
                         self.document.ioState == .idle && self.contentRevision == revision &&
                         self.document.textRevision == documentRevision && self.clipboardCopyID == commandID &&
@@ -1895,8 +1898,8 @@ extension EditorTextView {
                         if offset >= NSMaxRange(block.infoRange) { return offset + delta }
                         return block.infoRange.location + min(offset - block.infoRange.location, (replacement as NSString).length)
                     }
-                    let start = translated(selection.location), end = translated(NSMaxRange(selection))
-                    view.setSelectedRange(NSRange(location: start, length: end - start))
+                    let selectionStart = translated(selection.location), selectionEnd = translated(NSMaxRange(selection))
+                    view.setSelectedRange(NSRange(location: selectionStart, length: selectionEnd - selectionStart))
                     undo?.setActionName(L10n.tr("设置代码块语言"))
                 }
             }
@@ -1962,7 +1965,8 @@ extension EditorTextView {
                 if hasStructure, let fragment { structuralRTF = await MarkdownClipboardCopyService.structuralRTF(fragment) }
                 else { structuralRTF = nil }
                 guard !Task.isCancelled else { return }
-                await MainActor.run {
+                let capturedSelf = self, capturedDocument = document, capturedChild = child, capturedFragment = fragment
+                await MainActor.run { [weak self = capturedSelf, weak document = capturedDocument, weak child = capturedChild, fragment = capturedFragment] in
                     guard !Task.isCancelled, let self, let document, self.document === document,
                           self.clipboardCopyID == copyID, self.isActive, self.contentRevision == revision,
                           document.textRevision == documentRevision, document.url == documentURL, document.language == .markdown, self.currentLanguage == .markdown,
@@ -2124,7 +2128,7 @@ extension EditorTextView {
             view.insertText(text, replacementRange: view.selectedRange())
         }
 
-        nonisolated private static func htmlImageSources(_ html: String, isCancelled: () -> Bool) -> [String]? {
+        nonisolated private static func htmlImageSources(_ html: String, isCancelled: @escaping () -> Bool) -> [String]? {
             if isCancelled() { return nil }
             let characters = Array(html)
             let blockedTags: Set<String> = ["image", "svg", "picture", "object", "embed", "iframe", "video", "audio", "source", "link", "style", "script"]
@@ -2273,8 +2277,9 @@ extension EditorTextView {
                     return storage.mutableString.substring(with: selection) == original
                 }
                 clipboardPasteTask = Task.detached(priority: .userInitiated) { [weak self, weak document, weak child] in
+                    let capturedSelf = self, capturedDocument = document, capturedChild = child
                     guard let htmlImages = format == .html ? Self.htmlImageSources(text, isCancelled: { Task.isCancelled }) : [], !Task.isCancelled else {
-                        await MainActor.run { if !Task.isCancelled, current() { document?.statusMessage = L10n.tr("无法粘贴格式化内容") } }
+                        await MainActor.run { [capturedDocument] in if !Task.isCancelled, current() { capturedDocument?.statusMessage = L10n.tr("无法粘贴格式化内容") } }
                         return
                     }
                     let converted = Result {
@@ -2287,7 +2292,7 @@ extension EditorTextView {
                           format != .html || parsedImages.map(\.address) == htmlImages,
                           format != .rtf || ClipboardMarkdownConversionService.rtfPictureCount(data, isCancelled: { Task.isCancelled }) == parsedImages.count,
                           let images = try? MarkdownClipboardCopyService.embeddedImages(in: output.markdown, allowingExternal: format == .html, isCancelled: { Task.isCancelled }) else {
-                        await MainActor.run { if !Task.isCancelled, current() { document?.statusMessage = L10n.tr("无法粘贴格式化内容") } }
+                        await MainActor.run { [capturedDocument] in if !Task.isCancelled, current() { capturedDocument?.statusMessage = L10n.tr("无法粘贴格式化内容") } }
                         return
                     }
                     var destinations: [URL] = []
@@ -2295,9 +2300,9 @@ extension EditorTextView {
                         guard !destinations.isEmpty else { return }
                         let paths = destinations.map(\.path).joined(separator: "\n")
                         let notice = ClipboardSavedImagesNotice(documentID: documentID, message: L10n.tr("图片位于 %@，未插入", paths))
-                        await MainActor.run {
+                        await MainActor.run { [capturedDocument] in
                             NotificationCenter.default.post(name: EditorCommandNotification.clipboardSavedImages, object: notice)
-                            if !notice.handled, let document {
+                            if !notice.handled, let document = capturedDocument {
                                 if let existing = document.statusMessage, !existing.isEmpty {
                                     if !existing.contains(notice.message) { document.statusMessage = existing + "\n" + notice.message }
                                 } else { document.statusMessage = notice.message }
@@ -2317,7 +2322,8 @@ extension EditorTextView {
                         do { try writeImage(image.data, destination) }
                         catch {
                             await reportSaved()
-                            await MainActor.run { if destinations.isEmpty, current() { document?.statusMessage = L10n.tr("无法保存图片，文件可能已存在") } }
+                            let noDestinations = destinations.isEmpty
+                            await MainActor.run { [capturedDocument] in if noDestinations, current() { capturedDocument?.statusMessage = L10n.tr("无法保存图片，文件可能已存在") } }
                             return
                         }
                         destinations.append(destination)
@@ -2332,10 +2338,10 @@ extension EditorTextView {
                         await reportSaved(); return
                     }
                     let markdown = convertedMarkdown.hasSuffix("\n") ? String(convertedMarkdown.dropLast()) : convertedMarkdown
-                    let applied = await MainActor.run { () -> Bool in
-                        guard !Task.isCancelled, current(), let self, let view = self.textView else { return false }
+                    let applied = await MainActor.run { [capturedSelf, capturedChild] () -> Bool in
+                        guard !Task.isCancelled, current(), let self = capturedSelf, let view = self.textView else { return false }
                         self.clipboardPasteTask = nil
-                        if wasChild, let child {
+                        if wasChild, let child = capturedChild {
                             child.insertText(markdown, replacementRange: selection)
                             return self.contentRevision != revision
                         }
@@ -2354,7 +2360,8 @@ extension EditorTextView {
             clipboardPasteTask = Task.detached(priority: .userInitiated) { [weak self, weak child, weak document] in
                 let result = Result { try ClipboardMarkdownConversionService.convert(data, format: format, executable: executable, isCancelled: { Task.isCancelled }) }
                 guard !Task.isCancelled else { return }
-                await MainActor.run {
+                let capturedSelf = self, capturedDocument = document, capturedChild = child
+                await MainActor.run { [weak self = capturedSelf, weak document = capturedDocument, weak child = capturedChild] in
                     guard !Task.isCancelled, let self, let document, self.document === document,
                           document.textRevision == documentRevision, self.clipboardPasteID == pasteID, self.isActive, self.document.id == documentID,
                           self.document.language == .markdown, self.currentLanguage == .markdown,
@@ -3163,7 +3170,7 @@ extension EditorTextView {
                 if textView.hasMarkedText() { self.pendingTypewriterAfterComposition = true; return }
                 guard self.typewriterSelection == textView.selectedRange(),
                       let scrollView = self.scrollView, let layout = textView.layoutManager,
-                      let container = textView.textContainer, let storage = textView.textStorage else { return }
+                      textView.textContainer != nil, let storage = textView.textStorage else { return }
                 let position = min(textView.selectedRange().location, storage.length)
                 let rect: NSRect
                 if storage.length == 0 || (position == storage.length && storage.length > 0 &&

@@ -125,7 +125,41 @@ private final class MarkdownIframeNavigation: NSObject, WKNavigationDelegate {
     }
 }
 
+private func markdownPresentationImageData(_ address: String, baseURL: URL?, paths: MarkdownResourcePaths?, rootInvalid: Bool) -> Data? {
+    if address.hasPrefix("data:") {
+        guard let comma = address.firstIndex(of: ",") else { return nil }
+        let metadata = address[address.index(address.startIndex, offsetBy: 5)..<comma]
+        let value = String(address[address.index(after: comma)...])
+        if metadata.lowercased().hasSuffix(";base64") { return Data(base64Encoded: value) }
+        let bytes = Array(value.utf8)
+        var decoded = Data()
+        var index = 0
+        while index < bytes.count {
+            if bytes[index] == 37 {
+                guard index + 2 < bytes.count,
+                      let byte = UInt8(String(decoding: bytes[index + 1...index + 2], as: UTF8.self), radix: 16) else { return nil }
+                decoded.append(byte)
+                index += 3
+            } else {
+                decoded.append(bytes[index])
+                index += 1
+            }
+        }
+        return decoded
+    }
+    let url: URL?
+    if address.hasPrefix("/") {
+        guard !MarkdownResourcePaths.requiresRoot(address) || !rootInvalid else { return nil }
+        url = paths?.resolve(address) ?? URL(string: address, relativeTo: URL(fileURLWithPath: "/", isDirectory: true))?.absoluteURL
+    } else {
+        url = URL(string: address, relativeTo: baseURL?.deletingLastPathComponent())?.absoluteURL
+    }
+    guard let url, url.isFileURL else { return nil }
+    return try? Data(contentsOf: url)
+}
+
 /// Keeps the source text unchanged while applying formatting to visible text.
+@MainActor
 final class MarkdownPresentationController {
     private weak var textView: LacTextView?
     private weak var layout: FoldLayoutManager?
@@ -166,6 +200,7 @@ final class MarkdownPresentationController {
     private var imageBaseURL: URL?
     private var resourcePaths: MarkdownResourcePaths?
     private var resourceRootInvalid = false
+    @MainActor
     private enum DiagramJob {
         case mermaid(MermaidRenderService)
         case legacy(LegacyDiagramRenderService)
@@ -1374,10 +1409,25 @@ final class MarkdownPresentationController {
     }
 
     private func visibleRange() -> NSRange? {
+        guard let textView else { return nil }
+        let rect = textView.visibleRect.offsetBy(dx: -textView.textContainerOrigin.x, dy: -textView.textContainerOrigin.y)
+        return characterRange(in: rect)
+    }
+
+    private func imageRetentionRange() -> NSRange? {
+        guard let textView else { return nil }
+        let visible = textView.visibleRect.offsetBy(dx: -textView.textContainerOrigin.x, dy: -textView.textContainerOrigin.y)
+        return characterRange(in: visible.insetBy(dx: -visible.width, dy: -visible.height))
+    }
+
+    private func characterRange(in rect: NSRect) -> NSRange? {
         guard let textView, let storage = textView.textStorage, let layout,
               let container = textView.textContainer, storage.length > 0 else { return nil }
-        let rect = textView.visibleRect.offsetBy(dx: -textView.textContainerOrigin.x, dy: -textView.textContainerOrigin.y)
-        let glyphs = layout.glyphRange(forBoundingRect: rect, in: container)
+        let glyphs = layout.glyphRange(
+            forBoundingRectWithoutAdditionalLayout: rect,
+            in: container
+        )
+        guard glyphs.length > 0 else { return nil }
         let range = layout.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
         guard range.location < storage.length else { return nil }
         let visible = NSRange(location: range.location, length: min(range.length, storage.length - range.location))
@@ -1399,13 +1449,14 @@ final class MarkdownPresentationController {
         loadVisibleFormulas(in: visible)
         startEmojiResolution()
         loadVisibleCode(in: visible)
-        restoreStyles(in: visible)
-        applyParagraphAlignment(in: visible)
-        let matches = intersecting(visible)
-        var boundaries = [visible.location, NSMaxRange(visible)]
+        guard let styleRange = unstyledRange(in: visible) else { return }
+        restoreStyles(in: styleRange)
+        applyParagraphAlignment(in: styleRange)
+        let matches = intersecting(styleRange)
+        var boundaries = [styleRange.location, NSMaxRange(styleRange)]
         var events: [(location: Int, index: Int, start: Bool)] = []
         for (index, span) in matches.enumerated() {
-            let part = NSIntersectionRange(span.range, visible)
+            let part = NSIntersectionRange(span.range, styleRange)
             boundaries.append(part.location)
             boundaries.append(NSMaxRange(part))
             events.append((part.location, index, true))
@@ -1480,15 +1531,15 @@ final class MarkdownPresentationController {
             var low = 0, high = completedTaskPrefixEnds.count
             while low < high {
                 let middle = (low + high) / 2
-                if completedTaskPrefixEnds[middle] <= visible.location { low = middle + 1 } else { high = middle }
+                if completedTaskPrefixEnds[middle] <= styleRange.location { low = middle + 1 } else { high = middle }
             }
-            while low < tasks.count && tasks[low].location < NSMaxRange(visible) {
-                let part = NSIntersectionRange(tasks[low], visible)
+            while low < tasks.count && tasks[low].location < NSMaxRange(styleRange) {
+                let part = NSIntersectionRange(tasks[low], styleRange)
                 if part.length > 0 { layout.addTemporaryAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, forCharacterRange: part) }
                 low += 1
             }
         }
-        var merged = visible
+        var merged = styleRange
         styledRanges = styledRanges.filter { range in
             if NSMaxRange(range) < merged.location || NSMaxRange(merged) < range.location { return true }
             let start = min(range.location, merged.location)
@@ -1496,13 +1547,24 @@ final class MarkdownPresentationController {
             return false
         }
         styledRanges.append(merged)
-        loadVisibleEmoji(in: visible)
+        loadVisibleEmoji(in: styleRange)
         updateUppercaseHeadings(spans: matches)
-        layout.invalidateMarkdownLayout(in: visible)
+        layout.invalidateMarkdownLayout(in: styleRange)
         restoreDelimiterHighlight?()
         notifyGeometryChanged()
-        updateFootnoteTooltips(in: visible)
-        reapplyLinkColors(in: visible)
+        updateFootnoteTooltips(in: styleRange)
+        reapplyLinkColors(in: styleRange)
+    }
+
+    private func unstyledRange(in visible: NSRange) -> NSRange? {
+        var start = visible.location
+        let end = NSMaxRange(visible)
+        for range in styledRanges.sorted(by: { $0.location < $1.location }) {
+            guard range.location <= start else { break }
+            start = max(start, min(NSMaxRange(range), end))
+            if start >= end { return nil }
+        }
+        return NSRange(location: start, length: end - start)
     }
 
     private func updateUppercaseHeadings(spans: [MarkdownPresentationSpan]) {
@@ -1812,7 +1874,7 @@ final class MarkdownPresentationController {
             let task = Task { @MainActor [weak self, weak document, weak layout, weak textView] in
                 guard let self, let document, let layout, let textView else { return }
                 defer { if self.rubyJobs[item.range]?.0 == token { self.rubyJobs.removeValue(forKey: item.range) } }
-                func currentGeometry() -> Bool {
+                @MainActor func currentGeometry() -> Bool {
                     guard let container = textView.textContainer else { return false }
                     return layout.textFont == key.font && Self.rubyColor(textView, layout: layout) == key.color &&
                         (textView.window?.backingScaleFactor ?? 1) == key.scale &&
@@ -2224,39 +2286,6 @@ final class MarkdownPresentationController {
             }
             audioJobs[block.range] = (token, task)
         }
-    }
-
-    private static func imageData(_ address: String, baseURL: URL?, paths: MarkdownResourcePaths?, rootInvalid: Bool) -> Data? {
-        if address.hasPrefix("data:") {
-            guard let comma = address.firstIndex(of: ",") else { return nil }
-            let metadata = address[address.index(address.startIndex, offsetBy: 5)..<comma]
-            let value = String(address[address.index(after: comma)...])
-            if metadata.lowercased().hasSuffix(";base64") { return Data(base64Encoded: value) }
-            let bytes = Array(value.utf8)
-            var decoded = Data()
-            var index = 0
-            while index < bytes.count {
-                if bytes[index] == 37 {
-                    guard index + 2 < bytes.count,
-                          let byte = UInt8(String(decoding: bytes[index + 1...index + 2], as: UTF8.self), radix: 16) else { return nil }
-                    decoded.append(byte)
-                    index += 3
-                } else {
-                    decoded.append(bytes[index])
-                    index += 1
-                }
-            }
-            return decoded
-        }
-        let url: URL?
-        if address.hasPrefix("/") {
-            guard !MarkdownResourcePaths.requiresRoot(address) || !rootInvalid else { return nil }
-            url = paths?.resolve(address) ?? URL(string: address, relativeTo: URL(fileURLWithPath: "/", isDirectory: true))?.absoluteURL
-        } else {
-            url = URL(string: address, relativeTo: baseURL?.deletingLastPathComponent())?.absoluteURL
-        }
-        guard let url, url.isFileURL else { return nil }
-        return try? Data(contentsOf: url)
     }
 
     private var hasMarkedText: Bool {
@@ -2713,23 +2742,19 @@ final class MarkdownPresentationController {
     private func loadVisibleImages(in visible: NSRange) {
         guard let presentation, let document, let layout else { return }
         let images = presentation.images.filter { NSIntersectionRange($0.paragraphRange, visible).length > 0 }
-        let visibleRanges = Set(images.map { $0.isInline ? $0.range : $0.paragraphRange })
-        for range in loadedImageRanges.subtracting(visibleRanges) {
-            layout.setMarkdownImage(nil, for: range)
-            layout.removeMarkdownInlineImage(for: range)
-            if let view = animatedImages.removeValue(forKey: range) { view.animates = false; view.removeFromSuperview() }
-            imagePresentationWidths.removeValue(forKey: range)
-            loadedImageRanges.remove(range)
-        }
-        for (range, operation) in imageOperations where !visibleRanges.contains(range) {
+        let retention = imageRetentionRange() ?? visible
+        let retainedRanges = Set(presentation.images.lazy
+            .filter { NSIntersectionRange($0.paragraphRange, retention).length > 0 }
+            .map { $0.isInline ? $0.range : $0.paragraphRange })
+        for (range, operation) in imageOperations where !retainedRanges.contains(range) {
             operation.cancel()
             imageOperations.removeValue(forKey: range)
         }
-        for (range, (_, task)) in remoteImageJobs where !visibleRanges.contains(range) {
+        for (range, (_, task)) in remoteImageJobs where !retainedRanges.contains(range) {
             task.cancel()
             remoteImageJobs.removeValue(forKey: range)
         }
-        for range in Array(svgImageJobs.keys) where !visibleRanges.contains(range) {
+        for range in Array(svgImageJobs.keys) where !retainedRanges.contains(range) {
             let job = svgImageJobs.removeValue(forKey: range)?.2
             job?.cancel()
         }
@@ -2787,7 +2812,7 @@ final class MarkdownPresentationController {
             let operation = BlockOperation()
             operation.addExecutionBlock { [weak self, weak document, weak operation] in
                 guard let operation, !operation.isCancelled,
-                      let data = Self.imageData(image.url, baseURL: baseURL, paths: paths, rootInvalid: rootInvalid), !operation.isCancelled else {
+                      let data = markdownPresentationImageData(image.url, baseURL: baseURL, paths: paths, rootInvalid: rootInvalid), !operation.isCancelled else {
                     DispatchQueue.main.async { [weak self, weak operation] in
                         guard let self, let operation, !operation.isCancelled, self.generation == generation,
                               self.imageOperations[key] === operation else { return }

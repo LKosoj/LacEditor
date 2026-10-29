@@ -36,13 +36,11 @@ public class iPicUploadHelper {
       return nil
     }
     
-    do {
-      let schemeURL = URL(string: iPicURLScheme)!
-      try NSWorkspace.shared.open(schemeURL, options: .withoutActivation, configuration: [:])
-      return nil
-    } catch {
-      return iPicUploadError.iPicNotInstalled
-    }
+    let schemeURL = URL(string: iPicURLScheme)!
+    let configuration = NSWorkspace.OpenConfiguration()
+    configuration.activates = false
+    NSWorkspace.shared.open(schemeURL, configuration: configuration) { _, _ in }
+    return nil
   }
   
   public static func generateiPicImage(_ imageFilePath: String) -> (iPicImage?, NSError?) {

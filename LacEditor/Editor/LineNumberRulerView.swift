@@ -242,11 +242,15 @@ final class LineNumberRulerView: NSRulerView {
             dx: -textView.textContainerOrigin.x,
             dy: -textView.textContainerOrigin.y
         )
-        layoutManager.ensureLayout(forBoundingRect: containerRect, in: textContainer)
         let glyphRange = layoutManager.glyphRange(
-            forBoundingRect: containerRect,
+            forBoundingRectWithoutAdditionalLayout: containerRect,
             in: textContainer
         )
+        guard glyphRange.length > 0 || text.length == 0 else {
+            visibleLineMap = []
+            visibleLineMapCacheKey = nil
+            return
+        }
         let visibleCharacterRange = layoutManager.characterRange(
             forGlyphRange: glyphRange,
             actualGlyphRange: nil

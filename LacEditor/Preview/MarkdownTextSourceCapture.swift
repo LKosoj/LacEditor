@@ -37,7 +37,7 @@ enum MarkdownTextSourceCapture {
             if isCancelled() { return [:] }
             guard cmark_node_next(origin.node) != origin.next else { continue }
             var cell = cmark_node_parent(origin.node)
-            while let parent = cell, String(cString: cmark_node_get_type_string(parent)) != "table_cell" { cell = cmark_node_parent(parent) }
+            while let parent = cell, cmark_node_get_type_string(parent).map({ String(cString: $0) }) != "table_cell" { cell = cmark_node_parent(parent) }
             let positions: MarkdownPresentationParser.Source.TableCellPositions?
             if let cell {
                 if let cached = cellPositions[cell] { positions = cached }

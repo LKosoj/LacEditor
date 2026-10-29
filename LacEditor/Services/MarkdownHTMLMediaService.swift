@@ -438,7 +438,7 @@ enum MarkdownHTMLMediaService {
         let html: String
     }
 
-    static func editingHTMLBlock(_ literal: String, isCancelled: () -> Bool) -> String? {
+    static func editingHTMLBlock(_ literal: String, isCancelled: @escaping () -> Bool) -> String? {
         let raw = literal as NSString
         let allowed: Set<String> = ["div", "p", "table", "thead", "tbody", "tfoot", "tr", "th", "td", "details", "summary", "span", "strong", "em", "b", "i", "u", "s", "del", "mark", "sub", "sup", "kbd", "code", "pre", "a", "br"]
         func space(_ unit: unichar) -> Bool { [9, 10, 12, 13, 32].contains(Int(unit)) }
@@ -680,7 +680,7 @@ enum MarkdownHTMLMediaService {
         return seen.contains("page-break-after") && !isCancelled()
     }
 
-    static func hasStyledSpan(in html: String, isCancelled: () -> Bool = { false }) -> Bool {
+    static func hasStyledSpan(in html: String, isCancelled: @escaping () -> Bool = { false }) -> Bool {
         let source = html as NSString
         var context = MarkdownImageUploadService.HTMLContext(), found = false
         _ = context.consume(source: source, range: NSRange(location: 0, length: source.length), isCancelled: isCancelled, confirmedTag: { range, name, closing in
@@ -725,7 +725,7 @@ enum MarkdownHTMLMediaService {
         let address: String
     }
 
-    static func exportBlock(_ confirmedHTMLBlock: String, isCancelled: () -> Bool = { false },
+    static func exportBlock(_ confirmedHTMLBlock: String, isCancelled: @escaping () -> Bool = { false },
                             anchorMarkers: [String: [String]] = [:],
                             imageMarkers: [String: ExportImageMarker] = [:],
                             mediaMarkers: [String: ProvenMedia] = [:],
@@ -1261,7 +1261,7 @@ enum MarkdownHTMLMediaService {
     }
 
     static func copyMediaHTML(_ html: String, expected: ProvenMedia, resolveMedia: @escaping (String) -> String,
-                              isCancelled: () -> Bool) -> String? {
+                              isCancelled: @escaping () -> Bool) -> String? {
         if case .frame(let frame) = expected { return iframeHTML(frame) }
         let marker = "LACCOPYMEDIA" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
         guard !html.contains(marker),
@@ -1435,7 +1435,7 @@ enum MarkdownHTMLMediaService {
                 var ancestor = element.parent(), inert = false
                 while let current = ancestor {
                     if isCancelled() { return [] }
-                    if let parent = current as? Element, ["template", "script", "style"].contains(parent.tagName()) { inert = true; break }
+                    if ["template", "script", "style"].contains(current.tagName()) { inert = true; break }
                     ancestor = current.parent()
                 }
                 guard !inert else { continue }
@@ -1498,7 +1498,7 @@ enum MarkdownHTMLMediaService {
         let initiallyOpen: Bool
     }
 
-    static func richDetails(_ html: String, isCancelled: () -> Bool = { false }) -> RichDetails? {
+    static func richDetails(_ html: String, isCancelled: @escaping () -> Bool = { false }) -> RichDetails? {
         guard let editing = editingHTMLBlock(html, isCancelled: isCancelled), !isCancelled() else { return nil }
         do {
             let document = try SwiftSoup.parseBodyFragment(editing)

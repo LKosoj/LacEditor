@@ -56,7 +56,7 @@ enum EmojiShortcodeResolver {
 
     // Produces an export snapshot while leaving the original Markdown untouched.
     static func prepareMarkdown(_ markdown: String,
-                                isCancelled: () -> Bool = { false }) throws -> String {
+                                isCancelled: @escaping () -> Bool = { false }) throws -> String {
         if isCancelled() { throw CancellationError() }
         guard markdown.contains(":") else { return markdown }
         let presentation = MarkdownPresentationParser.parse(markdown, includeEmojiCandidates: true, isCancelled: isCancelled)

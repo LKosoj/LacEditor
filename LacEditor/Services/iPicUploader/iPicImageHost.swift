@@ -7,8 +7,10 @@
 //
 
 import Foundation
+import AppKit
 
-public class iPicImageHost: NSObject, NSCoding {
+public class iPicImageHost: NSObject, NSSecureCoding {
+  public static var supportsSecureCoding: Bool { true }
   public static let sharedClassName: String = "net.toolinbox.iPic.iPicImageHost"
   
   private static let idKey = "id"
@@ -24,9 +26,9 @@ public class iPicImageHost: NSObject, NSCoding {
   public required init?(coder aDecoder: NSCoder) {
     super.init()
     
-    id = (aDecoder.decodeObject(forKey: iPicImageHost.idKey) as? String) ?? ""
-    title = (aDecoder.decodeObject(forKey: iPicImageHost.titleKey) as? String) ?? ""
-    icon = aDecoder.decodeObject(forKey: iPicImageHost.iconKey) as? NSImage
+    id = (aDecoder.decodeObject(of: NSString.self, forKey: iPicImageHost.idKey) as String?) ?? ""
+    title = (aDecoder.decodeObject(of: NSString.self, forKey: iPicImageHost.titleKey) as String?) ?? ""
+    icon = aDecoder.decodeObject(of: NSImage.self, forKey: iPicImageHost.iconKey)
   }
   
   public func encode(with aCoder: NSCoder) {

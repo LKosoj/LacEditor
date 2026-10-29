@@ -1137,7 +1137,7 @@ final class AppState: ObservableObject {
                     }
                     try PandocExportService.install(prepared, at: destination, isCancelled: { operation.isCancelled }, commit: { verifySidecar in
                         try DispatchQueue.main.sync {
-                            if let assets = prepared.latexAssets { latexExportWillCommit?(destination.deletingLastPathComponent().appendingPathComponent(assets.directoryName)) }
+                            if let assets = prepared.latexAssets { self.latexExportWillCommit?(destination.deletingLastPathComponent().appendingPathComponent(assets.directoryName)) }
                             try validateCurrent()
                             try verifySidecar()
                             try PandocExportService.install(prepared.preparedURL, at: destination)
@@ -1156,7 +1156,7 @@ final class AppState: ObservableObject {
                 manager?.endMarkdownExport(documentID: document.id)
                 let owner = manager?.stateContaining(document)
                 let isOpen = owner != nil || (manager == nil && documents.contains(where: { $0 === document }))
-                func report(_ error: Error) {
+                @MainActor func report(_ error: Error) {
                     if !isOpen {
                         if let exportError = error as? PandocExportError, case .incompleteLatexAssets = exportError {
                             presentError(title: L10n.tr("无法导出"), error: error)
@@ -3223,7 +3223,8 @@ final class AppState: ObservableObject {
                 document: sourceURL, folder: folder, files: files, session: session)) }
             catch { outcome = .failure(error) }
             guard !Task.isCancelled else { return }
-            await MainActor.run {
+            let capturedSelf = self, capturedDocument = document, capturedManager = manager, capturedWindow = window
+            await MainActor.run { [weak self = capturedSelf, weak document = capturedDocument, weak manager = capturedManager, weak window = capturedWindow] in
                 guard let self, self.imageUploads[documentID]?.0 == generation else { return }
                 self.imageUploads.removeValue(forKey: documentID)
                 guard let document, let manager, let window, self.selectedDocument === document,
@@ -3251,7 +3252,7 @@ final class AppState: ObservableObject {
                     let paths = Array(existing).sorted() + missing.map { L10n.tr("无法确认：%@", $0) }
                     document.statusMessage = L10n.tr("图片操作未完成，请检查文件：%@", paths.joined(separator: "\n"))
                 }
-                func rollback() -> Bool {
+                @MainActor func rollback() -> Bool {
                     var complete = true
                     for file in moved.reversed() {
                         do { _ = try self.fileService.moveImageFile(file.current, to: file.source, expectedIdentity: file.identity) }
@@ -3465,7 +3466,8 @@ final class AppState: ObservableObject {
                     selectedOnly: selectedOnly, remoteOnly: remoteOnly, document: sourceURL, folder: folder,
                     session: session, isCancelled: { Task.isCancelled }))
             } catch { outcome = .failure(error) }
-            await MainActor.run {
+            let capturedSelf = self, capturedDocument = document, capturedManager = manager, capturedWindow = window
+            await MainActor.run { [weak self = capturedSelf, weak document = capturedDocument, weak manager = capturedManager, weak window = capturedWindow] in
                 func report(_ message: String) {
                     let notice = ClipboardSavedImagesNotice(documentID: documentID, message: message)
                     NotificationCenter.default.post(name: EditorCommandNotification.clipboardSavedImages, object: notice)
@@ -3573,7 +3575,8 @@ final class AppState: ObservableObject {
                     throw error
                 }
             } catch { outcome = .failure(error) }
-            await MainActor.run {
+            let capturedSelf = self, capturedDocument = document, capturedManager = manager, capturedWindow = window
+            await MainActor.run { [weak self = capturedSelf, weak document = capturedDocument, weak manager = capturedManager, weak window = capturedWindow] in
                 func reportUploaded(_ urls: [URL]) {
                     let error: MarkdownImageUploadService.UploadError = config.method == "ipic"
                         ? .iPicPartial(urls.map(\.absoluteString), L10n.tr("文档已变化，未应用上传结果")) : config.method == "picsee"
@@ -3830,7 +3833,8 @@ final class AppState: ObservableObject {
                         }
                         outcome = .success(url)
                     } catch { outcome = .failure(error) }
-                    await MainActor.run {
+                    let capturedSelf = self, capturedDocument = document
+                    await MainActor.run { [weak self = capturedSelf, weak document = capturedDocument] in
                         func reportUploaded(_ url: URL) {
                             let error: MarkdownImageUploadService.UploadError = config.method == "ipic"
                                 ? .iPicPartial([url.absoluteString], L10n.tr("文档已变化，未应用上传结果")) : config.method == "picsee"
@@ -4113,10 +4117,10 @@ final class AppState: ObservableObject {
                 if fragment.isEmpty { location = 0 }
                 else if let heading = MarkdownHeadingAnchors.target(for: fragment, in: request.headings) { location = heading.range.location }
                 else if let anchor = request.namedAnchors.first(where: { $0.name.utf8.elementsEqual(fragment.utf8) }) { location = anchor.range.location }
-                else { statusMessage = L10n.tr("找不到链接目标"); return }
+                else { document.statusMessage = L10n.tr("找不到链接目标"); return }
                 reveal(NSRange(location: location, length: 0), in: document)
             case let .external(url):
-                if !NSWorkspace.shared.open(url) { statusMessage = L10n.tr("无法打开链接") }
+                if !NSWorkspace.shared.open(url) { document.statusMessage = L10n.tr("无法打开链接") }
             case let .file(url, fragment):
                 let target = MarkdownLinkNavigationService.fileTarget(url)
                 let targetURL = target.url
@@ -4124,7 +4128,7 @@ final class AppState: ObservableObject {
                     var external = URLComponents(url: targetURL, resolvingAgainstBaseURL: true)
                     external?.fragment = fragment
                     guard let target = external?.url, NSWorkspace.shared.open(target) else {
-                        statusMessage = L10n.tr("无法打开链接"); return
+                        document.statusMessage = L10n.tr("无法打开链接"); return
                     }
                     return
                 }
@@ -4164,7 +4168,7 @@ final class AppState: ObservableObject {
                     if fragment.isEmpty { location = 0 }
                     else {
                         guard manager.documentsForAI.first(where: { $0.id == opened.snapshot.documentID })?.language == .markdown else {
-                            manager.activeState?.statusMessage = L10n.tr("找不到链接目标"); return
+                            manager.activeState?.selectedDocument?.statusMessage = L10n.tr("找不到链接目标"); return
                         }
                         guard let syntax = self?.preferences.markdownSyntax else { return }
                         let parsed = await Task.detached(priority: .userInitiated) {
@@ -4175,7 +4179,7 @@ final class AppState: ObservableObject {
                               manager.activeState?.selectedDocument?.id == opened.snapshot.documentID else { return }
                         guard let target = MarkdownHeadingAnchors.target(for: fragment, in: parsed.headings)?.range.location
                                 ?? parsed.namedAnchors.first(where: { $0.name.utf8.elementsEqual(fragment.utf8) })?.range.location else {
-                            manager.activeState?.statusMessage = L10n.tr("找不到链接目标"); return
+                            manager.activeState?.selectedDocument?.statusMessage = L10n.tr("找不到链接目标"); return
                         }
                         location = target
                     }
@@ -4188,7 +4192,7 @@ final class AppState: ObservableObject {
                 markdownLinkTask = (token, document.id, task)
             }
         } catch {
-            statusMessage = L10n.tr("无法打开链接")
+            document.statusMessage = L10n.tr("无法打开链接")
         }
     }
 

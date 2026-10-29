@@ -182,7 +182,7 @@ enum MarkdownTableEditingService {
         case .moveColumnLeft, .moveColumnRight:
             let other = column + (isLeft(command) ? -1 : 1)
             guard other >= 0, other < columnCount else { return nil }
-            guard transformColumns({ $0.swapAt(column, other) }) else { return nil }
+            guard transformColumns({ cells, _ in cells.swapAt(column, other) }) else { return nil }
             targetColumn = other
         case let .align(alignment):
             let marker: String
@@ -331,7 +331,7 @@ enum MarkdownTableEditingService {
         text.withCString { cmark_parser_feed(parser, $0, text.utf8.count) }
         guard let root = cmark_parser_finish(parser) else { return nil }
         defer { cmark_node_free(root) }
-        func find(_ current: OpaquePointer, quotes: Int, nestedList: Bool) -> TableBounds? {
+        func find(_ current: UnsafeMutablePointer<cmark_node>, quotes: Int, nestedList: Bool) -> TableBounds? {
             guard let name = cmark_node_get_type_string(current) else { return nil }
             let type = String(cString: name)
             if type == "table" {

@@ -118,6 +118,53 @@ final class MarkdownImageTests: XCTestCase {
             controller.cancel()
         }
     }
+
+    func testLoadedImageIsRetainedAfterScrollingFarPastViewport() async throws {
+        _ = NSApplication.shared
+        let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+        let source = "![image](data:image/png;base64,\(png))\n" + String(repeating: "line\n", count: 200)
+        let document = EditorDocument(text: source, language: .markdown)
+        let storage = NSTextStorage(string: source)
+        let layout = FoldLayoutManager()
+        storage.addLayoutManager(layout)
+        let container = NSTextContainer(containerSize: NSSize(width: 400, height: .greatestFiniteMagnitude))
+        layout.addTextContainer(container)
+        let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 5_000), textContainer: container)
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 120))
+        scroll.documentView = view
+        let controller = MarkdownPresentationController(textView: view, layout: layout)
+        defer { controller.cancel(); withExtendedLifetime(scroll) {} }
+        controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
+        let location = (source as NSString).range(of: "![image]").location
+        func imagePoint() -> NSPoint {
+            layout.ensureLayout(for: container)
+            let glyph = layout.glyphIndexForCharacter(at: location)
+            let rect = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            return NSPoint(x: rect.minX + container.lineFragmentPadding + 0.5, y: rect.minY + 0.5)
+        }
+        for _ in 0..<100 where layout.markdownImageLocation(at: imagePoint(), in: container) == nil {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(layout.markdownImageLocation(at: imagePoint(), in: container), location)
+        let imageHeight = layout.lineFragmentRect(
+            forGlyphAt: layout.glyphIndexForCharacter(at: location),
+            effectiveRange: nil
+        ).height
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: 2_000))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        controller.viewportChanged()
+        XCTAssertEqual(layout.markdownImageLocation(at: imagePoint(), in: container), location)
+        XCTAssertEqual(
+            layout.lineFragmentRect(
+                forGlyphAt: layout.glyphIndexForCharacter(at: location),
+                effectiveRange: nil
+            ).height,
+            imageHeight
+        )
+        XCTAssertEqual(storage.string, source)
+        XCTAssertFalse(document.isDirty)
+    }
+
     func testLocalImageAndCancelledRevision() async throws {
         _ = NSApplication.shared
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)

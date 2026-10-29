@@ -423,8 +423,11 @@ final class NativeEditorSplitController: NSSplitViewController {
             if !previewIsVisible {
                 previewIsVisible = true
                 needsRatioRestore = true
-                previewItem?.isCollapsed = false
-                view.needsLayout = true
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.previewIsVisible else { return }
+                    self.previewItem?.isCollapsed = false
+                    self.view.needsLayout = true
+                }
             }
         } else if previewIsVisible {
             rememberRatio()
@@ -436,7 +439,10 @@ final class NativeEditorSplitController: NSSplitViewController {
             // Keep one native pane/WebView, suspend its work while collapsed.
             // A width animation would force repeated TextKit reflow. Preserve
             // immediate geometry and the native scroll pockets instead.
-            previewItem?.isCollapsed = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.previewIsVisible else { return }
+                self.previewItem?.isCollapsed = true
+            }
         }
     }
 
@@ -445,9 +451,13 @@ final class NativeEditorSplitController: NSSplitViewController {
         guard previewIsVisible, view.window != nil, splitView.bounds.width > 1 else { return }
         if needsRatioRestore {
             needsRatioRestore = false
-            let width = splitView.bounds.width - splitView.dividerThickness
-            let position = min(max(300, width * editorFraction), max(300, width - 240))
-            splitView.setPosition(position, ofDividerAt: 0)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.previewIsVisible, self.view.window != nil,
+                      self.splitView.bounds.width > 1 else { return }
+                let width = self.splitView.bounds.width - self.splitView.dividerThickness
+                let position = min(max(300, width * self.editorFraction), max(300, width - 240))
+                self.splitView.setPosition(position, ofDividerAt: 0)
+            }
         } else {
             rememberRatio()
         }

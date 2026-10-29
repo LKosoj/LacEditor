@@ -172,7 +172,7 @@ static unsigned serialize(Scanner *scanner, char *buffer) {
         *(int16_t *)&buffer[size] = *len_itr;
         size += sizeof(int16_t);
     }
-    return size;
+    return (unsigned)size;
 }
 
 static void deserialize(Scanner *scanner, const char *buffer, unsigned length) {

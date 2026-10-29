@@ -1,4 +1,9 @@
 import Foundation
+
+private final class MarkdownRubyBaseParseState {
+    var isValid = true
+    var isStyled = false
+}
 import cmark_gfm
 import cmark_gfm_extensions
 import SwiftSoup
@@ -84,7 +89,7 @@ enum MarkdownPresentationParser {
                     cmark_node_unlink(second); _ = cmark_node_insert_after(first, second); cmark_node_free(nested); continue
                 }
                 ranges[first] = NSRange(location: firstRange.location, length: NSMaxRange(secondRange) - firstRange.location)
-                ranges[nested] = secondRange
+                ranges[OpaquePointer(nested)] = secondRange
                 indents.append(.init(range: indent, replacement: String(repeating: " ", count: firstMarker.width)))
             } else if cmark_node_next(first) == nil, let next,
                       let secondText = plainParagraph(next),
@@ -239,7 +244,7 @@ enum MarkdownPresentationParser {
         return nil
     }
 
-    static func containerPrefixes(_ node: OpaquePointer, source: Source, text: NSString, isCancelled: () -> Bool = { false }) -> (source: String, continuation: String)? {
+    static func containerPrefixes(_ node: OpaquePointer, source: Source, text: NSString, isCancelled: @escaping () -> Bool = { false }) -> (source: String, continuation: String)? {
         var cached: [OpaquePointer: (Int, String)] = [:]
         func itemColumn(_ item: OpaquePointer) -> (Int, String)? {
             if isCancelled() { return nil }
@@ -452,7 +457,7 @@ enum MarkdownPresentationParser {
                              changedRow: Int? = nil, changedColumn: Int? = nil,
                              node: OpaquePointer? = nil, source: Source? = nil,
                              mathInline: [OpaquePointer: MarkdownMathExtension.Inline] = [:],
-                             emojiCandidates: [MarkdownEmojiCandidate] = [], confirmedHTMLImages: Set<NSRange> = [], confirmedInlineHTML: Set<OpaquePointer> = [], syntax: MarkdownSyntaxOptions = .init(), isCancelled: () -> Bool = { false }) -> MarkdownTable {
+                             emojiCandidates: [MarkdownEmojiCandidate] = [], confirmedHTMLImages: Set<NSRange> = [], confirmedInlineHTML: Set<OpaquePointer> = [], syntax: MarkdownSyntaxOptions = .init(), isCancelled: @escaping () -> Bool = { false }) -> MarkdownTable {
         var nodeRows: [[OpaquePointer]] = []
         if let node {
             var row = cmark_node_first_child(node)
@@ -483,7 +488,7 @@ enum MarkdownPresentationParser {
         let rows = table.rows.enumerated().map { rowIndex, row in
             let cells = row.cells.map { cell in
                 let isChanged = row.range.location == changedRow && cell.column == changedColumn
-                let old = previous.flatMap { old in
+                let old: MarkdownTableCell? = previous.flatMap { old in
                     guard rowIndex < old.rows.count, cell.column < old.rows[rowIndex].cells.count else { return nil }
                     return old.rows[rowIndex].cells[cell.column]
                 }
@@ -551,7 +556,7 @@ enum MarkdownPresentationParser {
     private static func renderedCell(_ cell: OpaquePointer, source: Source, text: NSString,
                                      mathInline: [OpaquePointer: MarkdownMathExtension.Inline] = [:], cellRange: NSRange? = nil,
                                      emojiCandidates: [MarkdownEmojiCandidate] = [], confirmedHTMLImages: Set<NSRange> = [],
-                                     confirmedInlineHTML: Set<OpaquePointer> = [], syntax: MarkdownSyntaxOptions = .init(), isCancelled: () -> Bool = { false }) -> (String, [MarkdownTableTextRun]) {
+                                     confirmedInlineHTML: Set<OpaquePointer> = [], syntax: MarkdownSyntaxOptions = .init(), isCancelled: @escaping () -> Bool = { false }) -> (String, [MarkdownTableTextRun]) {
         let output = NSMutableString(string: ""), positions = source.tableCellPositions(cell)
         var runs: [MarkdownTableTextRun] = []
         var invalidKeyboard = false
@@ -744,7 +749,7 @@ enum MarkdownPresentationParser {
         text.withCString { cmark_parser_feed(parser, $0, text.utf8.count) }
         guard let root = cmark_parser_finish(parser) else { return [] }
         defer { cmark_node_free(root) }
-        guard let table = cmark_node_first_child(root), let header = cmark_node_first_child(table),
+        guard let table = cmark_node_first_child(OpaquePointer(root)), let header = cmark_node_first_child(table),
               let row = cmark_node_next(header), let cell = cmark_node_first_child(row) else { return [] }
         let source = Source(text), nsText = text as NSString, base = (prefix as NSString).length
         guard let positions = source.tableCellPositions(cell) else { return [] }
@@ -867,7 +872,7 @@ enum MarkdownPresentationParser {
     }
 
     static func filterInlineHTMLForStyles(_ nodes: [(OpaquePointer, NSRange?)], confirmed: Set<OpaquePointer>, text: NSString,
-                                          isCancelled: () -> Bool = { false }) -> (confirmed: Set<OpaquePointer>, blocked: [NSRange]) {
+                                          isCancelled: @escaping () -> Bool = { false }) -> (confirmed: Set<OpaquePointer>, blocked: [NSRange]) {
         var hasSpan = false
         for (node, _) in nodes {
             if isCancelled() { return ([], []) }
@@ -912,7 +917,7 @@ enum MarkdownPresentationParser {
 
     static func inlineHTMLPairs(in parent: OpaquePointer, confirmed: Set<OpaquePointer>, source: Source,
                                 text: NSString, tablePositions: Source.TableCellPositions? = nil,
-                                mappedRange: ((OpaquePointer) -> NSRange?)? = nil, ignoreRubyTags: Bool = false, isCancelled: () -> Bool = { false }) -> [InlineHTMLPair] {
+                                mappedRange: ((OpaquePointer) -> NSRange?)? = nil, ignoreRubyTags: Bool = false, isCancelled: @escaping () -> Bool = { false }) -> [InlineHTMLPair] {
         let kinds: [String: MarkdownPresentationKind] = ["strong": .strong, "b": .strong, "em": .emphasis, "i": .emphasis, "u": .underline,
             "s": .strikethrough, "del": .strikethrough, "mark": .highlight, "sub": .subscriptText, "sup": .superscriptText, "kbd": .keyboard]
         var stack: [(node: OpaquePointer, name: String, range: NSRange, kind: MarkdownPresentationKind, href: String?, pairStart: Int)] = []
@@ -1233,7 +1238,7 @@ enum MarkdownPresentationParser {
                                              confirmedHTML: Set<OpaquePointer>, htmlImages: Set<NSRange>,
                                              preserveSoftBreaks: Bool,
                                              emojiByNode: [OpaquePointer: [(Int, MarkdownEmojiCandidateExtractor.Candidate)]],
-                                             isCancelled: () -> Bool) -> [MarkdownHeading.UppercaseRun]? {
+                                             isCancelled: @escaping () -> Bool) -> [MarkdownHeading.UppercaseRun]? {
         var runs: [MarkdownHeading.UppercaseRun] = []
         var pendingBreak: (styles: [MarkdownPresentationKind], hard: Bool)?
         let titleText = NSMutableString()
@@ -1505,7 +1510,7 @@ enum MarkdownPresentationParser {
     }
 
     static func inlineRubyCandidates(parents: [OpaquePointer], confirmed: Set<OpaquePointer>, source: Source, text: NSString,
-                                     sourceRange: (OpaquePointer) -> NSRange?, isCancelled: () -> Bool) -> [(proof: MarkdownHTMLMediaService.RubyProofCandidate, value: MarkdownRuby)] {
+                                     sourceRange: (OpaquePointer) -> NSRange?, isCancelled: @escaping () -> Bool) -> [(proof: MarkdownHTMLMediaService.RubyProofCandidate, value: MarkdownRuby)] {
         var candidates: [(proof: MarkdownHTMLMediaService.RubyProofCandidate, value: MarkdownRuby)] = []
         for parent in parents where cmark_node_get_type(parent) == CMARK_NODE_PARAGRAPH {
             if isCancelled() { break }
@@ -1556,7 +1561,8 @@ enum MarkdownPresentationParser {
                 }
                 guard let openRange = tag(opening, "<ruby>"), let baseNode = cmark_node_next(opening) else { continue }
                 var base = "", baseHTML = "", editingBaseHTML = "", baseRuns: [MarkdownRubyBaseRun] = []
-                var cursor = NSMaxRange(openRange), baseNext: OpaquePointer? = baseNode, baseValid = true, styled = false
+                var cursor = NSMaxRange(openRange), baseNext: OpaquePointer? = baseNode
+                let baseState = MarkdownRubyBaseParseState()
                 struct BaseStyle { var bold = false; var italic = false; var foreground: MarkdownSRGBColor? }
                 var style = BaseStyle(), styleStack: [(String, BaseStyle)] = []
                 func escape(_ value: String) -> String {
@@ -1564,11 +1570,11 @@ enum MarkdownPresentationParser {
                         .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
                 }
                 func walkBase(_ node: OpaquePointer, floor: Int) {
-                    guard baseValid, !isCancelled(), let range = sourceRange(node), range.location == cursor,
-                          range.location >= 0, range.length > 0, NSMaxRange(range) <= text.length else { baseValid = false; return }
+                    guard baseState.isValid, !isCancelled(), let range = sourceRange(node), range.location == cursor,
+                          range.location >= 0, range.length > 0, NSMaxRange(range) <= text.length else { baseState.isValid = false; return }
                     let type = cmark_node_get_type(node)
                     if type == CMARK_NODE_TEXT {
-                        guard let (_, value) = textNode(node) else { baseValid = false; return }
+                        guard let (_, value) = textNode(node) else { baseState.isValid = false; return }
                         let start = (base as NSString).length
                         base += value; baseHTML += escape(value); editingBaseHTML += escape(value)
                         baseRuns.append(.init(range: NSRange(location: start, length: (value as NSString).length), bold: style.bold, italic: style.italic, foreground: style.foreground))
@@ -1577,20 +1583,20 @@ enum MarkdownPresentationParser {
                     if type == CMARK_NODE_STRONG || type == CMARK_NODE_EMPH {
                         let strong = type == CMARK_NODE_STRONG, count = strong ? 2 : 1
                         let markers = source.pairedMarkers(range, characters: [42, 95], count: count)
-                        guard markers.count == 2 else { baseValid = false; return }
+                        guard markers.count == 2 else { baseState.isValid = false; return }
                         let name = strong ? "strong" : "em", previous = style, depth = styleStack.count
                         if strong { style.bold = true } else { style.italic = true }
-                        styled = true; baseHTML += "<" + name + ">"; editingBaseHTML += "<" + name + ">"
+                        baseState.isStyled = true; baseHTML += "<" + name + ">"; editingBaseHTML += "<" + name + ">"
                         cursor = NSMaxRange(markers[0])
                         var child = cmark_node_first_child(node)
                         while let current = child { walkBase(current, floor: depth); child = cmark_node_next(current) }
-                        guard baseValid, styleStack.count == depth, cursor == markers[1].location else { baseValid = false; return }
+                        guard baseState.isValid, styleStack.count == depth, cursor == markers[1].location else { baseState.isValid = false; return }
                         cursor = NSMaxRange(markers[1]); style = previous
                         baseHTML += "</" + name + ">"; editingBaseHTML += "</" + name + ">"
                         return
                     }
                     guard type == CMARK_NODE_HTML_INLINE, confirmed.contains(node),
-                          htmlSourceMatches(node, range: range, text: text, isCancelled: isCancelled) else { baseValid = false; return }
+                          htmlSourceMatches(node, range: range, text: text, isCancelled: isCancelled) else { baseState.isValid = false; return }
                     let spelling = text.substring(with: range), lower = spelling.lowercased()
                     if ["<strong>", "<em>"].contains(lower) {
                         let name = lower == "<strong>" ? "strong" : "em"
@@ -1598,7 +1604,7 @@ enum MarkdownPresentationParser {
                         baseHTML += lower; editingBaseHTML += lower
                     } else if ["</strong>", "</em>", "</span>"].contains(lower) {
                         let name = String(lower.dropFirst(2).dropLast())
-                        guard styleStack.count > floor, let previous = styleStack.popLast(), previous.0 == name else { baseValid = false; return }
+                        guard styleStack.count > floor, let previous = styleStack.popLast(), previous.0 == name else { baseState.isValid = false; return }
                         style = previous.1; baseHTML += lower; editingBaseHTML += lower
                     } else if let inlineStyle = MarkdownHTMLMediaService.inlineStyleOpening(spelling, isCancelled: isCancelled),
                               inlineStyle.background == nil, inlineStyle.fontSizeRem == nil {
@@ -1606,17 +1612,17 @@ enum MarkdownPresentationParser {
                         if let color = inlineStyle.foreground { style.foreground = color }
                         baseHTML += spelling
                         editingBaseHTML += inlineStyle.editingCSS.isEmpty ? "<span>" : "<span style=\"" + escape(inlineStyle.editingCSS) + "\">"
-                    } else { baseValid = false; return }
-                    styled = true; cursor = NSMaxRange(range)
+                    } else { baseState.isValid = false; return }
+                    baseState.isStyled = true; cursor = NSMaxRange(range)
                 }
                 while let node = baseNext, tag(node, "<rt>") == nil, tag(node, "<rp>") == nil {
                     walkBase(node, floor: 0)
-                    if !baseValid { break }
+                    if !baseState.isValid { break }
                     baseNext = cmark_node_next(node)
                 }
-                guard baseValid, styleStack.isEmpty, !base.isEmpty else { continue }
+                guard baseState.isValid, styleStack.isEmpty, !base.isEmpty else { continue }
                 let baseRange = NSRange(location: NSMaxRange(openRange), length: cursor - NSMaxRange(openRange))
-                if styled, MarkdownHTMLMediaService.rubyNeedsWhitespaceProjection(base, isCancelled: isCancelled) != false { continue }
+                if baseState.isStyled, MarkdownHTMLMediaService.rubyNeedsWhitespaceProjection(base, isCancelled: isCancelled) != false { continue }
                 var next = baseNext, before: String?, after: String?
                 func fallback(_ node: inout OpaquePointer?, cursor: inout Int) -> String? {
                     guard let begin = tag(node, "<rp>"), begin.location == cursor, let open = node,
@@ -1664,16 +1670,16 @@ enum MarkdownPresentationParser {
                 }
                 candidates.append((.init(opening: opening, closing: closing, closingOffset: closeRange.length,
                                              base: base, reading: reading, before: before, after: after, trailing: trailing,
-                                             baseHTML: styled ? baseHTML : nil, editingBaseHTML: styled ? editingBaseHTML : nil),
+                                             baseHTML: baseState.isStyled ? baseHTML : nil, editingBaseHTML: baseState.isStyled ? editingBaseHTML : nil),
                                        MarkdownRuby(range: range, baseRange: baseRange, readingRange: readingRange, base: base, reading: reading,
-                                                    baseRuns: styled ? baseRuns : [])))
+                                                    baseRuns: baseState.isStyled ? baseRuns : [])))
                 child = cmark_node_next(closing)
             }
         }
         return isCancelled() ? [] : candidates
     }
 
-    static func parse(_ text: String, includeReadableText: Bool = false, includeEmojiCandidates: Bool = false, includeUppercaseRuns: Bool = false, syntax: MarkdownSyntaxOptions = .init(), isCancelled: () -> Bool = { false }) -> MarkdownPresentation {
+    static func parse(_ text: String, includeReadableText: Bool = false, includeEmojiCandidates: Bool = false, includeUppercaseRuns: Bool = false, syntax: MarkdownSyntaxOptions = .init(), isCancelled: @escaping () -> Bool = { false }) -> MarkdownPresentation {
         guard !text.utf8.contains(0) else { return MarkdownPresentation(spans: []) }
         let options = ((syntax.smartPunctuation ?? true) ? CMARK_OPT_SMART : 0) | CMARK_OPT_TABLE_SPANS | CMARK_OPT_HARDBREAKS | CMARK_OPT_FOOTNOTES
         let frontMatter = frontMatter(text)
@@ -2706,7 +2712,8 @@ enum MarkdownPresentationParser {
         if !pairedMedia.isEmpty && !isCancelled() {
             let accepted = MarkdownHTMLMediaService.provenMediaIndices(root: root, mathExtension: mathExtension, options: options,
                 text: sourceText, candidates: pairedMedia.map(\.proof), isCancelled: isCancelled)
-            let ordered = accepted.map { pairedMedia[$0] }.sorted {
+            let selected: [(proof: MarkdownHTMLMediaService.MediaProofCandidate, range: NSRange, isInline: Bool)] = accepted.map { pairedMedia[$0] }
+            let ordered = selected.sorted {
                 $0.range.location == $1.range.location ? $0.range.length > $1.range.length : $0.range.location < $1.range.location
             }
             let existing = (audioBlocks.map(\.range) + iframeBlocks.map(\.range)).sorted { $0.location < $1.location }
@@ -3583,7 +3590,7 @@ enum MarkdownPresentationParser {
         // cmark reports virtual container columns on lazy continuation lines.
         // Only expose leaves whose full retained paragraph buffer matches source.
         func lazyParagraphInlineRanges(_ paragraph: OpaquePointer, text: NSString, plainEditing: Bool = false,
-                                       inlineMath: [OpaquePointer: MarkdownMathExtension.Inline] = [:], isCancelled: () -> Bool = { false }) -> [OpaquePointer: NSRange]? {
+                                       inlineMath: [OpaquePointer: MarkdownMathExtension.Inline] = [:], isCancelled: @escaping () -> Bool = { false }) -> [OpaquePointer: NSRange]? {
             guard cmark_node_get_type(paragraph) == CMARK_NODE_PARAGRAPH,
                   let parent = cmark_node_parent(paragraph), plainEditing || cmark_node_get_type(parent) != CMARK_NODE_DOCUMENT,
                   cmark_node_get_start_line(paragraph) < cmark_node_get_end_line(paragraph),

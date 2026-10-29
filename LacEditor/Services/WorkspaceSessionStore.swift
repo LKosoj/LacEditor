@@ -175,9 +175,9 @@ final class WorkspaceSessionStore: @unchecked Sendable {
             guard manifest.version == 1 else {
                 throw CocoaError(.fileReadCorruptFile)
             }
-            let windows = try manifest.windows.map { window in
+            let windows = manifest.windows.map { window in
                 WorkspaceWindowReference(
-                    documents: try window.documents.map { document in
+                    documents: window.documents.map { document in
                         let contentURL = directory.appendingPathComponent(
                             document.contentFileName
                         )

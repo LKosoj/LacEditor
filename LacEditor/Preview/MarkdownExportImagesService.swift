@@ -10,6 +10,7 @@ final class MarkdownExportImagesService {
             return nil
         }
     }
+    @MainActor
     private enum ActiveService {
         case math(MathJaxRenderService)
         case mermaid(MermaidRenderService)

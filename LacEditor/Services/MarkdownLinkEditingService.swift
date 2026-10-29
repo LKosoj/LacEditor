@@ -145,7 +145,7 @@ enum MarkdownLinkEditingService {
             return item.start + item.text[..<index].utf16.count
         }
         var result: [Node] = []
-        func visit(_ node: OpaquePointer) {
+        func visit(_ node: UnsafeMutablePointer<cmark_node>) {
             if let name = cmark_node_get_type_string(node) {
                 let kind = String(cString: name)
                 if ["link", "image", "code", "code_block"].contains(kind) {

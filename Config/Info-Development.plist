@@ -33,5 +33,28 @@
     <true/>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.productivity</string>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+            <key>UTTypeDescription</key>
+            <string>LacEditor Sidebar File</string>
+            <key>UTTypeIdentifier</key>
+            <string>com.laceditor.sidebar-file</string>
+        </dict>
+        <dict>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+            <key>UTTypeDescription</key>
+            <string>LacEditor Sidebar Group</string>
+            <key>UTTypeIdentifier</key>
+            <string>com.laceditor.sidebar-group</string>
+        </dict>
+    </array>
 </dict>
 </plist>

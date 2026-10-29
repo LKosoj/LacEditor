@@ -170,7 +170,9 @@ final class WindowManager: ObservableObject {
         recentFiles: RecentFilesStore? = nil,
         sidebarLibrary: SidebarLibraryStore? = nil,
         experimentSamples: ExperimentSampleLibrary? = nil,
-        readRestoration: @escaping @Sendable (DocumentRecoveryReference) throws -> DocumentRecoverySnapshot = DocumentRecoveryStore.read
+        readRestoration: @escaping @Sendable (DocumentRecoveryReference) throws -> DocumentRecoverySnapshot = { reference in
+            try DocumentRecoveryStore.read(reference)
+        }
     ) {
         self.recentFiles = recentFiles ?? RecentFilesStore()
         self.sidebarLibrary = sidebarLibrary ?? SidebarLibraryStore()
@@ -504,6 +506,7 @@ final class WindowManager: ObservableObject {
             window.center()
         }
         window.isReleasedWhenClosed = false
+        window.isRestorable = false
 
         state.hostWindow = window
 

@@ -508,8 +508,12 @@ enum MarkdownRenderer {
             let mediaCandidates = mediaCollector.candidates
             let acceptedMedia = MarkdownHTMLMediaService.provenMediaIndices(root: document, mathExtension: extensionNode, options: options,
                 text: markdown as NSString, candidates: mediaCandidates.map(\.proof), isCancelled: { Task.isCancelled })
-            let orderedMedia = acceptedMedia.map { mediaCandidates[$0] }.sorted {
-                $0.range.location == $1.range.location ? $0.range.length > $1.range.length : $0.range.location < $1.range.location
+            let selectedMedia: [(proof: MarkdownHTMLMediaService.MediaProofCandidate, range: NSRange, isInline: Bool)] = acceptedMedia.map { mediaCandidates[$0] }
+            let orderedMedia = selectedMedia.sorted { lhs, rhs in
+                if lhs.range.location == rhs.range.location {
+                    return lhs.range.length > rhs.range.length
+                }
+                return lhs.range.location < rhs.range.location
             }
             var provedMedia: [(proof: MarkdownHTMLMediaService.MediaProofCandidate, range: NSRange, isInline: Bool)] = []
             var mediaEnd = 0
@@ -625,9 +629,9 @@ enum MarkdownRenderer {
             if renderEmoji && !Task.isCancelled {
                 let emojiSource = mappedSource
                 emojiCandidates = MarkdownEmojiCandidateExtractor.candidates(in: document, source: emojiSource, text: markdown as NSString,
-                    isCancelled: { Task.isCancelled }) { node, offset, candidate in
+                    isCancelled: { Task.isCancelled }, onCandidate: { node, offset, candidate in
                         emojiLocations[node, default: []].append((offset, candidate))
-                    }.sorted { $0.range.location < $1.range.location }
+                    }).sorted { $0.range.location < $1.range.location }
                 emojiValues = (try? EmojiShortcodeResolver.resolve(emojiCandidates.map(\.name), isCancelled: { Task.isCancelled })) ?? [:]
                 if Task.isCancelled { emojiLocations.removeAll(); emojiCandidates.removeAll(); emojiValues.removeAll() }
             }
@@ -1025,7 +1029,7 @@ enum MarkdownRenderer {
                                     if Task.isCancelled { return }
                                     cmark_node_unlink(item); detachedFrameNodes.append(item)
                                 }
-                                child = cmark_node_next(replacement)
+                                child = cmark_node_next(replacement).map(OpaquePointer.init)
                                 continue
                             }
                             cmark_node_free(replacement)
@@ -1042,7 +1046,7 @@ enum MarkdownRenderer {
                                 if cmark_node_insert_before(closing, closingReplacement) != 0 {
                                     cmark_node_unlink(current); cmark_node_free(current)
                                     cmark_node_unlink(closing); cmark_node_free(closing)
-                                    child = cmark_node_next(openingReplacement)
+                                    child = cmark_node_next(openingReplacement).map(OpaquePointer.init)
                                     continue
                                 }
                                 cmark_node_unlink(openingReplacement)
@@ -1546,7 +1550,7 @@ enum MarkdownRenderer {
             guard configured != 0, cmark_node_insert_before(heading.node, node) != 0 else { cmark_node_free(node); continue }
             installed.insert(heading.id)
         }
-        var aliases = MarkdownHeadingAnchors.aliases(headings.filter { installed.contains($0.id) }.map {
+        let aliases = MarkdownHeadingAnchors.aliases(headings.filter { installed.contains($0.id) }.map {
             MarkdownHeadingAnchors.Entry(slug: $0.slug, id: $0.id)
         })
         var orderedHTML = htmlNodes.sorted { $0.1.location < $1.1.location }
@@ -1978,7 +1982,7 @@ enum MarkdownRenderer {
                 guard configured != 0 else { cmark_node_free(node); valid = false; return }
                 if let parent {
                     if cmark_node_append_child(parent, node) == 0 { cmark_node_free(node); valid = false }
-                } else { pieces.append(node) }
+                } else { pieces.append(OpaquePointer(node)) }
             }
             for (match, kind) in matches {
                 addText(renderedSource(NSRange(location: cursor, length: match.location - cursor)))
@@ -1988,8 +1992,8 @@ enum MarkdownRenderer {
                 let start = "<\(tag)>".withCString { cmark_node_set_on_enter(node, $0) }
                 let end = "</\(tag)>".withCString { cmark_node_set_on_exit(node, $0) }
                 if start == 0 || end == 0 { cmark_node_free(node); valid = false; break }
-                addText(renderedSource(NSRange(location: match.location + markerLength, length: match.length - 2 * markerLength)), parent: node)
-                pieces.append(node)
+                addText(renderedSource(NSRange(location: match.location + markerLength, length: match.length - 2 * markerLength)), parent: OpaquePointer(node))
+                pieces.append(OpaquePointer(node))
                 cursor = NSMaxRange(match)
             }
             if valid { addText(renderedSource(NSRange(location: cursor, length: NSMaxRange(range) - cursor))) }
@@ -2126,7 +2130,7 @@ enum MarkdownRenderer {
                           let replacement = cmark_node_new(CMARK_NODE_CUSTOM_INLINE) else { valid = false; break }
                     let configured = String(cString: literal).lowercased().withCString { cmark_node_set_on_enter(replacement, $0) }
                     guard configured != 0 else { cmark_node_free(replacement); valid = false; break }
-                    replacements.append((current, replacement))
+                    replacements.append((current, OpaquePointer(replacement)))
                 }
                 if current == candidate.closing { reachedEnd = true; break }
                 node = cmark_node_next(current)

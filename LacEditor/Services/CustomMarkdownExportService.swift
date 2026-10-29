@@ -46,7 +46,7 @@ enum CustomMarkdownExportService {
         try check(posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0))
         try check(posix_spawn_file_actions_adddup2(&actions, stdout.fileDescriptor, STDOUT_FILENO))
         try check(posix_spawn_file_actions_adddup2(&actions, stderr.fileDescriptor, STDERR_FILENO))
-        try directory.path.withCString { try check(posix_spawn_file_actions_addchdir_np(&actions, $0)) }
+        try directory.path.withCString { try check(posix_spawn_file_actions_addchdir(&actions, $0)) }
         var attributes: posix_spawnattr_t?
         try check(posix_spawnattr_init(&attributes))
         defer { posix_spawnattr_destroy(&attributes) }
@@ -155,7 +155,7 @@ enum CustomMarkdownExportService {
         try check(posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0))
         try check(posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null", O_WRONLY, 0))
         try check(posix_spawn_file_actions_adddup2(&actions, stderr.fileDescriptor, STDERR_FILENO))
-        try directory.path.withCString { try check(posix_spawn_file_actions_addchdir_np(&actions, $0)) }
+        try directory.path.withCString { try check(posix_spawn_file_actions_addchdir(&actions, $0)) }
         var attributes: posix_spawnattr_t?
         try check(posix_spawnattr_init(&attributes))
         defer { posix_spawnattr_destroy(&attributes) }
@@ -191,7 +191,7 @@ enum CustomMarkdownExportService {
 
     // Explicit PDF-engine profile: Pandoc and its engine share one process group.
     static func preparePDFEngine(text: String, source: URL?, destination: URL, profile: MarkdownExportProfile,
-                                 executable: URL? = nil, isCancelled: () -> Bool = { false },
+                                 executable: URL? = nil, isCancelled: @escaping () -> Bool = { false },
                                  syntax: MarkdownSyntaxOptions = .init(), extractEmbeddedMedia: Bool = false) throws -> Result {
         guard !isCancelled() else { throw CancellationError() }
         guard destination.pathExtension.lowercased() == "pdf",
@@ -285,7 +285,7 @@ enum CustomMarkdownExportService {
 
     // Runs off the main thread. The returned prepared file belongs to the caller.
     static func prepare(text: String, source: URL?, destination: Destination, command: String,
-                        isCancelled: () -> Bool = { false }) throws -> Result {
+                        isCancelled: @escaping () -> Bool = { false }) throws -> Result {
         if isCancelled() { throw CancellationError() }
         guard !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw PandocExportError.invalidConfiguration(L10n.tr("命令不能为空"))
@@ -365,7 +365,7 @@ enum CustomMarkdownExportService {
             throw CommandError.failed(err.isEmpty ? "zsh (\(exitStatus))" : err)
         }
         if case .file = destination {
-            guard let replacement, let path = variables["outputPath"],
+            guard replacement != nil, let path = variables["outputPath"],
                   let attrs = try? manager.attributesOfItem(atPath: path),
                   attrs[.type] as? FileAttributeType == .typeRegular else {
                 throw PandocExportError.invalidConfiguration(L10n.tr("命令未生成输出文件"))

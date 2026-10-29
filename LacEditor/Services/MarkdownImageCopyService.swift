@@ -101,7 +101,7 @@ enum MarkdownImageCopyService {
 
     static func prepare(text: String, selection: NSRange, selectedOnly: Bool, remoteOnly: Bool,
                         document: URL?, folder: URL, session: URLSession = .shared,
-                        isCancelled: () -> Bool = { false }) async throws -> BatchResult {
+                        isCancelled: @escaping () -> Bool = { false }) async throws -> BatchResult {
         var created: [URL] = []
         do {
             let images = try MarkdownImageUploadService.images(in: text, selection: selectedOnly ? selection : nil,

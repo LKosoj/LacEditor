@@ -7,6 +7,7 @@ private let editorSessionPerformanceLog = OSLog(
     category: "EditorPerformance"
 )
 
+@MainActor
 final class EditorSessionStore: ObservableObject {
     struct Snapshot: Equatable {
         let documentIDs: Set<UUID>

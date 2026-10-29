@@ -56,7 +56,7 @@ final class MarkdownTableAccessibilityTable: NSObject, NSAccessibilityTable {
     @objc func accessibilityRole() -> NSAccessibility.Role? { .table }
     @objc func accessibilityChildren() -> [Any]? { isCurrent?() == true ? rows : [] }
     @objc func accessibilityRowCount() -> Int { rowCount }
-    @objc func accessibilityColumnCount() -> Int { columnCount }
+    @objc func tableAccessibilityColumnCount() -> Int { columnCount }
     func accessibilitySelectedRows() -> [any NSAccessibilityRow]? { isCurrent?() == true ? (selectedRowsProvider?() ?? rows.filter(\.selected)) : [] }
     func accessibilitySelectedCells() -> [Any]? {
         guard isCurrent?() == true else { return [] }

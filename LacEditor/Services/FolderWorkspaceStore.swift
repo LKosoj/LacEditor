@@ -86,7 +86,9 @@ final class FolderWorkspaceStore: ObservableObject {
 
     deinit { watcher?.stop() }
 
-    init(enumerate: @escaping @Sendable (URL, URL) throws -> [FolderWorkspaceEntry] = FolderWorkspaceStore.readDirectory,
+    init(enumerate: @escaping @Sendable (URL, URL) throws -> [FolderWorkspaceEntry] = { root, directory in
+             try FolderWorkspaceStore.readDirectory(root, directory)
+         },
          enumerateList: @escaping @Sendable (URL, @Sendable () -> Bool) throws -> FolderSearchService.Result<FolderSearchService.ListedFile> = { root, cancelled in
              try FolderSearchService.listing(root: root, isCancelled: cancelled)
          }) {

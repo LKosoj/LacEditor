@@ -105,7 +105,7 @@ enum ClipboardMarkdownConversionService {
 
     // Call off the main thread. Each invocation owns its process and temporary files.
     static func convert(_ data: Data, format: InputFormat, executable: URL? = nil,
-                        isCancelled: () -> Bool = { false }) throws -> Output {
+                        isCancelled: @escaping () -> Bool = { false }) throws -> Output {
         let (data, diagnostics) = try run(data, conversion: .clipboard(format), executable: executable, isCancelled: isCancelled)
         guard let markdown = String(data: data, encoding: .utf8) else { throw ConversionError.invalidOutput }
         return Output(markdown: markdown, diagnostics: diagnostics)
@@ -114,7 +114,7 @@ enum ClipboardMarkdownConversionService {
     // RTF embeds media in the input. Resolve Pandoc's private extracted files
     // before the temporary directory is removed; no user file is written here.
     static func convertRTFWithMedia(_ data: Data, executable: URL? = nil,
-                                    isCancelled: () -> Bool = { false }) throws -> Output {
+                                    isCancelled: @escaping () -> Bool = { false }) throws -> Output {
         let (converted, diagnostics) = try run(data, conversion: .clipboard(.rtf), executable: executable,
                                                isCancelled: isCancelled, extractMedia: true)
         guard let markdown = String(data: converted, encoding: .utf8) else { throw ConversionError.invalidOutput }
@@ -127,7 +127,7 @@ enum ClipboardMarkdownConversionService {
 
     // Fixed conversions for clipboard import.
     static func run(_ data: Data, conversion: FixedConversion, executable: URL?,
-                    isCancelled: () -> Bool, extractMedia: Bool = false) throws -> (Data, String) {
+                    isCancelled: @escaping () -> Bool, extractMedia: Bool = false) throws -> (Data, String) {
         func checkCancellation() throws {
             if isCancelled() { throw CancellationError() }
         }

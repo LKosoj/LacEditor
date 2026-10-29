@@ -18,17 +18,17 @@ enum MarkdownEmojiCandidateExtractor {
         var failedTablePositions: Set<OpaquePointer> = []
         var htmlContext = MarkdownImageUploadService.HTMLContext()
         func positions(_ node: OpaquePointer) -> (OpaquePointer?, MarkdownPresentationParser.Source.TableCellPositions?) {
-            var current = cmark_node_parent(node)
+            var current = cmark_node_parent(UnsafeMutablePointer<cmark_node>(node)).map { OpaquePointer($0) }
             while let item = current {
                 if isCancelled() { return (nil, nil) }
-                if let name = cmark_node_get_type_string(item), String(cString: name) == "table_cell" {
+                if let name = cmark_node_get_type_string(UnsafeMutablePointer<cmark_node>(item)), String(cString: name) == "table_cell" {
                     if let cached = tablePositions[item] { return (item, cached) }
                     if failedTablePositions.contains(item) { return (item, nil) }
                     guard let value = source.tableCellPositions(item, isCancelled: isCancelled) else { failedTablePositions.insert(item); return (item, nil) }
                     tablePositions[item] = value
                     return (item, value)
                 }
-                current = cmark_node_parent(item)
+                current = cmark_node_parent(UnsafeMutablePointer<cmark_node>(item)).map { OpaquePointer($0) }
             }
             return (nil, nil)
         }
@@ -45,7 +45,7 @@ enum MarkdownEmojiCandidateExtractor {
         }
         func visit(_ node: OpaquePointer, suppress: Bool = false) {
             if isCancelled() { return }
-            guard let rawType = cmark_node_get_type_string(node) else { return }
+            guard let rawType = cmark_node_get_type_string(UnsafeMutablePointer<cmark_node>(node)) else { return }
             let type = String(cString: rawType)
             if type == "html_inline" || type == "html_block" {
                 let (cell, map) = positions(node)
@@ -60,7 +60,7 @@ enum MarkdownEmojiCandidateExtractor {
                 guard let range = source.linkRange(node, tableCell: cell, tablePositions: map),
                       range.location < text.length, text.character(at: range.location) == 91 else { return }
             }
-            if type == "text", let literal = cmark_node_get_literal(node) {
+            if type == "text", let literal = cmark_node_get_literal(UnsafeMutablePointer<cmark_node>(node)) {
                 guard !suppress && !htmlContext.inRawContext else { return }
                 let (cell, map) = positions(node)
                 let range: NSRange?
@@ -120,11 +120,12 @@ enum MarkdownEmojiCandidateExtractor {
                 return
             }
             // Accept only HTML siblings already confirmed as a simple underline pair.
-            var htmlNodes: [OpaquePointer] = [], probe = cmark_node_first_child(node)
+            var htmlNodes: [OpaquePointer] = []
+            var probe = cmark_node_first_child(UnsafeMutablePointer<cmark_node>(node)).map { OpaquePointer($0) }
             while let item = probe {
                 if isCancelled() { return }
-                if let name = cmark_node_get_type_string(item), String(cString: name) == "html_inline" { htmlNodes.append(item) }
-                probe = cmark_node_next(item)
+                if let name = cmark_node_get_type_string(UnsafeMutablePointer<cmark_node>(item)), String(cString: name) == "html_inline" { htmlNodes.append(item) }
+                probe = cmark_node_next(UnsafeMutablePointer<cmark_node>(item)).map { OpaquePointer($0) }
             }
             var suppressChildren = suppress
             if !htmlNodes.isEmpty {
@@ -133,11 +134,11 @@ enum MarkdownEmojiCandidateExtractor {
                 if isCancelled() { return }
                 if !htmlNodes.allSatisfy({ confirmed.contains($0) }) { suppressChildren = true }
             }
-            var child = cmark_node_first_child(node)
+            var child = cmark_node_first_child(UnsafeMutablePointer<cmark_node>(node)).map { OpaquePointer($0) }
             while let item = child {
                 if isCancelled() { return }
                 visit(item, suppress: suppressChildren)
-                child = cmark_node_next(item)
+                child = cmark_node_next(UnsafeMutablePointer<cmark_node>(item)).map { OpaquePointer($0) }
             }
         }
         visit(root)

@@ -14,6 +14,8 @@
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<key>NSPrincipalClass</key>
+	<string>LacApplication</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
@@ -33,6 +35,29 @@
 	<string>连接你在设置中指定的本地 AI 或 Jina 服务。</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>LacEditor Sidebar File</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.laceditor.sidebar-file</string>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>LacEditor Sidebar Group</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.laceditor.sidebar-group</string>
+		</dict>
+	</array>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>

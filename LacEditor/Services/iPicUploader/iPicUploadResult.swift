@@ -8,7 +8,8 @@
 
 import Foundation
 
-public class iPicUploadResult: NSObject, NSCoding {
+public class iPicUploadResult: NSObject, NSSecureCoding {
+  public static var supportsSecureCoding: Bool { true }
   public static let sharedClassName: String = "net.toolinbox.iPic.iPicUploadResult"
   
   private static let idKey = "id"
@@ -37,12 +38,12 @@ public class iPicUploadResult: NSObject, NSCoding {
   public required init?(coder aDecoder: NSCoder) {
     super.init()
     
-    id = (aDecoder.decodeObject(forKey: iPicUploadResult.idKey) as? String) ?? ""
-    imageLink = aDecoder.decodeObject(forKey: iPicUploadResult.imageLinkKey) as? String
-    error = aDecoder.decodeObject(forKey: iPicUploadResult.errorKey) as? NSError
+    id = (aDecoder.decodeObject(of: NSString.self, forKey: iPicUploadResult.idKey) as String?) ?? ""
+    imageLink = aDecoder.decodeObject(of: NSString.self, forKey: iPicUploadResult.imageLinkKey) as String?
+    error = aDecoder.decodeObject(of: NSError.self, forKey: iPicUploadResult.errorKey)
     
     version = aDecoder.decodeInteger(forKey: iPicUploadResult.versionKey)
-    json = aDecoder.decodeObject(forKey: iPicUploadResult.jsonKey)
+    json = aDecoder.decodeObject(of: [NSArray.self, NSDictionary.self, NSString.self, NSNumber.self, NSNull.self], forKey: iPicUploadResult.jsonKey)
   }
   
   public func encode(with aCoder: NSCoder) {

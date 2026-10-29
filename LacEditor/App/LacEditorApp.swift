@@ -1,6 +1,17 @@
 import AppKit
 import SwiftUI
 
+@objc(LacApplication)
+final class LacApplication: NSApplication {
+    override func restoreWindow(
+        withIdentifier identifier: NSUserInterfaceItemIdentifier,
+        state: NSCoder,
+        completionHandler: @escaping (NSWindow?, (any Error)?) -> Void
+    ) -> Bool {
+        false
+    }
+}
+
 @main
 @MainActor
 struct LacEditorApp: App {

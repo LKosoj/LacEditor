@@ -74,7 +74,7 @@ internal class iPicPasteboardHelper {
     if let type = pasteboard.availableType(from: [NSPasteboard.PasteboardType(rawValue: PasteboardTypeiPicUploadResult)]) {
       if let data = pasteboard.data(forType: type) {
         NSKeyedUnarchiver.setClass(iPicUploadResult.self, forClassName: iPicUploadResult.sharedClassName)
-        return NSKeyedUnarchiver.unarchiveObject(with: data) as? iPicUploadResult
+        return try? NSKeyedUnarchiver.unarchivedObject(ofClass: iPicUploadResult.self, from: data)
       }
     }
     
@@ -96,7 +96,7 @@ internal class iPicPasteboardHelper {
       if let data = pasteboard.data(forType: type) {
         NSKeyedUnarchiver.setClass(iPicImageHost.self, forClassName: iPicImageHost.sharedClassName)
         
-        if let list = NSKeyedUnarchiver.unarchiveObject(with: data) as? [iPicImageHost] {
+        if let list = try? NSKeyedUnarchiver.unarchivedArrayOfObjects(ofClass: iPicImageHost.self, from: data) {
           imageHostList = list
         }
       }
@@ -120,8 +120,10 @@ internal class iPicPasteboardHelper {
     let pasteboardItem = NSPasteboardItem()
     
     NSKeyedArchiver.setClassName(iPicImage.sharedClassName, for: iPicImage.self)
-    let data = NSKeyedArchiver.archivedData(withRootObject: image)
-    pasteboardItem.setData(data, forType: NSPasteboard.PasteboardType(rawValue: PasteboardTypeiPicImage))
+    let data = try? NSKeyedArchiver.archivedData(withRootObject: image, requiringSecureCoding: false)
+    if let data {
+      pasteboardItem.setData(data, forType: NSPasteboard.PasteboardType(rawValue: PasteboardTypeiPicImage))
+    }
     
     return pasteboardItem
   }

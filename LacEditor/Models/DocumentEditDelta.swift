@@ -37,7 +37,7 @@ struct DirtyRangeAccumulator: Sendable, Equatable {
     mutating func remove(_ processed: NSRange) {
         ranges = ranges.flatMap { range in
             if range.length == 0, range.location >= processed.location,
-               range.location <= processed.upperBound { return [] }
+               range.location <= processed.upperBound { return [NSRange]() }
             guard NSIntersectionRange(range, processed).length > 0 else { return [range] }
             var remaining: [NSRange] = []
             if range.location < processed.location {

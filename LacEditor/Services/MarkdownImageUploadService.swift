@@ -72,12 +72,17 @@ final class MarkdownSVGRenderService: NSObject, WKNavigationDelegate {
     private let width: CGFloat
     private let configuration: WKWebViewConfiguration
 
-    init(encoded: String, fragment: String = "", width: CGFloat, configuration: WKWebViewConfiguration = WKWebViewConfiguration(), completion: @escaping (NSImage?) -> Void) {
+    init(encoded: String, fragment: String = "", width: CGFloat, configuration: WKWebViewConfiguration? = nil, completion: @escaping (NSImage?) -> Void) {
         self.encoded = encoded
         self.fragment = fragment
         self.width = width
-        self.configuration = configuration
+        if let configuration {
+            self.configuration = configuration
+        } else {
+            self.configuration = WKWebViewConfiguration()
+        }
         self.completion = completion
+        super.init()
     }
 
     func start() {
@@ -390,7 +395,7 @@ enum MarkdownImageUploadService {
         return result
     }
 
-    static func mediaSources(in source: String, isCancelled: () -> Bool) throws -> [Image] {
+    static func mediaSources(in source: String, isCancelled: @escaping () -> Bool) throws -> [Image] {
         guard source.range(of: "<audio", options: .caseInsensitive) != nil || source.range(of: "<video", options: .caseInsensitive) != nil else { return [] }
         let text = source as NSString
         let input = MarkdownPresentationParser.maskedFrontMatter(source, frontMatter: MarkdownPresentationParser.frontMatter(source))
@@ -519,7 +524,7 @@ enum MarkdownImageUploadService {
     }
 
     static func replacement(in source: String, images: [Image], urls: [URL], selection: NSRange,
-                            isCancelled: () -> Bool = { false }, filePaths: Bool = false) throws -> MarkdownFormattingEdit {
+                            isCancelled: @escaping () -> Bool = { false }, filePaths: Bool = false) throws -> MarkdownFormattingEdit {
         if isCancelled() { throw CancellationError() }
         guard !images.isEmpty, images.count == urls.count else { throw UploadError.invalidResult }
         let ns = source as NSString
@@ -616,7 +621,7 @@ enum MarkdownImageUploadService {
 
     // cmark's source columns are UTF-8 byte offsets, whereas AppKit uses UTF-16.
     static func images(in source: String, selection: NSRange? = nil, allowSharedReference: Bool = false,
-                       isCancelled: () -> Bool = { false }, htmlForExport: Bool = false,
+                       isCancelled: @escaping () -> Bool = { false }, htmlForExport: Bool = false,
                        confirmedAudio: ((NSRange) -> Void)? = nil, confirmedVideo: ((NSRange) -> Void)? = nil,
                        confirmedInline: ((NSRange, String) -> Void)? = nil,
                        confirmedFrame: ((NSRange, MarkdownHTMLMediaService.EmbeddedFrame) -> Void)? = nil,
@@ -887,7 +892,7 @@ enum MarkdownImageUploadService {
             var child = cmark_node_first_child(node)
             while let next = child { visit(next); child = cmark_node_next(next) }
         }
-        visit(root)
+        visit(OpaquePointer(root))
         return found.count == 1 ? found[0] : nil
     }
 
@@ -1054,14 +1059,14 @@ enum MarkdownImageUploadService {
         }
         guard !candidates.isEmpty else { throw UploadError.unsupportedImage }
         let changed = NSMutableString(string: "")
-        var cursor = 0
+        var outputCursor = 0
         for candidate in candidates {
-            guard candidate.range.location >= cursor else { throw UploadError.unsupportedImage }
-            changed.append(text.substring(with: NSRange(location: cursor, length: candidate.range.location - cursor)))
+            guard candidate.range.location >= outputCursor else { throw UploadError.unsupportedImage }
+            changed.append(text.substring(with: NSRange(location: outputCursor, length: candidate.range.location - outputCursor)))
             changed.append(candidate.marker)
-            cursor = NSMaxRange(candidate.range)
+            outputCursor = NSMaxRange(candidate.range)
         }
-        changed.append(text.substring(from: cursor))
+        changed.append(text.substring(from: outputCursor))
         if isCancelled() { throw CancellationError() }
         guard let after = destinations(changed as String), after.count == baseline.count else { throw UploadError.unsupportedImage }
         let byMarker = Dictionary(uniqueKeysWithValues: candidates.map { ($0.marker, $0.range) })

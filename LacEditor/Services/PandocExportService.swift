@@ -132,7 +132,7 @@ enum PandocExportService {
     }
 
     static func markedExportSnapshot(_ text: String, syntax: MarkdownSyntaxOptions, includeTOC: Bool,
-                                     isCancelled: () -> Bool) throws -> (text: String, math: [MathMarker], toc: [String]) {
+                                     isCancelled: @escaping () -> Bool) throws -> (text: String, math: [MathMarker], toc: [String]) {
         let presentation = MarkdownPresentationParser.parse(text, includeEmojiCandidates: true, syntax: syntax, isCancelled: isCancelled)
         if isCancelled() { throw CancellationError() }
         let values = try EmojiShortcodeResolver.resolve(presentation.emojiCandidates.map(\.name), isCancelled: isCancelled)
@@ -331,7 +331,7 @@ enum PandocExportService {
         let fragment: String?
     }
 
-    private static func markMediaFragments(_ text: String, isCancelled: () -> Bool) throws -> (String, [MediaFragment]) {
+    private static func markMediaFragments(_ text: String, isCancelled: @escaping () -> Bool) throws -> (String, [MediaFragment]) {
         let sources = try MarkdownImageUploadService.mediaSources(in: text, isCancelled: isCancelled)
         let raw = text as NSString, output = NSMutableString(string: text)
         let hasRoot = (try? yamlFrontMatter(text))?.contains(where: { $0.key.scalar?.string == "typora-root-url" }) == true
@@ -353,7 +353,7 @@ enum PandocExportService {
         return (output as String, markers)
     }
 
-    private static func restoreMediaFragments(in output: URL, markers: [MediaFragment], isCancelled: () -> Bool) throws {
+    private static func restoreMediaFragments(in output: URL, markers: [MediaFragment], isCancelled: @escaping () -> Bool) throws {
         guard !markers.isEmpty else { return }
         let html = try String(contentsOf: output, encoding: .utf8), document = try SwiftSoup.parseHTML(html)
         let names = Dictionary(uniqueKeysWithValues: markers.map { ($0.marker, $0) })
@@ -481,7 +481,7 @@ enum PandocExportService {
         try html.write(to: output, atomically: true, encoding: .utf8)
     }
 
-    private static func mayNeedResourceRoot(_ text: String, isCancelled: () -> Bool) throws -> Bool {
+    private static func mayNeedResourceRoot(_ text: String, isCancelled: @escaping () -> Bool) throws -> Bool {
         var yamlError: Error?
         do {
             guard try yamlFrontMatter(text)?.contains(where: { $0.key.scalar?.string == "typora-root-url" }) == true else { return false }
@@ -523,7 +523,7 @@ enum PandocExportService {
         return result
     }
 
-    static func rootImageSnapshot(_ text: String, document: URL?, isCancelled: () -> Bool) throws -> String {
+    static func rootImageSnapshot(_ text: String, document: URL?, isCancelled: @escaping () -> Bool) throws -> String {
         guard try mayNeedResourceRoot(text, isCancelled: isCancelled) else { return text }
         let paths = try MarkdownResourcePaths(text: text, document: document)
         guard paths.root != nil else { return text }
@@ -541,7 +541,7 @@ enum PandocExportService {
         return raw.replacingCharacters(in: edit.range, with: edit.replacement)
     }
 
-    static func rootMediaSnapshot(_ text: String, document: URL?, isCancelled: () -> Bool) throws -> String {
+    static func rootMediaSnapshot(_ text: String, document: URL?, isCancelled: @escaping () -> Bool) throws -> String {
         guard text.range(of: "<audio", options: .caseInsensitive) != nil || text.range(of: "<video", options: .caseInsensitive) != nil else { return text }
         var yamlError: Error?
         do {
@@ -930,7 +930,7 @@ enum PandocExportService {
     // Two Pandoc passes use the same snapshot. The first exposes YAML metadata;
     // the second consumes that exact parsed document and writes only to a temporary file.
     static func prepare(text original: String, source: URL?, destination: URL, profile: MarkdownExportProfile,
-                        title: String, executable: URL? = nil, isCancelled: () -> Bool = { false },
+                        title: String, executable: URL? = nil, isCancelled: @escaping () -> Bool = { false },
                         htmlOptions: MarkdownHTMLExportOptions? = nil, syntax: MarkdownSyntaxOptions = .init()) throws -> PandocExportResult {
         if isCancelled() { throw CancellationError() }
         guard let pandoc = executable ?? findPandoc() else { throw PandocExportError.missingPandoc }
@@ -1130,7 +1130,7 @@ enum PandocExportService {
         try restoreTextareas(in: output, values: textareaValues, isCancelled: isCancelled)
         try restoreMediaFragments(in: output, markers: mediaFragments, isCancelled: isCancelled)
         if let htmlOptions, ["html", "htm", "html4", "html5"].contains(selectedWriter.lowercased()) {
-            let htmlMetadata = try MarkdownPDFMetadataReader.read(text, includeHTMLFragments: htmlOptions.allowDocumentOverrides,
+            let htmlMetadata = try MarkdownPDFMetadataReader.read(original, includeHTMLFragments: htmlOptions.allowDocumentOverrides,
                                                                    executable: pandoc, isCancelled: isCancelled)
             let systemKeys: Set<String> = ["outputPath", "outputFileName", "outputFileFullName", "currentPath", "currentFolder", "currentFileName", "currentFileFullName", "today"]
             for (key, value) in htmlMetadata.variables where !systemKeys.contains(key) { variables[key] = value }
@@ -1151,7 +1151,7 @@ enum PandocExportService {
     // so the final move or replacement stays on the same volume.
     static func prepare(
         text original: String, source: URL?, destination: URL, format: PandocExportFormat,
-        title: String, executable: URL? = nil, isCancelled: () -> Bool = { false },
+        title: String, executable: URL? = nil, isCancelled: @escaping () -> Bool = { false },
         htmlOptions: MarkdownHTMLExportOptions = .init(), syntax: MarkdownSyntaxOptions = .init()
     ) throws -> PandocExportResult {
         guard let pandoc = executable ?? findPandoc() else { throw PandocExportError.missingPandoc }

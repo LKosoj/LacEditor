@@ -200,7 +200,7 @@ struct SidebarLibraryView: View {
                 library.togglePinnedFolder(url)
                 let expected = library.pinnedFolderPaths
                 appState.sidebarFeedback.show(L10n.tr("文件夹列表已更新")) { [weak library = library] in
-                    _ = library?.restorePinnedFolders(previous, ifUnchanged: expected)
+                    library?.restorePinnedFolders(previous, ifUnchanged: expected) ?? false
                 }
             }
             if recentFiles.folderURLs.contains(url) {
@@ -209,7 +209,7 @@ struct SidebarLibraryView: View {
                     recentFiles.removeFolder(url)
                     let expected = recentFiles.folderURLs
                     appState.sidebarFeedback.show(L10n.tr("文件夹列表已更新")) { [weak recentFiles = recentFiles] in
-                        _ = recentFiles?.restoreFolders(previous, ifUnchanged: expected)
+                        recentFiles?.restoreFolders(previous, ifUnchanged: expected) ?? false
                     }
                 }
             }
@@ -225,7 +225,7 @@ struct SidebarLibraryView: View {
     ) -> some View {
         let isExpanded = filter.isActive || library.isExpanded(section)
         let isHovering = hoveredSection == section || focusedHeader?.hasPrefix(title) == true
-        VStack(spacing: 4) {
+        return VStack(spacing: 4) {
             HStack(spacing: 6) {
                 Button {
                     library.setExpanded(!isExpanded, for: section)
@@ -482,11 +482,6 @@ final class SidebarSelection: ObservableObject {
 }
 
 private struct SidebarFileRow: View {
-    private struct MetadataRequest: Equatable {
-        let url: URL
-        let windowIsActive: Bool
-    }
-
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var windowManager: WindowManager
     let url: URL
@@ -508,7 +503,9 @@ private struct SidebarFileRow: View {
     }
 
     var body: some View {
-        Button {
+        let rowFocus = SidebarSelection.Focus(location: location, path: url.path)
+        let selected = selection.selected(url, in: location)
+        let button = Button {
             let modifiers = NSApp.currentEvent?.modifierFlags ?? []
             let modified = modifiers.contains(.command) || modifiers.contains(.shift)
             selection.select(url, in: location, urls: urls, command: modifiers.contains(.command),
@@ -516,99 +513,38 @@ private struct SidebarFileRow: View {
             if modified { return }
             openFile()
         } label: {
-            HStack(spacing: 9) {
-                Image(systemName: exists
-                      ? EditorLanguage.infer(from: url).icon
-                      : "exclamationmark.triangle")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(
-                        exists
-                            ? (activeState == .inactive ? Color.secondary : LacEditorDesign.fileTint(for: EditorLanguage.infer(from: url)))
-                            : Color.orange
-                    )
-                    .frame(width: 28, height: 28)
-                    .background(LacEditorDesign.fileTint(for: EditorLanguage.infer(from: url)).opacity(activeState == .inactive ? 0.035 : 0.08),
-                                in: RoundedRectangle(cornerRadius: 6))
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(url.lastPathComponent)
-                        .font(.system(size: 13, weight: isOpen ? .semibold : .regular))
-                        .lineLimit(1)
-                    Text(exists ? url.deletingLastPathComponent().lastPathComponent : L10n.tr("文件已移动或删除"))
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1).truncationMode(.middle)
-                }
-                Spacer(minLength: 0)
-                if isOpen {
-                    Circle().fill(activeState == .inactive ? Color.secondary : LacEditorDesign.accent)
-                        .frame(width: 4, height: 4).accessibilityHidden(true)
-                }
-            }
-            .opacity(exists ? 1 : 0.65)
-            .padding(.horizontal, 8)
-            .frame(height: 46)
-            .contentShape(Rectangle())
-            .background(
-                selection.selected(url, in: location) ? (activeState == .inactive ? Color.primary.opacity(0.07) : LacEditorDesign.selectionFill)
-                    : (isHovering ? LacEditorDesign.hoverFill : .clear),
-                in: RoundedRectangle(
-                    cornerRadius: LacEditorDesign.compactCornerRadius,
-                    style: .continuous
-                )
-            )
-            .overlay(alignment: .leading) {
-                if isOpen {
-                    Capsule().fill(activeState == .inactive ? Color.secondary.opacity(0.4) : LacEditorDesign.accent)
-                        .frame(width: 2, height: 18).padding(.leading, 1)
-                }
-            }
+            SidebarFileRowLabel(url: url, exists: exists, isOpen: isOpen,
+                                isSelected: selected,
+                                isHovering: isHovering, activeState: activeState)
         }
         .buttonStyle(SoftRowButtonStyle())
         .focused($isFocused)
         .editorFocusRing(isFocused)
+        let decorated = button
         .id(location.accessibilityID + url.path)
         .accessibilityIdentifier("sidebar.file.\(location.accessibilityID).\(url.path)")
         .onHover { isHovering = $0 }
         .animation(reduceMotion ? nil : LacEditorDesign.hoverAnimation, value: isHovering)
         .stableHelp(url.path)
-        .accessibilityAddTraits(selection.selected(url, in: location) ? .isSelected : [])
+        .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityValue(isOpen ? L10n.tr("已打开") : "")
+        return decorated
         .onChange(of: selection.focused) { _, focused in
-            if focused == SidebarSelection.Focus(location: location, path: url.path) { isFocused = true }
+            if focused == rowFocus { isFocused = true }
         }
         .onChange(of: isFocused) { _, focused in
-            if focused { selection.focused = SidebarSelection.Focus(location: location, path: url.path) }
+            if focused { selection.focused = rowFocus }
         }
         .onChange(of: urls) { _, newURLs in selection.reconcile(in: location, urls: newURLs) }
         .onKeyPress(.upArrow) { moveFocus(-1) }
         .onKeyPress(.downArrow) { moveFocus(1) }
-        .onKeyPress(.return) {
+        .onKeyPress(.return) { openSelectedFile() }
+        .onKeyPress("a") { selectAllFiles() }
+        .modifier(SidebarFileMetadataModifier(url: url, windowIsActive: activeState != .inactive,
+                                              fileExists: $fileExists, fileIdentity: $fileIdentity))
+        .modifier(SidebarFileContextMenuModifier(isSelected: selected, menu: contextMenu) {
             selection.select(url, in: location, urls: urls, command: false, shift: false)
-            openFile()
-            return .handled
-        }
-        .onKeyPress("a") { press in
-            guard press.modifiers.contains(.command) else { return .ignored }
-            selection.selectAll(in: location, urls: urls, focused: url)
-            return .handled
-        }
-        .task(id: MetadataRequest(url: url, windowIsActive: activeState != .inactive)) {
-            let url = url
-            let metadata = await Task.detached(priority: .utility) {
-                (FileManager.default.fileExists(atPath: url.path), DocumentFileIdentity.resolve(url))
-            }.value
-            guard !Task.isCancelled else { return }
-            fileExists = metadata.0
-            fileIdentity = metadata.1
-        }
-        .contextMenu {
-            contextMenu.onAppear {
-                if !selection.selected(url, in: location) {
-                    selection.select(url, in: location, urls: urls, command: false, shift: false)
-                }
-            }
-        }
+        })
     }
 
     private func openFile() {
@@ -617,6 +553,18 @@ private struct SidebarFileRow: View {
         } else {
             windowManager.requestRelocateSidebarFile(url)
         }
+    }
+
+    private func openSelectedFile() -> KeyPress.Result {
+        selection.select(url, in: location, urls: urls, command: false, shift: false)
+        openFile()
+        return .handled
+    }
+
+    private func selectAllFiles() -> KeyPress.Result {
+        guard NSApp.currentEvent?.modifierFlags.contains(.command) == true else { return .ignored }
+        selection.selectAll(in: location, urls: urls, focused: url)
+        return .handled
     }
 
     private func moveFocus(_ offset: Int) -> KeyPress.Result {
@@ -746,6 +694,97 @@ private struct SidebarFileRow: View {
                 Label(L10n.tr("从最近文件中删除"), systemImage: "trash")
             }
         }
+        }
+    }
+}
+
+private struct SidebarFileRowLabel: View {
+    let url: URL
+    let exists: Bool
+    let isOpen: Bool
+    let isSelected: Bool
+    let isHovering: Bool
+    let activeState: ControlActiveState
+
+    var body: some View {
+        let language = EditorLanguage.infer(from: url)
+        let tint = LacEditorDesign.fileTint(for: language)
+        let foreground = exists ? (activeState == .inactive ? Color.secondary : tint) : Color.orange
+        let rowBackground = isSelected
+            ? (activeState == .inactive ? Color.primary.opacity(0.07) : LacEditorDesign.selectionFill)
+            : (isHovering ? LacEditorDesign.hoverFill : Color.clear)
+        HStack(spacing: 9) {
+            Image(systemName: exists ? language.icon : "exclamationmark.triangle")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(foreground)
+                .frame(width: 28, height: 28)
+                .background(tint.opacity(activeState == .inactive ? 0.035 : 0.08), in: RoundedRectangle(cornerRadius: 6))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(url.lastPathComponent)
+                    .font(.system(size: 13, weight: isOpen ? .semibold : .regular))
+                    .lineLimit(1)
+                Text(exists ? url.deletingLastPathComponent().lastPathComponent : L10n.tr("文件已移动或删除"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: 0)
+            if isOpen {
+                Circle().fill(activeState == .inactive ? Color.secondary : LacEditorDesign.accent)
+                    .frame(width: 4, height: 4)
+                    .accessibilityHidden(true)
+            }
+        }
+        .opacity(exists ? 1 : 0.65)
+        .padding(.horizontal, 8)
+        .frame(height: 46)
+        .contentShape(Rectangle())
+        .background(rowBackground, in: RoundedRectangle(cornerRadius: LacEditorDesign.compactCornerRadius, style: .continuous))
+        .overlay(alignment: .leading) {
+            if isOpen {
+                Capsule().fill(activeState == .inactive ? Color.secondary.opacity(0.4) : LacEditorDesign.accent)
+                    .frame(width: 2, height: 18)
+                    .padding(.leading, 1)
+            }
+        }
+    }
+}
+
+private struct SidebarFileContextMenuModifier<MenuContent: View>: ViewModifier {
+    let isSelected: Bool
+    let menu: MenuContent
+    let select: () -> Void
+
+    func body(content: Content) -> some View {
+        content.contextMenu {
+            menu.onAppear {
+                if !isSelected { select() }
+            }
+        }
+    }
+}
+
+private struct SidebarFileMetadataModifier: ViewModifier {
+    private struct Request: Equatable {
+        let url: URL
+        let windowIsActive: Bool
+    }
+
+    let url: URL
+    let windowIsActive: Bool
+    @Binding var fileExists: Bool
+    @Binding var fileIdentity: DocumentFileIdentity?
+
+    func body(content: Content) -> some View {
+        content.task(id: Request(url: url, windowIsActive: windowIsActive)) {
+            let url = url
+            let metadata = await Task.detached(priority: .utility) {
+                (FileManager.default.fileExists(atPath: url.path), DocumentFileIdentity.resolve(url))
+            }.value
+            guard !Task.isCancelled else { return }
+            fileExists = metadata.0
+            fileIdentity = metadata.1
         }
     }
 }

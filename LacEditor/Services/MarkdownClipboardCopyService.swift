@@ -14,7 +14,7 @@ enum MarkdownClipboardCopyService {
     }
 
     static func embeddedImages(in markdown: String, allowingExternal: Bool = false,
-                               isCancelled: () -> Bool = { false }) throws -> [EmbeddedImage] {
+                               isCancelled: @escaping () -> Bool = { false }) throws -> [EmbeddedImage] {
         if isCancelled() { throw CancellationError() }
         let images = try MarkdownImageUploadService.images(in: markdown, isCancelled: isCancelled)
         return try images.compactMap { image in
@@ -444,14 +444,14 @@ enum MarkdownClipboardCopyService {
                 var context = MarkdownImageUploadService.HTMLContext(), stack = [root], lastHTMLPosition = 0, templateDepth = 0
                 while let node = stack.popLast() {
                     if Task.isCancelled { return nil }
-                    let kind = cmark_node_get_type(node)
+                    let kind = cmark_node_get_type(UnsafeMutablePointer<cmark_node>(node))
                     if kind == CMARK_NODE_TEXT && (context.inRawContext || templateDepth > 0) {
                         guard let range = source.range(node), NSIntersectionRange(range, selection).length == 0 else { return nil }
                     }
                     if kind == CMARK_NODE_HTML_INLINE || kind == CMARK_NODE_HTML_BLOCK {
                         if kind == CMARK_NODE_HTML_INLINE { allInlineHTML.append((node, nodeRange(node))) }
                         if kind == CMARK_NODE_HTML_BLOCK, let range = source.range(node), NSIntersectionRange(range, selection).length > 0,
-                           let literal = cmark_node_get_literal(node), String(cString: literal).localizedCaseInsensitiveContains("<img") {
+                           let literal = cmark_node_get_literal(UnsafeMutablePointer<cmark_node>(node)), String(cString: literal).localizedCaseInsensitiveContains("<img") {
                             selectedHTMLBlockHasImage = true
                         }
                         if let range = nodeRange(node), range.location >= lastHTMLPosition,
@@ -459,13 +459,13 @@ enum MarkdownClipboardCopyService {
                             let outsideTemplate = templateDepth == 0
                             let outside = context.consume(source: raw, range: range, isCancelled: { Task.isCancelled }, confirmedTag: { tag, name, closing in
                                 if name == "template" { templateDepth = closing ? max(0, templateDepth - 1) : templateDepth + 1 }
-                                if name == "ruby", let parent = cmark_node_parent(node) { rubyTags.append((parent, tag, closing)) }
+                                if name == "ruby", let parent = cmark_node_parent(UnsafeMutablePointer<cmark_node>(node)) { rubyTags.append((OpaquePointer(parent), tag, closing)) }
                             })
                             if outside && outsideTemplate && templateDepth == 0 && kind == CMARK_NODE_HTML_INLINE {
                                 confirmedHTMLNodes.insert(node)
                             }
                             if outside && outsideTemplate && templateDepth == 0 && kind == CMARK_NODE_HTML_BLOCK,
-                               NSIntersectionRange(range, selection).length > 0, let literal = cmark_node_get_literal(node) {
+                               NSIntersectionRange(range, selection).length > 0, let literal = cmark_node_get_literal(UnsafeMutablePointer<cmark_node>(node)) {
                                 let html = String(cString: literal)
                                 if let svg = MarkdownPresentationParser.standaloneSVGBlockCandidate(node, range: range, text: raw, isCancelled: { Task.isCancelled }) {
                                     svgBlockCandidates.append(svg)
@@ -484,25 +484,27 @@ enum MarkdownClipboardCopyService {
                         } else { context.invalidate() }
                     } else if !context.inRawContext && templateDepth == 0 {
                         if let expression = inlineByNode[node] {
-                            guard let parent = cmark_node_parent(node),
-                                  let range = source.mathInlineRange(line: expression.line, column: expression.column, byteLength: expression.byteLength, parent: parent),
+                            guard let parent = cmark_node_parent(UnsafeMutablePointer<cmark_node>(node)),
+                                  let range = source.mathInlineRange(line: expression.line, column: expression.column, byteLength: expression.byteLength, parent: OpaquePointer(parent)),
                                   range.length >= 2, NSMaxRange(range) <= raw.length,
                                   raw.character(at: range.location) == 36, raw.character(at: NSMaxRange(range) - 1) == 36 else {
                                 mathContextValid = false; continue
                             }
                             mathNodes.append((node, .init(source: expression.text, display: false, range: range)))
-                        } else if kind == CMARK_NODE_CODE_BLOCK, cmark_node_get_syntax_extension(node) == mathExtension {
-                            guard let range = source.mathBlockRange(node), let literal = cmark_node_get_literal(node) else {
+                        } else if kind == CMARK_NODE_CODE_BLOCK,
+                                  cmark_node_get_syntax_extension(UnsafeMutablePointer<cmark_node>(node)).map({ OpaquePointer($0) }) == mathExtension {
+                            guard let range = source.mathBlockRange(node), let literal = cmark_node_get_literal(UnsafeMutablePointer<cmark_node>(node)) else {
                                 mathContextValid = false; continue
                             }
                             mathNodes.append((node, .init(source: String(cString: literal), display: true, range: range)))
                         }
                     }
-                    var children: [OpaquePointer] = [], child = cmark_node_first_child(node)
+                    var children: [OpaquePointer] = []
+                    var child = cmark_node_first_child(UnsafeMutablePointer<cmark_node>(node)).map { OpaquePointer($0) }
                     while let current = child {
                         if Task.isCancelled { return nil }
                         children.append(current)
-                        child = cmark_node_next(current)
+                        child = cmark_node_next(UnsafeMutablePointer<cmark_node>(current)).map { OpaquePointer($0) }
                     }
                     stack.append(contentsOf: children.reversed())
                 }
@@ -511,7 +513,7 @@ enum MarkdownClipboardCopyService {
                 if Task.isCancelled || filtered.blocked.contains(where: { NSIntersectionRange($0, selection).length > 0 }) { return nil }
                 confirmedHTMLNodes = filtered.confirmed
             }
-            let svgParents = Set(allInlineHTML.compactMap { cmark_node_parent($0.0) })
+            let svgParents = Set(allInlineHTML.compactMap { cmark_node_parent(UnsafeMutablePointer<cmark_node>($0.0)).map { OpaquePointer($0) } })
             let inlineSVG = MarkdownPresentationParser.standaloneSVGInlineCandidates(parents: Array(svgParents), confirmed: confirmedHTMLNodes,
                 source: source, text: raw, isCancelled: { Task.isCancelled })
             let svgCandidates = (svgBlockCandidates + inlineSVG).filter { NSIntersectionRange($0.range, selection).length > 0 }

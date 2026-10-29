@@ -8,7 +8,7 @@ struct DocumentStatistics: Equatable, Sendable {
     let lines: Int
     let readingMinutes: Int
 
-    static func calculate(_ text: String, wordsPerMinute: Int = 200, readableText: String? = nil, isCancelled: () -> Bool = { false }) -> DocumentStatistics? {
+    static func calculate(_ text: String, wordsPerMinute: Int = 200, readableText: String? = nil, isCancelled: @escaping () -> Bool = { false }) -> DocumentStatistics? {
         guard wordsPerMinute > 0 else { return nil }
         var characters = 0, withoutWhitespace = 0, lines = 1, scannedScalars = 0
         var previousWasCR = false
@@ -30,7 +30,7 @@ struct DocumentStatistics: Equatable, Sendable {
                                   lines: lines, readingMinutes: words / wordsPerMinute + (words % wordsPerMinute == 0 ? 0 : 1))
     }
 
-    private static func countWords(_ text: String, isCancelled: () -> Bool) -> Int? {
+    private static func countWords(_ text: String, isCancelled: @escaping () -> Bool) -> Int? {
         let source = text as NSString
         var words = 0, cursor = 0
         func countBetweenIdeographs(_ range: NSRange) {

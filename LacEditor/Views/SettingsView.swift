@@ -255,17 +255,26 @@ struct SettingsView: View {
                 }
                 rowDivider
                 PreferenceRow(title: L10n.tr("从右向左书写"), detail: L10n.tr("设置 Markdown 的基础书写方向。")) {
-                    Toggle(L10n.tr("从右向左书写"), isOn: $appState.preferences.markdownRightToLeft)
+                    Toggle(L10n.tr("从右向左书写"), isOn: Binding(
+                        get: { appState.preferences.markdownRightToLeft },
+                        set: { appState.preferences.markdownRightToLeft = $0 }
+                    ))
                         .labelsHidden().toggleStyle(.switch)
                 }
                 rowDivider
                 PreferenceRow(title: L10n.tr("划掉已完成的任务"), detail: L10n.tr("自动为已完成的任务添加删除线。")) {
-                    Toggle(L10n.tr("划掉已完成的任务"), isOn: $appState.preferences.markdownStrikeCompletedTasks)
+                    Toggle(L10n.tr("划掉已完成的任务"), isOn: Binding(
+                        get: { appState.preferences.markdownStrikeCompletedTasks },
+                        set: { appState.preferences.markdownStrikeCompletedTasks = $0 }
+                    ))
                         .labelsHidden().toggleStyle(.switch)
                 }
                 rowDivider
                 PreferenceRow(title: L10n.tr("自动编号标题"), detail: L10n.tr("在标题、目录和大纲中显示层级编号。")) {
-                    Toggle(L10n.tr("自动编号标题"), isOn: $appState.preferences.markdownNumberHeadings)
+                    Toggle(L10n.tr("自动编号标题"), isOn: Binding(
+                        get: { appState.preferences.markdownNumberHeadings },
+                        set: { appState.preferences.markdownNumberHeadings = $0 }
+                    ))
                         .labelsHidden().toggleStyle(.switch)
                 }
                 rowDivider
@@ -306,7 +315,10 @@ struct SettingsView: View {
                 }
                 rowDivider
                 PreferenceRow(title: L10n.tr("竖排 Markdown"), detail: L10n.tr("在排版视图中竖排显示文本。")) {
-                    Toggle(L10n.tr("竖排 Markdown"), isOn: $appState.preferences.markdownVerticalWriting)
+                    Toggle(L10n.tr("竖排 Markdown"), isOn: Binding(
+                        get: { appState.preferences.markdownVerticalWriting },
+                        set: { appState.preferences.markdownVerticalWriting = $0 }
+                    ))
                         .labelsHidden().toggleStyle(.switch)
                 }
                 rowDivider
@@ -510,7 +522,10 @@ struct SettingsView: View {
                 rowDivider
                 PreferenceRow(title: L10n.tr("启动文件夹"), detail: L10n.tr("留空时启动不打开默认文件夹。")) {
                     HStack {
-                        TextField(L10n.tr("未设置"), text: $appState.preferences.startupFolderPath).frame(width: 180)
+                        TextField(L10n.tr("未设置"), text: Binding(
+                            get: { appState.preferences.startupFolderPath },
+                            set: { appState.preferences.startupFolderPath = $0 }
+                        )).frame(width: 180)
                         Button(L10n.tr("选择…")) {
                             let panel = NSOpenPanel()
                             panel.canChooseFiles = false
