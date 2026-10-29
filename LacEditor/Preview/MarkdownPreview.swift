@@ -10,7 +10,7 @@ actor MarkdownRenderActor {
     private let renderer: @Sendable (String, Bool, URL?, MarkdownSyntaxOptions) -> MarkdownRenderedPage
 
     init(renderer: @escaping @Sendable (String, Bool, URL?, MarkdownSyntaxOptions) -> MarkdownRenderedPage = {
-        MarkdownRenderer.renderPage($0, darkMode: $1, renderEmoji: true, resolveLocalImages: true, documentURL: $2, prepareRemoteImages: true, syntax: $3, includeHeadingNumbers: true, includeListStyles: true, includeSourcePositions: true)
+        MarkdownRenderer.renderPage($0, darkMode: $1, renderEmoji: true, resolveLocalImages: true, documentURL: $2, prepareRemoteImages: true, syntax: $3, includeHeadingNumbers: true, includeListStyles: true, includeSourcePositions: true, isPreview: true, highlightCode: true)
     }) {
         self.renderer = renderer
     }
@@ -268,6 +268,7 @@ struct MarkdownPreview: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
+        NotificationCenter.default.removeObserver(coordinator, name: NSColor.systemColorsDidChangeNotification, object: nil)
         coordinator.detachScrollRelay()
         coordinator.stop()
         nsView.stopLoading()
@@ -380,6 +381,22 @@ struct MarkdownPreview: NSViewRepresentable {
         init(document: EditorDocument, imageSession: URLSession = .shared) {
             self.document = document
             self.imageSession = imageSession
+            super.init()
+            NotificationCenter.default.addObserver(self, selector: #selector(accentDidChange), name: NSColor.systemColorsDidChangeNotification, object: nil)
+        }
+
+        // Системный акцент меняет только декор страницы: обновляем её без пересборки текста.
+        @objc private func accentDidChange() {
+            guard isActive, pageIsReady, page != nil else { return }
+            patchPage(includingBody: false)
+        }
+
+        private static func systemAccentCSS(darkMode: Bool) -> String? {
+            var result: MarkdownSRGBColor?
+            NSAppearance(named: darkMode ? .darkAqua : .aqua)?.performAsCurrentDrawingAppearance {
+                result = MarkdownSRGBColor(NSColor.controlAccentColor)
+            }
+            return result?.css
         }
 
         deinit {
@@ -557,6 +574,7 @@ struct MarkdownPreview: NSViewRepresentable {
         }
 
         private func loadPage(in webView: WKWebView) {
+            self.page?.previewAccent = Self.systemAccentCSS(darkMode: self.page?.darkMode ?? false)
             guard let page else { return }
             cancelLegacyDiagrams()
             let previousMath = mathService
@@ -580,6 +598,7 @@ struct MarkdownPreview: NSViewRepresentable {
         }
 
         private func patchPage(includingBody: Bool, restoringScroll: Bool = false) {
+            self.page?.previewAccent = Self.systemAccentCSS(darkMode: self.page?.darkMode ?? false)
             guard let webView, let page, let renderedRevision, pageIsReady else { return }
             if includingBody {
                 visibleRevision = nil
@@ -613,7 +632,7 @@ struct MarkdownPreview: NSViewRepresentable {
                             "smallCapsCSS": page.typography?.smallCapsCSS ?? "",
                             "paragraphCSS": page.paragraphCSS,
                             "tocMaxLevel": page.typography?.tocMaxLevel ?? 6,
-                            "colors": page.typography.map { (page.darkMode ? $0.darkColors : $0.lightColors).cssVariables } ?? [:],
+                            "colors": page.rootColorVariables,
                             "generation": requestedGeneration, "mathDOMID": requestedDOMID, "fallbackRatio": pendingScrollRatio,
                             "fallbackArticleRatio": pendingArticleScrollRatio,
                             "restore": restoringScroll,
@@ -950,7 +969,7 @@ struct MarkdownPreview: NSViewRepresentable {
                 document.body.style.setProperty('--lac-content-width', `${contentWidth}px`);
                 document.body.style.setProperty('--lac-print-width', `min(100%, ${contentWidth}px)`);
             }
-            for (const key of ['--text', '--page', '--accent', '--code', '--quote']) {
+            for (const key of ['--text', '--page', '--accent', '--code', '--quote', '--lac-accent']) {
                 if (colors[key] === undefined) root.style.removeProperty(key);
                 else root.style.setProperty(key, colors[key]);
             }

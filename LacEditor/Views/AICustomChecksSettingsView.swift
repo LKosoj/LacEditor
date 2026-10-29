@@ -12,24 +12,27 @@ struct AICustomChecksSettingsView: View {
         VStack(alignment: .leading, spacing: 20) {
             PreferenceGroup(title: L10n.tr("自定义检查")) {
                 PreferenceRow(title: L10n.tr("自定义检查"),
-                              detail: Self.emptyStateText(isEmpty: preferences.aiCustomChecks.isEmpty) ?? "") {
+                              detail: Self.emptyStateText(isEmpty: preferences.aiCustomChecks.isEmpty) ?? "",
+                              searchID: nil) {
                     Button(L10n.tr("添加检查")) { preferences.aiCustomChecks.append(AICustomCheck()) }
                 }
             }
             ForEach($preferences.aiCustomChecks) { $check in
                 PreferenceGroup(title: check.name.isEmpty ? L10n.tr("未命名检查") : check.name, searchID: nil) {
-                    PreferenceRow(title: L10n.tr("检查名称"), detail: "") {
+                    PreferenceRow(title: L10n.tr("检查名称"), detail: "",
+                                  searchID: check.id == preferences.aiCustomChecks.first?.id ? L10n.tr("检查名称") : nil) {
                         TextField(L10n.tr("检查名称"), text: $check.name)
                             .textFieldStyle(.roundedBorder).frame(width: 220)
                             .accessibilityLabel(L10n.tr("检查名称"))
                     }
                     SettingsRowDivider()
-                    PreferenceRow(title: L10n.tr("启用"), detail: "") {
+                    PreferenceRow(title: L10n.tr("启用"), detail: "", searchID: nil) {
                         Toggle(L10n.tr("启用"), isOn: $check.isEnabled).labelsHidden().toggleStyle(.switch)
                             .accessibilityLabel(check.name.isEmpty ? L10n.tr("启用") : check.name)
                     }
                     SettingsRowDivider()
-                    PreferenceRow(title: L10n.tr("模型名称"), detail: L10n.tr("检查模型（留空使用功能模型）")) {
+                    PreferenceRow(title: L10n.tr("模型名称"), detail: L10n.tr("检查模型（留空使用功能模型）"),
+                                  searchID: check.id == preferences.aiCustomChecks.first?.id ? L10n.tr("模型名称") : nil) {
                         TextField(L10n.tr("检查模型（留空使用功能模型）"), text: $check.modelID)
                             .textFieldStyle(.roundedBorder).frame(width: 220)
                             .accessibilityLabel(L10n.tr("检查模型（留空使用功能模型）"))
@@ -38,8 +41,7 @@ struct AICustomChecksSettingsView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(L10n.tr("检查说明")).font(.caption).foregroundStyle(.secondary)
                         TextEditor(text: $check.instructions)
-                            .frame(minHeight: 70)
-                            .border(Color.secondary.opacity(0.3))
+                            .settingsMultilineField(minHeight: 70)
                             .accessibilityLabel(L10n.tr("检查说明"))
                     }.padding(.horizontal, 16).padding(.vertical, 8)
                     SettingsRowDivider()

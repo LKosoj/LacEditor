@@ -226,9 +226,10 @@ struct SidebarLibraryView: View {
     private func folderRow(_ url: URL) -> some View {
         Button { appState.openFolder(url) } label: {
             Label(url.lastPathComponent, systemImage: library.isPinnedFolder(url) ? "pin" : "folder")
-                .font(.callout).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                .font(.callout).lineLimit(1).truncationMode(.middle).frame(maxWidth: .infinity, alignment: .leading)
         }
-        .buttonStyle(.plain).padding(.vertical, 4).help(url.path)
+        .buttonStyle(.plain).padding(.vertical, 4).stableHelp(url.path)
+        .accessibilityHint(L10n.tr("打开此文件夹"))
         .contextMenu {
             Button(L10n.tr(library.isPinnedFolder(url) ? "取消固定文件夹" : "固定此文件夹")) {
                 let previous = library.pinnedFolderPaths
@@ -259,7 +260,7 @@ struct SidebarLibraryView: View {
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         let isExpanded = filter.isActive || library.isExpanded(section)
-        let isHovering = hoveredSection == section || focusedHeader?.hasPrefix(title) == true
+        let isHovering = hoveredSection == section || focusedHeader?.hasPrefix(section.rawValue) == true
         return VStack(spacing: 4) {
             HStack(spacing: 6) {
                 Button {
@@ -293,8 +294,8 @@ struct SidebarLibraryView: View {
                 .accessibilityIdentifier("sidebar.section.\(section.rawValue)")
                 .accessibilityAddTraits(.isHeader)
                 .disabled(filter.isActive)
-                .focused($focusedHeader, equals: title)
-                .editorFocusRing(focusedHeader == title)
+                .focused($focusedHeader, equals: section.rawValue)
+                .editorFocusRing(focusedHeader == section.rawValue)
                 .accessibilityValue(isExpanded ? L10n.tr("已展开") : L10n.tr("已收起"))
                 if section == .groups {
                     Button {
@@ -306,8 +307,8 @@ struct SidebarLibraryView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .focused($focusedHeader, equals: title + ".add")
-                    .editorFocusRing(focusedHeader == title + ".add", radius: 4)
+                    .focused($focusedHeader, equals: section.rawValue + ".add")
+                    .editorFocusRing(focusedHeader == section.rawValue + ".add", radius: 4)
                     .opacity(isHovering ? 1 : 0.85)
                     .stableHelp(L10n.tr("新建分组"))
                     .accessibilityLabel(L10n.tr("新建分组"))
@@ -322,8 +323,8 @@ struct SidebarLibraryView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .focused($focusedHeader, equals: title + ".clear")
-                    .editorFocusRing(focusedHeader == title + ".clear", radius: 4)
+                    .focused($focusedHeader, equals: section.rawValue + ".clear")
+                    .editorFocusRing(focusedHeader == section.rawValue + ".clear", radius: 4)
                     .opacity(isHovering ? 1 : 0.85)
                     .stableHelp(L10n.tr("清除最近文件"))
                     .accessibilityLabel(L10n.tr("清除最近文件"))
@@ -364,7 +365,21 @@ struct SidebarLibraryView: View {
     }
 }
 
+/// Сдвиг элемента списка избранного/группы на одну позицию (контекстное меню вместо перетаскивания).
+enum SidebarReorder {
+    static func canMove(at index: Int, offset: Int, count: Int) -> Bool {
+        index >= 0 && index < count && index + offset >= 0 && index + offset < count
+    }
+
+    /// Элемент, перед которым встаёт перемещаемый; nil — в конец списка.
+    static func insertionTarget<T>(at index: Int, offset: Int, in items: [T]) -> T? {
+        let target = offset < 0 ? index - 1 : index + 2
+        return items.indices.contains(target) ? items[target] : nil
+    }
+}
+
 private struct SidebarGroupView: View {
+    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var windowManager: WindowManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let group: SidebarFileGroup
@@ -373,6 +388,32 @@ private struct SidebarGroupView: View {
     @State private var isHovering = false
     @FocusState private var isFocused: Bool
     private var isExpanded: Bool { isFiltering || group.isExpanded }
+
+    private func canMoveGroup(_ offset: Int) -> Bool {
+        guard let index = library.groups.firstIndex(where: { $0.id == group.id }) else { return false }
+        return SidebarReorder.canMove(at: index, offset: offset, count: library.groups.count)
+    }
+
+    /// Сдвиг группы на одну позицию; вниз — после нижнего соседа, как при перетаскивании.
+    private func moveGroup(_ offset: Int) {
+        let groups = library.groups
+        guard let index = groups.firstIndex(where: { $0.id == group.id }),
+              SidebarReorder.canMove(at: index, offset: offset, count: groups.count) else { return }
+        let previousOrder = groups.map(\.id)
+        let nextAfter = index + 1 < groups.count ? groups[index + 1].id : nil
+        if offset < 0 {
+            library.moveGroup(group.id, before: groups[index - 1].id)
+        } else {
+            library.moveGroup(group.id, before: groups[index + 1].id, after: true)
+        }
+        let expectedOrder = library.groups.map(\.id)
+        guard previousOrder != expectedOrder else { return }
+        appState.sidebarFeedback.show(L10n.tr("已调整顺序")) { [weak library = library, id = group.id] in
+            guard let library, library.groups.map(\.id) == expectedOrder else { return false }
+            library.moveGroup(id, before: nextAfter)
+            return true
+        }
+    }
 
     var body: some View {
         VStack(spacing: 2) {
@@ -388,6 +429,7 @@ private struct SidebarGroupView: View {
                     Text(group.name)
                         .font(.body.weight(.medium))
                         .lineLimit(1)
+                        .truncationMode(.middle)
                     Image(systemName: "chevron.right")
                         .font(.system(size: 8, weight: .semibold))
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
@@ -425,6 +467,9 @@ private struct SidebarGroupView: View {
                 } label: {
                     Label(L10n.tr("重命名分组…"), systemImage: "pencil")
                 }
+                Button(L10n.tr("上移")) { moveGroup(-1) }.disabled(isFiltering || !canMoveGroup(-1))
+                Button(L10n.tr("下移")) { moveGroup(1) }.disabled(isFiltering || !canMoveGroup(1))
+                Divider()
                 Button(role: .destructive) {
                     windowManager.requestDeleteSidebarGroup(group)
                 } label: {
@@ -672,6 +717,50 @@ private struct SidebarFileRow: View {
         selection.selected(url, in: location) ? urls.filter { selection.paths.contains($0.path) } : [url]
     }
 
+    /// Полный список из хранилища; nil, если показан отфильтрованный или недавний список.
+    private var reorderableURLs: [URL]? {
+        let full: [URL]
+        switch location {
+        case .favorites: full = windowManager.sidebarLibrary.favoriteURLs
+        case let .group(id): full = windowManager.sidebarLibrary.groups.first { $0.id == id }?.urls ?? []
+        case .recent: return nil
+        }
+        return full == urls ? full : nil
+    }
+
+    private func canMove(_ offset: Int) -> Bool {
+        guard let list = reorderableURLs, let index = list.firstIndex(of: url) else { return false }
+        return SidebarReorder.canMove(at: index, offset: offset, count: list.count)
+    }
+
+    /// Сдвиг на одну позицию из контекстного меню; отмена через обратную связь боковой панели.
+    private func move(_ offset: Int) {
+        guard let list = reorderableURLs, let index = list.firstIndex(of: url),
+              SidebarReorder.canMove(at: index, offset: offset, count: list.count) else { return }
+        let library = windowManager.sidebarLibrary
+        let before = SidebarReorder.insertionTarget(at: index, offset: offset, in: list)
+        switch location {
+        case .favorites:
+            let previous = library.favoritePaths
+            library.moveFavorite(url, before: before)
+            let expected = library.favoritePaths
+            guard previous != expected else { return }
+            appState.sidebarFeedback.show(L10n.tr("已调整顺序")) { [weak library = library] in
+                library?.restoreFavorites(previous, ifUnchanged: expected) ?? false
+            }
+        case let .group(id):
+            let previous = library.groups.first { $0.id == id }?.paths ?? []
+            library.moveFile(url, inGroup: id, before: before)
+            let expected = library.groups.first { $0.id == id }?.paths ?? []
+            guard previous != expected else { return }
+            appState.sidebarFeedback.show(L10n.tr("已调整顺序")) { [weak library = library] in
+                library?.restoreGroupFiles(previous, in: id, ifUnchanged: expected) ?? false
+            }
+        case .recent:
+            break
+        }
+    }
+
     @ViewBuilder
     private var contextMenu: some View {
         let exists = FileManager.default.fileExists(atPath: url.path)
@@ -769,12 +858,18 @@ private struct SidebarFileRow: View {
 
         switch location {
         case .favorites:
+            Button(L10n.tr("上移")) { move(-1) }.disabled(!canMove(-1))
+            Button(L10n.tr("下移")) { move(1) }.disabled(!canMove(1))
+            Divider()
             Button(role: .destructive) {
                 appState.toggleSidebarFavorite(url)
             } label: {
                 Label(L10n.tr("从收藏夹移除"), systemImage: "star.slash")
             }
         case let .group(id):
+            Button(L10n.tr("上移")) { move(-1) }.disabled(!canMove(-1))
+            Button(L10n.tr("下移")) { move(1) }.disabled(!canMove(1))
+            Divider()
             Button(role: .destructive) {
                 appState.removeSidebarFile(url, fromGroup: id)
             } label: {
@@ -817,6 +912,7 @@ private struct SidebarFileRowLabel: View {
                     .font(.body.weight(isOpen ? .semibold : .regular))
                     .foregroundStyle(exists ? Color.primary : Color.secondary)
                     .lineLimit(1)
+                    .truncationMode(.middle)
                 Text(exists ? url.deletingLastPathComponent().lastPathComponent : L10n.tr("文件已移动或删除"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)

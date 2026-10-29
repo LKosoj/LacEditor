@@ -208,7 +208,7 @@ final class ExperimentSampleLibrary: ObservableObject {
             if !library.isFavorite(welcomeURL) { library.toggleFavorite(welcomeURL) }
             defaults.set(true, forKey: installedKey)
         } catch {
-            errorMessage = "示例准备失败：\(error.localizedDescription)"
+            errorMessage = L10n.tr("示例准备失败：%@", String(describing: error.localizedDescription))
         }
     }
 }

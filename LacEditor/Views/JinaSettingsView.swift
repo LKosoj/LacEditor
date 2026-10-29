@@ -43,6 +43,11 @@ private struct JinaServiceSettingsView: View {
         )
     }
 
+    /// Поиск настроек ведёт к первому включённому сервису: поля выключенного скрыты.
+    private var ownsSearchID: Bool {
+        service == (preferences.jinaConfiguration.searchEnabled || !preferences.jinaConfiguration.readerEnabled ? .search : .reader)
+    }
+
     private var serviceTitle: String {
         service == .search ? L10n.tr("Jina 搜索") : L10n.tr("Jina 网页读取")
     }
@@ -50,28 +55,35 @@ private struct JinaServiceSettingsView: View {
     var body: some View {
         PreferenceGroup(title: serviceTitle) {
             Toggle(serviceTitle, isOn: enabled).padding(.horizontal, 16).padding(.vertical, 8)
-            SettingsRowDivider()
-            PreferenceRow(title: L10n.tr("完整接口地址"), detail: "") {
-                TextField(service == .search ? "https://s.jina.ai/search" : "https://r.jina.ai/", text: endpoint)
-                    .textFieldStyle(.roundedBorder).frame(width: 260)
-                    .accessibilityLabel(L10n.tr("完整接口地址"))
-            }
-            SettingsRowDivider()
-            PreferenceRow(title: L10n.tr("API 密钥"),
-                          detail: keyDraft.isEmpty
-                          ? (hasKey ? L10n.tr("已保存密钥") : L10n.tr("未保存密钥"))
-                          : L10n.tr("密钥更改尚未保存")) {
-                SecureField(L10n.tr("输入新密钥"), text: $keyDraft)
-                    .textFieldStyle(.roundedBorder).frame(width: 220)
-                    .accessibilityLabel("\(serviceTitle) \(L10n.tr("API 密钥"))")
-            }
-            HStack {
-                Button(L10n.tr("保存密钥")) { saveKey() }.disabled(keyDraft.isEmpty)
-                Button(L10n.tr("删除密钥"), role: .destructive) { confirmDeleteKey = true }.disabled(!hasKey)
-            }.padding(.horizontal, 16).padding(.vertical, 8)
-            if let status {
-                StatusMessageView(kind: status.kind, text: status.text)
-                    .padding(.horizontal, 16).padding(.vertical, 8)
+            if enabled.wrappedValue {
+                SettingsRowDivider()
+                PreferenceRow(title: L10n.tr("完整接口地址"), detail: "",
+                              searchID: ownsSearchID ? L10n.tr("完整接口地址") : nil) {
+                    TextField(service == .search ? "https://s.jina.ai/search" : "https://r.jina.ai/", text: endpoint)
+                        .textFieldStyle(.roundedBorder).frame(width: 260)
+                        .accessibilityLabel(L10n.tr("完整接口地址"))
+                }
+                SettingsRowDivider()
+                PreferenceRow(title: L10n.tr("API 密钥"),
+                              detail: keyDraft.isEmpty
+                              ? (hasKey ? L10n.tr("已保存密钥") : L10n.tr("未保存密钥"))
+                              : L10n.tr("密钥更改尚未保存"),
+                              searchID: ownsSearchID ? L10n.tr("API 密钥") : nil) {
+                    SecureField(L10n.tr("输入新密钥"), text: $keyDraft)
+                        .textFieldStyle(.roundedBorder).frame(width: 220)
+                        .accessibilityLabel("\(serviceTitle) \(L10n.tr("API 密钥"))")
+                }
+                HStack {
+                    Button(L10n.tr("保存密钥")) { saveKey() }.disabled(keyDraft.isEmpty)
+                    Button(L10n.tr("删除密钥"), role: .destructive) { confirmDeleteKey = true }.disabled(!hasKey)
+                }.padding(.horizontal, 16).padding(.vertical, 8)
+                if let status {
+                    StatusMessageView(kind: status.kind, text: status.text)
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                }
+            } else {
+                Text(L10n.tr("未启用，开启后可配置服务地址和密钥。")).font(.subheadline).foregroundStyle(.secondary)
+                    .padding(.horizontal, 16).padding(.bottom, 8)
             }
         }
         .confirmationDialog(L10n.tr("删除已保存的密钥？"), isPresented: $confirmDeleteKey, titleVisibility: .visible) {
@@ -86,6 +98,9 @@ private struct JinaServiceSettingsView: View {
             keyDraft = ""
             refreshKey()
             if let notice, status == nil { status = notice }
+        }
+        .onChange(of: enabled.wrappedValue) { _, on in
+            if !on { keyDraft = "" }
         }
         .onChange(of: isActive) { _, active in
             if active { refreshKey() } else { keyDraft = "" }

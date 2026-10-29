@@ -274,7 +274,7 @@ final class MarkdownPDFExportService: NSObject, WKNavigationDelegate {
             let pageTask = Task.detached(priority: .userInitiated) {
                 var page = MarkdownRenderer.renderPage(snapshot.text, darkMode: darkMode, includeHTMLMedia: isHTML, renderEmoji: true,
                                                        resolveLocalImages: !isHTML, documentURL: sourceURL, prepareRemoteImages: !isHTML, syntax: syntax, forExport: true, includeHeadingNumbers: true, includeListStyles: true,
-                                                       staticWidgetFallback: !isHTML, preserveRawHTMLBlocks: isHTML)
+                                                       staticWidgetFallback: !isHTML, preserveRawHTMLBlocks: isHTML, highlightCode: !isHTML)
                 try? await page.resolveRemoteImages(session: imageSession)
                 try? page.prepareLocalMedia(load: true)
                 if isImage && options.customImageFontSize {

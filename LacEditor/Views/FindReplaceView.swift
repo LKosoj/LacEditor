@@ -51,6 +51,36 @@ struct FindBarView: View {
         .onChange(of: state.replacement) { appState.cancelFindReplaceTask() }
     }
 
+    private var queryField: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
+            TextField(L10n.tr("输入要查找的内容"), text: $state.query)
+                .textFieldStyle(.plain)
+                .focused($focusedField, equals: .query)
+                .onKeyPress(keys: [.return], phases: .down) { press in handleReturn(press) }
+                .onKeyPress(keys: [.escape], phases: .down) { _ in handleEscape() }
+                .accessibilityIdentifier("find.query")
+                .accessibilityLabel(L10n.tr("查找"))
+            if !state.query.isEmpty {
+                Button {
+                    state.query = ""
+                    focusedField = .query
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help(L10n.tr("清除"))
+                .accessibilityLabel(L10n.tr("清除"))
+                .accessibilityIdentifier("find.clear")
+            }
+        }
+        .padding(.horizontal, 6)
+        .frame(minWidth: 160, minHeight: 22)
+        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 5))
+        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)).allowsHitTesting(false))
+        .editorFocusRing(focusedField == .query, radius: 5)
+    }
+
     private var findRow: some View {
         HStack(spacing: 6) {
             Button {
@@ -64,14 +94,7 @@ struct FindBarView: View {
             .accessibilityLabel(L10n.tr("替换"))
             .accessibilityAddTraits(state.mode == .replace ? .isSelected : [])
             .accessibilityIdentifier("find.toggleReplace")
-            TextField(L10n.tr("输入要查找的内容"), text: $state.query)
-                .textFieldStyle(.roundedBorder)
-                .frame(minWidth: 160)
-                .focused($focusedField, equals: .query)
-                .onKeyPress(keys: [.return], phases: .down) { press in handleReturn(press) }
-                .onKeyPress(keys: [.escape], phases: .down) { _ in handleEscape() }
-                .accessibilityIdentifier("find.query")
-                .accessibilityLabel(L10n.tr("查找"))
+            queryField
             optionToggle("Aa", isOn: $state.isCaseSensitive, label: L10n.tr("区分大小写"))
             optionToggle(".*", isOn: $state.usesRegex, label: L10n.tr("正则表达式"))
             optionToggle("W", isOn: $state.matchesWholeWord, label: L10n.tr("全字匹配"))
@@ -170,7 +193,7 @@ struct FindBarView: View {
                 .accessibilityIdentifier("find.result.message")
             } else if let matches = state.matches, state.matchesDocumentID == document.id {
                 if matches.isEmpty {
-                    Text(L10n.tr("未找到匹配内容")).foregroundStyle(.red)
+                    Text(L10n.tr("未找到匹配内容")).foregroundStyle(.secondary)
                 } else if let index = TextSearchService.currentIndex(in: matches, selection: document.selectionRange) {
                     Text(L10n.tr("第 %@ 个，共 %@ 个", String(index), String(matches.count))).foregroundStyle(.secondary)
                 } else {

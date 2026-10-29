@@ -73,10 +73,13 @@ struct AIFeatureSettingsView: View {
                         .accessibilityLabel(L10n.tr("功能模型名称（留空使用默认值）"))
                 }
                 SettingsRowDivider()
-                PreferenceRow(title: L10n.tr("选择模型"), detail: "") {
+                PreferenceRow(title: L10n.tr("选择模型"),
+                              detail: roleProfile.isEnabled ? "" : L10n.tr("未启用此功能所用的服务（%@）。请先在「%@」分区开启。", roleName, AISettingsPage.connections.title)) {
                     HStack {
-                        Button(L10n.tr("获取模型列表"), action: fetchModels).disabled(modelTask != nil || !isActive)
-                        if modelTask != nil { ProgressView().controlSize(.small) }
+                        Button(L10n.tr("获取模型列表"), action: fetchModels)
+                            .disabled(modelTask != nil || !isActive || !roleProfile.isEnabled)
+                            .help(roleProfile.isEnabled ? "" : L10n.tr("未启用此功能所用的服务（%@）。请先在「%@」分区开启。", roleName, AISettingsPage.connections.title))
+                        if modelTask != nil { ProgressView().controlSize(.small).accessibilityLabel(L10n.tr("正在获取模型列表…")) }
                         if !models.isEmpty {
                             Menu(L10n.tr("选择模型")) {
                                 ForEach(models, id: \.self) { model in

@@ -9,7 +9,7 @@ struct AIWritingView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.tr("AI 写作助手")).font(.headline)
+            Text(L10n.tr("AI 写作助手")).font(.headline).accessibilityAddTraits(.isHeader)
             if controller.enabledFeatures.isEmpty {
                 ContentUnavailableView {
                     Label(L10n.tr("尚未启用 AI 功能"), systemImage: "sparkles")
@@ -76,7 +76,7 @@ struct AIWritingView: View {
                         }
                         if controller.suggestions.count > 1 {
                             HStack {
-                                Button(L10n.tr("全部接受") + " (\(controller.suggestions.count))") { controller.acceptAll() }
+                                Button(L10n.tr("全部接受（%lld）", controller.suggestions.count)) { controller.acceptAll() }
                                     .buttonStyle(.borderedProminent)
                                 Button(L10n.tr("全部拒绝")) { controller.rejectAll() }
                             }
@@ -96,7 +96,7 @@ struct AIWritingView: View {
                             }.padding(8).background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
                         }
                         if let data = controller.image, let image = NSImage(data: data) {
-                            Image(nsImage: image).resizable().scaledToFit()
+                            Image(nsImage: image).resizable().scaledToFit().accessibilityLabel(L10n.tr("图片"))
                             HStack {
                                 Button(L10n.tr("保存图片")) { controller.saveImage() }
                                 Button(L10n.tr("插入图片")) { controller.insertImage() }

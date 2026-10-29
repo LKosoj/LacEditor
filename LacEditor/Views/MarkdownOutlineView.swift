@@ -10,6 +10,15 @@ struct MarkdownOutlineView: View {
     @State private var contentHeight: CGFloat = 0
     @FocusState private var focusedID: Int?
 
+    static let maximumHeight: CGFloat = 320
+
+    /// Оценка до первого измерения: около 24 pt на строку, не меньше одной строки.
+    static func estimatedHeight(rowCount: Int) -> CGFloat { min(CGFloat(max(rowCount, 1)) * 24, maximumHeight) }
+
+    private var estimatedRowCount: Int {
+        document.isMarkdownOutlineCurrent ? document.markdownHeadings.filter { $0.level <= maximumLevel }.count : 1
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
@@ -38,7 +47,7 @@ struct MarkdownOutlineView: View {
                 .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { contentHeight = $0 }
             }
             // Короткое оглавление не оставляет пустого места, длинное прокручивается внутри 320 pt.
-            .frame(height: min(contentHeight > 0 ? contentHeight : 320, 320))
+            .frame(height: min(contentHeight > 0 ? contentHeight : Self.estimatedHeight(rowCount: estimatedRowCount), Self.maximumHeight))
         }
         .onReceive(Publishers.CombineLatest3(document.$markdownHeadings, document.$selectionRange,
                                              document.$isMarkdownOutlineCurrent)) { value in

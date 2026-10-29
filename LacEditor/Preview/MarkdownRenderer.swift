@@ -118,6 +118,8 @@ struct MarkdownRenderedPage: Sendable {
     var localMediaMarkers: [String: LocalMediaResource] = [:]
     var rawHTMLBlocks: [(marker: String, html: String)] = []
     var rawHTMLBlockProofFailed = false
+    /// Системный акцент для декора; задаётся только в предпросмотре.
+    var previewAccent: String?
     var listDepths: Set<Int> = []
     var paragraphCSS: String { (typography?.paragraphCSS ?? "") + (typography?.listStyles.cssRules(depths: listDepths) ?? "") }
 
@@ -191,6 +193,13 @@ struct MarkdownRenderedPage: Sendable {
         self.preserveWhitespace = preserveWhitespace
     }
 
+    /// Цвета корня страницы: пользовательские + (только предпросмотр) системный акцент для декора.
+    var rootColorVariables: [String: String] {
+        var values = typography.map { (darkMode ? $0.darkColors : $0.lightColors).cssVariables } ?? [:]
+        if values["--accent"] == nil, let previewAccent { values["--lac-accent"] = previewAccent }
+        return values
+    }
+
     var html: String {
         func cssFamily(_ family: String) -> String {
             family.unicodeScalars.map { "\\" + String($0.value, radix: 16) + " " }.joined()
@@ -200,7 +209,7 @@ struct MarkdownRenderedPage: Sendable {
         for level in 1...6 where level > maximumLevel {
             displayedBody = displayedBody.replacingOccurrences(of: "<li data-level=\"\(level)\">", with: "<li data-level=\"\(level)\" hidden>")
         }
-        let colors = typography.map { (darkMode ? $0.darkColors : $0.lightColors).cssVariables } ?? [:]
+        let colors = rootColorVariables
         let colorDeclarations = colors.sorted { $0.key < $1.key }.map { "\($0.key):\($0.value)" }.joined(separator: ";")
         let colorStyle = colors.isEmpty ? "" : " style=\"\(colorDeclarations)\""
         let bodyStyle = typography.map { value in
@@ -238,12 +247,26 @@ struct MarkdownRenderedPage: Sendable {
         color-scheme: light;
         --page: #fbfbfb; --text: #303038; --secondary: #6d6d78;
         --border: #e2e2e8; --code: #f0f0f4; --accent: #5c61ba; --quote: #f4f4f8;
+        --mark: #fff1a8; --kbd-edge: #b4b4be;
+        --alert-note: #0969da; --alert-note-text: #0550ae;
+        --alert-tip: #1a7f37; --alert-tip-text: #116329;
+        --alert-important: #8250df; --alert-important-text: #6639ba;
+        --alert-warning: #9a6700; --alert-warning-text: #7d4e00;
+        --alert-caution: #cf222e; --alert-caution-text: #a40e26;
+        --tok-k: #4a4f9e; --tok-s: #33754a; --tok-n: #a35016; --tok-y: #87479c; --tok-c: #556652;
         background: var(--page);
       }
       :root[data-theme="dark"] {
         color-scheme: dark;
         --page: #1b1b1b; --text: #dddde3; --secondary: #acacb8;
         --border: #38383f; --code: #25252c; --accent: #a1a6f2; --quote: #222228;
+        --mark: #5a4a10; --kbd-edge: #4a4a54;
+        --alert-note: #4493f8; --alert-note-text: #79b8ff;
+        --alert-tip: #3fb950; --alert-tip-text: #56d364;
+        --alert-important: #ab7df8; --alert-important-text: #c9a8ff;
+        --alert-warning: #d29922; --alert-warning-text: #e3b341;
+        --alert-caution: #f85149; --alert-caution-text: #ff8a85;
+        --tok-k: #9eabfa; --tok-s: #7ac28c; --tok-n: #f09e57; --tok-y: #cc96e0; --tok-c: #99a89e;
       }
       * { box-sizing: border-box; }
       html { overflow-wrap: anywhere; }
@@ -274,12 +297,21 @@ struct MarkdownRenderedPage: Sendable {
       li > p { margin: .45em 0; }
       blockquote {
         margin: 1.15em 0; padding: .65em 1em; color: var(--text);
-        border-left: 3px solid var(--accent); background: var(--quote);
+        border-left: 3px solid var(--lac-accent, var(--accent)); background: var(--quote);
         border-radius: 0 5px 5px 0;
       }
       blockquote > :first-child { margin-top: 0; }
       blockquote > :last-child { margin-bottom: 0; }
       blockquote blockquote { margin: .6em 0; }
+      aside.lac-alert { margin: 1.15em 0; }
+      aside.lac-alert > blockquote { margin: 0; border-left-color: var(--alert); background: color-mix(in srgb, var(--alert) 8%, var(--quote)); }
+      aside.lac-alert > blockquote > p:first-child > strong:first-child { display: block; margin-bottom: .15em; color: var(--alert-text); text-transform: lowercase; }
+      aside.lac-alert > blockquote > p:first-child > strong:first-child::first-letter { text-transform: uppercase; }
+      .lac-alert-note { --alert: var(--alert-note); --alert-text: var(--alert-note-text); }
+      .lac-alert-tip { --alert: var(--alert-tip); --alert-text: var(--alert-tip-text); }
+      .lac-alert-important { --alert: var(--alert-important); --alert-text: var(--alert-important-text); }
+      .lac-alert-warning { --alert: var(--alert-warning); --alert-text: var(--alert-warning-text); }
+      .lac-alert-caution { --alert: var(--alert-caution); --alert-text: var(--alert-caution-text); }
       hr { border: 0; border-top: 1px solid var(--border); margin: 1.8em 0; }
       a { color: var(--accent); text-decoration-line: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent); }
       a:hover, a:focus-visible { text-decoration-color: currentColor; text-decoration-thickness: 2px; }
@@ -291,6 +323,8 @@ struct MarkdownRenderedPage: Sendable {
         padding: 14px 16px; border-radius: 7px; tab-size: 4;
       }
       pre code { background: none; padding: 0; border-radius: 0; overflow-wrap: normal; white-space: pre; }
+      .tok-k { color: var(--tok-k); } .tok-s { color: var(--tok-s); } .tok-n { color: var(--tok-n); }
+      .tok-y { color: var(--tok-y); } .tok-c { color: var(--tok-c); }
       pre[hidden] { display: none; }
       .mermaid-diagram { max-width: 100%; overflow-x: auto; margin: 1.1em 0; }
       .mermaid-diagram svg { max-width: 100%; height: auto; }
@@ -302,26 +336,52 @@ struct MarkdownRenderedPage: Sendable {
       tbody tr:nth-child(even) { background: var(--quote); }
       img { max-width: 100%; height: auto; }
       [data-lac-centered-image] { display: block; text-align: center; }
-      input[type="checkbox"] { margin: 0 .45em 0 0; accent-color: var(--accent); vertical-align: middle; }
+      input[type="checkbox"] { margin: 0 .45em 0 0; accent-color: var(--lac-accent, var(--accent)); vertical-align: middle; }
       del { color: var(--secondary); }
-      ::selection { background: #9296db55; }
-      :root[data-theme="dark"] ::selection { background: #a1a6f270; }
+      mark { background: var(--mark); color: var(--text); padding: .05em .2em; border-radius: 3px; }
+      kbd { border: 1px solid var(--border); border-bottom: 2px solid var(--kbd-edge); border-radius: 5px; padding: .1em .45em; }
+      li:has(> input[type="checkbox"]) { list-style: none; }
+      li > input[type="checkbox"]:first-child { margin-left: -1.55em; }
+      sup.footnote-ref { font-size: .75em; line-height: 0; margin-left: .1em; }
+      sup.footnote-ref a, a.footnote-backref { text-decoration: none; padding: 0 .15em; }
+      a.footnote-backref { margin-left: .3em; }
+      section[data-footnotes] { margin-top: 2.2em; padding-top: .5em; border-top: 1px solid var(--border); font-size: .9em; }
+      section[data-footnotes] > ol { margin: .5em 0; }
+      section[data-footnotes] li:target { background: var(--quote); border-radius: 4px; }
+      .lac-empty { margin: 18vh 0 0; text-align: center; color: var(--secondary); }
+      ::selection { background: color-mix(in srgb, var(--lac-accent, #9296db) 35%, transparent); }
+      :root[data-theme="dark"] ::selection { background: color-mix(in srgb, var(--lac-accent, #a1a6f2) 44%, transparent); }
       @media (prefers-contrast: more) {
-        :root { --secondary: #4a4a55; --border: #92929c; }
-        :root[data-theme="dark"] { --secondary: #d2d2dc; --border: #878792; }
+        :root { --secondary: #4a4a55; --border: #92929c; --accent: #3f4490; --mark: #ffe066; }
+        :root[data-theme="dark"] { --secondary: #d2d2dc; --border: #878792; --accent: #c8cbff; }
+        :root { --alert-note-text: #0a3069; --alert-tip-text: #0b4a1f; --alert-important-text: #4b2a99; --alert-warning-text: #5c3a00; --alert-caution-text: #7d0b1d; }
+        :root[data-theme="dark"] { --alert-note-text: #a5d0ff; --alert-tip-text: #9be9a8; --alert-important-text: #ddc6ff; --alert-warning-text: #ffd866; --alert-caution-text: #ffb3ae; }
+        :root { --tok-k: #3b3f86; --tok-s: #1f5c35; --tok-n: #8a4210; --tok-y: #6f2f84; --tok-c: #3f5a48; }
+        :root[data-theme="dark"] { --tok-k: #c9cdff; --tok-s: #9be0ae; --tok-n: #ffb877; --tok-y: #e6b8f5; --tok-c: #c4d2c9; }
         a { text-decoration-color: currentColor; }
+        sup.footnote-ref a, a.footnote-backref { text-decoration-line: underline; }
+        mark { outline: 1px solid var(--text); }
       }
-      @media (prefers-reduced-transparency: reduce) { body { background: var(--page); } }
       @media print {
         :root, :root[data-theme="dark"] {
           color-scheme: light;
           --page: #fff; --text: #303038; --secondary: #6d6d78;
           --border: #e2e2e8; --code: #f0f0f4; --accent: #5c61ba; --quote: #f4f4f8;
+          --mark: #fff1a8; --kbd-edge: #b4b4be;
+          --alert-note: #0969da; --alert-note-text: #0550ae;
+          --alert-tip: #1a7f37; --alert-tip-text: #116329;
+          --alert-important: #8250df; --alert-important-text: #6639ba;
+          --alert-warning: #9a6700; --alert-warning-text: #7d4e00;
+          --alert-caution: #cf222e; --alert-caution-text: #a40e26;
+          --tok-k: #4a4f9e; --tok-s: #33754a; --tok-n: #a35016; --tok-y: #87479c; --tok-c: #556652;
         }
         pre, table, img, blockquote, .mermaid-diagram, tr { break-inside: avoid; }
         h1, h2, h3, h4, h5, h6 { break-after: avoid; }
         body { padding: 0; }
         article { max-width: var(--lac-print-width, none); }
+        pre, code, kbd, mark, th, tr, blockquote, aside.lac-alert blockquote {
+          print-color-adjust: exact; -webkit-print-color-adjust: exact;
+        }
         img, .mermaid-diagram svg { max-height: var(--lac-print-height, none); object-fit: contain; }
       }
     """
@@ -352,7 +412,7 @@ enum MarkdownRenderer {
                            resolveLocalImages: Bool = false, documentURL: URL? = nil, prepareRemoteImages: Bool = false,
                            syntax: MarkdownSyntaxOptions = .init(), forExport: Bool = false, includeHeadingNumbers: Bool = false, includeListStyles: Bool = false,
                            staticWidgetFallback: Bool = false, preserveRawHTMLBlocks: Bool = false,
-                           includeSourcePositions: Bool = false) -> MarkdownRenderedPage {
+                           includeSourcePositions: Bool = false, isPreview: Bool = false, highlightCode: Bool = false) -> MarkdownRenderedPage {
         // Позиции исходника нужны только предпросмотру; в экспорт, PDF и копирование они не попадают.
         let sourcePositions = includeSourcePositions && !forExport
         let remoteImageMarkers = RemoteImageMarkers()
@@ -363,15 +423,20 @@ enum MarkdownRenderer {
                                   resolveLocalImages: resolveLocalImages, documentURL: documentURL, prepareRemoteImages: prepareRemoteImages,
                                   remoteImageMarkers: remoteImageMarkers, localMediaMarkers: localMediaMarkers, syntax: syntax, forExport: forExport, includeHeadingNumbers: includeHeadingNumbers,
                                   listDepths: listDepths, includeListStyles: includeListStyles, staticWidgetFallback: staticWidgetFallback,
-                                  preserveRawHTMLBlocks: preserveRawHTMLBlocks, rawHTMLBlocks: rawHTMLBlocks, includeSourcePositions: sourcePositions)
+                                  preserveRawHTMLBlocks: preserveRawHTMLBlocks, rawHTMLBlocks: rawHTMLBlocks, includeSourcePositions: sourcePositions,
+                                  highlightCode: highlightCode)
         let tableWrapper = "<div class=\"table-scroll\" role=\"region\" aria-label=\"\(L10n.tr("表格，可横向滚动"))\" tabindex=\"0\">"
         let preAttributes = "tabindex=\"0\" aria-label=\"\(L10n.tr("代码块，可横向滚动"))\""
-        let body = rendered.body
+        var body = rendered.body
             .replacingOccurrences(of: "<table>", with: tableWrapper + "<table>")
             .replacingOccurrences(of: "<table data-sourcepos=\"", with: tableWrapper + "<table data-sourcepos=\"")
             .replacingOccurrences(of: "</table>", with: "</table></div>")
             .replacingOccurrences(of: "<pre>", with: "<pre \(preAttributes)>")
             .replacingOccurrences(of: "<pre data-sourcepos=\"", with: "<pre \(preAttributes) data-sourcepos=\"")
+        // Подсказка нужна только предпросмотру пустого или состоящего из пробелов документа; экспорт и печать остаются пустыми.
+        if isPreview, !forExport, markdown.allSatisfy(\.isWhitespace) {
+            body = "<p class=\"lac-empty\">" + htmlEscaped(L10n.tr("预览为空。在编辑器中输入 Markdown 后，内容会显示在这里。")) + "</p>"
+        }
         var page = MarkdownRenderedPage(body: body, darkMode: darkMode, headingIDs: rendered.headingIDs, formulas: rendered.formulas, diagrams: rendered.diagrams, omittedHTML: rendered.omittedHTML, preserveWhitespace: forExport ? syntax.preserveExportWhitespace : (syntax.preserveEditingWhitespace ?? false))
         page.remoteImageMarkers = remoteImageMarkers.values
         page.localMediaMarkers = localMediaMarkers.values
@@ -381,10 +446,71 @@ enum MarkdownRenderer {
         return page
     }
 
+    private static func htmlEscaped(_ value: String) -> String {
+        value.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
+    }
+
+    private static func tokenClassCode(_ kind: SyntaxHighlighter.TokenKind) -> UInt8 {
+        switch kind {
+        case .keyword, .markup, .selector, .heading: return 1
+        case .string: return 2
+        case .number: return 3
+        case .literal, .function, .typeName, .attribute, .property, .variable, .strong, .emphasis: return 4
+        case .comment: return 5
+        case .punctuation: return 0
+        }
+    }
+
+    private static func tokenClassName(_ code: UInt8) -> String {
+        switch code {
+        case 1: return "tok-k"
+        case 2: return "tok-s"
+        case 3: return "tok-n"
+        case 4: return "tok-y"
+        default: return "tok-c"
+        }
+    }
+
+    // Ключ — язык и точный текст блока, поэтому результат другой версии или документа вернуться не может.
+    // Стоимость — объём ключа и HTML в UTF-16: правки большого блока не копят записи до нехватки памяти.
+    private static let highlightCache: NSCache<NSString, NSString> = {
+        let cache = NSCache<NSString, NSString>()
+        cache.totalCostLimit = 8 * 1024 * 1024
+        return cache
+    }()
+
+    private static func highlightedCodeHTML(_ literal: String, language: EditorLanguage) -> String? {
+        let key = "\(language)\u{0}\(literal)" as NSString
+        if let cached = highlightCache.object(forKey: key) { return cached as String }
+        let text = literal as NSString
+        let tokens = SyntaxHighlighter.tokens(in: literal, language: language, documentID: nil, isCancelled: { Task.isCancelled })
+        guard !Task.isCancelled else { return nil }
+        // Токены вложенные: потомок идёт после родителя и перекрывает его, поэтому красим по UTF-16-позициям.
+        var kinds = [UInt8](repeating: 0, count: text.length)
+        for token in tokens {
+            let code = tokenClassCode(token.kind)
+            guard code != 0, token.range.location >= 0, NSMaxRange(token.range) <= text.length else { continue }
+            for index in token.range.location..<NSMaxRange(token.range) { kinds[index] = code }
+        }
+        var html = "", start = 0
+        while start < text.length {
+            var end = start + 1
+            while end < text.length, kinds[end] == kinds[start] { end += 1 }
+            // Не рвём суррогатную пару границей span.
+            if end < text.length, UTF16.isLeadSurrogate(text.character(at: end - 1)) { end += 1 }
+            let piece = htmlEscaped(text.substring(with: NSRange(location: start, length: end - start)))
+            html += kinds[start] == 0 ? piece : "<span class=\"\(tokenClassName(kinds[start]))\">\(piece)</span>"
+            start = end
+        }
+        highlightCache.setObject(html as NSString, forKey: key, cost: key.length + html.utf16.count)
+        return html
+    }
+
     private static func renderBody(_ markdown: String, includeHTMLMedia: Bool, renderEmoji: Bool,
                                    resolveLocalImages: Bool, documentURL: URL?, prepareRemoteImages: Bool, remoteImageMarkers: RemoteImageMarkers, localMediaMarkers: LocalMediaMarkers, syntax: MarkdownSyntaxOptions,
                                    forExport: Bool, includeHeadingNumbers: Bool, listDepths: ListDepths, includeListStyles: Bool, staticWidgetFallback: Bool,
-                                   preserveRawHTMLBlocks: Bool, rawHTMLBlocks: RawHTMLBlocks, includeSourcePositions: Bool) -> (body: String, headingIDs: Set<String>, formulas: [MarkdownRenderedMath], diagrams: [MarkdownRenderedDiagram], omittedHTML: Bool) {
+                                   preserveRawHTMLBlocks: Bool, rawHTMLBlocks: RawHTMLBlocks, includeSourcePositions: Bool, highlightCode: Bool) -> (body: String, headingIDs: Set<String>, formulas: [MarkdownRenderedMath], diagrams: [MarkdownRenderedDiagram], omittedHTML: Bool) {
         let hardBreaks = forExport ? (syntax.preserveExportSoftBreaks ?? true) : syntax.preserveEditingSoftBreaks
         let options = ((syntax.smartPunctuation ?? true) ? CMARK_OPT_SMART : 0) | CMARK_OPT_TABLE_SPANS | (hardBreaks ? CMARK_OPT_HARDBREAKS : CMARK_OPT_NOBREAKS) | CMARK_OPT_FOOTNOTES
         let preserveWhitespace = forExport ? syntax.preserveExportWhitespace : (syntax.preserveEditingWhitespace ?? false)
@@ -1285,6 +1411,24 @@ enum MarkdownRenderer {
                         child = next
                         continue
                     }
+                    if highlightCode, cmark_node_get_type(current) == CMARK_NODE_CODE_BLOCK,
+                       cmark_node_get_syntax_extension(current) == nil,
+                       let infoPointer = cmark_node_get_fence_info(current), let literalPointer = cmark_node_get_literal(current),
+                       let language = MarkdownCodeHighlightService.language(for: String(cString: infoPointer)),
+                       let inner = highlightedCodeHTML(String(cString: literalPointer), language: language),
+                       let replacement = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) {
+                        // Как в cmark: класс языка — до первого пробела информационной строки.
+                        let first = String(String(cString: infoPointer).prefix { !" \t\r\n".contains($0) })
+                        let position = includeSourcePositions
+                            ? " data-sourcepos=\"\(cmark_node_get_start_line(current)):\(cmark_node_get_start_column(current))-\(cmark_node_get_end_line(current)):\(cmark_node_get_end_column(current))\"" : ""
+                        let html = "<pre\(position)><code class=\"language-\(htmlEscaped(first))\">\(inner)</code></pre>\n"
+                        let configured = html.withCString { cmark_node_set_on_enter(replacement, $0) }
+                        if configured != 0 && cmark_node_insert_before(current, replacement) != 0 {
+                            cmark_node_unlink(current); cmark_node_free(current)
+                        } else { cmark_node_free(replacement) }
+                        child = next
+                        continue
+                    }
                     let item: MarkdownRenderedMath?
                     if let value = inlineByNode[current] { item = MarkdownRenderedMath(source: value.text, display: false) }
                     else if cmark_node_get_type(current) == CMARK_NODE_CODE_BLOCK,
@@ -2173,9 +2317,12 @@ enum MarkdownRenderer {
             detachedNodes.append(contentsOf: replacements.map(\.0))
         }
         for (quote, marker, label) in alerts {
+            // Класс берётся только из белого списка Parser.alert; произвольный текст в атрибут не попадает.
+            let kind = label.lowercased()
+            guard ["note", "tip", "important", "warning", "caution"].contains(kind) else { continue }
             guard let aside = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) else { continue }
             guard let title = cmark_node_new(CMARK_NODE_CUSTOM_INLINE) else { cmark_node_free(aside); continue }
-            let asideStart = "<aside>".withCString { cmark_node_set_on_enter(aside, $0) }
+            let asideStart = "<aside class=\"lac-alert lac-alert-\(kind)\">".withCString { cmark_node_set_on_enter(aside, $0) }
             let asideEnd = "</aside>".withCString { cmark_node_set_on_exit(aside, $0) }
             let heading = "<strong>\(label)</strong>".withCString { cmark_node_set_on_enter(title, $0) }
             guard asideStart != 0, asideEnd != 0, heading != 0,

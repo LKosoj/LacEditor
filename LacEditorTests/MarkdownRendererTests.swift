@@ -1389,13 +1389,13 @@ final class MarkdownRendererTests: XCTestCase {
     func testAlertsRenderFiveKindsWithoutUnsafeHTML() {
         for label in ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"] {
             let body = MarkdownRenderer.renderPage("> [!\(label)]\r\n> content **bold**\r\n\r\n<script>bad()</script>", darkMode: false).body
-            XCTAssertTrue(body.contains("<aside>"), label)
+            XCTAssertTrue(body.contains("<aside class=\"lac-alert lac-alert-\(label.lowercased())\">"), label)
             XCTAssertTrue(body.contains("<strong>\(label)</strong>"), label)
             XCTAssertTrue(body.contains("content <strong>bold</strong>"), label)
             XCTAssertFalse(body.contains("<script>"), label)
         }
         let unknown = MarkdownRenderer.renderPage("> [!UNKNOWN]\n> content", darkMode: false).body
-        XCTAssertFalse(unknown.contains("<aside>"))
+        XCTAssertFalse(unknown.contains("<aside"))
         XCTAssertTrue(unknown.contains("[!UNKNOWN]"))
     }
     func testSimpleFrontMatterIsOmittedWithoutChangingLaterContent() {

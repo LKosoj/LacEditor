@@ -18,7 +18,7 @@ struct FolderWorkspaceView: View {
                     }
                     .buttonStyle(.plain)
                     .padding(.trailing, 8)
-                    .help(L10n.tr("刷新文件夹"))
+                    .stableHelp(L10n.tr("刷新文件夹"))
                     .accessibilityLabel(L10n.tr("刷新文件夹"))
                 }
             }
@@ -26,7 +26,8 @@ struct FolderWorkspaceView: View {
                 Text(root.lastPathComponent)
                     .font(.callout.weight(.medium))
                     .lineLimit(1)
-                    .help(root.path)
+                    .truncationMode(.middle)
+                    .stableHelp(root.path)
                     .contextMenu {
                         Button(L10n.tr("新建文件")) { appState.createFolderWorkspaceItem(in: root, isDirectory: false) }
                         Button(L10n.tr("新建文件夹")) { appState.createFolderWorkspaceItem(in: root, isDirectory: true) }
@@ -54,10 +55,10 @@ struct FolderWorkspaceView: View {
                     }
                 }
                 if let error = store.watchError {
-                    Text(error).font(.caption).foregroundStyle(.secondary)
+                    StatusMessageView(kind: .error, text: error)
                 }
                 if let notice = store.notice {
-                    Text(notice).font(.caption).foregroundStyle(.secondary)
+                    StatusMessageView(kind: .info, text: notice)
                 }
             } else {
                 Text(L10n.tr("选择包含文档的文件夹"))
@@ -68,6 +69,12 @@ struct FolderWorkspaceView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onChange(of: store.watchError) { _, text in
+            if let text { AccessibilityNotification.Announcement(text).post() }
+        }
+        .onChange(of: store.notice) { _, text in
+            if let text { AccessibilityNotification.Announcement(text).post() }
+        }
     }
 }
 
@@ -278,10 +285,12 @@ struct FolderWorkspaceRowView: View {
                         .accessibilityHidden(true)
                     Label(entry.name, systemImage: "folder")
                         .lineLimit(1)
+                        .truncationMode(.middle)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .accessibilityValue(L10n.tr(store.expanded.contains(entry.url) ? "已展开" : "已收起"))
+            .accessibilityHint(L10n.tr(store.display == .tree ? "展开或收起文件夹" : "显示此文件夹的内容"))
             .modifier(FolderListRowNavigation(id: id, navigation: navigation) { perform(.return) })
             .onKeyPress(.leftArrow) { perform(.left) }
             .onKeyPress(.rightArrow) { perform(.right) }
@@ -292,12 +301,13 @@ struct FolderWorkspaceRowView: View {
             } label: {
                 Label(entry.name, systemImage: entry.isSymbolicLink ? "doc.on.doc" : "doc.text")
                     .lineLimit(1)
+                    .truncationMode(.middle)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .modifier(FolderListRowNavigation(id: id, navigation: navigation) { perform(.return) })
             .onKeyPress(.leftArrow) { perform(.left) }
             .onKeyPress(.rightArrow) { perform(.right) }
-            .help(entry.url.path)
+            .stableHelp(entry.url.path)
         }
     }
 

@@ -49,8 +49,9 @@ struct AIDocumentToolsView: View {
                 Button(L10n.tr("添加文件")) { controller.addFiles() }
                 ForEach(controller.inputs) { input in
                     HStack {
-                        Text(controller.name(input)).lineLimit(1)
+                        Text(controller.name(input)).lineLimit(1).truncationMode(.middle)
                         Button(L10n.tr("移除")) { controller.inputs.removeAll { $0 == input } }
+                            .accessibilityLabel(L10n.tr("移除 %@", controller.name(input)))
                     }
                 }
             }
@@ -69,7 +70,7 @@ struct AIDocumentToolsView: View {
             }
             if feature == .recognizeDocument || feature == .voiceDraft {
                 Button(L10n.tr("选择文件")) { controller.chooseFile(feature: feature) }.disabled(controller.isWorking)
-                if let url = controller.fileURL { Text(url.lastPathComponent).lineLimit(1) }
+                if let url = controller.fileURL { Text(url.lastPathComponent).lineLimit(1).truncationMode(.middle) }
                 if feature == .voiceDraft {
                     if controller.recorder.isRecording {
                         Button(L10n.tr("停止录音")) { controller.stopRecording() }
@@ -111,7 +112,7 @@ struct AIDocumentToolsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     if !controller.differences.isEmpty {
-                        Text(L10n.tr("文本差异")).font(.headline)
+                        Text(L10n.tr("文本差异")).font(.headline).accessibilityAddTraits(.isHeader)
                         Text(controller.differences).textSelection(.enabled)
                     }
                     if !controller.report.isEmpty {

@@ -104,35 +104,41 @@ private struct AIProfileSettingsView: View {
         }
     }
 
+    /// Поиск настроек ведёт к первой включённой роли (поля выключенных скрыты): у остальных одинаковые заголовки строк не получают id.
+    private func rowID(_ title: String) -> String? {
+        let owner = AIRole.allCases.first { preferences.aiConfiguration[$0].isEnabled } ?? AIRole.allCases.first
+        return role == owner ? title : nil
+    }
+
     var body: some View {
         PreferenceGroup(title: title) {
-            PreferenceRow(title: L10n.tr("启用"), detail: profile.wrappedValue.isEnabled ? "" : L10n.tr("未启用，开启后可配置服务地址和密钥。")) {
+            PreferenceRow(title: L10n.tr("启用"), detail: profile.wrappedValue.isEnabled ? "" : L10n.tr("未启用，开启后可配置服务地址和密钥。"), searchID: nil) {
                 Toggle(L10n.tr("启用"), isOn: profile.isEnabled).labelsHidden().toggleStyle(.switch)
                     .accessibilityLabel(title)
             }
             if profile.wrappedValue.isEnabled {
                 SettingsRowDivider()
-                PreferenceRow(title: L10n.tr("服务地址"), detail: "") {
+                PreferenceRow(title: L10n.tr("服务地址"), detail: "", searchID: rowID(L10n.tr("服务地址"))) {
                     TextField("https://example.com/v1", text: profile.baseURL)
                         .textFieldStyle(.roundedBorder).frame(width: 260)
                         .accessibilityLabel(L10n.tr("服务地址"))
                 }
                 SettingsRowDivider()
-                PreferenceRow(title: L10n.tr("接口格式"), detail: "") {
+                PreferenceRow(title: L10n.tr("接口格式"), detail: "", searchID: rowID(L10n.tr("接口格式"))) {
                     Picker(L10n.tr("接口格式"), selection: profile.api) {
                         ForEach(protocols, id: \.self) { api in Text(protocolName(api)).tag(api) }
                     }.labelsHidden().frame(width: 200)
                 }
                 SettingsRowDivider()
-                PreferenceRow(title: L10n.tr("模型名称"), detail: "") {
+                PreferenceRow(title: L10n.tr("模型名称"), detail: "", searchID: rowID(L10n.tr("模型名称"))) {
                     TextField(L10n.tr("手动输入模型名称"), text: profile.modelID)
                         .textFieldStyle(.roundedBorder).frame(width: 200)
                         .accessibilityLabel(L10n.tr("模型名称"))
                 }
                 SettingsRowDivider()
-                PreferenceRow(title: L10n.tr("选择模型"), detail: "") {
+                PreferenceRow(title: L10n.tr("选择模型"), detail: "", searchID: rowID(L10n.tr("选择模型"))) {
                     HStack {
-                        if modelTask != nil { ProgressView().controlSize(.small) }
+                        if modelTask != nil { ProgressView().controlSize(.small).accessibilityLabel(L10n.tr("正在获取模型列表…")) }
                         if !models.isEmpty {
                             Menu(L10n.tr("选择模型")) {
                                 ForEach(models, id: \.self) { model in
@@ -151,7 +157,7 @@ private struct AIProfileSettingsView: View {
                 SettingsRowDivider()
                 PreferenceRow(title: L10n.tr("API 密钥"), detail: keyStatus == nil
                               ? (keyDraft.isEmpty ? (hasSavedKey ? L10n.tr("已保存密钥") : L10n.tr("未保存密钥")) : L10n.tr("密钥更改尚未保存"))
-                              : "") {
+                              : "", searchID: rowID(L10n.tr("API 密钥"))) {
                     SecureField(L10n.tr("输入新密钥"), text: $keyDraft)
                         .textFieldStyle(.roundedBorder).frame(width: 220)
                         .accessibilityLabel(L10n.tr("API 密钥"))

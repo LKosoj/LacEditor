@@ -205,9 +205,30 @@ extension EnvironmentValues {
 struct PreferenceRow<Control: View>: View {
     let title: String
     let detail: String
+    /// Идентификатор для прокрутки и подсветки из поиска настроек; nil — строка не участвует (повторяющиеся заголовки).
+    let searchID: String?
     @ViewBuilder var control: () -> Control
     @Environment(\.settingsHighlightedTitle) private var highlighted
+
+    init(title: String, detail: String, @ViewBuilder control: @escaping () -> Control) {
+        self.title = title
+        self.detail = detail
+        self.searchID = title
+        self.control = control
+    }
+
+    init(title: String, detail: String, searchID: String?, @ViewBuilder control: @escaping () -> Control) {
+        self.title = title
+        self.detail = detail
+        self.searchID = searchID
+        self.control = control
+    }
+
     var body: some View {
+        if let searchID { row.id(searchID) } else { row }
+    }
+
+    private var row: some View {
         HStack(spacing: 20) {
             VStack(alignment: .leading, spacing: 5) {
                 Text(title).font(.body.weight(.medium))
@@ -217,9 +238,9 @@ struct PreferenceRow<Control: View>: View {
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
             control().controlSize(.regular).fixedSize(horizontal: true, vertical: false)
+                .accessibilityHint(detail)
         }.padding(16).frame(minHeight: 64)
-            .background(highlighted == title ? LacEditorDesign.selectionFill : Color.clear)
-            .id(title)
+            .background(searchID != nil && highlighted == searchID ? LacEditorDesign.selectionFill : Color.clear)
     }
 }
 

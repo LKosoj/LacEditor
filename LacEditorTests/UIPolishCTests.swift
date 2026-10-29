@@ -44,7 +44,7 @@ final class UIPolishCTests: XCTestCase {
         XCTAssertFalse(titles.isEmpty)
         let all = Set(SettingsSection.allCases.flatMap(\.searchKeys))
         for title in Set(titles).subtracting(["关于这款编辑器"]) { XCTAssertTrue(all.contains(title), title) }
-        let exportToggles = ["markdown.exportPreserveWhitespace", "允许文档 YAML 覆盖 HTML 导出设置", "附加到 head", "附加到 body", "顶级标题和脚注前分页",
+        let exportToggles = ["导出时保留连续空格", "允许文档 YAML 覆盖 HTML 导出设置", "附加到 head", "附加到 body", "顶级标题和脚注前分页",
                              "自定义页边距", "允许文档 YAML 覆盖页眉和页脚", "自定义图像字体大小", "图像字体大小（点）", "重置导出设置",
                              "删除不支持的导出项目", "添加自定义命令", "添加 PDF 引擎导出项目"]
         for key in exportToggles { XCTAssertTrue(SettingsSection.export.searchKeys.contains(key), key) }
@@ -102,7 +102,7 @@ final class UIPolishCTests: XCTestCase {
             XCTAssertTrue(line.contains("role: .destructive"), String(line))
         }
         let design = try String(contentsOf: root.appendingPathComponent("LacEditor/Views/LacEditorDesign.swift"), encoding: .utf8)
-        XCTAssertTrue(design.contains(".id(title)"))
+        XCTAssertTrue(design.contains(".id(searchID)"))
         XCTAssertGreaterThanOrEqual(source.components(separatedBy: ".accessibilityLabel(L10n.tr(\"程序路径\"))").count - 1, 3)
     }
 }

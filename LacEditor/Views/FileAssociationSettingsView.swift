@@ -34,9 +34,14 @@ struct FileAssociationSettingsView: View {
                         } else if row.isCurrentApplication {
                             Label(L10n.tr("已默认"), systemImage: "checkmark").font(.subheadline).foregroundStyle(.secondary)
                         } else {
+                            let disabledReason: String? = !service.identity.canSetDefaults
+                                ? L10n.tr("请从「应用程序」中的正式 LacEditor 打开此页。开发、验收、实验或未安装的副本不能设置默认应用。")
+                                : !row.format.isText ? L10n.tr("系统将此扩展名识别为非文本类型，请在访达按文件设置。")
+                                : service.changingID != nil ? L10n.tr("正在更改默认应用") : nil
                             Button(L10n.tr("设为默认")) { Task { await service.setDefault(for: row.id) } }
                                 .controlSize(.small)
-                                .disabled(!service.identity.canSetDefaults || !row.format.isText || service.changingID != nil)
+                                .disabled(disabledReason != nil)
+                                .help(disabledReason ?? "")
                                 .accessibilityLabel(L10n.tr("将 %@ 设为默认使用 LacEditor", String(describing: row.format.title)))
                         }
                     }

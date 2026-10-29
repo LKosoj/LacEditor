@@ -266,8 +266,6 @@
 "请将光标放在编码内容中，或先选择文本" = "Please place your cursor in the encoded content or select the text first";
 "请输入新的文件名。" = "Please enter a new file name.";
 "请输入查找内容" = "Please enter search content";
-"超过 20 MB 或 250,000 行时自动启用，暂停换行、预览、折叠和实时字数统计。" = "Automatically enabled above 20 MB or 250,000 lines, pausing wrapping, preview, folding and live character count.";
-"超过 50 MB 时额外暂停语法高亮，仍可继续打开与编辑。" = "When the file exceeds 50 MB, syntax highlighting will be paused, but you can still open and edit.";
 "跟随系统" = "System";
 "跟随系统时，界面会随 macOS 的浅色与深色设置切换。" = "When following the system, the interface will switch with the light and dark settings of macOS.";
 "转换结果" = "Conversion result";
@@ -1253,8 +1251,6 @@
 
 "markdown.pageBreak" = "Page break";
 
-"markdown.exportPreserveWhitespace" = "Preserve spaces when exporting";
-"markdown.exportPreserveWhitespace.detail" = "Supported in HTML, the app’s PDF output, DOCX, ODT, RTF, EPUB, and LaTeX. Other formats depend on the export program.";
 
 "使用旧版行内公式规则" = "Use legacy inline formula rules";
 
@@ -1264,9 +1260,7 @@
 
 "无法确认列表缩进" = "Could not confirm list indentation";
 
-"markdown.strictMode" = "Strict Markdown parsing";
 
-"markdown.strictMode.detail" = "Require a space after heading markers and full indentation for list content.";
 
 "支持的导入格式：%@" = "Supported import formats: %@";
 "所有支持的格式" = "All supported formats";
@@ -1330,7 +1324,6 @@
 "正在加载预览" = "Loading preview";
 "图片设置" = "Images";
 "配置图片上传、复制位置和文档级图片规则。" = "Configure image upload, the copy folder and document-level image rules.";
-"50 MB 以上" = "50 MB or more";
 "请输入 %@ 到 %@ 之间的数字" = "Enter a number between %@ and %@.";
 "重置导出设置？" = "Reset export settings?";
 "导出项目将恢复为默认列表，自定义项目和无法读取的原始设置会被替换。" = "The export items will return to the default list. Custom items and the unreadable original settings will be replaced.";
@@ -1350,3 +1343,23 @@
 "显示格式化文本" = "Show Formatted Text";
 "图片管理" = "Images";
 "LacEditor 帮助" = "LacEditor Help";
+"全部接受（%lld）" = "Accept All (%lld)";
+"移除 %@" = "Remove %@";
+"未启用此功能所用的服务（%@）。请先在「%@」分区开启。" = "The service used by this feature is not enabled (%@). Enable it first in the \"%@\" section.";
+"正在获取模型列表…" = "Fetching model list…";
+"%d pt" = "%d pt";
+"深度 %d" = "Depth %d";
+"超过 %d MB 或 %@ 行时自动启用，暂停换行、预览、折叠和实时字数统计。" = "Automatically enabled above %d MB or %@ lines, pausing wrapping, preview, folding and live character count.";
+"超过 %d MB 时额外暂停语法高亮，仍可继续打开与编辑。" = "When the file exceeds %d MB, syntax highlighting will be paused, but you can still open and edit.";
+"%d MB 以上" = "%d MB or more";
+"严格解析 Markdown" = "Strict Markdown parsing";
+"要求标题标记后有空格，列表内容使用完整缩进。" = "Require a space after heading markers and full indentation for list content.";
+"导出时保留连续空格" = "Preserve spaces when exporting";
+"支持 HTML、应用内 PDF、DOCX、ODT、RTF、EPUB 和 LaTeX。其他格式的效果取决于导出程序。" = "Supported in HTML, the app’s PDF output, DOCX, ODT, RTF, EPUB, and LaTeX. Other formats depend on the export program.";
+"示例准备失败：%@" = "Could not prepare the samples: %@";
+"%@：%@" = "%@: %@";
+"打开此文件夹" = "Open this folder";
+"展开或收起文件夹" = "Expand or collapse the folder";
+"显示此文件夹的内容" = "Show this folder’s contents";
+"已调整顺序" = "Order changed";
+"预览为空。在编辑器中输入 Markdown 后，内容会显示在这里。" = "Nothing to preview yet. Start typing Markdown in the editor and it will appear here.";

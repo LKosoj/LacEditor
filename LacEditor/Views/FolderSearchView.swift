@@ -8,7 +8,7 @@ struct FolderSearchView: View {
             if controller.root != nil || (controller.isWorking && controller.quickOpenRequest == nil) {
                 if let root = controller.root {
                     Text(L10n.tr("搜索范围：%@", root.path)).font(.caption).textSelection(.enabled)
-                        .lineLimit(1).truncationMode(.middle).help(root.path)
+                        .lineLimit(1).truncationMode(.middle).stableHelp(root.path)
                 } else { Text(L10n.tr("文件夹位置")).font(.caption) }
                 Picker(L10n.tr("文件夹搜索"), selection: $controller.mode) {
                     Text(L10n.tr("按名称打开")).tag(FolderSearchController.Mode.files)
@@ -65,7 +65,7 @@ struct FolderSearchRowView: View {
             switch row.content {
             case let .file(file):
                 Button { navigation.focused = id; controller.select(file) } label: {
-                    Text(file.relativePath).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(file.relativePath).lineLimit(2).truncationMode(.middle).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .modifier(FolderListRowNavigation(id: id, navigation: navigation) {
                     controller.select(file); return .handled
@@ -73,7 +73,7 @@ struct FolderSearchRowView: View {
             case let .match(match):
                 Button { navigation.focused = id; controller.select(match) } label: {
                     VStack(alignment: .leading) {
-                        Text(match.file.relativePath).font(.caption)
+                        Text(match.file.relativePath).font(.caption).lineLimit(1).truncationMode(.middle)
                         Text(match.context).lineLimit(3)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -81,8 +81,9 @@ struct FolderSearchRowView: View {
                     controller.select(match); return .handled
                 })
             case let .problem(problem):
-                Text("\(problem.url.path): \(reason(problem.reason))")
+                Text(L10n.tr("%@：%@", String(describing: problem.url.path), reason(problem.reason)))
                     .font(.caption).foregroundStyle(.secondary)
+                    .lineLimit(2).truncationMode(.middle)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

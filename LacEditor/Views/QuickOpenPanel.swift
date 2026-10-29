@@ -70,7 +70,7 @@ struct QuickOpenPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
                 TextField(L10n.tr("快速打开"), text: $controller.query)
                     .textFieldStyle(.plain).font(.title3)
                     .focused($queryFocused)
@@ -86,7 +86,7 @@ struct QuickOpenPanel: View {
                         default: break
                         }
                     }
-                if controller.isWorking { ProgressView().controlSize(.small) }
+                if controller.isWorking { ProgressView().controlSize(.small).accessibilityLabel(L10n.tr("正在查找…")) }
             }
             .padding(.horizontal, 12).frame(height: 40)
             if !controller.quickOpenItems.isEmpty {
@@ -99,11 +99,11 @@ struct QuickOpenPanel: View {
             }
         }
         .frame(width: 520)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.12)))
-        .shadow(color: .black.opacity(0.25), radius: 18, y: 8)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(L10n.tr("快速打开"))
+        .onExitCommand { dismiss() }
         .onAppear { queryFocused = true; selectedIndex = 0 }
         .onChange(of: controller.quickOpenItems) { _, _ in
             keyboardMovedAt = Date()
@@ -123,20 +123,26 @@ struct QuickOpenPanel: View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(controller.quickOpenItems.enumerated()), id: \.offset) { index, item in
-                        QuickOpenRow(item: item, query: controller.query, isSelected: index == selectedIndex,
-                                     onHover: { hoverSelect(index) })
-                            .id(index)
-                            .onTapGesture { controller.select(item) }
-                            .accessibilityAddTraits(index == selectedIndex ? [.isButton, .isSelected] : .isButton)
-                            .accessibilityAction { controller.select(item) }
+                    ForEach(Array(controller.quickOpenItems.enumerated()), id: \.element.id) { index, item in
+                        Button { controller.select(item) } label: {
+                            QuickOpenRow(item: item, query: controller.query, isSelected: index == selectedIndex)
+                        }
+                        .buttonStyle(.plain)
+                        .onHover { if $0 { hoverSelect(index) } }
+                        .focusable(false)
+                        .id(item.id)
+                        .accessibilityLabel(QuickOpenRowText.title(item))
+                        .accessibilityValue(QuickOpenRowText.subtitle(item))
+                        .accessibilityAddTraits(index == selectedIndex ? .isSelected : [])
                     }
                 }
             }
             .frame(maxHeight: 320)
             .onChange(of: selectedIndex) { _, index in
                 if hoverSelectedIndex == index { hoverSelectedIndex = nil; return }
-                proxy.scrollTo(index)
+                if controller.quickOpenItems.indices.contains(index) {
+                    proxy.scrollTo(controller.quickOpenItems[index].id)
+                }
             }
         }
     }
@@ -168,16 +174,15 @@ private struct QuickOpenRow: View {
     let item: FolderSearchController.QuickOpenItem
     let query: String
     let isSelected: Bool
-    let onHover: () -> Void
 
     var body: some View {
         HStack(spacing: 9) {
             Image(systemName: icon).foregroundStyle(isSelected ? selectedText : tint).frame(width: 20)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(QuickOpenHighlight.attributed(title: QuickOpenRowText.title(item), query: query))
                     .font(.body).lineLimit(1)
                     .foregroundStyle(isSelected ? selectedText : Color.primary)
-                    .accessibilityLabel(QuickOpenRowText.title(item))
                 Text(QuickOpenRowText.subtitle(item)).font(.subheadline)
                     .foregroundStyle(isSelected ? selectedText.opacity(0.8) : Color.secondary)
                     .lineLimit(1).truncationMode(.middle)
@@ -188,10 +193,9 @@ private struct QuickOpenRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .background(isSelected ? Color(nsColor: .selectedContentBackgroundColor) : Color.clear)
-        .onHover { if $0 { onHover() } }
     }
 
-    private var selectedText: Color { Color(nsColor: .selectedMenuItemTextColor) }
+    private var selectedText: Color { Color(nsColor: .alternateSelectedControlTextColor) }
 
     private var language: EditorLanguage? {
         if case let .file(file) = item { EditorLanguage.infer(from: file.url) } else { nil }
@@ -230,5 +234,15 @@ enum QuickOpenHighlight {
             result.append(piece)
         }
         return result
+    }
+}
+
+extension FolderSearchController.QuickOpenItem: Identifiable {
+    /// Вид + стандартизованный путь: папка и файл с одним путём невозможны, повторы отсекает контроллер.
+    var id: String {
+        switch self {
+        case let .file(file): "file:" + file.url.standardizedFileURL.path
+        case let .folder(url): "folder:" + url.standardizedFileURL.path
+        }
     }
 }

@@ -41,7 +41,7 @@ extension SettingsSection {
             ["文字排版", "文字字体", "代码字体", "Markdown 最大宽度", "字体大小", "额外行距", "连字", "标题小型大写字母", "标题转为大写", "居中标题",
              "Markdown 文本对齐", "从右向左书写", "划掉已完成的任务", "自动编号标题", "列表标记", "竖排 Markdown", "Markdown 段落间距",
              "输入与显示", "缩进方式", "Tab 宽度", "自动配对括号与引号", "自动配对 Markdown 符号", "智能引号", "智能破折号", "系统文本替换",
-             "markdown.strictMode", "行内公式", "使用旧版行内公式规则", "启用 Physics 数学扩展", "公式自动编号", "大纲最大标题级别",
+             "严格解析 Markdown", "行内公式", "使用旧版行内公式规则", "启用 Physics 数学扩展", "公式自动编号", "大纲最大标题级别",
              "统计显示单位", "阅读速度", "自动换行", "显示行号"]
         case .images:
             ["图片上传", "上传方式", "插入时上传本地图片", "插入时上传网络图片", "允许文档指定上传", "允许文档指定图片文件夹", "全局图片文件夹",
@@ -55,11 +55,13 @@ extension SettingsSection {
         case .performance:
             ["自动性能管理", "标准模式", "大文件模式", "加强保护"]
         case .export:
-            ["HTML 导出附加内容", "markdown.exportPreserveWhitespace", "附加到 head", "附加到 body", "允许文档 YAML 覆盖 HTML 导出设置",
+            ["HTML 导出附加内容", "导出时保留连续空格", "附加到 head", "附加到 body", "允许文档 YAML 覆盖 HTML 导出设置",
              "PDF 页面设置", "纸张", "纸张宽度（点）", "纸张高度（点）", "顶级标题和脚注前分页", "自定义页边距", "上边距（点）", "下边距（点）",
              "左边距（点）", "右边距（点）", "PDF 页眉", "PDF 页脚", "允许文档 YAML 覆盖页眉和页脚",
              "图像导出设置", "图像宽度（点）", "图像质量", "自定义图像字体大小", "图像字体大小（点）",
-             "重置导出设置", "删除不支持的导出项目", "添加 Pandoc 导出项目", "添加自定义命令", "添加 PDF 引擎导出项目"]
+             "重置导出设置", "删除不支持的导出项目", "添加 Pandoc 导出项目", "添加自定义命令", "添加 PDF 引擎导出项目",
+             "扩展名，以空格分隔", "自定义命令", "命令输出", "显示命令输出", "PDF 中间格式", "PDF 引擎路径", "额外参数",
+             "Pandoc 输出格式", "原始类型", "模板", "样式参考文件", "EPUB 封面", "EPUB 目录深度"]
         case .ai:
             ["AI 功能", "文本模型", "判断模型", "图像模型", "文字识别模型", "语音转写模型", "API 密钥", "服务地址", "模型名称", "自定义检查",
              "Jina 搜索", "Jina 网页读取", "后台 AI 功能", "系统拼写检查", "系统语法检查", "接口格式", "完整接口地址",
@@ -212,6 +214,7 @@ struct SettingsView: View {
                 .textFieldStyle(.roundedBorder).controlSize(.small)
                 .padding(.horizontal, 12).padding(.bottom, 10)
                 .accessibilityIdentifier("settings.search")
+                .onExitCommand { if !query.isEmpty { query = "" } }
                 .onSubmit {
                     if let first = SettingsSearch.sections(matching: query).first { select(first) }
                 }
@@ -315,7 +318,7 @@ struct SettingsView: View {
                 rowDivider
                 PreferenceRow(title: L10n.tr("字体大小"), detail: L10n.tr("所有标签共用，默认 14 pt。")) {
                     HStack(spacing: 12) {
-                        Stepper("\(Int(appState.editorFontSize)) pt", value: $appState.editorFontSize, in: 9...32)
+                        Stepper(L10n.tr("%d pt", Int(appState.editorFontSize)), value: $appState.editorFontSize, in: 9...32)
                             .monospacedDigit().accessibilityLabel(L10n.tr("字体大小"))
                         resetButton(disabled: appState.isUsingDefaultFontSize, help: L10n.tr("恢复默认字体大小（⌘0）"), action: appState.resetFontSize)
                     }
@@ -323,7 +326,7 @@ struct SettingsView: View {
                 rowDivider
                 PreferenceRow(title: L10n.tr("额外行距"), detail: L10n.tr("在固定行高之外增加间距，默认 4 pt。")) {
                     HStack(spacing: 12) {
-                        Stepper("\(Int(appState.editorLineSpacing)) pt", value: $appState.editorLineSpacing, in: 0...10)
+                        Stepper(L10n.tr("%d pt", Int(appState.editorLineSpacing)), value: $appState.editorLineSpacing, in: 0...10)
                             .monospacedDigit().accessibilityLabel(L10n.tr("额外行距"))
                         resetButton(disabled: appState.isUsingDefaultLineSpacing, help: L10n.tr("恢复默认行距"), action: appState.resetLineSpacing)
                     }
@@ -523,8 +526,8 @@ struct SettingsView: View {
                     Toggle(L10n.tr("系统文本替换"), isOn: Binding(get: { appState.preferences.systemTextReplacementEnabled }, set: { appState.preferences.systemTextReplacementEnabled = $0 })).labelsHidden().toggleStyle(.switch)
                 }
                 rowDivider
-                PreferenceRow(title: L10n.tr("markdown.strictMode"), detail: L10n.tr("markdown.strictMode.detail")) {
-                    Toggle(L10n.tr("markdown.strictMode"), isOn: Binding(get: { appState.preferences.markdownStrictMode }, set: { appState.preferences.markdownStrictMode = $0 })).labelsHidden().toggleStyle(.switch)
+                PreferenceRow(title: L10n.tr("严格解析 Markdown"), detail: L10n.tr("要求标题标记后有空格，列表内容使用完整缩进。")) {
+                    Toggle(L10n.tr("严格解析 Markdown"), isOn: Binding(get: { appState.preferences.markdownStrictMode }, set: { appState.preferences.markdownStrictMode = $0 })).labelsHidden().toggleStyle(.switch)
                 }
                 rowDivider
                 PreferenceRow(title: L10n.tr("行内公式"), detail: L10n.tr("识别 $…$ 行内公式；独立公式不受影响。")) {
@@ -703,6 +706,12 @@ struct SettingsView: View {
         }
     }
 
+    private static let largeThresholdMB = DocumentPerformanceProfile.largeFileByteThreshold / (1_024 * 1_024)
+    private static let extremeThresholdMB = DocumentPerformanceProfile.extremeFileByteThreshold / (1_024 * 1_024)
+    private static var largeThresholdLines: String {
+        DocumentPerformanceProfile.largeFileLineThreshold.formatted(.number.locale(Locale(identifier: L10n.languageCode)))
+    }
+
     private var performanceSettings: some View {
         VStack(spacing: 20) {
             PreferenceGroup(title: L10n.tr("自动性能管理")) {
@@ -710,12 +719,12 @@ struct SettingsView: View {
                     Text(L10n.tr("默认")).font(.subheadline).foregroundStyle(.secondary)
                 }
                 rowDivider
-                PreferenceRow(title: L10n.tr("大文件模式"), detail: L10n.tr("超过 20 MB 或 250,000 行时自动启用，暂停换行、预览、折叠和实时字数统计。")) {
+                PreferenceRow(title: L10n.tr("大文件模式"), detail: L10n.tr("超过 %d MB 或 %@ 行时自动启用，暂停换行、预览、折叠和实时字数统计。", Self.largeThresholdMB, Self.largeThresholdLines)) {
                     Image(systemName: "gauge.with.dots.needle.33percent").foregroundStyle(LacEditorDesign.accent).accessibilityHidden(true)
                 }
                 rowDivider
-                PreferenceRow(title: L10n.tr("加强保护"), detail: L10n.tr("超过 50 MB 时额外暂停语法高亮，仍可继续打开与编辑。")) {
-                    Text(L10n.tr("50 MB 以上")).font(.subheadline).foregroundStyle(.secondary)
+                PreferenceRow(title: L10n.tr("加强保护"), detail: L10n.tr("超过 %d MB 时额外暂停语法高亮，仍可继续打开与编辑。", Self.extremeThresholdMB)) {
+                    Text(L10n.tr("%d MB 以上", Self.extremeThresholdMB)).font(.subheadline).foregroundStyle(.secondary)
                 }
             }
             Text(L10n.tr("这些阈值由应用自动管理。可从当前文档的「大文件模式」菜单临时恢复功能，不会改写全局设置。"))
@@ -933,7 +942,7 @@ private struct MarkdownImageUploadSettingsView: View {
                 }
                 Divider().padding(.horizontal, 16).opacity(0.5)
                 PreferenceRow(title: L10n.tr("程序参数"), detail: L10n.tr("每行一个参数；图片路径会追加在最后。")) {
-                    TextEditor(text: $preferences.markdownImageUploadConfiguration.arguments).frame(width: 220, height: 80)
+                    TextEditor(text: $preferences.markdownImageUploadConfiguration.arguments).settingsMultilineField(minHeight: 80).frame(width: 220, height: 80)
                         .accessibilityLabel(L10n.tr("程序参数"))
                 }
             }
@@ -1072,8 +1081,8 @@ private struct MarkdownExportSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             PreferenceGroup(title: L10n.tr("HTML 导出附加内容")) {
-                PreferenceRow(title: L10n.tr("markdown.exportPreserveWhitespace"), detail: L10n.tr("markdown.exportPreserveWhitespace.detail")) {
-                    Toggle(L10n.tr("markdown.exportPreserveWhitespace"), isOn: $preferences.markdownExportWhitespace)
+                PreferenceRow(title: L10n.tr("导出时保留连续空格"), detail: L10n.tr("支持 HTML、应用内 PDF、DOCX、ODT、RTF、EPUB 和 LaTeX。其他格式的效果取决于导出程序。")) {
+                    Toggle(L10n.tr("导出时保留连续空格"), isOn: $preferences.markdownExportWhitespace)
                         .labelsHidden().toggleStyle(.switch)
                 }
                 exportDivider
@@ -1081,10 +1090,10 @@ private struct MarkdownExportSettingsView: View {
                     Text(L10n.tr("附加脚本可能在打开导出文件的应用中运行。"))
                         .font(.subheadline).foregroundStyle(.secondary)
                     Text(L10n.tr("附加到 head")).font(.body.weight(.medium)).id(L10n.tr("附加到 head"))
-                    TextEditor(text: $preferences.markdownHTMLExportOptions.appendHead).frame(minHeight: 60)
+                    TextEditor(text: $preferences.markdownHTMLExportOptions.appendHead).settingsMultilineField(minHeight: 60)
                         .accessibilityLabel(L10n.tr("附加到 head"))
                     Text(L10n.tr("附加到 body")).font(.body.weight(.medium)).id(L10n.tr("附加到 body"))
-                    TextEditor(text: $preferences.markdownHTMLExportOptions.appendBody).frame(minHeight: 60)
+                    TextEditor(text: $preferences.markdownHTMLExportOptions.appendBody).settingsMultilineField(minHeight: 60)
                         .accessibilityLabel(L10n.tr("附加到 body"))
                 }.padding(16)
                 exportDivider
@@ -1204,7 +1213,7 @@ private struct MarkdownExportSettingsView: View {
                             Text(L10n.tr("使用 ${inputPath} 读取当前文本，${outputPath} 指向输出。"))
                                 .foregroundStyle(.secondary)
                             TextEditor(text: Binding(get: { profile.command ?? "" }, set: { profile.command = $0 }))
-                                .frame(minHeight: 70)
+                                .settingsMultilineField(minHeight: 70)
                                 .accessibilityLabel(L10n.tr("自定义命令"))
                             Picker(L10n.tr("命令输出"), selection: Binding(
                                 get: { profile.commandDestination ?? "file" }, set: { profile.commandDestination = $0 }
@@ -1245,7 +1254,7 @@ private struct MarkdownExportSettingsView: View {
                                     get: { profile.epubTOCDepth != nil }, set: { profile.epubTOCDepth = $0 ? 3 : nil }
                                 ))
                                 if profile.epubTOCDepth != nil {
-                                    Stepper("\(profile.epubTOCDepth ?? 3)", value: Binding(
+                                    Stepper(L10n.tr("深度 %d", profile.epubTOCDepth ?? 3), value: Binding(
                                         get: { profile.epubTOCDepth ?? 3 }, set: { profile.epubTOCDepth = $0 }
                                     ), in: 1...20)
                                 }
@@ -1392,5 +1401,16 @@ private struct RangedNumberField: View {
         } else {
             invalid = true
         }
+    }
+}
+
+extension View {
+    /// Единый вид многострочных полей настроек (TextEditor): системный фон текста и тонкая рамка.
+    func settingsMultilineField(minHeight: CGFloat) -> some View {
+        self.scrollContentBackground(.hidden)
+            .padding(4)
+            .frame(minHeight: minHeight)
+            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(LacEditorDesign.outline, lineWidth: 0.5))
     }
 }

@@ -33,7 +33,7 @@ struct SidebarView: View {
                 TextField(L10n.tr("筛选资料库文件"), text: $filterQuery)
                     .textFieldStyle(.plain).font(.callout)
                     .accessibilityLabel(L10n.tr("筛选资料库文件"))
-                    .accessibilityHint(L10n.tr("仅筛选资料库文件，不含工作文件夹"))
+                    .accessibilityHint(filterQuery.isEmpty ? L10n.tr("仅筛选资料库文件，不含工作文件夹") : "")
                     .focused($filterFocused)
                     .onExitCommand { filterQuery = "" }
                 if !filterQuery.isEmpty {
