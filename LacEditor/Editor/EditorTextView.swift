@@ -24,6 +24,16 @@ struct EditorTextView: NSViewRepresentable {
     var spellingEnabled = false
     var grammarEnabled = false
     var aiPreferences: AppPreferences? = nil
+    var isFocusMode = false
+    var isTypewriterMode = false
+    var textFontFamily: String? = nil
+    var codeFontFamily: String? = nil
+    var remoteImageTransferEnabled = false
+    var maximumTextWidth: Double? = nil
+    var colorOverrides = MarkdownColorOverrides()
+    var markdownTOCMaxLevel = 6
+    var viewMagnification: CGFloat = 1
+    var magnificationDidChange: ((CGFloat) -> Void)? = nil
 
     static func applyWritingChecks(to textView: NSTextView, spellingEnabled: Bool, grammarEnabled: Bool) {
         guard !textView.hasMarkedText() else { return }
@@ -43,10 +53,14 @@ struct EditorTextView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
+        context.coordinator.updateMathOptions(.init(physics: aiPreferences?.mathPhysicsEnabled ?? true,
+                                                    numbering: aiPreferences?.mathNumbering ?? .none))
         if let cachedView = sessionStore.cachedView(for: document.id) {
             context.coordinator.configureWritingChecks(spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
             context.coordinator.configureAIAssistance(preferences: aiPreferences)
-            if let textView = cachedView.documentView as? NSTextView {
+            if let textView = cachedView.documentView as? LacTextView {
+                textView.autoPairBracketsEnabled = aiPreferences?.autoPairBracketsEnabled ?? false
+                textView.autoPairMarkdownEnabled = aiPreferences?.autoPairMarkdownEnabled ?? false
                 textView.isEditable = isEnabled
                 Self.applyWritingChecks(to: textView, spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
             }
@@ -73,6 +87,7 @@ struct EditorTextView: NSViewRepresentable {
             )
         }
         let scrollView = NSScrollView()
+        scrollView.allowsMagnification = true
         scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = !wordWrap
@@ -83,8 +98,9 @@ struct EditorTextView: NSViewRepresentable {
 
         let textStorage = NSTextStorage()
         let layoutManager = FoldLayoutManager()
-        let editorFont = lacEditorFont(size: fontSize)
+        let editorFont = AppPreferences.textFont(family: textFontFamily, size: fontSize)
         layoutManager.textFont = editorFont
+        layoutManager.markdownCodeFont = AppPreferences.availableFont(family: codeFontFamily, size: fontSize)
         layoutManager.editorLineSpacing = lineSpacing
         EditorLayoutPolicy.configure(
             layoutManager,
@@ -105,7 +121,10 @@ struct EditorTextView: NSViewRepresentable {
             frame: NSRect(origin: .zero, size: initialSize),
             textContainer: textContainer
         )
+        textView.remoteImageTransferEnabled = remoteImageTransferEnabled
         textView.isEditable = isEnabled
+        textView.autoPairBracketsEnabled = aiPreferences?.autoPairBracketsEnabled ?? false
+        textView.autoPairMarkdownEnabled = aiPreferences?.autoPairMarkdownEnabled ?? false
         textView.isRichText = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
@@ -184,12 +203,31 @@ struct EditorTextView: NSViewRepresentable {
         }
         context.coordinator.currentFontSize = fontSize
         context.coordinator.currentTabWidth = tabWidth
+        context.coordinator.maximumTextWidth = maximumTextWidth.map { CGFloat($0) }
         context.coordinator.currentLanguage = document.language
         context.coordinator.isMarkdownOutlineVisible = isOutlineVisible
         context.coordinator.updatePerformanceFeatures()
         context.coordinator.lastSynchronizedRevision = document.textRevision
         context.coordinator.installObservers(scrollView: scrollView)
         context.coordinator.updateLineNumbersVisibility(showsLineNumbers)
+        context.coordinator.updateWritingModes(focus: isFocusMode, typewriter: isTypewriterMode)
+        context.coordinator.updateTopInset(topInset)
+        context.coordinator.foldLayoutManager?.markdownTOCMaxLevel = markdownTOCMaxLevel
+        context.coordinator.foldLayoutManager?.markdownSmallCapsLevels = aiPreferences?.markdownSmallCapsLevels ?? []
+        context.coordinator.foldLayoutManager?.markdownParagraphSpacing = aiPreferences?.markdownParagraphSpacing.map { CGFloat($0) }
+        context.coordinator.foldLayoutManager?.markdownTextAlignment = aiPreferences?.markdownTextAlignment?.appKitAlignment
+        context.coordinator.foldLayoutManager?.markdownRightToLeft = aiPreferences?.markdownRightToLeft ?? false
+        context.coordinator.foldLayoutManager?.markdownCenteredHeadingLevels = aiPreferences?.markdownCenteredHeadingLevels ?? []
+        context.coordinator.updateStrikeCompletedTasks(aiPreferences?.markdownStrikeCompletedTasks ?? false)
+        context.coordinator.updateHeadingNumbering(document.language == .markdown && (aiPreferences?.markdownNumberHeadings ?? false))
+        context.coordinator.updateUppercaseHeadingLevels(document.language == .markdown ? (aiPreferences?.markdownUppercaseHeadingLevels ?? []) : [])
+        context.coordinator.updateListStyles(aiPreferences?.markdownListStyles ?? .init())
+        if context.coordinator.foldLayoutManager?.markdownListStyles != context.coordinator.listStyles {
+            context.coordinator.foldLayoutManager?.markdownListStyles = context.coordinator.listStyles
+        }
+        context.coordinator.updateMathPairContextEnabled(document.language == .markdown && (aiPreferences?.autoPairMarkdownEnabled ?? false))
+        context.coordinator.updateMarkdownVerticalWriting(document.language == .markdown && document.isMarkdownFormatted && (aiPreferences?.markdownVerticalWriting ?? false))
+        context.coordinator.updateMarkdownColors(colorOverrides)
         context.coordinator.updateLayout(wordWrap: wordWrap, force: true)
         context.coordinator.updateActivity(isActive)
         context.coordinator.updateMarkdownPresentation()
@@ -211,21 +249,39 @@ struct EditorTextView: NSViewRepresentable {
     ) {
         coordinator.flushModelText(reconcileDirtyState: true)
         coordinator.updateActivity(false)
+        coordinator.textView?.paragraphStylesChangedHandler = nil
+        coordinator.textView?.diagramMenuHandler = nil
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        context.coordinator.updateMathOptions(.init(physics: aiPreferences?.mathPhysicsEnabled ?? true,
+                                                    numbering: aiPreferences?.mathNumbering ?? .none))
         guard let textView = context.coordinator.textView else { return }
+        context.coordinator.magnificationDidChange = magnificationDidChange
+        context.coordinator.updateViewMagnification(viewMagnification)
+        textView.remoteImageTransferEnabled = remoteImageTransferEnabled
         context.coordinator.configureWritingChecks(spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
         context.coordinator.configureAIAssistance(preferences: aiPreferences)
         textView.isEditable = isEnabled
+        textView.autoPairBracketsEnabled = aiPreferences?.autoPairBracketsEnabled ?? false
+        textView.autoPairMarkdownEnabled = aiPreferences?.autoPairMarkdownEnabled ?? false
         Self.applyWritingChecks(to: textView, spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
         textView.textTransformationHandler = requestTextTransformation
         let documentChanged = context.coordinator.document.id != document.id
-        let fontChanged = context.coordinator.currentFontSize != fontSize
+        let requestedFont = AppPreferences.textFont(family: textFontFamily, size: fontSize)
+        let fontChanged = context.coordinator.foldLayoutManager?.textFont != requestedFont
+        let requestedCodeFont = AppPreferences.availableFont(family: codeFontFamily, size: fontSize)
+        let codeFontChanged = context.coordinator.foldLayoutManager?.markdownCodeFont != requestedCodeFont
+        let requestedMaximumWidth = maximumTextWidth.map { CGFloat($0) }
+        let widthChanged = context.coordinator.maximumTextWidth != requestedMaximumWidth
         let tabWidthChanged = context.coordinator.currentTabWidth != tabWidth
         let lineSpacingChanged = context.coordinator.foldLayoutManager?
             .editorLineSpacing != lineSpacing
         let languageChanged = context.coordinator.currentLanguage != document.language
+        if documentChanged || languageChanged || !document.isMarkdownFormatted || !isEnabled ||
+            context.coordinator.lastSynchronizedRevision != document.textRevision {
+            context.coordinator.finishTableCell()
+        }
         if documentChanged || languageChanged {
             context.coordinator.cancelFoldTask()
             context.coordinator.resetSyntaxHighlightContext()
@@ -234,40 +290,120 @@ struct EditorTextView: NSViewRepresentable {
         context.coordinator.currentLanguage = document.language
         context.coordinator.isMarkdownOutlineVisible = isOutlineVisible
         textView.indentationStyle = indentationStyle
-        let shouldRefreshTextMetrics = lineSpacingChanged
+        let colorsChanged = context.coordinator.foldLayoutManager?.markdownColors != colorOverrides
+        let requestedColors = colorOverrides
+        let tocLevelChanged = context.coordinator.foldLayoutManager?.markdownTOCMaxLevel != markdownTOCMaxLevel
+        let requestedTOCLevel = markdownTOCMaxLevel
+        let requestedSmallCaps = aiPreferences?.markdownSmallCapsLevels ?? []
+        let smallCapsChanged = context.coordinator.foldLayoutManager?.markdownSmallCapsLevels != requestedSmallCaps
+        let requestedParagraphSpacing = aiPreferences?.markdownParagraphSpacing.map { CGFloat($0) }
+        let paragraphSpacingChanged = context.coordinator.foldLayoutManager?.markdownParagraphSpacing != requestedParagraphSpacing
+        let requestedAlignment = aiPreferences?.markdownTextAlignment?.appKitAlignment
+        let alignmentChanged = context.coordinator.foldLayoutManager?.markdownTextAlignment != requestedAlignment
+        let requestedRightToLeft = aiPreferences?.markdownRightToLeft ?? false
+        let rightToLeftChanged = context.coordinator.foldLayoutManager?.markdownRightToLeft != requestedRightToLeft
+        let requestedCenteredHeadings = aiPreferences?.markdownCenteredHeadingLevels ?? []
+        let centeredHeadingsChanged = context.coordinator.foldLayoutManager?.markdownCenteredHeadingLevels != requestedCenteredHeadings
+        let requestedStrikeTasks = aiPreferences?.markdownStrikeCompletedTasks ?? false
+        let strikeTasksChanged = context.coordinator.strikeCompletedTasks != requestedStrikeTasks
+        let requestedHeadingNumbering = document.language == .markdown && (aiPreferences?.markdownNumberHeadings ?? false)
+        let headingNumberingChanged = context.coordinator.headingNumbering != requestedHeadingNumbering
+        let requestedUppercaseHeadings = document.language == .markdown ? (aiPreferences?.markdownUppercaseHeadingLevels ?? []) : []
+        let uppercaseHeadingsChanged = context.coordinator.uppercaseHeadingLevels != requestedUppercaseHeadings
+        let requestedListStyles = aiPreferences?.markdownListStyles ?? .init()
+        let listStylesChanged = context.coordinator.listStyles != requestedListStyles
+        let requestedMathPair = document.language == .markdown && (aiPreferences?.autoPairMarkdownEnabled ?? false)
+        let mathPairChanged = context.coordinator.mathPairContextEnabled != requestedMathPair
+        let requestedVertical = document.language == .markdown && document.isMarkdownFormatted && (aiPreferences?.markdownVerticalWriting ?? false)
+        let verticalChanged = context.coordinator.markdownVerticalWriting != requestedVertical
+        let requestedLigatures = aiPreferences?.editorLigatures
+        let ligaturesChanged = context.coordinator.editorLigatures != requestedLigatures
+        let smartEnabled = document.language == .markdown && document.isMarkdownFormatted
+        let smartChanged = textView.isAutomaticQuoteSubstitutionEnabled != (smartEnabled && (aiPreferences?.smartQuotesEnabled ?? false))
+            || textView.isAutomaticDashSubstitutionEnabled != (smartEnabled && (aiPreferences?.smartDashesEnabled ?? false))
+            || textView.isAutomaticTextReplacementEnabled != (smartEnabled && (aiPreferences?.systemTextReplacementEnabled ?? false))
+        let shouldRefreshTextMetrics = colorsChanged
+            || ligaturesChanged
+            || smartChanged
+            || tocLevelChanged
+            || smallCapsChanged
+            || paragraphSpacingChanged
+            || alignmentChanged
+            || rightToLeftChanged
+            || centeredHeadingsChanged
+            || strikeTasksChanged
+            || headingNumberingChanged
+            || uppercaseHeadingsChanged
+            || listStylesChanged
+            || mathPairChanged
+            || verticalChanged
+            || widthChanged
+            || lineSpacingChanged
             || fontChanged
+            || codeFontChanged
             || tabWidthChanged
         if shouldRefreshTextMetrics {
             let requestedFontSize = fontSize
             let requestedLineSpacing = lineSpacing
             let requestedTabWidth = tabWidth
             let requestedWordWrap = wordWrap
-            textView.applyOrDeferTextMetrics { [weak textView, weak coordinator = context.coordinator] in
+            context.coordinator.applyOrDeferTableTextMetrics { [weak textView, weak coordinator = context.coordinator] in
                 guard let textView, let coordinator else { return }
-                let fontChanged = coordinator.currentFontSize != requestedFontSize
-                let lineSpacingChanged = coordinator.foldLayoutManager?.editorLineSpacing != requestedLineSpacing
-                coordinator.currentFontSize = requestedFontSize
-                coordinator.currentTabWidth = requestedTabWidth
-                coordinator.foldLayoutManager?.textFont = lacEditorFont(size: requestedFontSize)
-                coordinator.foldLayoutManager?.editorLineSpacing = requestedLineSpacing
-                textView.editorLineSpacing = requestedLineSpacing
-                textView.tabWidth = requestedTabWidth
-                if fontChanged { textView.font = lacEditorFont(size: requestedFontSize) }
-                textView.configureTabStops()
-                if textView.textStorage?.length ?? 0 > 0 {
-                    textView.scheduleParagraphStyleRefresh()
-                }
-                coordinator.updateLayout(wordWrap: requestedWordWrap, force: lineSpacingChanged)
-                if fontChanged {
-                    coordinator.markdownMetricsChanged()
-                    coordinator.scheduleHighlight(delay: 0)
+                textView.applyOrDeferTextMetrics { [weak textView, weak coordinator] in
+                    guard let textView, let coordinator else { return }
+                    let fontChanged = coordinator.foldLayoutManager?.textFont != requestedFont
+                    let codeFontChanged = coordinator.foldLayoutManager?.markdownCodeFont != requestedCodeFont
+                    let lineSpacingChanged = coordinator.foldLayoutManager?.editorLineSpacing != requestedLineSpacing
+                    let tocLevelChanged = coordinator.foldLayoutManager?.markdownTOCMaxLevel != requestedTOCLevel
+                    let smallCapsChanged = coordinator.foldLayoutManager?.markdownSmallCapsLevels != requestedSmallCaps
+                    let paragraphSpacingChanged = coordinator.foldLayoutManager?.markdownParagraphSpacing != requestedParagraphSpacing
+                    let alignmentChanged = coordinator.foldLayoutManager?.markdownTextAlignment != requestedAlignment
+                    let rightToLeftChanged = coordinator.foldLayoutManager?.markdownRightToLeft != requestedRightToLeft
+                    let centeredHeadingsChanged = coordinator.foldLayoutManager?.markdownCenteredHeadingLevels != requestedCenteredHeadings
+                    coordinator.currentFontSize = requestedFontSize
+                    coordinator.currentTabWidth = requestedTabWidth
+                    coordinator.maximumTextWidth = requestedMaximumWidth
+                    coordinator.updateMarkdownColors(requestedColors)
+                    coordinator.updateEditorLigatures(requestedLigatures)
+                    coordinator.updateSmartSubstitutionSettings()
+                    coordinator.foldLayoutManager?.markdownTOCMaxLevel = requestedTOCLevel
+                    coordinator.foldLayoutManager?.markdownSmallCapsLevels = requestedSmallCaps
+                    coordinator.foldLayoutManager?.markdownParagraphSpacing = requestedParagraphSpacing
+                    coordinator.foldLayoutManager?.markdownTextAlignment = requestedAlignment
+                    coordinator.foldLayoutManager?.markdownRightToLeft = requestedRightToLeft
+                    coordinator.updateTableCellWritingDirection()
+                    coordinator.foldLayoutManager?.markdownCenteredHeadingLevels = requestedCenteredHeadings
+                    coordinator.updateStrikeCompletedTasks(requestedStrikeTasks)
+                    coordinator.updateHeadingNumbering(requestedHeadingNumbering)
+                    coordinator.updateUppercaseHeadingLevels(requestedUppercaseHeadings)
+                    coordinator.updateListStyles(requestedListStyles)
+                    coordinator.updateMathPairContextEnabled(requestedMathPair)
+                    coordinator.updateMarkdownVerticalWriting(requestedVertical)
+                    coordinator.foldLayoutManager?.textFont = requestedFont
+                    coordinator.foldLayoutManager?.markdownCodeFont = requestedCodeFont
+                    coordinator.foldLayoutManager?.editorLineSpacing = requestedLineSpacing
+                    textView.editorLineSpacing = requestedLineSpacing
+                    textView.tabWidth = requestedTabWidth
+                    if fontChanged { textView.font = requestedFont }
+                    if fontChanged { coordinator.updateTableCellFont(requestedFont) }
+                    if fontChanged || lineSpacingChanged || tabWidthChanged {
+                        textView.configureTabStops()
+                        if textView.textStorage?.length ?? 0 > 0 { textView.scheduleParagraphStyleRefresh() }
+                    }
+                    coordinator.updateLayout(wordWrap: requestedWordWrap, force: lineSpacingChanged || widthChanged)
+                    if fontChanged || codeFontChanged || tocLevelChanged || ligaturesChanged || smallCapsChanged || paragraphSpacingChanged || alignmentChanged || rightToLeftChanged || centeredHeadingsChanged {
+                        coordinator.markdownMetricsChanged()
+                        if fontChanged { coordinator.scheduleHighlight(delay: 0) }
+                    }
                 }
             }
         } else {
+            context.coordinator.applyOrDeferTableTextMetrics(nil)
             textView.applyOrDeferTextMetrics(nil)
         }
         context.coordinator.updatePerformanceFeatures()
         context.coordinator.updateLineNumbersVisibility(showsLineNumbers)
+        context.coordinator.updateWritingModes(focus: isFocusMode, typewriter: isTypewriterMode)
         context.coordinator.updateTopInset(topInset)
         context.coordinator.updateActivity(isActive)
         context.coordinator.updateMarkdownPresentation()
@@ -316,4 +452,15 @@ struct EditorTextView: NSViewRepresentable {
         context.coordinator.applyPendingContextSelection()
     }
 
+}
+
+private extension MarkdownTextAlignment {
+    var appKitAlignment: NSTextAlignment {
+        switch self {
+        case .left: return .left
+        case .center: return .center
+        case .right: return .right
+        case .justify: return .justified
+        }
+    }
 }

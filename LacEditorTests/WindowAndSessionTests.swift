@@ -6,6 +6,44 @@ import XCTest
 
 @MainActor
 final class WindowAndSessionTests: XCTestCase {
+    func testWorkspaceFolderMetadataAndLegacyManifestCompatibility() throws {
+        struct OldManifest: Decodable {
+            struct Window: Decodable {
+                struct Document: Decodable { let documentID: UUID; let contentFileName: String }
+                let documents: [Document]
+            }
+            let version: Int
+            let windows: [Window]
+        }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = WorkspaceSessionStore(rootURL: directory)
+        let id = UUID()
+        let folder = FolderWorkspaceSession(rootPath: "/tmp/example", expandedPaths: [["child"]], sort: "modified", view: "list", currentPath: ["child"])
+        let document = WorkspaceDocumentSnapshot(documentID: id, text: "dirty", sourceURL: nil, language: .markdown,
+            encoding: .utf8, isDirty: true, selectionRange: NSRange(location: 0, length: 0), scrollPositionRatio: 0,
+            isPreviewVisible: false, fileRevisionSnapshot: nil, folderWorkspace: folder)
+        let snapshot = WorkspaceSessionSnapshot(windows: [WorkspaceWindowSnapshot(documents: [document], selectedDocumentID: id, isSidebarVisible: true, frame: nil)])
+        try store.saveForTesting(snapshot)
+        XCTAssertEqual(try store.load()?.windows.first?.documents.first?.folderWorkspace, folder)
+        let workspace = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).first { $0.lastPathComponent.hasPrefix("Workspace-") })
+        let manifest = workspace.appendingPathComponent("Manifest.json")
+        let data = try Data(contentsOf: manifest)
+        let oldReader = try JSONDecoder().decode(OldManifest.self, from: data)
+        XCTAssertEqual(oldReader.version, 1)
+        XCTAssertEqual(oldReader.windows.first?.documents.first?.documentID, id)
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var windows = try XCTUnwrap(json["windows"] as? [[String: Any]])
+        var documents = try XCTUnwrap(windows[0]["documents"] as? [[String: Any]])
+        documents[0].removeValue(forKey: "folderWorkspace")
+        windows[0]["documents"] = documents
+        json["windows"] = windows
+        try JSONSerialization.data(withJSONObject: json).write(to: manifest)
+        let legacy = try XCTUnwrap(store.load()?.windows.first?.documents.first)
+        XCTAssertNil(legacy.folderWorkspace)
+        XCTAssertEqual(legacy.text, "dirty")
+    }
+
     func testWorkspaceExitWaitsForOpeningBeforeTakingSnapshot() async throws {
         _ = NSApplication.shared
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

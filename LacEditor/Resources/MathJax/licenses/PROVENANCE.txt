@@ -1,0 +1,22 @@
+MathJax 4.1.3 local SVG components
+
+mathjax@4.1.3: Apache License 2.0; copyright the MathJax Consortium.
+Archive SHA-256: b7109f516f3d842de62b95d653e35fa0976dc223706a2a77440e7f7723f0c54d
+Included: input/tex/extensions/*.js.
+
+@mathjax/mathjax-tex-font@4.1.3: tex-mml-svg-mathjax-tex.js, unchanged.
+Archive SHA-256: 98eaefe05263ca997f42973701b2888ec395d666d4bc26e2cd8b7a51f0decb01
+The package's def/mathjax-tex.ts identifies fonts/MathJax_*.otf,
+Copyright (c) 2022 MathJax, Inc., and SIL Open Font License 1.1
+for the generated font data. The associated MathJax code is Apache 2.0.
+
+@mathjax/mathjax-mhchem-font-extension@4.1.3: svg.js, unchanged.
+Archive SHA-256: 401e74d2279e786a4c8a91d98166f761439e2c3de1ca34d473b4034ab1bf7194
+Its def/mathjax-mhchem.ts identifies fonts/NewCMMath-Book.otf as input.
+The package's font metadata names Copyright (c) 2024 MathJax, Inc. and
+Copyright (c) 2019-2021 Antonis Tsolomitis, GUST Font License.
+The GUST Font License refers to the LaTeX Project Public License 1.3c or later.
+
+Archives: https://www.npmjs.com/package/mathjax/v/4.1.3
+https://www.npmjs.com/package/@mathjax/mathjax-tex-font/v/4.1.3
+https://www.npmjs.com/package/@mathjax/mathjax-mhchem-font-extension/v/4.1.3

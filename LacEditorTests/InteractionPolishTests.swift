@@ -122,6 +122,25 @@ final class InteractionPolishTests: XCTestCase {
         XCTAssertEqual(editor.verticalScroller?.alphaValue, 1)
     }
 
+    func testAsyncSidebarUndoDoesNotOverwriteNewFeedback() async {
+        let state = InlineFeedbackState()
+        var continuation: CheckedContinuation<Bool, Never>?
+        let started = expectation(description: "undo started")
+        state.showAsyncUndo("文件操作") {
+            await withCheckedContinuation { value in
+                continuation = value
+                started.fulfill()
+            }
+        }
+        state.undo()
+        await fulfillment(of: [started], timeout: 2)
+        XCTAssertEqual(state.item?.canUndo, false)
+        state.show("较新操作")
+        continuation?.resume(returning: true)
+        await Task.yield()
+        XCTAssertEqual(state.item?.title, "较新操作")
+    }
+
     func testFeedbackExpiryReplacementPauseUndoAndRelease() async throws {
         var state: InlineFeedbackState? = InlineFeedbackState(duration: .milliseconds(100))
         weak var released = state

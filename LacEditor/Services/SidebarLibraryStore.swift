@@ -47,6 +47,7 @@ struct SidebarLibraryFilter {
 @MainActor
 final class SidebarLibraryStore: ObservableObject {
     @Published private(set) var favoritePaths: [String] = []
+    @Published private(set) var pinnedFolderPaths: [String] = []
     @Published private(set) var groups: [SidebarFileGroup] = []
     @Published private(set) var favoriteSectionExpanded = true
     @Published private(set) var groupsSectionExpanded = true
@@ -58,6 +59,7 @@ final class SidebarLibraryStore: ObservableObject {
         var favoriteSectionExpanded: Bool?
         var groupsSectionExpanded: Bool?
         var recentSectionExpanded: Bool?
+        var pinnedFolderPaths: [String]?
     }
 
     private let storageURL: URL
@@ -68,6 +70,28 @@ final class SidebarLibraryStore: ObservableObject {
     }
 
     var favoriteURLs: [URL] { favoritePaths.map(URL.init(fileURLWithPath:)) }
+    var pinnedFolderURLs: [URL] { pinnedFolderPaths.map { URL(fileURLWithPath: $0, isDirectory: true) } }
+
+    func isPinnedFolder(_ url: URL) -> Bool { pinnedFolderPaths.contains(canonicalPath(url)) }
+
+    func togglePinnedFolder(_ url: URL) {
+        let path = canonicalPath(url)
+        if let index = pinnedFolderPaths.firstIndex(of: path) { pinnedFolderPaths.remove(at: index) }
+        else { pinnedFolderPaths.append(path) }
+        persist()
+    }
+
+    func replacePinnedFolder(_ oldURL: URL, with newURL: URL) {
+        pinnedFolderPaths = replacing(canonicalPath(oldURL), with: canonicalPath(newURL), in: pinnedFolderPaths)
+        persist()
+    }
+
+    func restorePinnedFolders(_ paths: [String], ifUnchanged expected: [String]) -> Bool {
+        guard pinnedFolderPaths == expected else { return false }
+        pinnedFolderPaths = paths
+        persist()
+        return true
+    }
 
     func isFavorite(_ url: URL) -> Bool { favoritePaths.contains(canonicalPath(url)) }
 
@@ -203,6 +227,17 @@ final class SidebarLibraryStore: ObservableObject {
         persist()
     }
 
+    func replaceFavorite(_ oldURL: URL, with newURL: URL) {
+        favoritePaths = replacing(canonicalPath(oldURL), with: canonicalPath(newURL), in: favoritePaths)
+        persist()
+    }
+
+    func replaceFile(_ oldURL: URL, with newURL: URL, inGroup id: UUID) {
+        guard let index = groups.firstIndex(where: { $0.id == id }) else { return }
+        groups[index].paths = replacing(canonicalPath(oldURL), with: canonicalPath(newURL), in: groups[index].paths)
+        persist()
+    }
+
     func groupsContaining(_ url: URL) -> [UUID] {
         let path = canonicalPath(url)
         return groups.filter { $0.paths.contains(path) }.map(\.id)
@@ -212,6 +247,7 @@ final class SidebarLibraryStore: ObservableObject {
         guard let data = try? Data(contentsOf: storageURL),
               let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) else { return }
         favoritePaths = deduplicated(snapshot.favoritePaths)
+        pinnedFolderPaths = deduplicated(snapshot.pinnedFolderPaths ?? [])
         favoriteSectionExpanded = snapshot.favoriteSectionExpanded ?? true
         groupsSectionExpanded = snapshot.groupsSectionExpanded ?? true
         recentSectionExpanded = snapshot.recentSectionExpanded ?? true
@@ -233,7 +269,8 @@ final class SidebarLibraryStore: ObservableObject {
                 groups: groups,
                 favoriteSectionExpanded: favoriteSectionExpanded,
                 groupsSectionExpanded: groupsSectionExpanded,
-                recentSectionExpanded: recentSectionExpanded
+                recentSectionExpanded: recentSectionExpanded,
+                pinnedFolderPaths: pinnedFolderPaths
             ))
             try data.write(to: storageURL, options: .atomic)
         } catch {

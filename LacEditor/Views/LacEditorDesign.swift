@@ -12,6 +12,8 @@ final class InlineFeedbackState: ObservableObject {
     }
     @Published private(set) var item: Item?
     private var undoAction: (() -> Bool)?
+    private var asyncUndoAction: (() async -> Bool)?
+    private var pendingUndoID: UUID?
     private var expiration: Task<Void, Never>?
     private var isInteracting = false
     private let duration: Duration
@@ -22,7 +24,18 @@ final class InlineFeedbackState: ObservableObject {
     func show(_ title: String, symbol: String = "checkmark.circle", undo: (() -> Bool)? = nil) {
         expiration?.cancel()
         undoAction = undo
+        asyncUndoAction = nil
+        pendingUndoID = nil
         item = Item(title: title, canUndo: undo != nil, symbol: symbol)
+        scheduleExpiration()
+    }
+
+    func showAsyncUndo(_ title: String, undo: @escaping () async -> Bool) {
+        expiration?.cancel()
+        undoAction = nil
+        asyncUndoAction = undo
+        pendingUndoID = nil
+        item = Item(title: title, canUndo: true, symbol: "checkmark.circle")
         scheduleExpiration()
     }
 
@@ -34,8 +47,23 @@ final class InlineFeedbackState: ObservableObject {
     }
 
     func undo() {
+        if let action = asyncUndoAction, let current = item {
+            asyncUndoAction = nil
+            expiration?.cancel()
+            let pending = Item(title: current.title, canUndo: false, symbol: current.symbol)
+            item = pending
+            pendingUndoID = pending.id
+            Task { @MainActor [weak self] in
+                let succeeded = await action()
+                guard let self, self.item?.id == pending.id else { return }
+                if succeeded { self.show(L10n.tr("已撤销上次操作")) }
+                else { self.show(L10n.tr("文件已变化，未撤销"), symbol: "info.circle") }
+            }
+            return
+        }
         guard let action = undoAction else { return }
         undoAction = nil
+        asyncUndoAction = nil
         if action() { show(L10n.tr("已撤销上次操作")) }
         else { show(L10n.tr("列表已变化，未撤销"), symbol: "info.circle") }
     }
@@ -43,13 +71,15 @@ final class InlineFeedbackState: ObservableObject {
     func clear() {
         expiration?.cancel(); expiration = nil
         undoAction = nil
+        asyncUndoAction = nil
+        pendingUndoID = nil
         item = nil
         isInteracting = false
     }
 
     private func scheduleExpiration() {
         expiration?.cancel()
-        guard let id = item?.id, !isInteracting else { return }
+        guard let id = item?.id, id != pendingUndoID, !isInteracting else { return }
         let delay = duration
         expiration = Task { @MainActor [weak self] in
             do { try await Task.sleep(for: delay) } catch { return }

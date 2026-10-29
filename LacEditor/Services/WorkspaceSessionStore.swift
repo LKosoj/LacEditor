@@ -22,6 +22,41 @@ struct WorkspaceDocumentSnapshot: Equatable, Sendable {
     let scrollPositionRatio: CGFloat
     let isPreviewVisible: Bool
     let fileRevisionSnapshot: FileRevisionSnapshot?
+    var folderWorkspace: FolderWorkspaceSession? = nil
+}
+
+struct FolderWorkspaceSession: Codable, Equatable, Sendable {
+    let rootPath: String
+    let expandedPaths: [[String]]
+    let sort: String
+    let view: String
+    let currentPath: [String]
+    let ascending: Bool?
+    let groupByFolder: Bool?
+
+    init(rootPath: String, expandedPaths: [[String]], sort: String, view: String, currentPath: [String], ascending: Bool? = nil, groupByFolder: Bool? = nil) {
+        self.rootPath = rootPath
+        self.expandedPaths = expandedPaths
+        self.sort = sort
+        self.view = view
+        self.currentPath = currentPath
+        self.ascending = ascending
+        self.groupByFolder = groupByFolder
+    }
+
+    init(from decoder: Decoder) throws {
+        guard let values = try? decoder.container(keyedBy: CodingKeys.self) else {
+            rootPath = ""; expandedPaths = []; sort = "natural"; view = "tree"; currentPath = []; ascending = nil; groupByFolder = nil
+            return
+        }
+        rootPath = (try? values.decode(String.self, forKey: .rootPath)) ?? ""
+        expandedPaths = (try? values.decode([[String]].self, forKey: .expandedPaths)) ?? []
+        sort = (try? values.decode(String.self, forKey: .sort)) ?? "natural"
+        view = (try? values.decode(String.self, forKey: .view)) ?? "tree"
+        currentPath = (try? values.decode([String].self, forKey: .currentPath)) ?? []
+        ascending = try? values.decode(Bool.self, forKey: .ascending)
+        groupByFolder = try? values.decode(Bool.self, forKey: .groupByFolder)
+    }
 }
 
 struct WorkspaceDocumentReference: Sendable {
@@ -79,6 +114,7 @@ final class WorkspaceSessionStore: @unchecked Sendable {
         let resourceIdentifier: String?
         let modificationDate: Date?
         let fileSize: Int?
+        var folderWorkspace: FolderWorkspaceSession? = nil
     }
 
     private let rootURL: URL
@@ -119,7 +155,8 @@ final class WorkspaceSessionStore: @unchecked Sendable {
                     sourceURL: snapshot.sourceURL, language: snapshot.language, encoding: snapshot.encoding,
                     isDirty: snapshot.isDirty, selectionRange: snapshot.selectionRange,
                     scrollPositionRatio: snapshot.scrollPositionRatio, isPreviewVisible: snapshot.isPreviewVisible,
-                    fileRevisionSnapshot: snapshot.fileRevisionSnapshot
+                    fileRevisionSnapshot: snapshot.fileRevisionSnapshot,
+                    folderWorkspace: snapshot.folderWorkspace
                 )
             }, selectedDocumentID: window.selectedDocumentID,
                isSidebarVisible: window.isSidebarVisible, frame: window.frame)
@@ -174,7 +211,8 @@ final class WorkspaceSessionStore: @unchecked Sendable {
                                 document.scrollPositionRatio
                             ),
                             isPreviewVisible: document.isPreviewVisible,
-                            fileRevisionSnapshot: baseline
+                            fileRevisionSnapshot: baseline,
+                            folderWorkspace: document.folderWorkspace
                         ), contentURL: contentURL)
                     },
                     selectedDocumentID: window.selectedDocumentID,
@@ -257,7 +295,8 @@ final class WorkspaceSessionStore: @unchecked Sendable {
                         canonicalPath: baseline?.identity.canonicalPath,
                         resourceIdentifier: baseline?.identity.resourceIdentifier,
                         modificationDate: baseline?.modificationDate,
-                        fileSize: baseline?.fileSize
+                        fileSize: baseline?.fileSize,
+                        folderWorkspace: document.folderWorkspace
                     ))
                 }
                 metadataWindows.append(WindowMetadata(

@@ -91,7 +91,7 @@
 "大文件模式" = "Large file mode";
 "如果不保存，更改将会丢失。" = "If not saved, changes will be lost.";
 "字体大小" = "font size";
-"实时字数统计" = "Live character count";
+"实时字数统计" = "Live text statistics";
 "实验版的工作区、收藏和设置与正式版分别存放。" = "The workspace, collections and settings of the experimental version are stored separately from the official version.";
 "将 %@ 设为默认使用 LacEditor" = "Set %@ to use LacEditor by default";
 "已从上次异常退出中恢复，请确认后保存" = "Recovered from the last abnormal exit, please confirm and save";
@@ -449,6 +449,11 @@
 "行内代码" = "Inline Code";
 "设置标题" = "Set Heading";
 "引用" = "Block Quote";
+"无序列表" = "Bulleted List";
+"有序列表" = "Numbered List";
+"任务列表" = "Task List";
+"代码块" = "Code Block";
+"分隔线" = "Horizontal Rule";
 "Markdown 格式" = "Markdown Format";
 "标题 %@ 级" = "Heading %@";
 "文档大纲" = "Outline";
@@ -606,3 +611,668 @@
 "其他语言" = "Other Language";
 "目标语言" = "Target Language";
 "输入目标语言" = "Enter target language";
+
+"选中源文本" = "Selected source text";
+"文档源文本" = "Document source text";
+"词数：%@" = "Words: %@";
+"字符数：%@" = "Characters: %@";
+"不含空白的字符数：%@" = "Characters excluding whitespace: %@";
+"行数：%@" = "Lines: %@";
+"预计阅读：%@ 分钟（200 词/分钟）" = "Estimated reading: %@ min (200 words/min)";
+"统计更新中" = "Updating statistics";
+"%@ 词" = "%@ words";
+"查看源文本统计" = "View source text statistics";
+"无法统计选中范围" = "Selection cannot be counted";
+"表格" = "Table";
+"插入表格" = "Insert Table";
+"在上方插入行" = "Insert Row Above";
+"在下方插入行" = "Insert Row Below";
+"删除行" = "Delete Row";
+"上移行" = "Move Row Up";
+"下移行" = "Move Row Down";
+"在左侧插入列" = "Insert Column Left";
+"在右侧插入列" = "Insert Column Right";
+"删除列" = "Delete Column";
+"左移列" = "Move Column Left";
+"右移列" = "Move Column Right";
+"列对齐" = "Column Alignment";
+"默认对齐" = "Default Alignment";
+"左对齐" = "Align Left";
+"居中对齐" = "Align Center";
+"右对齐" = "Align Right";
+"链接…" = "Link…";
+"链接" = "Link";
+"链接文字" = "Link Text";
+"链接地址" = "Link Address";
+"请输入链接文字和地址" = "Enter link text and an address.";
+"应用" = "Apply";
+"无法创建此链接，请检查文字和地址" = "Could not create this link. Check its text and address.";
+"无法生成 PDF" = "Could not create PDF";
+"打印内容尚未完成加载" = "Could not load content for printing";
+"聚焦当前段落" = "Focus Current Paragraph";
+"打字机模式" = "Typewriter Mode";
+"打开文件夹…" = "Open Folder…";
+"工作文件夹" = "Working Folder";
+"刷新文件夹" = "Refresh Folder";
+"文件夹为空" = "Folder is empty";
+"正在读取文件夹…" = "Reading folder…";
+"无法读取文件夹：%@" = "Could not read folder: %@";
+"筛选资料库文件" = "Filter Library Files";
+"按文件名或分组筛选资料库，不搜索工作文件夹正文" = "Filter the library by file or group name; this does not search the working folder contents.";
+
+"自动配对括号与引号" = "Automatically Pair Brackets and Quotes";
+
+"在 Markdown 中自动配对括号与引号。" = "Automatically pair brackets and quotes in Markdown.";
+
+"自动配对 Markdown 符号" = "Automatically Pair Markdown Markers";
+
+"在 Markdown 中自动配对标记符号。" = "Automatically pair formatting markers in Markdown.";
+
+"复制路径" = "Copy Path";
+
+"文件已变化，未撤销" = "The file has changed; undo was not applied.";
+
+"新建文件" = "New File";
+
+"新建文件夹" = "New Folder";
+
+"已创建" = "Created";
+
+"已创建，但无法准备撤销" = "Created, but undo could not be prepared.";
+
+"无法创建文件" = "Could Not Create File";
+
+"复制文件或文件夹" = "Duplicate File or Folder";
+
+"无法复制文件" = "Could Not Duplicate File";
+
+"已复制，但无法准备撤销" = "Duplicated, but undo could not be prepared.";
+
+"不是有效的 UTF-8" = "Not valid UTF-8";
+
+"已跳过符号链接" = "Symbolic link skipped";
+
+"打开的文档冲突" = "Conflicting open documents";
+
+"按名称打开" = "Open by Name";
+
+"搜索" = "Search";
+
+"搜索失败" = "Search failed";
+
+"搜索文件内容" = "Search File Contents";
+
+"搜索文件夹" = "Search Folder";
+
+"搜索范围：%@" = "Search scope: %@";
+
+"文件夹搜索" = "Folder Search";
+
+"文件已变化" = "File has changed";
+
+"文件正在移动，请稍后重试" = "The file is being moved. Try again shortly.";
+
+"无法读取" = "Could not read";
+
+"没有匹配结果" = "No matches";
+
+"结果已过期，请重新搜索" = "Results are outdated. Search again.";
+
+"文件操作进行中，请稍后重试" = "A file operation is in progress. Try again shortly.";
+
+"移动到…" = "Move to…";
+
+"无法移动文件" = "Could Not Move File";
+
+"无法移动文件，请检查文件和保存状态" = "Could not move the file. Check the file and save status.";
+
+"已移动，但无法准备撤销" = "Moved, but undo could not be prepared.";
+
+"已移动" = "Moved";
+
+"移到废纸篓？" = "Move to Trash?";
+
+"打开的文件会先逐个确认并关闭。" = "Open files will first be confirmed and closed one by one.";
+
+"移到废纸篓" = "Move to Trash";
+
+"未移到废纸篓" = "Not Moved to Trash";
+
+"已移到废纸篓，但无法准备撤销" = "Moved to Trash, but undo could not be prepared.";
+
+"已移到废纸篓" = "Moved to Trash";
+
+"显示方式" = "View";
+
+"树形" = "Tree";
+
+"列表" = "List";
+
+"排序" = "Sort";
+
+"名称" = "Name";
+
+"自然顺序" = "Natural Order";
+
+"创建日期" = "Date Created";
+
+"修改日期" = "Date Modified";
+
+"返回上级" = "Go Up";
+
+"无法自动监视文件夹" = "Could not monitor this folder automatically.";
+
+"文件夹不可用，已返回上级" = "Folder unavailable. Returned to its parent.";
+
+"图片…" = "Image…";
+
+"图片" = "Image";
+
+"图片替代文字" = "Image Alternative Text";
+
+"图片地址" = "Image Address";
+
+"图片标题" = "Image Title";
+
+"无法创建此图片，请检查地址和文字" = "Could not create this image. Check the address and text.";
+
+"无法读取图片" = "Could Not Read Image";
+
+"无法保存图片，文件可能已存在" = "Could not save the image. The file may already exist.";
+
+"图片已保存，但文档已变化，未插入" = "The image was saved, but the document changed and it was not inserted.";
+
+"打印 Markdown…" = "Print Markdown…";
+
+"无法生成完整的 PNG 图像" = "Could not create a complete PNG image.";
+
+"不支持此打印目标" = "This print destination is not supported.";
+
+"无法打印" = "Could Not Print";
+
+"打印完成" = "Print job submitted";
+
+"配置 Pandoc 导出项目。" = "Configure document exports with Pandoc.";
+
+"导出设置无法读取；原始设置未被覆盖。" = "Export settings could not be read. The original settings were preserved.";
+
+"重置导出设置" = "Reset Export Settings";
+
+"保留了不支持的导出项目：%d" = "Unsupported export entries preserved: %d";
+
+"删除不支持的导出项目" = "Delete Unsupported Export Entries";
+
+"Pandoc 输出格式" = "Pandoc Output Format";
+
+"扩展名，以空格分隔" = "Extensions, separated by spaces";
+
+"原始类型" = "Raw Type";
+
+"额外参数" = "Additional Arguments";
+
+"模板" = "Template";
+
+"样式参考文件" = "Reference Document";
+
+"EPUB 封面" = "EPUB Cover";
+
+"EPUB 目录深度" = "EPUB TOC Depth";
+
+"添加 Pandoc 导出项目" = "Add Pandoc Export";
+
+"自定义 Pandoc" = "Custom Pandoc";
+
+"使用上次设置导出" = "Export with Last Settings";
+
+"使用上次设置导出并覆盖" = "Export with Last Settings and Overwrite";
+
+"导出设置无效：%@" = "Invalid export settings: %@";
+
+"未选择" = "Not Selected";
+
+"选择…" = "Choose…";
+
+"引号或转义未结束" = "Unclosed quote or escape";
+
+"变量未结束" = "Unclosed variable";
+
+"未知变量：%@" = "Unknown variable: %@";
+
+"不支持的参数：%@" = "Unsupported argument: %@";
+
+"参数值无效：%@" = "Invalid argument value: %@";
+
+"不支持此原始类型" = "This raw type is not supported.";
+
+"不支持此输出扩展名" = "This output extension is not supported.";
+
+"不支持此 Pandoc 输出格式" = "This Pandoc output format is not supported.";
+
+"Pandoc 元数据无效" = "Invalid Pandoc metadata";
+
+"目录深度重复设置" = "TOC depth is specified more than once.";
+
+"参数与输出格式不匹配" = "The options do not match the output format.";
+
+"目录深度无效" = "Invalid TOC depth";
+
+"自定义命令" = "Custom Command";
+
+"命令以当前用户权限运行，可以读取和修改文件。" = "Commands run with your user permissions and can read and change files.";
+
+"使用 ${inputPath} 读取当前文本，${outputPath} 指向输出。" = "Use ${inputPath} for the current text and ${outputPath} for the output.";
+
+"命令输出" = "Command Output";
+
+"文件夹" = "Folder";
+
+"无输出路径" = "No Output Path";
+
+"显示命令输出" = "Show Command Output";
+
+"添加自定义命令" = "Add Custom Command";
+
+"不支持的命令输出方式" = "Unsupported command output destination";
+
+"文档已更改；命令可能已经执行。" = "The document changed. The command may already have run.";
+
+"变量包含无效字符" = "A variable contains invalid characters.";
+
+"命令中的变量位置暂不支持" = "This variable position in the command is not supported yet.";
+
+"命令不能为空" = "The command cannot be empty.";
+
+"命令未生成输出文件" = "The command did not create an output file.";
+
+"命令执行失败：%@" = "Command failed: %@";
+
+"复杂图片结构已保留为原始 HTML，预览可能无法显示。" = "A complex image structure was preserved as raw HTML and may not appear in the preview.";
+
+"无法确定 PDF 目录中的标题位置" = "Could not locate a heading for the PDF outline.";
+
+"无法确认目录标记" = "Could not confirm a table of contents marker.";
+
+"原始类型与输出格式不匹配" = "The raw type does not match the output format.";
+
+"文件" = "File";
+
+"无法粘贴格式化内容" = "Could not paste formatted content";
+
+"编辑源代码" = "Edit source";
+
+"无法复制格式化内容" = "Could not copy formatted content";
+
+"复制 Markdown" = "Copy Markdown";
+
+"复制 HTML 代码" = "Copy HTML Code";
+
+"粘贴为源文本" = "Paste as Source Text";
+
+"文字字体" = "Text font";
+
+"用于正文和编辑器。" = "Used for text and the editor.";
+
+"代码字体" = "Code font";
+
+"用于 Markdown 代码。" = "Used for Markdown code.";
+
+"字体" = "Font";
+
+"系统默认" = "System default";
+
+"不可用：%@" = "Unavailable: %@";
+
+"图片上传" = "Image upload";
+
+"上传方式" = "Upload method";
+
+
+"自定义程序" = "Custom program";
+
+"上传地址" = "Upload URL";
+
+"填写已运行的 PicGo 上传地址。" = "Enter the upload URL of a running PicGo server.";
+
+"程序路径" = "Program path";
+
+"程序以当前用户权限运行。" = "The program runs with your user permissions.";
+
+"程序参数" = "Program arguments";
+
+"每行一个参数；图片路径会追加在最后。" = "One argument per line; image paths are appended.";
+
+"上传选中图片" = "Upload Selected Image";
+
+"上传全部本地图片" = "Upload All Local Images";
+
+"请先在设置中选择图片上传方式" = "Choose an image upload method in settings first.";
+
+"正在上传图片…" = "Uploading images…";
+
+"文档已变化，未应用上传结果" = "The document changed; upload results were not applied.";
+
+"图片上传失败：%@" = "Image upload failed: %@";
+
+"上传图片" = "Upload Images";
+
+"图片已上传" = "Images uploaded";
+
+"暂不支持此图片语法" = "This image syntax is not supported yet.";
+
+"图片或上传设置无效" = "Invalid image or upload settings.";
+
+"上传结果不完整或地址无效" = "Incomplete upload results or invalid URLs.";
+
+"上传程序失败：%@" = "Upload program failed: %@";
+
+"上传服务返回错误" = "The upload service returned an error.";
+
+"搜索标签" = "Search Tags";
+
+"无法读取 YAML 标签" = "Could not read YAML tags";
+
+"插入时上传本地图片" = "Upload local images on insertion";
+
+"选择文件、粘贴或拖入图片时自动上传。" = "Upload when choosing, pasting, or dropping an image.";
+
+"选择使用的图片上传程序或服务。" = "Choose the image upload program or service.";
+
+"上传后生成地址" = "URL provided after upload";
+
+"允许文档指定上传" = "Allow document upload settings";
+
+"允许文档的 YAML 设置决定插入时上传图片。" = "Allow document YAML settings to control uploads on insertion.";
+
+"无法读取图片插入的文档设置" = "Could not read document image insertion settings.";
+
+"暂不支持文档指定的图片插入方式" = "The document image insertion method is not supported yet.";
+
+"图片插入设置错误：%@" = "Image insertion settings error: %@";
+
+"插入时上传网络图片" = "Upload online images on insertion";
+
+"重新下载并上传通过 URL 插入的图片。" = "Download and upload images inserted through a URL.";
+
+"找不到链接目标" = "Link target not found";
+
+"无法打开链接" = "Could not open the link";
+
+"图片目标文件夹无效" = "Invalid image destination folder";
+
+"允许文档指定图片文件夹" = "Allow document image folder settings";
+
+"允许文档的 YAML 设置决定图片复制位置。" = "Allow document YAML settings to choose where images are copied.";
+
+"全局图片文件夹" = "Default image folder";
+
+"留空时不复制；全局自动上传优先。" = "Leave empty to disable copying; global automatic upload takes priority.";
+
+"测试图片上传" = "Test image upload";
+
+"发送一张测试图片并显示返回地址。" = "Send a test image and show the returned URL.";
+
+"测试" = "Test";
+
+"正在测试…" = "Testing…";
+
+"AMS 编号" = "AMS numbering";
+"HTML（无样式）" = "HTML (unstyled)";
+"PDF 引擎以当前用户权限运行，可以读取和修改文件。" = "The PDF engine runs with your permissions and can read and modify files.";
+"PDF 引擎路径" = "PDF engine path";
+"PDF 页眉" = "PDF header";
+"PDF 页脚" = "PDF footer";
+"PDF 页面设置" = "PDF page settings";
+"PDF（Pandoc / LaTeX）" = "PDF (Pandoc / LaTeX)";
+"上边距（点）" = "Top margin (pt)";
+"下边距（点）" = "Bottom margin (pt)";
+"不自动编号" = "No automatic numbering";
+"中等" = "Medium";
+"允许文档 YAML 覆盖页眉和页脚" = "Allow document YAML to override headers and footers";
+"公式自动编号" = "Automatic equation numbering";
+"右边距（点）" = "Right margin (pt)";
+"启用 Physics 数学扩展" = "Enable the Physics math extension";
+"图像字体大小（点）" = "Image font size (pt)";
+"图像宽度（点）" = "Image width (pt)";
+"图像导出设置" = "Image export settings";
+"图像质量" = "Image quality";
+"图片位于 %@" = "Image saved at %@";
+"图片位于 %@，但文档已变化，未插入" = "Image saved at %@; the document changed, so it was not inserted";
+"图片位于 %@，未插入" = "Image saved at %@; not inserted";
+"图片复制失败：%@" = "Image copy failed: %@";
+"处理后生成地址" = "Address after processing";
+"导出完成。HTML 中的相对图片路径需要相对于输出文件有效。" = "Export complete. Relative image paths in the HTML must resolve from the output file.";
+"导出页面或图像尺寸无效" = "Invalid export page or image dimensions";
+"左边距（点）" = "Left margin (pt)";
+"所有公式编号" = "Number all equations";
+"文档已变化，未插入图片" = "The document changed; the image was not inserted";
+"无法读取 PDF 元数据" = "Unable to read PDF metadata";
+"最佳" = "Best";
+"添加 PDF 引擎导出项目" = "Add a PDF engine export profile";
+"筛选器和其他程序以当前用户权限运行，可以读取和修改文件。" = "Filters and other programs run with your permissions and can read and modify files.";
+"纸张" = "Paper";
+"纸张宽度（点）" = "Paper width (pt)";
+"纸张高度（点）" = "Paper height (pt)";
+"自动" = "Automatic";
+"自动加载 Physics 命令；公式仍可显式加载。" = "Load Physics commands automatically; equations can still load them explicitly.";
+"自定义" = "Custom";
+"自定义图像字体大小" = "Custom image font size";
+"自定义页边距" = "Custom margins";
+"请选择可执行的 PDF 引擎和 PDF 文件" = "Choose an executable PDF engine and a PDF output file";
+"选择独立公式的自动编号方式。" = "Choose automatic numbering for display equations.";
+"顶级标题和脚注前分页" = "Page breaks between top-level headings and before footnotes";
+"高" = "High";
+
+"预计阅读时间" = "Estimated reading time";
+"统计显示单位" = "Statistic shown in the status bar";
+"选择状态栏显示的统计值。" = "Choose the statistic shown in the status bar.";
+"阅读速度" = "Reading speed";
+"用于估计阅读时间，单位为词每分钟。" = "Used to estimate reading time, in words per minute.";
+"选中内容统计" = "Selection statistics";
+"文档统计" = "Document statistics";
+"词数按可读内容统计；字符和行数按源文本统计。" = "Words use readable content; characters and lines use the source text.";
+"预计阅读：%@ 分钟（%@ 词/分钟）" = "Reading estimate: %@ min (%@ words/min)";
+"无法统计此内容" = "Statistics unavailable for this content";
+"查看文档统计" = "Show document statistics";
+"%@ 字符（不含空白）" = "%@ characters (without whitespace)";
+"%@ 行" = "%@ lines";
+"%@ 分钟" = "%@ min";
+
+"PDF 中间格式" = "PDF intermediate format";
+"不支持此 PDF 中间格式" = "Unsupported PDF intermediate format";
+"不含空白的字符数" = "Characters without whitespace";
+"字符数" = "Characters";
+"行数" = "Lines";
+"词数" = "Words";
+
+"HTML 导出附加内容" = "Additional HTML export content";
+"Markdown 最大宽度" = "Maximum Markdown width";
+"PDF 引擎暂不支持 defaults 文件" = "Defaults files are not yet supported for PDF engines";
+"不支持此 defaults 文件内容" = "Unsupported defaults file contents";
+"允许文档 YAML 覆盖 HTML 导出设置" = "Allow document YAML to override HTML export settings";
+"宽度（点）" = "Width (pt)";
+"文档已更改，导出已取消。" = "The document changed; export was cancelled.";
+"未保存文档需要 defaults 绝对路径" = "Unsaved documents require an absolute defaults path";
+"自动换行时居中显示，默认跟随窗口宽度。" = "Centre wrapped text; use the window width by default.";
+"附加到 body" = "Append to body";
+"附加到 head" = "Append to head";
+"附加脚本可能在打开导出文件的应用中运行。" = "Appended scripts may run in the application that opens the exported file.";
+"限制 Markdown 宽度" = "Limit Markdown width";
+
+"PicList 密钥" = "PicList key";
+"PicList 已上传部分文件：%@；%@" = "PicList uploaded some files: %@; %@";
+"PicList 已上传，但需要完成处理：%@" = "PicList uploaded the file; processing must be completed: %@";
+"Picsee 已上传部分文件：%@；%@" = "Picsee uploaded some files: %@; %@";
+"defaults 文件循环引用" = "Cyclic defaults file reference";
+"iPic 已上传部分文件：%@；%@" = "iPic uploaded some files: %@; %@";
+"uPic 已上传部分文件：%@；%@" = "uPic uploaded some files: %@; %@";
+"可选密钥" = "Optional key";
+"填写 Picsee 可执行文件路径。" = "Enter the Picsee executable path.";
+"填写 uPic 可执行文件路径。" = "Enter the uPic executable path.";
+"填写已运行的 PicList 上传地址，不含密钥。" = "Enter the upload URL of a running PicList server, without its key.";
+"复制代码块内容" = "Copy code block content";
+"大纲最大标题级别" = "Maximum outline heading level";
+"密钥已保存" = "Key saved";
+"已复制纯文本和 HTML" = "Copied plain text and HTML";
+"恢复默认颜色" = "Reset color";
+"无法确定 HTML 附加内容位置" = "Unable to locate HTML insertion points";
+"无法访问 PicList 密钥" = "Unable to access the PicList key";
+"确定" = "OK";
+"设置代码块语言" = "Set code block language";
+"远程服务的密钥保存在系统钥匙串中。" = "The remote service key is stored in the system Keychain.";
+"选择大纲中显示的标题级别。" = "Choose heading levels shown in the outline.";
+"正文颜色" = "Text color";
+"背景颜色" = "Background color";
+"链接颜色" = "Link color";
+"代码背景颜色" = "Code background color";
+"引用背景颜色" = "Quote background color";
+"Markdown 深色外观颜色" = "Markdown colors in dark appearance";
+"Markdown 浅色外观颜色" = "Markdown colors in light appearance";
+"iPic 必须已安装并配置。取消不会停止 iPic 中已开始的上传。" = "iPic must be installed and configured. Cancelling does not stop uploads already started in iPic.";
+"iPic 未返回结果；上传可能仍在进行。" = "iPic did not return a result; the upload may still be running.";
+"部分 HTML 内容无法包含在导出中。" = "Some HTML content could not be included in the export.";
+"快速打开…" = "Quick Open…";
+"嵌入内容" = "Embedded content";
+"无法打开文件夹" = "Could not open folder";
+"固定文件夹" = "Pinned folders";
+"最近使用的文件夹" = "Recent folders";
+"取消固定文件夹" = "Unpin folder";
+"文件夹列表已更新" = "Folder list updated";
+"从最近文件夹移除" = "Remove from recent folders";
+"文件夹位置" = "Folder locations";
+"清除最近文件夹" = "Clear recent folders";
+"固定此文件夹" = "Pin folder";
+"智能引号" = "Smart quotes";
+"使用 macOS 的智能引号。" = "Use macOS smart quotes.";
+"智能破折号" = "Smart dashes";
+"使用 macOS 的智能破折号。" = "Use macOS smart dashes.";
+"系统文本替换" = "System text replacements";
+"使用 macOS 键盘设置中的文本替换。" = "Use text replacements from macOS Keyboard settings.";
+"启动文件夹" = "Startup folder";
+"留空时启动不打开默认文件夹。" = "Leave empty to disable the default startup folder.";
+"连字" = "Ligatures";
+"控制字体支持的字符连写。" = "Control character joining supported by the font.";
+"保持原样" = "Keep existing behavior";
+"标准" = "Standard";
+"全部可用" = "All available";
+"行内公式" = "Inline formula";
+"公式块" = "Formula block";
+"插入视频" = "Insert video";
+"标题小型大写字母" = "Small caps in headings";
+"排序方向" = "Sort direction";
+"升序" = "Ascending";
+"降序" = "Descending";
+"部分文件夹无法读取" = "Some folders could not be read";
+"仅对选中的标题级别启用；编辑器字体不支持时保持原样，预览可能合成字形。" = "Apply to selected heading levels. The editor keeps the existing appearance if the font does not support it; the preview may synthesize glyphs.";
+"按文件夹分组" = "Group by folder";
+"当前字体不支持小型大写字母" = "The current font does not support small caps";
+"图片资源根路径无效" = "Invalid image resource root path";
+"Markdown 文本对齐" = "Markdown text alignment";
+"居中" = "Center";
+"两端对齐" = "Justify";
+"Markdown 段落间距" = "Markdown paragraph spacing";
+"设置普通段落之间的间距。" = "Set the spacing between ordinary paragraphs.";
+"设置段落间距" = "Set paragraph spacing";
+"间距（点）" = "Spacing (pt)";
+"链接的文件不存在" = "The linked file does not exist";
+"是否创建文件：%@？" = "Create file: %@?";
+"设置图片资源根路径…" = "Set image resource root…";
+"设置图片资源根路径" = "Set image resource root";
+"无法更新图片资源根路径" = "Could not update the image resource root";
+"居中标题" = "Center headings";
+"将选中的标题级别居中。" = "Center the selected heading levels.";
+"控制文档的水平对齐方式。" = "Set the horizontal alignment of the document.";
+"从右向左书写" = "Right-to-left writing";
+"设置 Markdown 的基础书写方向。" = "Set the base writing direction for Markdown.";
+"划掉已完成的任务" = "Strike through completed tasks";
+"自动为已完成的任务添加删除线。" = "Strike through completed tasks automatically.";
+"无法确认 HTML 内容" = "Unable to verify HTML content";
+"复制选中图片到…" = "Copy Selected Image to…";
+"复制全部图片到…" = "Copy All Images to…";
+"下载全部网络图片到…" = "Download All Remote Images to…";
+"正在复制图片…" = "Copying images…";
+"复制图片" = "Copy Images";
+"图片已复制" = "Images copied";
+"图片复制未完成：%@；已创建：%@" = "Image copy incomplete: %@; files created: %@";
+"文档已变化，未应用图片链接" = "The document changed; image links were not applied";
+"自动编号标题" = "Number headings automatically";
+"在标题、目录和大纲中显示层级编号。" = "Show hierarchical numbers in headings, the table of contents, and the outline.";
+"无法确认数学公式" = "Unable to verify math markup";
+"上传结果的图片片段不同，未修改文档：%@" = "The uploaded image URL selects a different region; document unchanged: %@";
+"移动或重命名图片…" = "Move or Rename Image…";
+"删除图片及原文件…" = "Delete Image and Original File…";
+"移动或删除图片" = "Move or Delete Image";
+"图片操作无法撤销：文档或文件已变化" = "Cannot undo the image operation: the document or file changed";
+"图片操作未完成，文件位于：%@" = "Image operation incomplete; file location: %@";
+"请选择一个本地图片" = "Select one local image";
+"删除图片并移到废纸篓？" = "Delete the image and move its file to Trash?";
+"其他未打开的文档可能仍引用此文件。" = "Other documents that are not open may still reference this file.";
+"图片仍被其他打开的文档引用" = "Another open document still references this image";
+"图片仍被当前文档引用" = "This document still has other references to the image";
+"图片操作未完成" = "Image operation incomplete";
+"图片操作失败：%@" = "Image operation failed: %@";
+"图片已移到废纸篓，但无法确定位置" = "The image file was moved to Trash, but its location could not be determined";
+"创建文件" = "Create File";
+"创建文件夹" = "Create Folder";
+"路径不存在，要创建吗？" = "The path does not exist. Create it?";
+"无法创建路径：%@" = "Could not create the path: %@";
+"图片移动未完成，请检查源文件 %@ 和目标文件 %@" = "Image move incomplete; check source %@ and destination %@";
+"移动全部图片到…" = "Move All Images to…";
+"正在移动图片…" = "Moving images…";
+"移动全部图片" = "Move All Images";
+"图片操作未完成，请检查文件：%@" = "Image operation incomplete; check these files: %@";
+"竖排 Markdown" = "Vertical Markdown";
+"在排版视图中竖排显示文本。" = "Display text vertically in formatted Markdown.";
+"无法确认：%@" = "Could not verify: %@";
+"放大视图" = "Zoom In";
+"缩小视图" = "Zoom Out";
+"实际大小" = "Actual Size";
+"列表标记" = "List Markers";
+"设置指定嵌套层级；未设置的层级继承较浅层级。" = "Set a nesting level; other levels inherit the nearest shallower setting.";
+"层级" = "Level";
+"继承" = "Inherit";
+"数字" = "Decimal";
+"数字（前导零）" = "Decimal with Leading Zero";
+"中文数字" = "Chinese Numerals";
+"平假名" = "Hiragana";
+"片假名" = "Katakana";
+"小写字母" = "Lowercase Letters";
+"大写字母" = "Uppercase Letters";
+"希腊字母" = "Greek Letters";
+"小写罗马数字" = "Lowercase Roman Numerals";
+"大写罗马数字" = "Uppercase Roman Numerals";
+"实心圆" = "Disc";
+"空心圆" = "Circle";
+"方块" = "Square";
+"自定义文本" = "Custom Text";
+"标记文本" = "Marker Text";
+
+"标题转为大写" = "Uppercase headings";
+
+"仅改变选中标题级别的显示，不修改原文。" = "Changes the display of selected heading levels without changing the source.";
+
+"复制图表为图片" = "Copy Diagram as Image";
+
+"图表另存为…" = "Save Diagram As…";
+
+"无法保存图表" = "Could Not Save Diagram";
+
+
+
+"导出失败：%@。请检查资源目录：%@" = "Export failed: %@. Check the resource folder: %@";
+
+"markdown.pageBreak" = "Page break";
+
+"markdown.exportPreserveWhitespace" = "Preserve spaces when exporting";
+"markdown.exportPreserveWhitespace.detail" = "Supported in HTML, the app’s PDF output, DOCX, ODT, RTF, EPUB, and LaTeX. Other formats depend on the export program.";
+
+"使用旧版行内公式规则" = "Use legacy inline formula rules";
+
+"识别 $…$ 行内公式；独立公式不受影响。" = "Recognize $…$ inline formulas; block formulas are unaffected.";
+
+"使用兼容旧版的行内公式边界规则。" = "Use the earlier rules for inline formula boundaries.";
+
+"无法确认列表缩进" = "Could not confirm list indentation";
+
+"markdown.strictMode" = "Strict Markdown parsing";
+
+"markdown.strictMode.detail" = "Require a space after heading markers and full indentation for list content.";

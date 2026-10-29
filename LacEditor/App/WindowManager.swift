@@ -2,6 +2,88 @@ import AppKit
 import Combine
 import SwiftUI
 
+struct FolderWorkspaceMoveLists {
+    let oldRecent: [URL]
+    let newRecent: [URL]
+    let oldFavorites: [String]
+    let newFavorites: [String]
+    let oldGroups: [SidebarFileGroup]
+    let newGroups: [SidebarFileGroup]
+    let isLink: Bool
+    var oldRecentFolders: [URL] = []
+    var newRecentFolders: [URL] = []
+    var oldPinnedFolders: [String] = []
+    var newPinnedFolders: [String] = []
+}
+
+@MainActor
+private final class FolderSearchOpenWaiter {
+    weak var manager: WindowManager?
+    weak var state: AppState?
+    weak var document: EditorDocument?
+    let expected: DocumentFileIdentity
+    private var continuation: CheckedContinuation<FolderSearchService.OpenDocument?, Never>?
+    private var subscriptions: [AnyCancellable] = []
+    private var finished = false
+
+    init(manager: WindowManager, state: AppState, document: EditorDocument, expected: DocumentFileIdentity) {
+        self.manager = manager
+        self.state = state
+        self.document = document
+        self.expected = expected
+    }
+
+    func wait() async -> FolderSearchService.OpenDocument? {
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !finished, let state, let document, let window = state.hostWindow else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                self.continuation = continuation
+                subscriptions.append(document.$ioState.sink { [weak self] _ in
+                    DispatchQueue.main.async { self?.check() }
+                })
+                subscriptions.append(state.$documents.sink { [weak self] _ in
+                    DispatchQueue.main.async { self?.check() }
+                })
+                subscriptions.append(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification, object: window).sink { [weak self] _ in
+                    DispatchQueue.main.async { self?.finish(nil) }
+                })
+                check()
+            }
+        } onCancel: {
+            Task { @MainActor in self.finish(nil) }
+        }
+    }
+
+    private func check() {
+        guard !finished, let manager, let state, let document,
+              manager.stateContaining(document) === state,
+              state.documents.contains(where: { $0 === document }) else { finish(nil); return }
+        if case .failed = document.ioState { finish(nil); return }
+        guard document.ioState == .idle, !state.isOpeningPlaceholder(document) else { return }
+        guard let url = document.url, let identity = document.fileIdentity, identity.matches(expected) else {
+            finish(nil)
+            return
+        }
+        let snapshot = document.synchronizedSnapshot()
+        guard manager.stateContaining(document) === state, document.url == url,
+              document.fileIdentity == identity, document.textRevision == snapshot.revision,
+              !document.hasPendingLiveEdits else { finish(nil); return }
+        finish(.init(url: url, identity: identity, snapshot: snapshot))
+    }
+
+    private func finish(_ result: FolderSearchService.OpenDocument?) {
+        guard !finished else { return }
+        finished = true
+        subscriptions.removeAll()
+        let continuation = continuation
+        self.continuation = nil
+        continuation?.resume(returning: result)
+    }
+}
+
 @MainActor
 final class WindowManager: ObservableObject {
     static let tabPasteboardType = NSPasteboard.PasteboardType(
@@ -37,6 +119,9 @@ final class WindowManager: ObservableObject {
     }
 
     private var exportingDocumentIDs: Set<UUID> = []
+    private var folderMoveDocumentIDs: Set<UUID> = []
+    private var folderMovePaths: [URL] = []
+    private var folderMoveIdentities: [DocumentFileIdentity] = []
     private var states: [UUID: AppState] = [:]
     private var windowControllers: [UUID: NSWindowController] = [:]
     // Retain the initial editor state and its native window across closing the
@@ -55,6 +140,7 @@ final class WindowManager: ObservableObject {
         let selectedDocumentID: UUID?
         let isSidebarVisible: Bool
         let frame: WorkspaceWindowFrame?
+        var folderStates: [UUID: FolderWorkspaceSession] = [:]
     }
     private var initialRestoredWindow: RestoredWindow?
     private var pendingRestoredWindows: [RestoredWindow] = []
@@ -63,8 +149,15 @@ final class WindowManager: ObservableObject {
     private var restorationLoadingID: UUID?
     private let restorationQueue = DispatchQueue(label: "com.laceditor.restore", qos: .utility)
     private let readRestoration: @Sendable (DocumentRecoveryReference) throws -> DocumentRecoverySnapshot
-    private var pendingFinderURLs: [URL] = []
+    enum CommandLineCreation: Equatable { case file, directory }
+    private struct PendingOpen {
+        let url: URL
+        let allowsCreation: Bool
+        let confirm: ((URL) -> CommandLineCreation?)?
+    }
+    private var pendingFinderURLs: [PendingOpen] = []
     private var didApplyInitialRestoration = false
+    private var didConsiderStartupFolder = false
     private lazy var appearanceMenuController = AppearanceMenuController(
         windowManager: self
     )
@@ -153,6 +246,8 @@ final class WindowManager: ObservableObject {
     }
 
     func register(windowID: UUID, state: AppState, window: NSWindow) {
+        let considerStartupFolder = !didConsiderStartupFolder
+        didConsiderStartupFolder = true
         let wasDetachedPrimaryWindow = windowID == primaryWindowID
             && state.hostWindow !== window
             && (state.hostWindow == nil || state.hostWindow?.isVisible == false)
@@ -184,6 +279,12 @@ final class WindowManager: ObservableObject {
                 self?.drainPendingFinderURLs()
             }
         }
+        if considerStartupFolder {
+            if state.folderWorkspace.rootURL == nil, pendingFinderURLs.isEmpty,
+               !preferences.startupFolderPath.isEmpty {
+                state.openFolder(URL(fileURLWithPath: preferences.startupFolderPath, isDirectory: true))
+            }
+        }
     }
 
     /// Routes files opened from Finder into the already registered editor
@@ -192,20 +293,90 @@ final class WindowManager: ObservableObject {
     /// instead of creating a temporary second window.
     func openFilesFromFinder(_ urls: [URL]) {
         guard startupError == nil else { return }
-        let files = urls.filter(\.isFileURL)
-        guard !files.isEmpty else { return }
+        routeOpenRequests(urls.filter(\.isFileURL).map { PendingOpen(url: $0, allowsCreation: false, confirm: nil) })
+    }
+
+    nonisolated static func commandLineURLs(arguments: [String], workingDirectory: URL) -> [URL] {
+        var paths: [URL] = [], positionalOnly = false
+        for argument in arguments {
+            if !positionalOnly {
+                if argument == "--" { positionalOnly = true; continue }
+                if argument.hasPrefix("-psn_") { continue }
+                if argument.hasPrefix("-") { break }
+            }
+            guard !argument.isEmpty else { continue }
+            paths.append(URL(fileURLWithPath: argument, isDirectory: argument.hasSuffix("/"), relativeTo: workingDirectory).absoluteURL.standardizedFileURL)
+        }
+        return paths
+    }
+
+    func openFilesFromCommandLine(_ urls: [URL], confirm: ((URL) -> CommandLineCreation?)? = nil) {
+        guard startupError == nil else { return }
+        routeOpenRequests(urls.filter(\.isFileURL).map { PendingOpen(url: $0, allowsCreation: true, confirm: confirm) })
+    }
+
+    private func routeOpenRequests(_ requests: [PendingOpen]) {
         guard activeState != nil else {
-            pendingFinderURLs.append(contentsOf: files)
+            for request in requests {
+                let identity = DocumentFileIdentity.resolve(request.url)
+                if let index = pendingFinderURLs.firstIndex(where: { DocumentFileIdentity.resolve($0.url).matches(identity) }) {
+                    if request.allowsCreation { pendingFinderURLs[index] = request }
+                } else { pendingFinderURLs.append(request) }
+            }
             return
         }
-        files.forEach { openFile($0, preferredState: activeState) }
+        requests.forEach(openPendingRequest)
     }
 
     private func drainPendingFinderURLs() {
         guard activeState != nil, !pendingFinderURLs.isEmpty else { return }
         let files = pendingFinderURLs
         pendingFinderURLs.removeAll()
-        files.forEach { openFile($0, preferredState: activeState) }
+        files.forEach(openPendingRequest)
+    }
+
+    private func openPendingRequest(_ request: PendingOpen) {
+        let url = request.url
+        guard request.allowsCreation, !FileManager.default.fileExists(atPath: url.path) else {
+            openFinderURL(url)
+            return
+        }
+        guard let state = activeState, let window = state.hostWindow else { return }
+        let choice: CommandLineCreation?
+        if let confirm = request.confirm { choice = confirm(url) }
+        else {
+            let alert = NSAlert()
+            alert.messageText = L10n.tr("路径不存在，要创建吗？")
+            alert.informativeText = url.path
+            if !url.hasDirectoryPath { alert.addButton(withTitle: L10n.tr("创建文件")) }
+            alert.addButton(withTitle: L10n.tr("创建文件夹"))
+            alert.addButton(withTitle: L10n.tr("取消"))
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn { choice = url.hasDirectoryPath ? .directory : .file }
+            else if !url.hasDirectoryPath, response == .alertSecondButtonReturn { choice = .directory }
+            else { choice = nil }
+        }
+        guard let choice, activeState === state, state.hostWindow === window,
+              states.values.contains(where: { $0 === state }) else { return }
+        if FileManager.default.fileExists(atPath: url.path) { openFinderURL(url); return }
+        do {
+            let parent = url.deletingLastPathComponent().resolvingSymlinksInPath()
+            let created = try fileService.createWorkspaceItem(named: url.lastPathComponent, in: parent, root: parent,
+                                                              isDirectory: choice == .directory)
+            openFinderURL(created)
+        } catch {
+            if FileManager.default.fileExists(atPath: url.path) { openFinderURL(url) }
+            else { state.selectedDocument?.statusMessage = L10n.tr("无法创建路径：%@", error.localizedDescription) }
+        }
+    }
+
+    private func openFinderURL(_ url: URL) {
+        var directory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &directory), directory.boolValue {
+            activeState?.openFolder(url)
+        } else {
+            openFile(url, preferredState: activeState)
+        }
     }
 
     func activate(windowID: UUID) {
@@ -362,15 +533,21 @@ final class WindowManager: ObservableObject {
         openFile(url, preferredState: nil, createWindowIfNeeded: true)
     }
 
+    @discardableResult
     func openFile(
         _ url: URL,
         preferredState: AppState?,
         createWindowIfNeeded: Bool = false
-    ) {
+    ) -> (state: AppState, document: EditorDocument)? {
         let identity = DocumentFileIdentity.resolve(url)
+        if folderMovePaths.contains(where: { Self.pathsOverlap($0, url) || Self.pathsOverlap($0, url.resolvingSymlinksInPath()) }) ||
+            folderMoveIdentities.contains(where: { $0.matches(identity) }) {
+            (preferredState ?? activeState)?.selectedDocument?.statusMessage = L10n.tr("文件操作进行中，请稍后重试")
+            return nil
+        }
         if let match = openDocument(matching: identity) {
             focus(match.document, in: match.state)
-            return
+            return match
         }
         let candidate = preferredState ?? activeState
         let target: AppState
@@ -384,6 +561,311 @@ final class WindowManager: ObservableObject {
         }
         target.hostWindow?.makeKeyAndOrderFront(nil)
         target.beginOpeningFile(url)
+        guard let opened = openDocument(matching: identity) else { return nil }
+        if opened.state === target, target.isOpeningPlaceholder(opened.document), target.folderWorkspace.rootURL == nil {
+            target.folderWorkspace.setRoot(url.deletingLastPathComponent())
+        }
+        return opened
+    }
+
+    private static func pathsOverlap(_ first: URL, _ second: URL) -> Bool {
+        let a = first.standardizedFileURL.pathComponents
+        let b = second.standardizedFileURL.pathComponents
+        return a.starts(with: b) || b.starts(with: a)
+    }
+
+    func isFolderMoveBlocked(_ document: EditorDocument, target: URL) -> Bool {
+        let targetIdentity = folderMoveIdentities.isEmpty ? nil : DocumentFileIdentity.resolve(target)
+        return folderMoveDocumentIDs.contains(document.id) || folderMoveIdentities.contains {
+            document.fileIdentity?.matches($0) == true || targetIdentity?.matches($0) == true
+        } || folderMovePaths.contains {
+            Self.pathsOverlap($0, target) || Self.pathsOverlap($0, target.resolvingSymlinksInPath())
+        }
+    }
+
+    func beginFolderRemoval(_ url: URL, snapshot: WorkspaceItemSnapshot, otherURL: URL? = nil) -> Bool {
+        guard folderMovePaths.isEmpty else { return false }
+        folderMovePaths = [url] + (otherURL.map { [$0] } ?? [])
+        folderMoveIdentities = snapshot.fileIdentities
+        return true
+    }
+
+    func endFolderRemoval() {
+        folderMovePaths.removeAll()
+        folderMoveIdentities.removeAll()
+    }
+
+    private static func movedURL(_ url: URL, from source: URL, to destination: URL) -> URL? {
+        let components = url.standardizedFileURL.pathComponents
+        let base = source.standardizedFileURL.pathComponents
+        guard components.starts(with: base) else { return nil }
+        return components.dropFirst(base.count).reduce(destination) { $0.appendingPathComponent($1) }
+    }
+
+    /// Moves disk data while affected documents cannot start another save.
+    /// Existing document objects remain in their windows.
+    func moveFolderWorkspaceItem(_ source: URL, to destination: URL, root: URL, state: AppState,
+                                 expectedIdentity: WorkspaceNodeIdentity? = nil, updateLists: Bool = true) async -> (Bool, WorkspaceNodeIdentity?, FolderWorkspaceMoveLists?) {
+        guard folderMovePaths.isEmpty, state.folderWorkspace.rootURL == root else { return (false, nil, nil) }
+        let source = source.standardizedFileURL
+        let destination = destination.standardizedFileURL
+        guard source != root.standardizedFileURL, source != destination else { return (false, nil, nil) }
+        let values = try? URL(fileURLWithPath: source.path).resourceValues(forKeys: [.isSymbolicLinkKey])
+        guard let values else { return (false, nil, nil) }
+        let isLink = values.isSymbolicLink == true
+        let folderSource = source.resolvingSymlinksInPath()
+        func linkTargetPreserved(_ old: URL, new: URL) -> Bool {
+            guard let target = try? FileManager.default.destinationOfSymbolicLink(atPath: old.path) else { return false }
+            let future = (target.hasPrefix("/") ? URL(fileURLWithPath: target) : new.deletingLastPathComponent().appendingPathComponent(target)).standardizedFileURL
+            let oldCandidate: URL
+            if let mapped = Self.movedURL(future, from: destination, to: source) {
+                oldCandidate = mapped
+            } else {
+                guard Self.movedURL(future, from: source, to: source) == nil else { return false }
+                oldCandidate = future
+            }
+            return DocumentFileIdentity.resolve(old).matches(DocumentFileIdentity.resolve(oldCandidate))
+        }
+        var ambiguous = false
+        let documents = documentsForAI.compactMap { document -> (EditorDocument, URL, URL)? in
+            guard let old = document.url else { return nil }
+            if isLink {
+                guard old.standardizedFileURL == source else { return nil }
+                if !linkTargetPreserved(old, new: destination) { ambiguous = true }
+                return (document, old, destination)
+            }
+            let resolved = old.standardizedFileURL.resolvingSymlinksInPath()
+            if let new = Self.movedURL(old, from: source, to: destination) {
+                let oldValues = try? URL(fileURLWithPath: old.path).resourceValues(forKeys: [.isSymbolicLinkKey])
+                guard let oldValues else { ambiguous = true; return nil }
+                if oldValues.isSymbolicLink == true {
+                    if !linkTargetPreserved(old, new: new) { ambiguous = true }
+                } else if Self.movedURL(resolved, from: source, to: destination) == nil {
+                    ambiguous = true
+                }
+                return (document, old, new)
+            }
+            guard let new = Self.movedURL(resolved, from: source, to: destination) else { return nil }
+            return (document, old, new)
+        }
+        guard !ambiguous, documents.allSatisfy({ $0.0.ioState == .idle }),
+              !documentsForAI.contains(where: { document in
+                  guard let url = document.url else { return false }
+                  let canonical = url.resolvingSymlinksInPath()
+                  let targetIdentity = DocumentFileIdentity.resolve(destination)
+                  return Self.movedURL(url, from: destination, to: destination) != nil ||
+                      Self.movedURL(canonical, from: destination, to: destination) != nil ||
+                      document.fileIdentity?.matches(targetIdentity) == true
+              }) else { return (false, nil, nil) }
+        folderMoveDocumentIDs = Set(documents.map { $0.0.id })
+        folderMovePaths = [source, destination]
+        defer { folderMoveDocumentIDs.removeAll(); folderMovePaths.removeAll() }
+        let records = documents.map { ($0.0.id, $0.1, $0.2, $0.0.fileRevisionSnapshot) }
+        let service = fileService
+        let result = await Task.detached { () -> Result<([(UUID, URL, FileRevisionSnapshot?)], WorkspaceNodeIdentity?), Error> in
+            Result {
+                if let expectedIdentity, try service.workspaceNodeIdentity(source) != expectedIdentity {
+                    throw CocoaError(.fileWriteNoPermission)
+                }
+                let before = records.map { (id: $0.0, old: $0.1, new: $0.2, baseline: $0.3, current: try? FileRevisionSnapshot.capture($0.1)) }
+                _ = try service.moveWorkspaceItem(source, to: destination.deletingLastPathComponent(), named: destination.lastPathComponent, root: root)
+                let updates = before.map { record in
+                    let after = try? FileRevisionSnapshot.capture(record.new)
+                    let safe = record.baseline != nil && record.baseline == record.current &&
+                        record.current?.identity.resourceIdentifier != nil &&
+                        record.current?.identity.resourceIdentifier == after?.identity.resourceIdentifier
+                    return (record.id, record.new, safe ? after : nil)
+                }
+                return (updates, try? service.workspaceNodeIdentity(destination))
+            }
+        }.value
+        guard case let .success((updated, identity)) = result else { return (false, nil, nil) }
+        for (id, newURL, newBaseline) in updated {
+            guard let document = documentsForAI.first(where: { $0.id == id }) else { continue }
+            document.updateLocation(to: newURL)
+            if let newBaseline { document.updateFileRevisionSnapshot(newBaseline) }
+        }
+        let oldRecent = recentFiles.urls
+        let oldFavorites = sidebarLibrary.favoritePaths
+        let oldGroups = sidebarLibrary.groups
+        let oldRecentFolders = recentFiles.folderURLs
+        let oldPinnedFolders = sidebarLibrary.pinnedFolderPaths
+        if updateLists {
+            let paths = recentFiles.urls + sidebarLibrary.favoriteURLs + sidebarLibrary.groups.flatMap(\.urls)
+            for old in Set(paths) {
+                if isLink && old.standardizedFileURL != source { continue }
+                guard let new = Self.movedURL(old, from: source, to: destination) else { continue }
+                recentFiles.replace(old, with: new)
+                sidebarLibrary.replace(old, with: new)
+            }
+        }
+        if updateLists, !isLink {
+            let folderDestination = destination.resolvingSymlinksInPath()
+            for old in Set(oldRecentFolders + oldPinnedFolders.map(URL.init(fileURLWithPath:))) {
+                guard let new = Self.movedURL(old, from: folderSource, to: folderDestination) else { continue }
+                recentFiles.replaceFolder(old, with: new)
+                sidebarLibrary.replacePinnedFolder(old, with: new)
+            }
+        }
+        let listChanges = FolderWorkspaceMoveLists(oldRecent: oldRecent, newRecent: recentFiles.urls,
+            oldFavorites: oldFavorites, newFavorites: sidebarLibrary.favoritePaths,
+            oldGroups: oldGroups, newGroups: sidebarLibrary.groups, isLink: isLink,
+            oldRecentFolders: oldRecentFolders, newRecentFolders: recentFiles.folderURLs,
+            oldPinnedFolders: oldPinnedFolders, newPinnedFolders: sidebarLibrary.pinnedFolderPaths)
+        state.folderWorkspace.refresh()
+        return (true, identity, updateLists ? listChanges : nil)
+    }
+
+    func restoreFolderWorkspaceLists(_ changes: FolderWorkspaceMoveLists) {
+        _ = recentFiles.restore(changes.oldRecent, ifUnchanged: changes.newRecent)
+        _ = recentFiles.restoreFolders(changes.oldRecentFolders, ifUnchanged: changes.newRecentFolders)
+        _ = sidebarLibrary.restorePinnedFolders(changes.oldPinnedFolders, ifUnchanged: changes.newPinnedFolders)
+        _ = sidebarLibrary.restoreFavorites(changes.oldFavorites, ifUnchanged: changes.newFavorites)
+        for old in changes.oldGroups {
+            guard let expected = changes.newGroups.first(where: { $0.id == old.id }) else { continue }
+            _ = sidebarLibrary.restoreGroupFiles(old.paths, in: old.id, ifUnchanged: expected.paths)
+        }
+    }
+
+    func restoreMovedFolderWorkspaceLists(_ changes: FolderWorkspaceMoveLists, source: URL, destination: URL) {
+        if !changes.isLink {
+            let folderSource = source.resolvingSymlinksInPath(), folderDestination = destination.resolvingSymlinksInPath()
+            for old in changes.oldRecentFolders {
+                guard let new = Self.movedURL(old, from: folderSource, to: folderDestination),
+                      recentFiles.folderURLs.contains(where: { $0.path == new.path }) else { continue }
+                recentFiles.replaceFolder(new, with: old)
+            }
+            for old in changes.oldPinnedFolders.map(URL.init(fileURLWithPath:)) {
+                guard let new = Self.movedURL(old, from: folderSource, to: folderDestination) else { continue }
+                sidebarLibrary.replacePinnedFolder(new, with: old)
+            }
+        }
+        func moved(_ old: URL) -> URL? {
+            if changes.isLink && old.standardizedFileURL != source.standardizedFileURL { return nil }
+            return Self.movedURL(old, from: source, to: destination)
+        }
+        for old in changes.oldRecent {
+            guard let new = moved(old), recentFiles.urls.contains(where: { $0.standardizedFileURL == new.standardizedFileURL }) else { continue }
+            recentFiles.replace(new, with: old)
+        }
+        for path in changes.oldFavorites {
+            let old = URL(fileURLWithPath: path)
+            guard let new = moved(old) else { continue }
+            sidebarLibrary.replaceFavorite(new, with: old)
+        }
+        for group in changes.oldGroups {
+            for old in group.urls {
+                guard let new = moved(old) else { continue }
+                sidebarLibrary.replaceFile(new, with: old, inGroup: group.id)
+            }
+        }
+    }
+
+    func trashFolderWorkspaceItem(_ source: URL, root: URL, state: AppState,
+                                  expectedIdentity: WorkspaceNodeIdentity,
+                                  trash: (@Sendable (URL, URL, WorkspaceNodeIdentity) throws -> URL?)? = nil) async -> (Bool, URL?, WorkspaceNodeIdentity?, FolderWorkspaceMoveLists?) {
+        guard folderMovePaths.isEmpty, state.folderWorkspace.rootURL == root,
+              source.standardizedFileURL != root.standardizedFileURL,
+              let values = try? URL(fileURLWithPath: source.path).resourceValues(forKeys: [.isSymbolicLinkKey]),
+              (try? fileService.workspaceNodeIdentity(source)) == expectedIdentity else { return (false, nil, nil, nil) }
+        let isLink = values.isSymbolicLink == true
+        let folderSource = source.resolvingSymlinksInPath()
+        func affected() -> [EditorDocument] {
+            return documentsForAI.filter { document in
+                guard let url = document.url else { return false }
+                if isLink { return url.standardizedFileURL == source.standardizedFileURL }
+                return Self.movedURL(url.resolvingSymlinksInPath(), from: source, to: source) != nil
+            }
+        }
+        var currentIdentity = expectedIdentity
+        for document in affected() {
+            guard state.folderWorkspace.rootURL == root,
+                  let owner = stateContaining(document),
+                  (try? fileService.workspaceNodeIdentity(source)) == currentIdentity else { return (false, nil, nil, nil) }
+            let approved = await withCheckedContinuation { continuation in
+                owner.closeForFolderOperation(document, keepWindow: owner === state) { continuation.resume(returning: $0) }
+            }
+            guard approved, let after = try? fileService.workspaceNodeIdentity(source) else { return (false, nil, nil, nil) }
+            if after != currentIdentity {
+                guard document.url?.standardizedFileURL == source.standardizedFileURL,
+                      !document.isDirty, let baseline = document.fileRevisionSnapshot,
+                      (try? FileRevisionSnapshot.capture(source)) == baseline else { return (false, nil, nil, nil) }
+                currentIdentity = after
+            }
+        }
+        guard state.folderWorkspace.rootURL == root, affected().isEmpty else { return (false, nil, nil, nil) }
+        let service = fileService
+        let snapshot = await Task.detached { () -> WorkspaceItemSnapshot? in
+            do {
+                try service.validateWorkspaceDirectory(source.deletingLastPathComponent(), root: root)
+                return try service.workspaceItemSnapshot(source)
+            } catch { return nil }
+        }.value
+        guard let snapshot, snapshot.rootDevice == currentIdentity.device, snapshot.rootInode == currentIdentity.inode,
+              state.folderWorkspace.rootURL == root, beginFolderRemoval(source, snapshot: snapshot) else { return (false, nil, nil, nil) }
+        defer { endFolderRemoval() }
+        guard affected().isEmpty else { return (false, nil, nil, nil) }
+        let identity = currentIdentity
+        let result = await Task.detached { () -> Result<URL?, Error> in
+            Result {
+                if let trash { return try trash(source, root, identity) }
+                return try service.trashWorkspaceItem(source, root: root, expectedIdentity: identity)
+            }
+        }.value
+        guard case let .success(trashURL) = result else { return (false, nil, nil, nil) }
+        let oldRecent = recentFiles.urls
+        let oldFavorites = sidebarLibrary.favoritePaths
+        let oldGroups = sidebarLibrary.groups
+        let oldRecentFolders = recentFiles.folderURLs
+        let oldPinnedFolders = sidebarLibrary.pinnedFolderPaths
+        if !isLink {
+            for url in oldRecentFolders where Self.movedURL(url, from: folderSource, to: folderSource) != nil { recentFiles.removeFolder(url) }
+            for url in oldPinnedFolders.map(URL.init(fileURLWithPath:)) where Self.movedURL(url, from: folderSource, to: folderSource) != nil {
+                if sidebarLibrary.isPinnedFolder(url) { sidebarLibrary.togglePinnedFolder(url) }
+            }
+            for url in oldRecent where Self.movedURL(url, from: source, to: source) != nil { recentFiles.remove(url) }
+            for url in oldFavorites.map(URL.init(fileURLWithPath:)) where Self.movedURL(url, from: source, to: source) != nil {
+                if sidebarLibrary.isFavorite(url) { sidebarLibrary.toggleFavorite(url) }
+            }
+            for group in oldGroups {
+                for url in group.urls where Self.movedURL(url, from: source, to: source) != nil { sidebarLibrary.remove(url, fromGroup: group.id) }
+            }
+        }
+        let changes = FolderWorkspaceMoveLists(oldRecent: oldRecent, newRecent: recentFiles.urls,
+            oldFavorites: oldFavorites, newFavorites: sidebarLibrary.favoritePaths,
+            oldGroups: oldGroups, newGroups: sidebarLibrary.groups, isLink: isLink,
+            oldRecentFolders: oldRecentFolders, newRecentFolders: recentFiles.folderURLs,
+            oldPinnedFolders: oldPinnedFolders, newPinnedFolders: sidebarLibrary.pinnedFolderPaths)
+        let trashIdentity = trashURL.flatMap { try? service.workspaceNodeIdentity($0) }
+        state.folderWorkspace.refresh()
+        return (true, trashURL, trashIdentity, changes)
+    }
+
+    func restoreFolderWorkspaceTrash(_ trashURL: URL, to source: URL, root: URL, state: AppState,
+                                     expectedIdentity: WorkspaceNodeIdentity, changes: FolderWorkspaceMoveLists) async -> Bool {
+        guard state.folderWorkspace.rootURL == root else { return false }
+        let service = fileService
+        let snapshot = await Task.detached { try? service.workspaceItemSnapshot(trashURL) }.value
+        guard let snapshot, snapshot.rootDevice == expectedIdentity.device, snapshot.rootInode == expectedIdentity.inode,
+              state.folderWorkspace.rootURL == root,
+              beginFolderRemoval(source, snapshot: snapshot, otherURL: trashURL) else { return false }
+        defer { endFolderRemoval() }
+        guard !state.hasOpenDocument(in: trashURL, snapshot: snapshot),
+              !documentsForAI.contains(where: { document in
+                  guard let url = document.url else { return false }
+                  return Self.movedURL(url, from: source, to: source) != nil
+              }) else { return false }
+        let restored = await Task.detached { () -> Bool in
+            do {
+                try service.restoreWorkspaceTrashItem(trashURL, to: source, root: root, expectedIdentity: expectedIdentity)
+                return true
+            } catch { return false }
+        }.value
+        if restored {
+            restoreFolderWorkspaceLists(changes)
+            state.folderWorkspace.refresh()
+        }
+        return restored
     }
 
     func beginMarkdownExport(documentID: UUID) -> Bool {
@@ -400,6 +882,72 @@ final class WindowManager: ObservableObject {
 
     var documentsForAI: [EditorDocument] {
         states.values.flatMap(\.documents)
+    }
+
+    func folderSearchSnapshots(root: URL) -> [FolderSearchService.OpenDocument]? {
+        let initial = states.values.flatMap { state in state.documents.map { (state, $0, $0.url, $0.fileIdentity) } }
+        var result: [FolderSearchService.OpenDocument] = []
+        for (state, document, originalURL, originalIdentity) in initial {
+            guard document.url == originalURL, document.fileIdentity == originalIdentity else { return nil }
+            guard let url = originalURL else { continue }
+            guard url.standardizedFileURL.pathComponents.starts(with: root.standardizedFileURL.pathComponents) else { continue }
+            guard !state.isOpeningPlaceholder(document), document.ioState != .opening,
+                  let identity = document.fileIdentity else { return nil }
+            let snapshot = document.synchronizedSnapshot()
+            guard stateContaining(document) === state, document.url == url,
+                  document.fileIdentity == identity, document.textRevision == snapshot.revision,
+                  !document.hasPendingLiveEdits else { return nil }
+            result.append(.init(url: url, identity: identity, snapshot: snapshot))
+        }
+        let current = states.values.flatMap { state in state.documents.map { (state, $0) } }
+        guard current.count == initial.count,
+              initial.allSatisfy({ old in current.contains { $0.0 === old.0 && $0.1 === old.1 } && old.1.url == old.2 && old.1.fileIdentity == old.3 }),
+              result.allSatisfy({ value in
+                  guard let document = documentsForAI.first(where: { $0.id == value.snapshot.documentID }) else { return false }
+                  return document.url == value.url && document.fileIdentity == value.identity &&
+                      document.textRevision == value.snapshot.revision && !document.hasPendingLiveEdits
+              }) else { return nil }
+        return result
+    }
+
+    func openFolderSearchFile(_ url: URL, preferredState: AppState) async -> FolderSearchService.OpenDocument? {
+        guard !Task.isCancelled else { return nil }
+        let expected = DocumentFileIdentity.resolve(url)
+        guard !Task.isCancelled, let opened = openFile(url, preferredState: preferredState), !Task.isCancelled else { return nil }
+        let waiter = FolderSearchOpenWaiter(manager: self, state: opened.state, document: opened.document, expected: expected)
+        return await waiter.wait()
+    }
+
+    func revealFolderSearchMatch(_ match: FolderSearchService.Match, expected: FolderSearchService.OpenDocument) -> Bool {
+        guard let document = documentsForAI.first(where: { $0.id == expected.snapshot.documentID }),
+              let state = stateContaining(document), document.ioState == .idle else { return false }
+        func isCurrent() -> Bool {
+            guard stateContaining(document) === state, document.url == expected.url,
+                  document.fileIdentity == expected.identity else { return false }
+            let snapshot = document.synchronizedSnapshot()
+            let text = snapshot.text as NSString
+            let range = match.range
+            guard snapshot == expected.snapshot, !document.hasPendingLiveEdits,
+                  range.location >= 0, range.location <= text.length, range.length >= 0,
+                  range.length <= text.length - range.location,
+                  text.substring(with: range) == match.matchedText else { return false }
+            if case .open = match.source {
+                return FolderSearchService.isCurrent(match, openDocument: .init(url: expected.url, identity: expected.identity, snapshot: snapshot))
+            }
+            return true
+        }
+        guard (state.hostWindow?.firstResponder as? NSTextView)?.hasMarkedText() != true,
+              isCurrent() else { return false }
+        if case .disk = match.source {
+            guard activeState === state, state.selectedDocument === document else { return false }
+        } else {
+            focus(document, in: state)
+        }
+        guard state.selectedDocument === document,
+              (state.hostWindow?.firstResponder as? NSTextView)?.hasMarkedText() != true,
+              isCurrent() else { return false }
+        state.revealFolderSearchRange(match.range, in: document)
+        return true
     }
 
     var openDocumentURLs: [URL] {
@@ -686,6 +1234,12 @@ final class WindowManager: ObservableObject {
     }
 
     private func renameFile(_ url: URL, to newName: String) {
+        guard !folderMovePaths.contains(where: { Self.pathsOverlap($0, url) || Self.pathsOverlap($0, url.resolvingSymlinksInPath()) }) else {
+            let alert = NSAlert()
+            alert.messageText = L10n.tr("文件操作进行中，请稍后重试")
+            alert.runModal()
+            return
+        }
         do {
             let newURL = try fileService.rename(url, to: newName)
             for state in states.values {
@@ -903,7 +1457,7 @@ final class WindowManager: ObservableObject {
             let selectedWindow = window.tabGroup?.selectedWindow ?? window
             let selectedState = groupStates.first { $0.hostWindow === selectedWindow }
                 ?? groupStates.first
-            let documents = groupStates.flatMap(\.documents).map { document in
+            let documents = groupStates.flatMap { state in state.documents.map { document in
                 document.refreshDirtyState()
                 return WorkspaceDocumentSnapshot(
                     documentID: document.id,
@@ -915,9 +1469,10 @@ final class WindowManager: ObservableObject {
                     selectionRange: document.selectionRange,
                     scrollPositionRatio: document.scrollPositionRatio,
                     isPreviewVisible: document.isPreviewVisible,
-                    fileRevisionSnapshot: document.fileRevisionSnapshot
+                    fileRevisionSnapshot: document.fileRevisionSnapshot,
+                    folderWorkspace: state.folderWorkspace.sessionState
                 )
-            }
+            } }
             snapshots.append(WorkspaceWindowSnapshot(
                 documents: documents,
                 selectedDocumentID: selectedState?.selectedDocumentID,
@@ -1048,7 +1603,10 @@ final class WindowManager: ObservableObject {
                     documents: documents,
                     selectedDocumentID: window.selectedDocumentID,
                     isSidebarVisible: window.isSidebarVisible,
-                    frame: window.frame
+                    frame: window.frame,
+                    folderStates: Dictionary(window.documents.compactMap { reference in
+                        reference.snapshot.folderWorkspace.map { (reference.snapshot.documentID, $0) }
+                    }, uniquingKeysWith: { first, _ in first })
                 )
             }
             var windows = restored
@@ -1069,7 +1627,8 @@ final class WindowManager: ObservableObject {
                         documents: first.documents + extras,
                         selectedDocumentID: first.selectedDocumentID,
                         isSidebarVisible: first.isSidebarVisible,
-                        frame: first.frame
+                        frame: first.frame,
+                        folderStates: first.folderStates
                     )
                 }
             }
@@ -1164,12 +1723,16 @@ final class WindowManager: ObservableObject {
         window: NSWindow
     ) {
         state.isSidebarVisible = restoration.isSidebarVisible
+        if let id = restoration.documents.first?.id, let folder = restoration.folderStates[id] {
+            state.folderWorkspace.restore(folder)
+        }
         applyFrame(restoration.frame, to: window)
         var selectedWindow = window
         var previousWindow = window
         for document in restoration.documents.dropFirst() {
             let tabState = openNewWindow(with: document)
             tabState.isSidebarVisible = restoration.isSidebarVisible
+            if let folder = restoration.folderStates[document.id] { tabState.folderWorkspace.restore(folder) }
             guard let tabWindow = tabState.hostWindow else { continue }
             previousWindow.addTabbedWindow(tabWindow, ordered: .above)
             previousWindow = tabWindow

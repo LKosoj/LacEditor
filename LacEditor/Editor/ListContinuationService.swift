@@ -13,6 +13,319 @@ enum ListContinuationService {
     private static let emptyItemExpression = try! NSRegularExpression(
         pattern: #"^(?:\d+[.)]|[-*+])\s*$"#
     )
+    struct ListEdit {
+        let range: NSRange
+        let replacement: String
+        let selection: NSRange
+    }
+
+    private static let itemExpression = try! NSRegularExpression(
+        pattern: #"^((?: {0,3}>[ \t]?)*)([ \t]*)([-*+]|[0-9]+[.)])([ \t]+)(?:\[([ xX])\](?:([ \t]+)|(?=\r|\n|$)))?"#
+    )
+
+    private static func markdownLine(in text: NSString, at position: Int) -> NSRange {
+        var point = position
+        if point > 0 && point < text.length && text.character(at: point) == 10 && text.character(at: point - 1) == 13 { point -= 1 }
+        var start = point
+        while start > 0 && text.character(at: start - 1) != 10 && text.character(at: start - 1) != 13 { start -= 1 }
+        var end = point
+        while end < text.length && text.character(at: end) != 10 && text.character(at: end) != 13 { end += 1 }
+        if end < text.length {
+            let cr = text.character(at: end) == 13
+            end += 1
+            if cr && end < text.length && text.character(at: end) == 10 { end += 1 }
+        }
+        return NSRange(location: start, length: end - start)
+    }
+
+    private static func itemMatch(in line: NSString) -> NSTextCheckingResult? {
+        itemExpression.firstMatch(in: line as String, range: NSRange(location: 0, length: line.length))
+    }
+
+    private static func advanceColumns(_ value: String, from start: Int = 0) -> Int {
+        value.reduce(start) { column, character in
+            character == "\t" ? column + 4 - column % 4 : column + 1
+        }
+    }
+
+    private static func indentationWidth(_ indentation: String) -> Int {
+        advanceColumns(indentation)
+    }
+
+    private static func listColumns(_ raw: NSString, item: NSTextCheckingResult) -> (indent: Int, content: Int) {
+        let quote = raw.substring(with: item.range(at: 1))
+        let quoteColumn = advanceColumns(quote)
+        let indentColumn = advanceColumns(raw.substring(with: item.range(at: 2)), from: quoteColumn)
+        let markerColumn = indentColumn + item.range(at: 3).length
+        let whitespaceEnd = advanceColumns(raw.substring(with: item.range(at: 4)), from: markerColumn)
+        let padding = whitespaceEnd - markerColumn
+        let afterWhitespace = NSMaxRange(item.range(at: 4))
+        let blank = afterWhitespace == raw.length || raw.character(at: afterWhitespace) == 10 || raw.character(at: afterWhitespace) == 13
+        let contentColumn = markerColumn + (padding > 4 || blank ? 1 : padding)
+        return (indentColumn - quoteColumn, contentColumn - quoteColumn)
+    }
+
+    private static func quoteDepth(in raw: NSString) -> Int {
+        var cursor = 0, depth = 0
+        while cursor < raw.length {
+            var next = cursor
+            while next < raw.length && next - cursor < 3 && raw.character(at: next) == 32 { next += 1 }
+            guard next < raw.length && raw.character(at: next) == 62 else { break }
+            depth += 1
+            cursor = next + 1
+            if cursor < raw.length && (raw.character(at: cursor) == 32 || raw.character(at: cursor) == 9) { cursor += 1 }
+        }
+        return depth
+    }
+
+    private static func indentationAfterQuotes(in raw: NSString) -> Int {
+        var cursor = 0
+        while cursor < raw.length {
+            var next = cursor
+            while next < raw.length && next - cursor < 3 && raw.character(at: next) == 32 { next += 1 }
+            guard next < raw.length && raw.character(at: next) == 62 else { break }
+            cursor = next + 1
+            if cursor < raw.length && (raw.character(at: cursor) == 32 || raw.character(at: cursor) == 9) { cursor += 1 }
+        }
+        let start = cursor
+        while cursor < raw.length && (raw.character(at: cursor) == 32 || raw.character(at: cursor) == 9) { cursor += 1 }
+        return indentationWidth(raw.substring(with: NSRange(location: start, length: cursor - start)))
+    }
+
+    private static func isInCode(in text: NSString, lineStart: Int, indentation: String) -> Bool {
+        var location = 0
+        var fence: (character: unichar, length: Int, quoteDepth: Int, listContent: Int?)?
+        var parents: [(indent: Int, content: Int, quoteDepth: Int)] = []
+        let targetLine = markdownLine(in: text, at: lineStart)
+        let targetDepth = quoteDepth(in: text.substring(with: targetLine) as NSString)
+        while location < lineStart {
+            let line = markdownLine(in: text, at: location)
+            let raw = text.substring(with: line) as NSString
+            let depth = quoteDepth(in: raw)
+            if let open = fence {
+                if depth < open.quoteDepth { fence = nil }
+                else if let content = open.listContent, depth == open.quoteDepth {
+                    let prefix = itemMatch(in: raw)?.range(at: 1) ?? NSRange(location: 0, length: 0)
+                    let start = NSMaxRange(prefix)
+                    var end = start
+                    while end < raw.length && (raw.character(at: end) == 32 || raw.character(at: end) == 9) { end += 1 }
+                    let rest = raw.substring(from: end).trimmingCharacters(in: .whitespacesAndNewlines)
+                    let width = indentationWidth(raw.substring(with: NSRange(location: start, length: end - start)))
+                    if !rest.isEmpty && width < content { fence = nil }
+                }
+            }
+            let match = itemMatch(in: raw)
+            if fence == nil, let match {
+                let columns = listColumns(raw, item: match)
+                let indent = columns.indent
+                while let parent = parents.last, depth != parent.quoteDepth || indent <= parent.indent { parents.removeLast() }
+                if indent < 4 || parents.last.map({ indent >= $0.content && indent < $0.content + 4 }) == true {
+                    parents.append((indent, columns.content, depth))
+                }
+            } else if fence == nil && match == nil {
+                let content = (raw as String).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !content.isEmpty && depth == 0 && raw.length > 0 && raw.character(at: 0) != 32 && raw.character(at: 0) != 9 { parents.removeAll() }
+            }
+            var cursor = match.map { NSMaxRange($0.range) } ?? 0
+            if match == nil {
+                while cursor < raw.length && (raw.character(at: cursor) == 32 || raw.character(at: cursor) == 9 || raw.character(at: cursor) == 62) { cursor += 1 }
+            }
+            if cursor < raw.length && (raw.character(at: cursor) == 96 || raw.character(at: cursor) == 126) {
+                let character = raw.character(at: cursor)
+                var count = 0
+                while cursor + count < raw.length && raw.character(at: cursor + count) == character { count += 1 }
+                if count >= 3 {
+                    if let open = fence {
+                        if open.character == character && count >= open.length {
+                            let tail = raw.substring(from: cursor + count).trimmingCharacters(in: .whitespacesAndNewlines)
+                            if tail.isEmpty { fence = nil }
+                        }
+                    } else {
+                        let content = match.map { item in
+                            listColumns(raw, item: item).content
+                        } ?? parents.last(where: { parent in
+                            let indent = indentationAfterQuotes(in: raw)
+                            return parent.quoteDepth == depth && indent >= parent.content && indent < parent.content + 4
+                        })?.content
+                        fence = (character, count, depth, content)
+                    }
+                }
+            }
+            if NSMaxRange(line) <= location { break }
+            location = NSMaxRange(line)
+        }
+        let targetRaw = text.substring(with: targetLine) as NSString
+        let targetItem = itemMatch(in: targetRaw)
+        let width = targetItem.map { listColumns(targetRaw, item: $0).indent } ?? indentationWidth(indentation)
+        if let open = fence, targetDepth >= open.quoteDepth,
+           open.listContent == nil || targetDepth > open.quoteDepth || width >= open.listContent! { return true }
+        guard width >= 4 else { return false }
+        return !parents.contains { $0.quoteDepth == targetDepth && width >= $0.content && width < $0.content + 4 }
+    }
+
+    static func isCodeContext(in text: NSString, at location: Int) -> Bool {
+        guard location >= 0, location <= text.length else { return true }
+        let line = markdownLine(in: text, at: location)
+        let raw = text.substring(with: line) as NSString
+        let indent = indentationAfterQuotes(in: raw)
+        if isInCode(in: text, lineStart: line.location, indentation: String(repeating: " ", count: indent)) { return true }
+        var cursor = itemMatch(in: raw).map { NSMaxRange($0.range) } ?? 0
+        while cursor < raw.length && (raw.character(at: cursor) == 32 || raw.character(at: cursor) == 9 || raw.character(at: cursor) == 62) { cursor += 1 }
+        if cursor < raw.length && (raw.character(at: cursor) == 96 || raw.character(at: cursor) == 126) {
+            let marker = raw.character(at: cursor)
+            var count = 0
+            while cursor + count < raw.length && raw.character(at: cursor + count) == marker { count += 1 }
+            if count >= 3 { return true }
+        }
+        return false
+    }
+
+    static func listNewlineEdit(in text: NSString, selection: NSRange, indentUnit: String) -> ListEdit? {
+        guard selection.location != NSNotFound, selection.location <= text.length,
+              selection.length <= text.length - selection.location else { return nil }
+        let line = markdownLine(in: text, at: selection.location)
+        var contentEnd = NSMaxRange(line)
+        while contentEnd > line.location && (text.character(at: contentEnd - 1) == 10 || text.character(at: contentEnd - 1) == 13) { contentEnd -= 1 }
+        let raw = text.substring(with: NSRange(location: line.location, length: contentEnd - line.location)) as NSString
+        guard let item = itemMatch(in: raw) else { return nil }
+        let contentStart = line.location + NSMaxRange(item.range)
+        guard selection.location >= contentStart, NSMaxRange(selection) <= contentEnd else { return nil }
+        let quote = raw.substring(with: item.range(at: 1))
+        let indent = raw.substring(with: item.range(at: 2))
+        guard !isInCode(in: text, lineStart: line.location, indentation: indent) else { return nil }
+        let marker = raw.substring(with: item.range(at: 3))
+        let task = item.range(at: 5).location != NSNotFound
+        let newline: String
+        if contentEnd < NSMaxRange(line) { newline = text.substring(with: NSRange(location: contentEnd, length: NSMaxRange(line) - contentEnd)) }
+        else if line.location > 0 && text.character(at: line.location - 1) == 10 && line.location > 1 && text.character(at: line.location - 2) == 13 { newline = "\r\n" }
+        else if line.location > 0 && text.character(at: line.location - 1) == 13 { newline = "\r" }
+        else { newline = "\n" }
+        let content = text.substring(with: NSRange(location: contentStart, length: contentEnd - contentStart))
+        if content.trimmingCharacters(in: .whitespaces).isEmpty && selection.length == 0 {
+            let remove = indent.hasSuffix(indentUnit) ? String(indent.dropLast(indentUnit.count)) : indent
+            let replacement = quote + remove
+            return ListEdit(range: NSRange(location: line.location, length: contentEnd - line.location), replacement: replacement,
+                            selection: NSRange(location: line.location + (replacement as NSString).length, length: 0))
+        }
+        var nextMarker = marker
+        if marker.last == "." || marker.last == ")" {
+            guard let number = Int(marker.dropLast()) else { return nil }
+            let (next, overflow) = number.addingReportingOverflow(1)
+            guard !overflow else { return nil }
+            nextMarker = "\(next)\(marker.last!)"
+        }
+        let replacement = newline + quote + indent + nextMarker + " " + (task ? "[ ] " : "")
+        return ListEdit(range: selection, replacement: replacement,
+                        selection: NSRange(location: selection.location + (replacement as NSString).length, length: 0))
+    }
+
+    static func isListOutsideCode(in text: NSString, at location: Int) -> Bool {
+        guard location <= text.length else { return false }
+        let line = markdownLine(in: text, at: location)
+        let raw = text.substring(with: line) as NSString
+        guard let item = itemMatch(in: raw) else { return false }
+        let indent = raw.substring(with: item.range(at: 2))
+        return !isInCode(in: text, lineStart: line.location, indentation: indent)
+    }
+
+    static func isUnorderedList(in text: NSString, at location: Int) -> Bool {
+        guard location <= text.length else { return false }
+        let line = markdownLine(in: text, at: location)
+        let raw = text.substring(with: line) as NSString
+        guard let item = itemMatch(in: raw) else { return false }
+        let marker = raw.substring(with: item.range(at: 3))
+        return marker == "-" || marker == "+" || marker == "*"
+    }
+
+    static func isUnorderedRoot(in text: NSString, at location: Int) -> Bool {
+        guard isUnorderedList(in: text, at: location) else { return false }
+        let line = markdownLine(in: text, at: location)
+        let raw = text.substring(with: line) as NSString
+        guard let item = itemMatch(in: raw) else { return false }
+        return item.range(at: 2).length == 0
+    }
+
+    private static func hasPreviousSibling(in text: NSString, lineStart: Int, quote: String, indent: String, marker: String, unit: String) -> Bool {
+        let quoteColumn = advanceColumns(quote)
+        let width = advanceColumns(indent, from: quoteColumn) - quoteColumn
+        let targetWidth = advanceColumns(indent + unit, from: quoteColumn) - quoteColumn
+        var position = lineStart
+        while position > 0 {
+            let previous = markdownLine(in: text, at: position - 1)
+            let raw = text.substring(with: previous) as NSString
+            guard raw.hasPrefix(quote) else { return false }
+            let offset = (quote as NSString).length
+            var end = offset
+            while end < raw.length && (raw.character(at: end) == 32 || raw.character(at: end) == 9) { end += 1 }
+            let remainder = raw.substring(from: end).trimmingCharacters(in: .whitespacesAndNewlines)
+            if remainder.isEmpty { return false }
+            let previousWidth = advanceColumns(raw.substring(with: NSRange(location: offset, length: end - offset)), from: quoteColumn) - quoteColumn
+            if previousWidth < width { return false }
+            if previousWidth == width {
+                guard let item = itemMatch(in: raw), raw.substring(with: item.range(at: 3)) == marker else { return false }
+                let content = listColumns(raw, item: item).content
+                return targetWidth >= content && targetWidth < content + 4
+            }
+            if previous.location >= position { return false }
+            position = previous.location
+        }
+        return false
+    }
+
+    static func unorderedIndentEdit(in text: NSString, selection: NSRange, indentUnit: String, outdent: Bool) -> ListEdit? {
+        guard selection.length == 0, selection.location <= text.length else { return nil }
+        let line = markdownLine(in: text, at: selection.location)
+        let raw = text.substring(with: line) as NSString
+        guard let item = itemMatch(in: raw) else { return nil }
+        let marker = raw.substring(with: item.range(at: 3))
+        guard marker == "-" || marker == "+" || marker == "*" else { return nil }
+        let quote = raw.substring(with: item.range(at: 1))
+        let indentation = raw.substring(with: item.range(at: 2))
+        guard !isInCode(in: text, lineStart: line.location, indentation: indentation) else { return nil }
+        if outdent && indentation.isEmpty { return nil }
+        if !outdent && !hasPreviousSibling(in: text, lineStart: line.location, quote: quote, indent: indentation, marker: marker, unit: indentUnit) { return nil }
+        let unit = indentUnit as NSString
+        let remove = outdent ? min(item.range(at: 2).length, unit.length) : 0
+        let prefixLocation = line.location + item.range(at: 2).location
+        var edits: [OrderedListEdit] = [OrderedListEdit(range: NSRange(location: prefixLocation, length: remove), replacement: outdent ? "" : indentUnit)]
+        var end = NSMaxRange(line)
+        var blankLines = 0
+        while end < text.length {
+            let next = markdownLine(in: text, at: end)
+            let nextRaw = text.substring(with: next) as NSString
+            guard nextRaw.hasPrefix(quote) else {
+                if quote.isEmpty { break }
+                return nil
+            }
+            let offset = (quote as NSString).length
+            var spaces = 0
+            while offset + spaces < nextRaw.length && (nextRaw.character(at: offset + spaces) == 32 || nextRaw.character(at: offset + spaces) == 9) { spaces += 1 }
+            let remainder = nextRaw.substring(from: offset + spaces).trimmingCharacters(in: .newlines)
+            if remainder.isEmpty {
+                blankLines += 1
+                if blankLines > 1 { return nil }
+                if NSMaxRange(next) <= end { break }
+                end = NSMaxRange(next)
+                continue
+            }
+            blankLines = 0
+            let nextIndent = indentationWidth(nextRaw.substring(with: NSRange(location: offset, length: spaces)))
+            if nextIndent <= indentationWidth(indentation) { break }
+            if outdent && (spaces < remove || nextRaw.substring(with: NSRange(location: offset, length: remove)) != (indentation as NSString).substring(to: remove)) { return nil }
+            edits.append(OrderedListEdit(range: NSRange(location: end + offset, length: outdent ? remove : 0), replacement: outdent ? "" : indentUnit))
+            if NSMaxRange(next) <= end { break }
+            end = NSMaxRange(next)
+        }
+        let range = NSRange(location: line.location, length: end - line.location)
+        let result = NSMutableString(string: text.substring(with: range))
+        for edit in edits.reversed() {
+            result.replaceCharacters(in: NSRange(location: edit.range.location - range.location, length: edit.range.length), with: edit.replacement)
+        }
+        let delta = (outdent ? -remove : unit.length)
+        return ListEdit(range: range, replacement: result as String,
+                        selection: NSRange(location: max(prefixLocation, selection.location + delta), length: 0))
+    }
+
     struct OrderedListEdit {
         let range: NSRange
         let replacement: String

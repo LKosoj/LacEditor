@@ -820,7 +820,11 @@ require(
     untitledDocument.textRevision == initialRevision + 1,
     "text revision advances after editing"
 )
-require(untitledDocument.wordCount == 4, "word count cache updates after editing")
+let metricsDeadline = Date().addingTimeInterval(5)
+while untitledDocument.statistics == nil && Date() < metricsDeadline {
+    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+}
+require(untitledDocument.statistics?.characters == 4, "source character statistics update after editing")
 untitledDocument.refreshDirtyState()
 require(untitledDocument.isDirty, "typed untitled document is dirty")
 require(!untitledDocument.isDisposableBlank, "non-empty untitled document is not disposable")

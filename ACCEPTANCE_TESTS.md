@@ -87,6 +87,34 @@
 | AUTO-JSON-03 | P1 | JSON 取消 | 后台扫描可取消，取消或 revision 过期时不修改正文 |
 | AUTO-MD-04 | P1 | Markdown 块语法 | 标题、引用、列表、分割线、代码块、表格正确 |
 | AUTO-MD-05 | P1 | Markdown 行内语法 | 强调、链接、行内代码互不错误嵌套 |
+| AUTO-TYPORA-01 | P1 | Markdown 基线 | TyporaBaselineTests 验证固定样例的 UTF-16 范围、LF/CRLF 与 HTML 正文；不代替 WebKit 或界面验收 |
+| AUTO-TYPORA-02 | P0 | 新增块格式命令 | MarkdownFormattingServiceTests、MarkdownFormattingInteractionTests 验证三类列表、代码块和分隔线，包含部分多行选区、CRLF、Unicode 分隔符、未闭合代码、实际格式化后编辑、undo/redo、只读与 marked text；真实 IME 另验 |
+| AUTO-TYPORA-03 | P1 | 新增 Pandoc 格式 | PandocExportTests 使用内置 Pandoc 验证 MediaWiki、RST、Textile、OPML 的输出，OPML 嵌套层级及准备阶段不修改源文件和已有目标；Linux 另一版本不代替此测试 |
+| AUTO-TYPORA-04 | P0 | 列表键盘与任务框 | TaskListEditingTests、TaskCheckboxTests 验证 Enter/Tab/反向缩进、引用/代码排除、UTF-16、CRLF、真实 mouseDown 与只读/IME/多选保护；实际输入另验 |
+| AUTO-TYPORA-05 | P0 | 表格与链接编辑 | MarkdownTableEditingTests、MarkdownLinkEditingTests、MarkdownFormattingInteractionTests 验证单次替换和撤销、行列边界、title 保留、代码/上下文排除与过期对话框；不代表原生单元格已完成 |
+| AUTO-TYPORA-06 | P1 | 本地独立图片 | MarkdownImageTests 和布局测试验证本地/data URI、过期结果、选区揭示和激活恢复；在 Mac 检查实际尺寸、滚动、折叠和点击，嵌套/行内图片尚未实现 |
+| AUTO-TYPORA-07 | P1 | 源码/选区统计 | DocumentStatisticsTests、DocumentMetricsTaskTests 验证组合字符、词数、空白、所有换行和任务过期；明确不是可见 Markdown 字数 |
+| AUTO-TYPORA-08 | P1 | 脚注与提示 | MarkdownFootnoteTests 验证 Unicode/重复/缺失定义、多段和代码内容、导航/失效；实际提示位置、Cmd 点击和 HTML 锚点需 Mac 检查 |
+| AUTO-TYPORA-09 | P0 | 原生 PDF 导出 | MarkdownPDFExportTests 验证实际 PDF 页与图片/Mermaid 像素、取消和释放；Mac 另验隐藏 WebKit 打印、分页、中途取消、多窗口和源文件不变 |
+| AUTO-TYPORA-10 | P1 | 工作文件夹 | FolderWorkspaceTests、FolderWorkspaceInteractionTests 验证根/请求过期、展开/收起、符号链接替换、多窗口与既有文件身份；Mac 另验真实点击和大型目录懒加载 |
+| AUTO-TYPORA-11 | P1 | 写作模式 | WritingModesTests 验证选择/版本变化、手动滚动、EOF Unicode；Mac 检查几何位置、IME、真实鼠标和大文档性能 |
+| AUTO-TYPORA-12 | P0 | 自动符号配对 | MarkdownAutoPairTests 验证默认关闭、分别开启、普通按键与精确程序插入、选区包围、跳过闭合、退格、UTF-16 和撤销；Mac 另验真实输入法和性能 |
+| AUTO-TYPORA-13 | P1 | 文内大纲 | MarkdownPresentationParserTests、MarkdownLayoutTests、MarkdownFootnoteTests 验证 standalone [toc]、共用 headings、宽度/折叠/选择、真实 mouseDown 和远端标记不触发布局；HTML 已准备同树生成及锚点验证，PDF 书签与导出参数仍在开发，实际 Mac 输出另验 |
+| AUTO-TYPORA-14 | P0 | 文件夹搜索 | FolderSearchTests 验证 UTF-16/CRLF、未保存快照、hardlink/nil identity、文件过期、取消及长行多匹配；UI/controller 和真实跳转需单独验收 |
+| AUTO-TYPORA-15 | P0 | 原生表格初步编辑 | MarkdownNativeTableParserTests、MarkdownLayoutTests、MarkdownNativeTableInteractionTests 验证确认的单元格、真实点击/输入、标记输入快照、撤销、Tab、宽度和相邻格式；新增虚拟/嵌套/多行单元格、双向源范围映射、拖动、可访问性、虚拟目标对话框及大表单行增量测试；实际性能、VoiceOver 和完整键盘/剪贴板另验 |
+| AUTO-TYPORA-16 | P0 | 文件操作 | FolderWorkspaceTests、FolderWorkspaceInteractionTests、InteractionPolishTests 验证真实创建/复制/移动/临时模拟的废纸篓、别名/相对链接、外部变更、延迟删除、地址式撤销与异步反馈；真实废纸篓和并发另验 |
+| AUTO-TYPORA-17 | P0 | 文件夹搜索集成 | FolderSearchControllerTests、FolderSearchIntegrationTests 验证真实打开/placeholder、过期与取消、UTF-16 跳转和真实单元格 marked text；系统 UI 和性能另验 |
+| AUTO-TYPORA-18 | P0 | 导出配置与自定义命令 | PandocExportTests、CustomMarkdownExportTests 验证配置保留/顺序、元数据、rawType、快照、引用与变量、重复导出、取消和文档释放后的锁清理；真实 zsh/内置 Pandoc、完整参数及嵌套进程取消修复后另验 |
+| AUTO-TYPORA-19 | P1 | 图形后端 | MermaidRenderServiceTests、MathJaxRenderServiceTests 验证本地资源、明暗色/透明背景、可见像素、错误、取消和释放；不代表编辑器集成、公式上下文和完整语法已完成 |
+| AUTO-TYPORA-20 | P0 | 数学语法 | MarkdownMathExtensionTests 验证块隔离、行内字节位置、代码/货币排除、反斜线奇偶和解析器隔离；完整编辑器 UTF-16 映射、嵌套和实际输入另验 |
+| AUTO-TYPORA-21 | P1 | 剪贴板转换与 emoji | ClipboardMarkdownConversionTests、EmojiShortcodeResolverTests 验证内置 Pandoc HTML/RTF/data URI、错误、取消和唯一短码；尚不代替编辑器复制/粘贴的选区、资源和撤销验收 |
+| AUTO-TYPORA-22 | P1 | 文件夹会话及监听 | FolderWorkspaceTests、WindowAndSessionTests、NativeTabsTests 验证每标签根目录、展开/列表/排序状态与旧会话兼容；真实 FSEvents、移走的根目录及重启恢复需在 Mac 检查 |
+| AUTO-TYPORA-23 | P0 | 原生本地音频 | MarkdownHTMLMediaServiceTests、MarkdownAudioInteractionTests 验证有限 HTML 形式、Unicode/CRLF、代码排除、真实 AVPlayerView、源文本显示、frame、折叠与已显示 player 的停止；不自动播放，实际音频/VoiceOver 和其他 HTML 媒体另验 |
+| AUTO-TYPORA-24 | P0 | 可读内容统计 | MarkdownReadableTextTests、DocumentMetricsTaskTests、StatusBarStatisticsTests 验证共享 cmark、raw 字符/行、Han 词数、选区实体与智能标点、过期/取消/IME 和真实 NSHosting 文档切换时阅读速度；Mac 构建、Foundation 分词、实际输入与性能仍待验证 |
+| AUTO-TYPORA-25 | P0 | 链接跳转和标签搜索 | MarkdownLinkNavigationInteractionTests、MarkdownLinkTableTests、FolderTagSearchTests、MarkdownTagReaderTests 验证确认链接、锚点、单元格坐标与 YAML tags；实际多窗口跳转、失效和内置 Pandoc 另验 |
+| AUTO-TYPORA-26 | P0 | 输出页面和无样式 HTML | MarkdownPDFExportTests、PandocExportTests 验证纸张/边距/质量、PDF 元数据/书签/列印/页眉页脚/分页及 HTML 公式/图形/有限媒体；WebKit/PDFKit 的实际尺寸、脚注页、打印缩放和资源另验 |
+
+
 | AUTO-EDIT-01 | P1 | 查找替换 | 前后查找、循环、大小写和全部替换正确 |
 | AUTO-EDIT-02 | P1 | 转义字符 | `\\n`、`\\r`、`\\t`、`\\s`、`\\\\` 正确解释 |
 | AUTO-EDIT-03 | P1 | Markdown 列表 | 续号、插入删除重排、粘贴显式编号正确 |
@@ -244,3 +272,21 @@
 ## 5. 回归与报告规则
 
 发现缺陷后必须：记录失败用例 ID和复现步骤；修复源码；为可自动化的问题增加回归测试；重新执行失败用例和完整自动门禁。验收报告应区分“首次通过”“修复后通过”“已知限制”，不得删除失败历史来制造全绿结果。
+
+### Дополнительные проверки быстрого открытия и HTML-пакета
+
+- [ ] На macOS собрать SPM и Xcode с зафиксированным SwiftSoup, проверить наличие MIT-лицензии в ресурсах; обновить pins только штатным resolve и сверить revision.
+- [ ] ⌘⇧O в активном окне с рабочей папкой раскрывает существующий поиск и ставит курсор в поле. Набор `rlnt` находит `ReleaseNotes.md` без чтения содержимого; Enter открывает результат. Проверить скрытую боковую панель и выход из distraction-free, сохранность dirty/undo предыдущего документа.
+- [ ] Точное имя выше непрерывного совпадения и последовательности букв; Unicode/emoji/составные символы, путь и регистр. Смена query/root отменяет старую выдачу; обычный поиск текста/тегов после быстрого открытия сохраняет прежнее действие Enter.
+- [ ] Запустить FolderQuickOpenTests, новые FolderSearchTests/FolderSearchControllerTests и testTOCPreferencePersistsAndDoesNotEnableCustomFonts. Эти тесты в Linux не выполнялись.
+
+- [ ] Недавние и закреплённые папки: открыть через диалог/Finder/меню/панель в двух окнах; проверить порядок, повторный запуск и старый JSON. Недоступная папка показывает сообщение, сохраняя документ и root. Закрепление/удаление записи и очистка истории не меняют диск.
+- [ ] Переименовать папку с дочерними recent/pinned записями, добавить новую запись, отменить перенос: сохранившиеся перемещённые адреса возвращены, новые действия сохранены. Проверить trash/undo и символические ссылки; запустить RecentFolderTests и расширенные FolderWorkspaceInteractionTests.
+
+- [ ] Папка при запуске: старые настройки → пустой путь; выбранный путь сохраняется без немедленного открытия. Чистый запуск выбирает его один раз, восстановленная папка/ранний Finder file/folder имеют приоритет. Dock reopen не сбрасывает root. Отсутствующий путь не создаётся и не меняет dirty-документ. Запустить расширенные FolderOpeningTests, проверить реальный `open -a LacEditor <путь>`.
+- [ ] Emoji: каталог/лицензия присутствуют в обеих сборках, unknown остаётся текстом. Проверить системную панель parent/child, Esc/Tab, Unicode/escaped pipe, виртуальную ячейку, stale и IME; не считать прямой вызов финального callback проверкой фактического выбора из popup.
+- [ ] Audio/video/iframe: реальные HTTP(S)/локальные источники, размеры при resize, прокрутка, остановка при закрытии/сворачивании, переход к исходнику, IME и доступность. Наличие Swift-кода не доказывает реальное воспроизведение и совместимость внешнего iframe-сервиса.
+
+- [ ] Обычные списки: bullet/ordered start и 9→10, вложенность/цитаты/tab, lazy continuation, пустые пункты/task, раскрытие только редактируемой строки. Проверить glyph width, попадание мыши/курсор, source switch, fold, undo, системный IME и VoiceOver; контрольный крупный документ и глубокая прокрутка.
+- [ ] Small caps по уровням H1–H6: поддерживаемый и неподдерживаемый шрифты, bold/italic/code внутри заголовка, сброс и parent/child marked. Текст/anchors/dirty/undo не меняются; synthetic CSS и реальный CoreText шрифт проверяются отдельно.
+- [ ] Полный список папки: вложенные одинаковые имена, четыре сортировки/направления, группы по родителю и общий список, частичная ошибка чтения, старый currentPath, отмена/поздний ответ и FSEvents вложенного файла. При возврате дерева закрытые ветви не обходятся.

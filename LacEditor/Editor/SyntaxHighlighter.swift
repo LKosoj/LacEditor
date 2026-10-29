@@ -102,6 +102,10 @@ enum SyntaxHighlighter {
                 forCharacterRange: highlightRange
             )
 
+            if let color = (layoutManager as? FoldLayoutManager)?.markdownColors.text?.nsColor {
+                layoutManager.addTemporaryAttribute(.foregroundColor, value: color, forCharacterRange: highlightRange)
+            }
+
             for token in tokens {
                 let tokenRange = NSIntersectionRange(token.range, highlightRange)
                 guard tokenRange.length > 0 else { continue }

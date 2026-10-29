@@ -8,8 +8,11 @@ struct SidebarLibraryView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var recentFiles: RecentFilesStore
     @ObservedObject var library: SidebarLibraryStore
+    @ObservedObject var folderWorkspace: FolderWorkspaceStore
+    @ObservedObject var folderSearch: FolderSearchController
     var query = ""
     @State private var hoveredSection: SidebarLibrarySection?
+    @State private var folderSearchExpanded = false
     @FocusState private var focusedHeader: String?
     @StateObject private var dragState = SidebarDragState()
     @StateObject private var selection = SidebarSelection()
@@ -18,6 +21,8 @@ struct SidebarLibraryView: View {
     private var favorites: [URL] { filter.files(library.favoriteURLs) }
     private var groups: [SidebarFileGroup] { filter.groups(library.groups) }
     private var recent: [URL] { filter.files(recentFiles.urls) }
+    private var pinnedFolders: [URL] { filter.files(library.pinnedFolderURLs) }
+    private var recentFolders: [URL] { filter.files(recentFiles.folderURLs.filter { !library.isPinnedFolder($0) }) }
     private var visibleSelectionURLs: [URL] {
         switch selection.location {
         case .favorites: return library.favoriteSectionExpanded || filter.isActive ? favorites : []
@@ -34,13 +39,43 @@ struct SidebarLibraryView: View {
     var body: some View {
         ScrollViewReader { proxy in
         ScrollView(.vertical) {
-            LazyVStack(alignment: .leading, spacing: 16) {
-            if filter.isActive, favorites.isEmpty, groups.isEmpty, recent.isEmpty {
+            LazyVStack(alignment: .leading, spacing: 0) {
+            FolderWorkspaceView(store: folderWorkspace)
+            if !pinnedFolders.isEmpty {
+                Text(L10n.tr("固定文件夹")).font(.system(size: 12, weight: .semibold)).padding(.top, 12)
+                ForEach(pinnedFolders, id: \.self) { folderRow($0) }
+            }
+            if !recentFolders.isEmpty {
+                Text(L10n.tr("最近使用的文件夹")).font(.system(size: 12, weight: .semibold)).padding(.top, 12)
+                ForEach(recentFolders, id: \.self) { folderRow($0) }
+            }
+            ForEach(FolderWorkspaceVisibleRow.rows(in: folderWorkspace)) { row in
+                FolderWorkspaceRowView(store: folderWorkspace, row: row)
+                    .padding(.top, 2)
+            }
+            if folderWorkspace.rootURL != nil || folderSearch.quickOpenRequest != nil || !folderSearch.quickOpenItems.isEmpty || folderSearch.isWorking {
+                Button {
+                    folderSearchExpanded.toggle()
+                } label: {
+                    Label(L10n.tr("文件夹搜索"), systemImage: folderSearchExpanded ? "chevron.down" : "chevron.right")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 16)
+                .accessibilityValue(L10n.tr(folderSearchExpanded ? "已展开" : "已收起"))
+                if folderSearchExpanded {
+                    FolderSearchView(controller: folderSearch).padding(.top, 6)
+                    ForEach(FolderSearchRow.rows(folderSearch)) { row in
+                        FolderSearchRowView(controller: folderSearch, row: row).padding(.top, 4)
+                    }
+                }
+            }
+            if filter.isActive, favorites.isEmpty, groups.isEmpty, recent.isEmpty, pinnedFolders.isEmpty, recentFolders.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L10n.tr("没有匹配的文件")).font(.system(size: 13, weight: .medium))
                     Text(L10n.tr("试试文件名、扩展名或分组名称。"))
                         .font(.system(size: 11)).foregroundStyle(.secondary)
-                }.padding(.horizontal, 8).padding(.vertical, 12)
+                }.padding(.horizontal, 8).padding(.vertical, 12).padding(.top, 16)
             } else {
             sidebarSection(
                 title: L10n.tr("收藏夹"),
@@ -57,7 +92,7 @@ struct SidebarLibraryView: View {
                 } else {
                     fileList(urls: favorites, location: .favorites)
                 }
-            }
+            }.padding(.top, 16)
 
             sidebarSection(
                 title: L10n.tr("分组"),
@@ -86,7 +121,7 @@ struct SidebarLibraryView: View {
                     Color.clear.frame(height: 20).contentShape(Rectangle())
                         .sidebarDropArea(.groupsEnd, height: 20, library: library, enabled: !filter.isActive)
                 }
-            }
+            }.padding(.top, 16)
 
             sidebarSection(
                 title: L10n.tr("最近文件"),
@@ -109,7 +144,7 @@ struct SidebarLibraryView: View {
                 } else {
                     fileList(urls: recent, location: .recent)
                 }
-            }
+            }.padding(.top, 16)
             }
             }
             .padding(.horizontal, 10)
@@ -121,10 +156,29 @@ struct SidebarLibraryView: View {
         .scrollContentBackground(.hidden)
         .environmentObject(dragState)
         .environmentObject(selection)
+        .onReceive(folderSearch.$quickOpenRequest) { request in
+            if request != nil { folderSearchExpanded = true }
+        }
         .onChange(of: visibleSelectionURLs) { _, urls in
             if let location = selection.location { selection.reconcile(in: location, urls: urls) }
         }
         .onDisappear { dragState.finish() }
+        .onAppear {
+            if windowManager.activeState === appState { appState.folderWorkspace.refresh() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            DispatchQueue.main.async {
+                guard windowManager.activeState === appState else { return }
+                appState.folderWorkspace.refresh()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { notification in
+            guard let window = notification.object as? NSWindow, window === appState.hostWindow else { return }
+            DispatchQueue.main.async {
+                guard windowManager.activeState === appState, appState.hostWindow === window else { return }
+                appState.folderWorkspace.refresh()
+            }
+        }
         .onChange(of: selection.focused) { _, focused in
             if let focused {
                 proxy.scrollTo(focused.location.accessibilityID + focused.path)
@@ -134,6 +188,35 @@ struct SidebarLibraryView: View {
     }
 
     @ViewBuilder
+    private func folderRow(_ url: URL) -> some View {
+        Button { appState.openFolder(url) } label: {
+            Label(url.lastPathComponent, systemImage: library.isPinnedFolder(url) ? "pin" : "folder")
+                .font(.system(size: 12)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain).padding(.vertical, 4).help(url.path)
+        .contextMenu {
+            Button(L10n.tr(library.isPinnedFolder(url) ? "取消固定文件夹" : "固定此文件夹")) {
+                let previous = library.pinnedFolderPaths
+                library.togglePinnedFolder(url)
+                let expected = library.pinnedFolderPaths
+                appState.sidebarFeedback.show(L10n.tr("文件夹列表已更新")) { [weak library = library] in
+                    _ = library?.restorePinnedFolders(previous, ifUnchanged: expected)
+                }
+            }
+            if recentFiles.folderURLs.contains(url) {
+                Button(L10n.tr("从最近文件夹移除")) {
+                    let previous = recentFiles.folderURLs
+                    recentFiles.removeFolder(url)
+                    let expected = recentFiles.folderURLs
+                    appState.sidebarFeedback.show(L10n.tr("文件夹列表已更新")) { [weak recentFiles = recentFiles] in
+                        _ = recentFiles?.restoreFolders(previous, ifUnchanged: expected)
+                    }
+                }
+            }
+            Button(L10n.tr("在 Finder 中显示")) { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+        }
+    }
+
     private func sidebarSection<Content: View>(
         title: String,
         section: SidebarLibrarySection,

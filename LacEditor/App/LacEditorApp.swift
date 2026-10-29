@@ -25,6 +25,10 @@ struct LacEditorApp: App {
         state.windowManager = manager
         let windowID = UUID()
         manager.preparePrimaryWindow(windowID: windowID, state: state)
+        manager.openFilesFromCommandLine(WindowManager.commandLineURLs(
+            arguments: Array(CommandLine.arguments.dropFirst()),
+            workingDirectory: URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+        ))
         _appState = StateObject(wrappedValue: state)
         _windowManager = StateObject(wrappedValue: manager)
         AppDelegate.sharedManager = manager

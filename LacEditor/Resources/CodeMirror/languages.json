@@ -1,0 +1,614 @@
+{
+  "apl": {
+    "mode": "apl",
+    "mime": "text/apl"
+  },
+  "asn.1": {
+    "mode": "asn.1",
+    "mime": "text/x-ttcn-asn"
+  },
+  "asp": {
+    "mode": "htmlembedded",
+    "mime": "application/x-aspx"
+  },
+  "aspx": {
+    "mode": "htmlembedded",
+    "mime": "application/x-aspx"
+  },
+  "asp.net": {
+    "mode": "htmlembedded",
+    "mime": "application/x-aspx"
+  },
+  "assembly": {
+    "mode": "gas",
+    "mime": "text/x-gas"
+  },
+  "asm": {
+    "mode": "gas",
+    "mime": "text/x-gas"
+  },
+  "nasm": {
+    "mode": "gas",
+    "mime": "text/x-gas"
+  },
+  "gas": {
+    "mode": "gas",
+    "mime": "text/x-gas"
+  },
+  "c": {
+    "mode": "clike",
+    "mime": "text/x-csrc"
+  },
+  "clike": {
+    "mode": "clike",
+    "mime": "text/x-csrc"
+  },
+  "c#": {
+    "mode": "clike",
+    "mime": "text/x-csharp"
+  },
+  "csharp": {
+    "mode": "clike",
+    "mime": "text/x-csharp"
+  },
+  "c++": {
+    "mode": "clike",
+    "mime": "text/x-c++src"
+  },
+  "cpp": {
+    "mode": "clike",
+    "mime": "text/x-c++src"
+  },
+  "cc": {
+    "mode": "clike",
+    "mime": "text/x-c++src"
+  },
+  "ceylon": {
+    "mode": "clike",
+    "mime": "text/x-ceylon"
+  },
+  "clojure": {
+    "mode": "clojure",
+    "mime": "text/x-clojure"
+  },
+  "cmake": {
+    "mode": "cmake",
+    "mime": "text/x-cmake"
+  },
+  "cobol": {
+    "mode": "cobol",
+    "mime": "text/x-cobol"
+  },
+  "coffeescript": {
+    "mode": "coffeescript",
+    "mime": "application/vnd.coffeescript"
+  },
+  "coffee": {
+    "mode": "coffeescript",
+    "mime": "application/vnd.coffeescript"
+  },
+  "commonlisp": {
+    "mode": "commonlisp",
+    "mime": "text/x-common-lisp"
+  },
+  "lisp": {
+    "mode": "commonlisp",
+    "mime": "text/x-common-lisp"
+  },
+  "cql": {
+    "mode": "sql",
+    "mime": "text/x-cassandra"
+  },
+  "cassandra": {
+    "mode": "sql",
+    "mime": "text/x-cassandra"
+  },
+  "crystal": {
+    "mode": "crystal",
+    "mime": "text/x-crystal"
+  },
+  "css": {
+    "mode": "css",
+    "mime": "text/css"
+  },
+  "cypher": {
+    "mode": "cypher",
+    "mime": "application/x-cypher-query"
+  },
+  "cython": {
+    "mode": "python",
+    "mime": "text/x-cython"
+  },
+  "d": {
+    "mode": "d",
+    "mime": "text/x-d"
+  },
+  "dart": {
+    "mode": "dart",
+    "mime": "application/dart"
+  },
+  "diff": {
+    "mode": "diff",
+    "mime": "text/x-diff"
+  },
+  "django": {
+    "mode": "django",
+    "mime": "text/x-django"
+  },
+  "dockerfile": {
+    "mode": "dockerfile",
+    "mime": "text/x-dockerfile"
+  },
+  "dtd": {
+    "mode": "dtd",
+    "mime": "application/xml-dtd"
+  },
+  "xml-dtd": {
+    "mode": "dtd",
+    "mime": "application/xml-dtd"
+  },
+  "dylan": {
+    "mode": "dylan",
+    "mime": "text/x-dylan"
+  },
+  "elm": {
+    "mode": "elm",
+    "mime": "text/x-elm"
+  },
+  "embeddedjs": {
+    "mode": "htmlembedded",
+    "mime": "application/x-ejs"
+  },
+  "ejs": {
+    "mode": "htmlembedded",
+    "mime": "application/x-ejs"
+  },
+  "erb": {
+    "mode": "htmlembedded",
+    "mime": "application/x-erb"
+  },
+  "erlang": {
+    "mode": "erlang",
+    "mime": "text/x-erlang"
+  },
+  "f#": {
+    "mode": "mllike",
+    "mime": "text/x-fsharp"
+  },
+  "forth": {
+    "mode": "forth",
+    "mime": "text/x-forth"
+  },
+  "fortran": {
+    "mode": "fortran",
+    "mime": "text/x-fortran"
+  },
+  "gfm": {
+    "mode": "gfm",
+    "mime": "text/x-gfm"
+  },
+  "gherkin": {
+    "mode": "gherkin",
+    "mime": "text/x-feature"
+  },
+  "go": {
+    "mode": "go",
+    "mime": "text/x-go"
+  },
+  "groovy": {
+    "mode": "groovy",
+    "mime": "text/x-groovy"
+  },
+  "handlebars": {
+    "mode": "handlebars",
+    "mime": "text/x-handlebars-template"
+  },
+  "haskell": {
+    "mode": "haskell",
+    "mime": "text/x-haskell"
+  },
+  "haxe": {
+    "mode": "haxe",
+    "mime": "text/x-haxe"
+  },
+  "hive": {
+    "mode": "sql",
+    "mime": "text/x-hive"
+  },
+  "html": {
+    "mode": "htmlmixed",
+    "mime": "text/html"
+  },
+  "htmlmixed": {
+    "mode": "htmlmixed",
+    "mime": "text/html"
+  },
+  "http": {
+    "mode": "http",
+    "mime": "message/http"
+  },
+  "hxml": {
+    "mode": "haxe",
+    "mime": "text/x-hxml"
+  },
+  "idl": {
+    "mode": "idl",
+    "mime": "text/x-idl"
+  },
+  "jade": {
+    "mode": "pug",
+    "mime": "text/x-pug"
+  },
+  "java": {
+    "mode": "clike",
+    "mime": "text/x-java"
+  },
+  "javascript": {
+    "mode": "javascript",
+    "mime": "text/javascript"
+  },
+  "js": {
+    "mode": "javascript",
+    "mime": "text/javascript"
+  },
+  "text/javascript": {
+    "mode": "javascript",
+    "mime": "text/javascript"
+  },
+  "jinja2": {
+    "mode": "jinja2",
+    "mime": "text/jinja2"
+  },
+  "json": {
+    "mode": "javascript",
+    "mime": "application/json"
+  },
+  "jsp": {
+    "mode": "htmlembedded",
+    "mime": "application/x-jsp"
+  },
+  "jsx": {
+    "mode": "jsx",
+    "mime": "text/jsx"
+  },
+  "react": {
+    "mode": "jsx",
+    "mime": "text/jsx"
+  },
+  "julia": {
+    "mode": "julia",
+    "mime": "text/x-julia"
+  },
+  "kotlin": {
+    "mode": "clike",
+    "mime": "text/x-kotlin"
+  },
+  "less": {
+    "mode": "css",
+    "mime": "text/x-less"
+  },
+  "livescript": {
+    "mode": "livescript",
+    "mime": "text/x-livescript"
+  },
+  "lua": {
+    "mode": "lua",
+    "mime": "text/x-lua"
+  },
+  "mariadb": {
+    "mode": "sql",
+    "mime": "text/x-mariadb"
+  },
+  "markdown": {
+    "mode": "markdown",
+    "mime": "text/x-markdown"
+  },
+  "mbox": {
+    "mode": "mbox",
+    "mime": "application/mbox"
+  },
+  "mssql": {
+    "mode": "sql",
+    "mime": "text/x-mssql"
+  },
+  "mysql": {
+    "mode": "sql",
+    "mime": "text/x-mysql"
+  },
+  "nginx": {
+    "mode": "nginx",
+    "mime": "text/x-nginx-conf"
+  },
+  "nsis": {
+    "mode": "nsis",
+    "mime": "text/x-nsis"
+  },
+  "objective-c": {
+    "mode": "clike",
+    "mime": "text/x-objectivec"
+  },
+  "obj-c": {
+    "mode": "clike",
+    "mime": "text/x-objectivec"
+  },
+  "objc": {
+    "mode": "clike",
+    "mime": "text/x-objectivec"
+  },
+  "ocaml": {
+    "mode": "mllike",
+    "mime": "text/x-ocaml"
+  },
+  "octave": {
+    "mode": "octave",
+    "mime": "text/x-octave"
+  },
+  "matlab": {
+    "mode": "octave",
+    "mime": "text/x-octave"
+  },
+  "oz": {
+    "mode": "oz",
+    "mime": "text/x-oz"
+  },
+  "pascal": {
+    "mode": "pascal",
+    "mime": "text/x-pascal"
+  },
+  "peg.js": {
+    "mode": "pegjs",
+    "mime": "pegjs"
+  },
+  "perl": {
+    "mode": "perl",
+    "mime": "text/x-perl"
+  },
+  "pgp": {
+    "mode": "asciiarmor",
+    "mime": "application/pgp"
+  },
+  "asciiarmor": {
+    "mode": "asciiarmor",
+    "mime": "application/pgp"
+  },
+  "pgp-keys": {
+    "mode": "asciiarmor",
+    "mime": "application/pgp"
+  },
+  "php": {
+    "mode": "php",
+    "mime": "text/x-php"
+  },
+  "plsql": {
+    "mode": "sql",
+    "mime": "text/x-plsql"
+  },
+  "powershell": {
+    "mode": "powershell",
+    "mime": "application/x-powershell"
+  },
+  "postgresql": {
+    "mode": "sql",
+    "mime": "text/x-pgsql"
+  },
+  "properties": {
+    "mode": "properties",
+    "mime": "text/x-properties"
+  },
+  "ini": {
+    "mode": "properties",
+    "mime": "text/x-properties"
+  },
+  "protobuf": {
+    "mode": "protobuf",
+    "mime": "text/x-protobuf"
+  },
+  "pug": {
+    "mode": "pug",
+    "mime": "text/x-pug"
+  },
+  "python": {
+    "mode": "python",
+    "mime": "text/x-python"
+  },
+  "q": {
+    "mode": "q",
+    "mime": "text/x-q"
+  },
+  "r": {
+    "mode": "r",
+    "mime": "text/x-rsrc"
+  },
+  "rlang": {
+    "mode": "r",
+    "mime": "text/x-rsrc"
+  },
+  "r-lang": {
+    "mode": "r",
+    "mime": "text/x-rsrc"
+  },
+  "rst": {
+    "mode": "rst",
+    "mime": "text/x-rst"
+  },
+  "restructuredtext": {
+    "mode": "rst",
+    "mime": "text/x-rst"
+  },
+  "ruby": {
+    "mode": "ruby",
+    "mime": "text/x-ruby"
+  },
+  "rust": {
+    "mode": "rust",
+    "mime": "text/x-rustsrc"
+  },
+  "sas": {
+    "mode": "sas",
+    "mime": "text/x-sas"
+  },
+  "scala": {
+    "mode": "clike",
+    "mime": "text/x-scala"
+  },
+  "scheme": {
+    "mode": "scheme",
+    "mime": "text/x-scheme"
+  },
+  "scss": {
+    "mode": "css",
+    "mime": "text/x-scss"
+  },
+  "shell": {
+    "mode": "shell",
+    "mime": "text/x-sh"
+  },
+  "sh": {
+    "mode": "shell",
+    "mime": "text/x-sh"
+  },
+  "bash": {
+    "mode": "shell",
+    "mime": "text/x-sh"
+  },
+  "smalltalk": {
+    "mode": "smalltalk",
+    "mime": "text/x-stsrc"
+  },
+  "smarty": {
+    "mode": "smarty",
+    "mime": "text/x-smarty"
+  },
+  "spreadsheet": {
+    "mode": "spreadsheet",
+    "mime": "text/x-spreadsheet"
+  },
+  "sql": {
+    "mode": "sql",
+    "mime": "text/x-sql"
+  },
+  "squirrel": {
+    "mode": "clike",
+    "mime": "text/x-squirrel"
+  },
+  "stylus": {
+    "mode": "stylus",
+    "mime": "text/x-styl"
+  },
+  "swift": {
+    "mode": "swift",
+    "mime": "text/x-swift"
+  },
+  "systemverilog": {
+    "mode": "verilog",
+    "mime": "text/x-systemverilog"
+  },
+  "tcl": {
+    "mode": "tcl",
+    "mime": "text/x-tcl"
+  },
+  "tex": {
+    "mode": "stex",
+    "mime": "text/x-latex"
+  },
+  "tiddlywiki": {
+    "mode": "tiddlywiki",
+    "mime": "text/x-tiddlywiki"
+  },
+  "wiki": {
+    "mode": "tiddlywiki",
+    "mime": "text/x-tiddlywiki"
+  },
+  "tiki": {
+    "mode": "tiki",
+    "mime": "text/tiki"
+  },
+  "tikiwiki": {
+    "mode": "tiki",
+    "mime": "text/tiki"
+  },
+  "tiki-wiki": {
+    "mode": "tiki",
+    "mime": "text/tiki"
+  },
+  "toml": {
+    "mode": "toml",
+    "mime": "text/x-toml"
+  },
+  "turtle": {
+    "mode": "turtle",
+    "mime": "text/turtle"
+  },
+  "twig": {
+    "mode": "twig",
+    "mime": "text/x-twig"
+  },
+  "typescript": {
+    "mode": "javascript",
+    "mime": "application/typescript"
+  },
+  "vb": {
+    "mode": "vb",
+    "mime": "text/x-vb"
+  },
+  "basic": {
+    "mode": "vb",
+    "mime": "text/x-vb"
+  },
+  "vbscript": {
+    "mode": "vbscript",
+    "mime": "text/vbscript"
+  },
+  "velocity": {
+    "mode": "velocity",
+    "mime": "text/velocity"
+  },
+  "verilog": {
+    "mode": "verilog",
+    "mime": "text/x-verilog"
+  },
+  "vue": {
+    "mode": "vue",
+    "mime": "script/x-vue"
+  },
+  "vue.js": {
+    "mode": "vue",
+    "mime": "script/x-vue"
+  },
+  "vue-template": {
+    "mode": "vue",
+    "mime": "script/x-vue"
+  },
+  "web-idl": {
+    "mode": "webidl",
+    "mime": "text/x-webidl"
+  },
+  "xml": {
+    "mode": "xml",
+    "mime": "application/xml"
+  },
+  "xquery": {
+    "mode": "xquery",
+    "mime": "application/xquery"
+  },
+  "yacas": {
+    "mode": "yacas",
+    "mime": "text/x-yacas"
+  },
+  "yaml": {
+    "mode": "yaml",
+    "mime": "text/x-yaml"
+  },
+  "stex": {
+    "mode": "stex",
+    "mime": "text/x-latex"
+  },
+  "latex": {
+    "mode": "stex",
+    "mime": "text/x-latex"
+  },
+  "php+html": {
+    "mode": "php",
+    "mime": "application/x-httpd-php"
+  }
+}

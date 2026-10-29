@@ -45,6 +45,33 @@ struct LacEditorCommands: Commands {
                 .keyboardShortcut("o", modifiers: .command)
                 .disabled(appState == nil)
             Button {
+                appState?.openFolder()
+            } label: {
+                Label(L10n.tr("打开文件夹…"), systemImage: "folder")
+            }
+                .disabled(appState == nil)
+            Button(L10n.tr("快速打开…")) {
+                guard let appState else { return }
+                if !appState.isSidebarEffectivelyVisible { appState.toggleSidebar() }
+                appState.folderSearch.requestQuickOpen()
+            }
+            .keyboardShortcut("o", modifiers: [.command, .shift])
+            .disabled(appState == nil || (appState?.folderWorkspace.rootURL == nil &&
+                windowManager.recentFiles.folderURLs.isEmpty && windowManager.sidebarLibrary.pinnedFolderPaths.isEmpty))
+            Menu(L10n.tr("文件夹位置")) {
+                ForEach(windowManager.sidebarLibrary.pinnedFolderURLs, id: \.self) { url in
+                    Button { appState?.openFolder(url) } label: { Label(url.path, systemImage: "pin") }
+                }
+                ForEach(windowManager.recentFiles.folderURLs.filter { !windowManager.sidebarLibrary.isPinnedFolder($0) }, id: \.self) { url in
+                    Button { appState?.openFolder(url) } label: { Label(url.path, systemImage: "folder") }
+                }
+                if !windowManager.recentFiles.folderURLs.isEmpty {
+                    Divider()
+                    Button(L10n.tr("清除最近文件夹")) { windowManager.recentFiles.clearFolders() }
+                }
+            }
+            .disabled(appState == nil)
+            Button {
                 appState?.importDocument()
             } label: {
                 Label(L10n.tr("导入…"), systemImage: "square.and.arrow.down")
@@ -89,13 +116,25 @@ struct LacEditorCommands: Commands {
                 .keyboardShortcut("s", modifiers: [.command, .shift])
                 .disabled(appState == nil)
             Menu(L10n.tr("导出")) {
-                ForEach(PandocExportFormat.allCases) { format in
-                    Button(format.title) {
-                        appState?.exportMarkdown(as: format)
+                Button("HTML") { appState?.exportMarkdown(as: .html) }
+                Button(L10n.tr("HTML（无样式）")) { appState?.exportMarkdown(as: .htmlPlain) }
+                Button("PDF") { appState?.exportMarkdown(as: .pdf) }
+                Button("PNG") { appState?.exportMarkdownImage() }
+                if let profiles = appState?.preferences.markdownExportConfiguration.profiles {
+                    ForEach(profiles.filter(\.enabled)) { profile in
+                        Button(profile.name) { appState?.exportMarkdown(profile: profile) }
                     }
                 }
+                Divider()
+                Button(L10n.tr("使用上次设置导出")) { appState?.repeatMarkdownExport(overwrite: false) }
+                    .disabled(appState?.hasPreviousMarkdownExport != true)
+                Button(L10n.tr("使用上次设置导出并覆盖")) { appState?.repeatMarkdownExport(overwrite: true) }
+                    .disabled(appState?.hasPreviousMarkdownExport != true)
             }
             .disabled(appState?.selectedDocument?.language != .markdown)
+            Button(L10n.tr("打印 Markdown…")) { appState?.printMarkdown() }
+                .keyboardShortcut("p", modifiers: .command)
+                .disabled(appState?.selectedDocument?.language != .markdown)
             Divider()
             Button {
                 if let keyWindow = NSApp.keyWindow,
@@ -240,6 +279,17 @@ struct LacEditorCommands: Commands {
             .keyboardShortcut("j", modifiers: [.command, .shift])
             .disabled(appState?.hostWindow == nil)
             Divider()
+            Toggle(L10n.tr("聚焦当前段落"), isOn: Binding(
+                get: { appState?.isFocusMode ?? false },
+                set: { _ in appState?.toggleFocusMode() }
+            ))
+            .disabled(appState?.hostWindow == nil)
+            Toggle(L10n.tr("打字机模式"), isOn: Binding(
+                get: { appState?.isTypewriterMode ?? false },
+                set: { _ in appState?.toggleTypewriterMode() }
+            ))
+            .disabled(appState?.hostWindow == nil)
+            Divider()
             Picker(L10n.tr("Markdown 编辑方式"), selection: Binding(
                 get: { appState?.selectedDocument?.isMarkdownFormatted ?? false },
                 set: { appState?.selectedDocument?.isMarkdownFormatted = $0 }
@@ -335,6 +385,13 @@ struct LacEditorCommands: Commands {
                 .keyboardShortcut("0", modifiers: .command)
                 .disabled(appState == nil)
             Divider()
+            Button(L10n.tr("放大视图")) { appState?.increaseViewMagnification() }
+                .disabled(appState == nil)
+            Button(L10n.tr("缩小视图")) { appState?.decreaseViewMagnification() }
+                .disabled(appState == nil)
+            Button(L10n.tr("实际大小")) { appState?.resetViewMagnification() }
+                .disabled(appState == nil)
+            Divider()
             Picker(
                 selection: Binding(
                     get: { appState?.theme ?? .system },
@@ -354,12 +411,30 @@ struct LacEditorCommands: Commands {
 
         CommandMenu(L10n.tr("Markdown 格式")) {
             Group {
+                Button(L10n.tr("复制 Markdown")) { appState?.markdownClipboard(.copyMarkdown) }
+                Button(L10n.tr("复制 HTML 代码")) { appState?.markdownClipboard(.copyHTML) }
+                Button(L10n.tr("粘贴为源文本")) { appState?.markdownClipboard(.pasteSource) }
+                Button(L10n.tr("复制代码块内容")) { appState?.markdownClipboard(.copyCodeBlock) }
+                Button(L10n.tr("设置代码块语言")) { appState?.markdownClipboard(.setCodeLanguage) }
+                Divider()
                 Button(L10n.tr("加粗")) { appState?.formatMarkdown(.bold) }
                     .keyboardShortcut("b", modifiers: .command)
                 Button(L10n.tr("斜体")) { appState?.formatMarkdown(.italic) }
                     .keyboardShortcut("i", modifiers: .command)
                 Button(L10n.tr("删除线")) { appState?.formatMarkdown(.strikethrough) }
                 Button(L10n.tr("行内代码")) { appState?.formatMarkdown(.inlineCode) }
+                Button(L10n.tr("行内公式")) { appState?.formatMarkdown(.inlineMath) }
+                Button(L10n.tr("链接…")) { appState?.presentMarkdownLink() }
+                Button(L10n.tr("图片…")) { _ = appState?.presentMarkdownImage() }
+                Button(L10n.tr("设置图片资源根路径…")) { appState?.presentMarkdownResourceRoot() }
+                Button(L10n.tr("复制选中图片到…")) { appState?.copyMarkdownImages(selectedOnly: true, remoteOnly: false) }
+                Button(L10n.tr("复制全部图片到…")) { appState?.copyMarkdownImages(selectedOnly: false, remoteOnly: false) }
+                Button(L10n.tr("下载全部网络图片到…")) { appState?.copyMarkdownImages(selectedOnly: false, remoteOnly: true) }
+                Button(L10n.tr("移动或重命名图片…")) { appState?.moveOrDeleteMarkdownImage(deleteOriginal: false) }
+                Button(L10n.tr("移动全部图片到…")) { appState?.moveAllMarkdownImages() }
+                Button(L10n.tr("删除图片及原文件…")) { appState?.moveOrDeleteMarkdownImage(deleteOriginal: true) }
+                Button(L10n.tr("上传选中图片")) { appState?.uploadMarkdownImages(selectedOnly: true) }
+                Button(L10n.tr("上传全部本地图片")) { appState?.uploadMarkdownImages(selectedOnly: false) }
                 Divider()
                 ForEach(1...6, id: \.self) { level in
                     Button(L10n.tr("标题 %@ 级", String(level))) {
@@ -367,6 +442,34 @@ struct LacEditorCommands: Commands {
                     }
                 }
                 Button(L10n.tr("引用")) { appState?.formatMarkdown(.quote) }
+                Divider()
+                Button(L10n.tr("无序列表")) { appState?.formatMarkdown(.bulletList) }
+                Button(L10n.tr("有序列表")) { appState?.formatMarkdown(.numberedList) }
+                Button(L10n.tr("任务列表")) { appState?.formatMarkdown(.taskList) }
+                Button(L10n.tr("代码块")) { appState?.formatMarkdown(.fencedCode) }
+                Button(L10n.tr("公式块")) { appState?.formatMarkdown(.blockMath) }
+                Button(L10n.tr("分隔线")) { appState?.formatMarkdown(.horizontalRule) }
+                Menu(L10n.tr("表格")) {
+                    Button(L10n.tr("插入表格")) { appState?.formatMarkdown(.table(.create(rows: 1, columns: 2))) }
+                    Divider()
+                    Button(L10n.tr("在上方插入行")) { appState?.formatMarkdown(.table(.insertRowBefore)) }
+                    Button(L10n.tr("在下方插入行")) { appState?.formatMarkdown(.table(.insertRowAfter)) }
+                    Button(L10n.tr("删除行")) { appState?.formatMarkdown(.table(.deleteRow)) }
+                    Button(L10n.tr("上移行")) { appState?.formatMarkdown(.table(.moveRowUp)) }
+                    Button(L10n.tr("下移行")) { appState?.formatMarkdown(.table(.moveRowDown)) }
+                    Divider()
+                    Button(L10n.tr("在左侧插入列")) { appState?.formatMarkdown(.table(.insertColumnBefore)) }
+                    Button(L10n.tr("在右侧插入列")) { appState?.formatMarkdown(.table(.insertColumnAfter)) }
+                    Button(L10n.tr("删除列")) { appState?.formatMarkdown(.table(.deleteColumn)) }
+                    Button(L10n.tr("左移列")) { appState?.formatMarkdown(.table(.moveColumnLeft)) }
+                    Button(L10n.tr("右移列")) { appState?.formatMarkdown(.table(.moveColumnRight)) }
+                    Menu(L10n.tr("列对齐")) {
+                        Button(L10n.tr("默认对齐")) { appState?.formatMarkdown(.table(.align(.unspecified))) }
+                        Button(L10n.tr("左对齐")) { appState?.formatMarkdown(.table(.align(.left))) }
+                        Button(L10n.tr("居中对齐")) { appState?.formatMarkdown(.table(.align(.center))) }
+                        Button(L10n.tr("右对齐")) { appState?.formatMarkdown(.table(.align(.right))) }
+                    }
+                }
             }
             .disabled(appState?.selectedDocument?.language != .markdown || appState?.selectedDocument?.ioState != .idle)
         }

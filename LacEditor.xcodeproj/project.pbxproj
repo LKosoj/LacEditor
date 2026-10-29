@@ -113,6 +113,66 @@
 		A00000000000000000000137 /* SyntaxParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000037 /* SyntaxParser.swift */; };
 		A00000000000000000000135 /* DocumentRecoveryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000035 /* DocumentRecoveryStore.swift */; };
 		A00000000000000000000136 /* WorkspaceSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000036 /* WorkspaceSessionStore.swift */; };
+		D01200000000000000000001 /* DocumentStatistics.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000002; };
+		D01200000000000000000003 /* MarkdownTableEditingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000004; };
+		D01200000000000000000005 /* MarkdownLinkEditingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000006; };
+		D01200000000000000000007 /* MarkdownPDFExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000008; };
+		D01200000000000000000009 /* FolderWorkspaceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000000A; };
+		D0120000000000000000000B /* FolderWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000000C; };
+		D0120000000000000000000D /* MarkdownAutoPairService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000000E; };
+		D0120000000000000000000F /* FolderSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000010; };
+		D01200000000000000000011 /* MarkdownTableCellEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000012; };
+		D01200000000000000000013 /* FolderSearchController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000014; };
+		D01200000000000000000015 /* FolderSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000016; };
+		D01200000000000000000017 /* MarkdownImageEditingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000018; };
+		D01200000000000000000019 /* ClipboardMarkdownConversionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000001A; };
+		D0120000000000000000001B /* MermaidRenderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000001C; };
+		D0120000000000000000001D /* EmojiShortcodeResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000001E; };
+		D0120000000000000000001F /* MathJaxRenderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000020; };
+		D01200000000000000000021 /* MathJax in Resources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000022; };
+		D0120000000000000000002D /* MarkdownTagReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000002E; };
+		D0120000000000000000002B /* MarkdownImageUploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000002C; };
+		D01200000000000000000029 /* MarkdownClipboardCopyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000002A; };
+		D01200000000000000000027 /* MarkdownHTMLMediaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000028; };
+		D01200000000000000000025 /* MarkdownMathExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000026; };
+		D01200000000000000000023 /* CustomMarkdownExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000024; };
+		D01200000000000000000033 /* MarkdownLinkNavigationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000034; };
+		D01200000000000000000035 /* MarkdownImageCopyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000036; };
+		D01200000000000000000037 /* HTML-Entities-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000038; };
+		D01200000000000000000039 /* MarkdownReadableText.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000003A; };
+		D0120000000000000000003B /* MarkdownReadableTextParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000003C; };
+		D0120000000000000000003D /* LegacyDiagrams in Resources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000003E; };
+		D0120000000000000000003F /* MarkdownInlineTextProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000040; };
+		D01200000000000000000041 /* LegacyDiagramRenderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000042; };
+		D01200000000000000000043 /* MarkdownExportImagesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000044; };
+		D01200000000000000000045 /* MarkdownCodeHighlightService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000046; };
+		D01200000000000000000047 /* MarkdownTextSourceCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000048; };
+		D0120000000000000000004B /* Yams in Frameworks */ = {isa = PBXBuildFile; productRef = D0120000000000000000004A /* Yams */; };
+		D0120000000000000000004D /* Yams-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000004C; };
+		D0120000000000000000004E /* MarkdownLanguageHighlightService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000004F; };
+		D01200000000000000000056 /* MarkdownColorOverrides.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000057; };
+		D01200000000000000000050 /* CodeMirror in Resources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000051; };
+		D01200000000000000000052 /* HighlightJS in Resources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000053; };
+		D01200000000000000000054 /* JavaScriptCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D01200000000000000000055; };
+		D01200000000000000000058 /* PrismJS in Resources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000059; };
+		D0120000000000000000005A /* MarkdownEmojiCandidateExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000005B; };
+		D0120000000000000000005C /* IPicImageUploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000005D; };
+		D0120000000000000000005E /* iPicImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000005F; };
+		D01200000000000000000060 /* iPicImageHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000061; };
+		D01200000000000000000062 /* iPicPasteboardHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000063; };
+		D01200000000000000000064 /* iPicUploadHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000065; };
+		D01200000000000000000066 /* iPicUploadResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000067; };
+		D01200000000000000000068 /* iPicUploader.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000069; };
+		D0120000000000000000006A /* iPicUploader-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000006B; };
+		D0120000000000000000006E /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = D0120000000000000000006D /* SwiftSoup */; };
+		D01200000000000000000070 /* SwiftSoup-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000006F; };
+		D01200000000000000000071 /* Gemoji in Resources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000072; };
+		D01200000000000000000073 /* CoreText.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D01200000000000000000074; };
+		D01200000000000000000075 /* MarkdownListStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000076; };
+		D01200000000000000000077 /* MarkdownMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000078; };
+		D01200000000000000000079 /* MarkdownInlineStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000080; };
+		D01200000000000000000081 /* MarkdownRubyRenderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000082; };
+		D01200000000000000000083 /* MarkdownHTMLBlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000084; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -236,6 +296,64 @@
 		A00000000000000000000035 /* DocumentRecoveryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentRecoveryStore.swift; sourceTree = "<group>"; };
 		A00000000000000000000036 /* WorkspaceSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceSessionStore.swift; sourceTree = "<group>"; };
 
+		D01200000000000000000002 /* DocumentStatistics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStatistics.swift; sourceTree = "<group>"; };
+		D01200000000000000000004 /* MarkdownTableEditingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTableEditingService.swift; sourceTree = "<group>"; };
+		D01200000000000000000006 /* MarkdownLinkEditingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownLinkEditingService.swift; sourceTree = "<group>"; };
+		D01200000000000000000008 /* MarkdownPDFExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownPDFExportService.swift; sourceTree = "<group>"; };
+		D0120000000000000000000A /* FolderWorkspaceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderWorkspaceStore.swift; sourceTree = "<group>"; };
+		D0120000000000000000000C /* FolderWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderWorkspaceView.swift; sourceTree = "<group>"; };
+		D0120000000000000000000E /* MarkdownAutoPairService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownAutoPairService.swift; sourceTree = "<group>"; };
+		D01200000000000000000010 /* FolderSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderSearchService.swift; sourceTree = "<group>"; };
+		D01200000000000000000012 /* MarkdownTableCellEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTableCellEditor.swift; sourceTree = "<group>"; };
+		D01200000000000000000014 /* FolderSearchController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderSearchController.swift; sourceTree = "<group>"; };
+		D01200000000000000000016 /* FolderSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderSearchView.swift; sourceTree = "<group>"; };
+		D01200000000000000000018 /* MarkdownImageEditingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownImageEditingService.swift; sourceTree = "<group>"; };
+		D0120000000000000000001A /* ClipboardMarkdownConversionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardMarkdownConversionService.swift; sourceTree = "<group>"; };
+		D0120000000000000000001C /* MermaidRenderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MermaidRenderService.swift; sourceTree = "<group>"; };
+		D0120000000000000000001E /* EmojiShortcodeResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiShortcodeResolver.swift; sourceTree = "<group>"; };
+		D01200000000000000000020 /* MathJaxRenderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MathJaxRenderService.swift; sourceTree = "<group>"; };
+		D01200000000000000000022 /* MathJax */ = {isa = PBXFileReference; lastKnownFileType = folder; name = MathJax; path = Resources/MathJax; sourceTree = "<group>"; };
+		D0120000000000000000002E /* MarkdownTagReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTagReader.swift; sourceTree = "<group>"; };
+		D0120000000000000000002C /* MarkdownImageUploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownImageUploadService.swift; sourceTree = "<group>"; };
+		D0120000000000000000002A /* MarkdownClipboardCopyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownClipboardCopyService.swift; sourceTree = "<group>"; };
+		D01200000000000000000028 /* MarkdownHTMLMediaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownHTMLMediaService.swift; sourceTree = "<group>"; };
+		D01200000000000000000026 /* MarkdownMathExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownMathExtension.swift; sourceTree = "<group>"; };
+		D01200000000000000000024 /* CustomMarkdownExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomMarkdownExportService.swift; sourceTree = "<group>"; };
+		D01200000000000000000034 /* MarkdownLinkNavigationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownLinkNavigationService.swift; sourceTree = "<group>"; };
+		D01200000000000000000036 /* MarkdownImageCopyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownImageCopyService.swift; sourceTree = "<group>"; };
+		D01200000000000000000038 /* HTML-Entities-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = LacEditor/Resources/HTML-Entities-LICENSE.txt; sourceTree = SOURCE_ROOT; };
+		D0120000000000000000003A /* MarkdownReadableText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownReadableText.swift; sourceTree = "<group>"; };
+		D0120000000000000000003C /* MarkdownReadableTextParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownReadableTextParser.swift; sourceTree = "<group>"; };
+		D0120000000000000000003E /* LegacyDiagrams */ = {isa = PBXFileReference; lastKnownFileType = folder; name = LegacyDiagrams; path = Resources/LegacyDiagrams; sourceTree = "<group>"; };
+		D01200000000000000000040 /* MarkdownInlineTextProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownInlineTextProjection.swift; sourceTree = "<group>"; };
+		D01200000000000000000042 /* LegacyDiagramRenderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyDiagramRenderService.swift; sourceTree = "<group>"; };
+		D01200000000000000000044 /* MarkdownExportImagesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownExportImagesService.swift; sourceTree = "<group>"; };
+		D01200000000000000000046 /* MarkdownCodeHighlightService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownCodeHighlightService.swift; sourceTree = "<group>"; };
+		D01200000000000000000048 /* MarkdownTextSourceCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTextSourceCapture.swift; sourceTree = "<group>"; };
+		D0120000000000000000004C /* Yams-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = LacEditor/Resources/Yams-LICENSE.txt; sourceTree = SOURCE_ROOT; };
+		D0120000000000000000004F /* MarkdownLanguageHighlightService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownLanguageHighlightService.swift; sourceTree = "<group>"; };
+		D01200000000000000000057 /* MarkdownColorOverrides.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownColorOverrides.swift; sourceTree = "<group>"; };
+		D01200000000000000000051 /* CodeMirror */ = {isa = PBXFileReference; lastKnownFileType = folder; name = CodeMirror; path = Resources/CodeMirror; sourceTree = "<group>"; };
+		D01200000000000000000053 /* HighlightJS */ = {isa = PBXFileReference; lastKnownFileType = folder; name = HighlightJS; path = Resources/HighlightJS; sourceTree = "<group>"; };
+		D01200000000000000000055 /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
+		D01200000000000000000059 /* PrismJS */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PrismJS; path = Resources/PrismJS; sourceTree = "<group>"; };
+		D0120000000000000000005B /* MarkdownEmojiCandidateExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEmojiCandidateExtractor.swift; sourceTree = "<group>"; };
+		D0120000000000000000005D /* IPicImageUploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPicImageUploadService.swift; sourceTree = "<group>"; };
+		D0120000000000000000005F /* iPicImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iPicUploader/iPicImage.swift; sourceTree = "<group>"; };
+		D01200000000000000000061 /* iPicImageHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iPicUploader/iPicImageHost.swift; sourceTree = "<group>"; };
+		D01200000000000000000063 /* iPicPasteboardHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iPicUploader/iPicPasteboardHelper.swift; sourceTree = "<group>"; };
+		D01200000000000000000065 /* iPicUploadHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iPicUploader/iPicUploadHelper.swift; sourceTree = "<group>"; };
+		D01200000000000000000067 /* iPicUploadResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iPicUploader/iPicUploadResult.swift; sourceTree = "<group>"; };
+		D01200000000000000000069 /* iPicUploader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iPicUploader/iPicUploader.swift; sourceTree = "<group>"; };
+		D0120000000000000000006B /* iPicUploader-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = LacEditor/Resources/iPicUploader-LICENSE.txt; sourceTree = SOURCE_ROOT; };
+		D0120000000000000000006F /* SwiftSoup-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = LacEditor/Resources/SwiftSoup-LICENSE.txt; sourceTree = SOURCE_ROOT; };
+		D01200000000000000000072 /* Gemoji */ = {isa = PBXFileReference; lastKnownFileType = folder; path = LacEditor/Resources/Gemoji; sourceTree = SOURCE_ROOT; };
+		D01200000000000000000074 /* CoreText.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreText.framework; path = System/Library/Frameworks/CoreText.framework; sourceTree = SDKROOT; };
+		D01200000000000000000076 /* MarkdownListStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownListStyle.swift; sourceTree = "<group>"; };
+		D01200000000000000000078 /* MarkdownMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownMedia.swift; sourceTree = "<group>"; };
+		D01200000000000000000080 /* MarkdownInlineStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownInlineStyle.swift; sourceTree = "<group>"; };
+		D01200000000000000000082 /* MarkdownRubyRenderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRubyRenderService.swift; sourceTree = "<group>"; };
+		D01200000000000000000084 /* MarkdownHTMLBlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownHTMLBlockView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -246,10 +364,14 @@
 				A00000000000000000000121 /* AppKit.framework in Frameworks */,
 				A00000000000000000000122 /* SwiftUI.framework in Frameworks */,
 				A00000000000000000000123 /* WebKit.framework in Frameworks */,
+				D01200000000000000000054 /* JavaScriptCore.framework in Frameworks */,
+				D01200000000000000000073 /* CoreText.framework in Frameworks */,
 				A00000000000000000000124 /* UniformTypeIdentifiers.framework in Frameworks */,
 				A0000000000000000000012E /* cmark-gfm in Frameworks */,
 				A0000000000000000000012F /* cmark-gfm-extensions in Frameworks */,
 				A00000000000000000000138 /* SwiftTreeSitter in Frameworks */,
+				D0120000000000000000004B /* Yams in Frameworks */,
+				D0120000000000000000006E /* SwiftSoup in Frameworks */,
 				A00000000000000000000139 /* TreeSitterJavaScript in Frameworks */,
 				A0000000000000000000013A /* TreeSitterTypeScript in Frameworks */,
 				A0000000000000000000013B /* TreeSitterPython in Frameworks */,
@@ -306,6 +428,16 @@
 				D01000000000000000000012 /* AIDocumentToolsView.swift */,
 				D01100000000000000000002 /* AITranslationLanguage.swift */,
 				D00C00000000000000000002 /* Mermaid */,
+				D01200000000000000000022 /* MathJax */,
+				D0120000000000000000003E /* LegacyDiagrams */,
+				D01200000000000000000059 /* PrismJS */,
+				D01200000000000000000072 /* Gemoji */,
+				D01200000000000000000053 /* HighlightJS */,
+				D01200000000000000000051 /* CodeMirror */,
+				D01200000000000000000038 /* HTML-Entities-LICENSE.txt */,
+				D0120000000000000000004C /* Yams-LICENSE.txt */,
+				D0120000000000000000006F /* SwiftSoup-LICENSE.txt */,
+				D0120000000000000000006B /* iPicUploader-LICENSE.txt */,
 				A00000000000000000000302 /* App */,
 				A00000000000000000000303 /* Models */,
 				A00000000000000000000304 /* Services */,
@@ -319,12 +451,12 @@
 			sourceTree = "<group>";
 		};
 		A00000000000000000000302 /* App */ = {isa = PBXGroup; children = (D00700000000000000000002, A00000000000000000000001, A00000000000000000000002, A0000000000000000000002C, A00000000000000000000003, A0000000000000000000001B); path = App; sourceTree = "<group>"; };
-		A00000000000000000000303 /* Models */ = {isa = PBXGroup; children = (D00A00000000000000000002, A00000000000000000000004, A00000000000000000000005, A00000000000000000000006); path = Models; sourceTree = "<group>"; };
-		A00000000000000000000304 /* Services */ = {isa = PBXGroup; children = (D00B00000000000000000002, D0090000000000000000000D, D00800000000000000000002, A00000000000000000000007, A00000000000000000000035, A00000000000000000000036, A00000000000000000000008, A0000000000000000000002D, A00000000000000000000009, A00000000000000000000017, A0000000000000000000002A, D00400000000000000000002, D00600000000000000000002); path = Services; sourceTree = "<group>"; };
-		A00000000000000000000305 /* Editor */ = {isa = PBXGroup; children = (D00A00000000000000000006, A0000000000000000000000A, A0000000000000000000000B, A0000000000000000000000C, A00000000000000000000026, A00000000000000000000028, A00000000000000000000029, A0000000000000000000000D, A0000000000000000000000E, A00000000000000000000034, A00000000000000000000037, A00000000000000000000030, A00000000000000000000019, A00000000000000000000025); path = Editor; sourceTree = "<group>"; };
-		A00000000000000000000306 /* Preview */ = {isa = PBXGroup; children = (D00A00000000000000000004, A0000000000000000000000F, A00000000000000000000010); path = Preview; sourceTree = "<group>"; };
-		A00000000000000000000307 /* Views */ = {isa = PBXGroup; children = (D00B00000000000000000004, A00000000000000000000027, A00000000000000000000011, A00000000000000000000012, A00000000000000000000013, A00000000000000000000031, A00000000000000000000032, A00000000000000000000014, A00000000000000000000033, A00000000000000000000015, A00000000000000000000016, A00000000000000000000018, A0000000000000000000002B, A0000000000000000000001A, D00500000000000000000002, D00600000000000000000004); path = Views; sourceTree = "<group>"; };
-		A00000000000000000000309 /* Frameworks */ = {isa = PBXGroup; children = (A00000000000000000000021, A00000000000000000000022, A00000000000000000000023, A00000000000000000000024); name = Frameworks; sourceTree = "<group>"; };
+		A00000000000000000000303 /* Models */ = {isa = PBXGroup; children = (D01200000000000000000080, D01200000000000000000078, D01200000000000000000076, D01200000000000000000057, D0120000000000000000003A, D01200000000000000000002, D00A00000000000000000002, A00000000000000000000004, A00000000000000000000005, A00000000000000000000006); path = Models; sourceTree = "<group>"; };
+		A00000000000000000000304 /* Services */ = {isa = PBXGroup; children = (D0120000000000000000005D, D0120000000000000000005F, D01200000000000000000061, D01200000000000000000063, D01200000000000000000065, D01200000000000000000067, D01200000000000000000069, D0120000000000000000005B, D01200000000000000000040, D01200000000000000000024, D01200000000000000000028, D0120000000000000000002A, D0120000000000000000002C, D0120000000000000000002E, D01200000000000000000034, D01200000000000000000036, D0120000000000000000001E, D0120000000000000000001A, D01200000000000000000018, D01200000000000000000014, D01200000000000000000010, D0120000000000000000000E, D0120000000000000000000A, D01200000000000000000006, D01200000000000000000004, D00B00000000000000000002, D0090000000000000000000D, D00800000000000000000002, A00000000000000000000007, A00000000000000000000035, A00000000000000000000036, A00000000000000000000008, A0000000000000000000002D, A00000000000000000000009, A00000000000000000000017, A0000000000000000000002A, D00400000000000000000002, D00600000000000000000002); path = Services; sourceTree = "<group>"; };
+		A00000000000000000000305 /* Editor */ = {isa = PBXGroup; children = (D01200000000000000000084, D01200000000000000000082, D0120000000000000000004F, D01200000000000000000046, D01200000000000000000012, D00A00000000000000000006, A0000000000000000000000A, A0000000000000000000000B, A0000000000000000000000C, A00000000000000000000026, A00000000000000000000028, A00000000000000000000029, A0000000000000000000000D, A0000000000000000000000E, A00000000000000000000034, A00000000000000000000037, A00000000000000000000030, A00000000000000000000019, A00000000000000000000025); path = Editor; sourceTree = "<group>"; };
+		A00000000000000000000306 /* Preview */ = {isa = PBXGroup; children = (D01200000000000000000048, D01200000000000000000044, D01200000000000000000042, D0120000000000000000003C, D01200000000000000000020, D01200000000000000000026, D0120000000000000000001C, D01200000000000000000008, D00A00000000000000000004, A0000000000000000000000F, A00000000000000000000010); path = Preview; sourceTree = "<group>"; };
+		A00000000000000000000307 /* Views */ = {isa = PBXGroup; children = (D01200000000000000000016, D0120000000000000000000C, D00B00000000000000000004, A00000000000000000000027, A00000000000000000000011, A00000000000000000000012, A00000000000000000000013, A00000000000000000000031, A00000000000000000000032, A00000000000000000000014, A00000000000000000000033, A00000000000000000000015, A00000000000000000000016, A00000000000000000000018, A0000000000000000000002B, A0000000000000000000001A, D00500000000000000000002, D00600000000000000000004); path = Views; sourceTree = "<group>"; };
+		A00000000000000000000309 /* Frameworks */ = {isa = PBXGroup; children = (D01200000000000000000074, D01200000000000000000055, A00000000000000000000021, A00000000000000000000022, A00000000000000000000023, A00000000000000000000024); name = Frameworks; sourceTree = "<group>"; };
 		A0000000000000000000030A /* Products */ = {isa = PBXGroup; children = (A00000000000000000000020); name = Products; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
@@ -347,6 +479,8 @@
 				A0000000000000000000081E /* cmark-gfm */,
 				A0000000000000000000081F /* cmark-gfm-extensions */,
 				A00000000000000000000820 /* SwiftTreeSitter */,
+				D0120000000000000000004A /* Yams */,
+				D0120000000000000000006D /* SwiftSoup */,
 				A00000000000000000000821 /* TreeSitterJavaScript */,
 				A00000000000000000000822 /* TreeSitterTypeScript */,
 				A00000000000000000000823 /* TreeSitterPython */,
@@ -385,6 +519,8 @@
 			packageReferences = (
 				A0000000000000000000080E /* XCRemoteSwiftPackageReference "swift-cmark" */,
 				A0000000000000000000080F /* XCRemoteSwiftPackageReference "swift-tree-sitter" */,
+				D01200000000000000000049 /* XCRemoteSwiftPackageReference "Yams" */,
+				D0120000000000000000006C /* XCRemoteSwiftPackageReference "SwiftSoup" */,
 				A00000000000000000000810 /* XCLocalSwiftPackageReference "TreeSitterJavaScript" */,
 				A00000000000000000000811 /* XCLocalSwiftPackageReference "TreeSitterTypeScript" */,
 				A00000000000000000000812 /* XCLocalSwiftPackageReference "TreeSitterPython" */,
@@ -410,6 +546,15 @@
 			buildActionMask = 2147483647;
 			files = (
 				D00C00000000000000000001 /* Mermaid in Resources */,
+				D01200000000000000000021 /* MathJax in Resources */,
+				D0120000000000000000003D /* LegacyDiagrams in Resources */,
+				D01200000000000000000058 /* PrismJS in Resources */,
+				D01200000000000000000071 /* Gemoji in Resources */,
+				D01200000000000000000052 /* HighlightJS in Resources */,
+				D01200000000000000000050 /* CodeMirror in Resources */, D01200000000000000000037 /* HTML-Entities-LICENSE.txt in Resources */,
+				D0120000000000000000004D /* Yams-LICENSE.txt in Resources */,
+				D01200000000000000000070 /* SwiftSoup-LICENSE.txt in Resources */,
+				D0120000000000000000006A /* iPicUploader-LICENSE.txt in Resources */,
 				A0000000000000000000011C /* Assets.xcassets in Resources */,
 				D00F00000000000000000001 /* InfoPlist.strings in Resources */,
 				A00000000000000000000144 /* Localizable.strings in Resources */,
@@ -442,6 +587,52 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D01200000000000000000007 /* MarkdownPDFExportService.swift in Sources */,
+				D01200000000000000000009 /* FolderWorkspaceStore.swift in Sources */,
+				D0120000000000000000000B /* FolderWorkspaceView.swift in Sources */,
+				D01200000000000000000001 /* DocumentStatistics.swift in Sources */,
+				D0120000000000000000005A /* MarkdownEmojiCandidateExtractor.swift in Sources */,
+				D0120000000000000000005C /* IPicImageUploadService.swift in Sources */,
+				D0120000000000000000005E /* iPicImage.swift in Sources */,
+				D01200000000000000000060 /* iPicImageHost.swift in Sources */,
+				D01200000000000000000062 /* iPicPasteboardHelper.swift in Sources */,
+				D01200000000000000000064 /* iPicUploadHelper.swift in Sources */,
+				D01200000000000000000066 /* iPicUploadResult.swift in Sources */,
+				D01200000000000000000068 /* iPicUploader.swift in Sources */,
+				D01200000000000000000056 /* MarkdownColorOverrides.swift in Sources */,
+				D01200000000000000000075 /* MarkdownListStyle.swift in Sources */,
+				D01200000000000000000077 /* MarkdownMedia.swift in Sources */,
+				D01200000000000000000079 /* MarkdownInlineStyle.swift in Sources */,
+				D01200000000000000000081 /* MarkdownRubyRenderService.swift in Sources */,
+				D01200000000000000000083 /* MarkdownHTMLBlockView.swift in Sources */,
+				D0120000000000000000004E /* MarkdownLanguageHighlightService.swift in Sources */,
+				D01200000000000000000047 /* MarkdownTextSourceCapture.swift in Sources */,
+				D01200000000000000000045 /* MarkdownCodeHighlightService.swift in Sources */,
+				D01200000000000000000043 /* MarkdownExportImagesService.swift in Sources */,
+				D01200000000000000000041 /* LegacyDiagramRenderService.swift in Sources */,
+				D0120000000000000000003F /* MarkdownInlineTextProjection.swift in Sources */,
+				D0120000000000000000003B /* MarkdownReadableTextParser.swift in Sources */,
+				D01200000000000000000039 /* MarkdownReadableText.swift in Sources */,
+				D01200000000000000000023 /* CustomMarkdownExportService.swift in Sources */,
+				D0120000000000000000001F /* MathJaxRenderService.swift in Sources */,
+				D01200000000000000000025 /* MarkdownMathExtension.swift in Sources */,
+				D01200000000000000000027 /* MarkdownHTMLMediaService.swift in Sources */,
+				D01200000000000000000029 /* MarkdownClipboardCopyService.swift in Sources */,
+				D0120000000000000000002B /* MarkdownImageUploadService.swift in Sources */,
+				D0120000000000000000002D /* MarkdownTagReader.swift in Sources */,
+				D01200000000000000000033 /* MarkdownLinkNavigationService.swift in Sources */,
+				D01200000000000000000035 /* MarkdownImageCopyService.swift in Sources */,
+				D0120000000000000000001D /* EmojiShortcodeResolver.swift in Sources */,
+				D0120000000000000000001B /* MermaidRenderService.swift in Sources */,
+				D01200000000000000000019 /* ClipboardMarkdownConversionService.swift in Sources */,
+				D01200000000000000000017 /* MarkdownImageEditingService.swift in Sources */,
+				D01200000000000000000015 /* FolderSearchView.swift in Sources */,
+				D01200000000000000000013 /* FolderSearchController.swift in Sources */,
+				D01200000000000000000011 /* MarkdownTableCellEditor.swift in Sources */,
+				D0120000000000000000000F /* FolderSearchService.swift in Sources */,
+				D0120000000000000000000D /* MarkdownAutoPairService.swift in Sources */,
+				D01200000000000000000003 /* MarkdownTableEditingService.swift in Sources */,
+				D01200000000000000000005 /* MarkdownLinkEditingService.swift in Sources */,
 				D00D00000000000000000001 /* AIConfiguration.swift in Sources */,
 				D00D00000000000000000003 /* AIKeychainStore.swift in Sources */,
 				D00D00000000000000000005 /* AIClient.swift in Sources */,
@@ -554,6 +745,8 @@
 		A00000000000000000000819 /* XCLocalSwiftPackageReference "TreeSitterCPP" */ = { isa = XCLocalSwiftPackageReference; relativePath = Vendor/TreeSitterCPP; };
 		A0000000000000000000081A /* XCLocalSwiftPackageReference "TreeSitterSQL" */ = { isa = XCLocalSwiftPackageReference; relativePath = Vendor/TreeSitterSQL; };
 /* End XCLocalSwiftPackageReference section */
+		D01200000000000000000049 /* XCRemoteSwiftPackageReference "Yams" */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/jpsim/Yams.git"; requirement = {kind = revision; revision = a27b21e0c81c5bf42049b897a62aaf387e80f279; }; };
+		D0120000000000000000006C /* XCRemoteSwiftPackageReference "SwiftSoup" */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/scinfu/SwiftSoup.git"; requirement = {kind = revision; revision = 49dcadd93161f4a44b4994d3a3e8de9f085aface; }; };
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -603,6 +796,8 @@
 		A00000000000000000000829 /* TreeSitterC */ = { isa = XCSwiftPackageProductDependency; package = A00000000000000000000818 /* XCLocalSwiftPackageReference "TreeSitterC" */; productName = TreeSitterC; };
 		A0000000000000000000082A /* TreeSitterCPP */ = { isa = XCSwiftPackageProductDependency; package = A00000000000000000000819 /* XCLocalSwiftPackageReference "TreeSitterCPP" */; productName = TreeSitterCPP; };
 		A0000000000000000000082B /* TreeSitterSQL */ = { isa = XCSwiftPackageProductDependency; package = A0000000000000000000081A /* XCLocalSwiftPackageReference "TreeSitterSQL" */; productName = TreeSitterSQL; };
+		D0120000000000000000004A /* Yams */ = {isa = XCSwiftPackageProductDependency; package = D01200000000000000000049 /* XCRemoteSwiftPackageReference "Yams" */; productName = Yams; };
+		D0120000000000000000006D /* SwiftSoup */ = {isa = XCSwiftPackageProductDependency; package = D0120000000000000000006C /* XCRemoteSwiftPackageReference "SwiftSoup" */; productName = SwiftSoup; };
 /* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */

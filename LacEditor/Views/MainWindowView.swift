@@ -308,6 +308,11 @@ private struct DocumentEditorPane: View {
                         markdown: document.text,
                         revision: document.textRevision,
                         darkMode: darkMode,
+                        typography: appState.preferences.markdownTypography,
+                        mathOptions: .init(physics: appState.preferences.mathPhysicsEnabled, numbering: appState.preferences.mathNumbering),
+                        syntax: appState.preferences.markdownSyntax,
+                        viewMagnification: appState.viewMagnification,
+                        magnificationDidChange: appState.setViewMagnification,
                         document: document
                     )
                 ) : nil
@@ -343,7 +348,17 @@ private struct DocumentEditorPane: View {
             isOutlineVisible: appState.isSidebarEffectivelyVisible && appState.isMarkdownOutlineExpanded,
             spellingEnabled: appState.preferences.systemSpellingEnabled,
             grammarEnabled: appState.preferences.systemGrammarEnabled,
-            aiPreferences: appState.preferences
+            aiPreferences: appState.preferences,
+            isFocusMode: appState.isFocusMode,
+            isTypewriterMode: appState.isTypewriterMode,
+            textFontFamily: appState.preferences.editorTextFontFamily,
+            codeFontFamily: appState.preferences.editorCodeFontFamily,
+            remoteImageTransferEnabled: appState.preferences.markdownImageUploadConfiguration.automaticOnline,
+            maximumTextWidth: document.language == .markdown ? appState.preferences.markdownMaximumWidth : nil,
+            colorOverrides: document.language == .markdown ? appState.preferences.markdownColors(darkMode: darkMode) : .init(),
+            markdownTOCMaxLevel: appState.preferences.markdownTOCMaxLevel,
+            viewMagnification: appState.viewMagnification,
+            magnificationDidChange: appState.setViewMagnification
         )
         .disabled(appState.isOpeningPlaceholder(document))
     }

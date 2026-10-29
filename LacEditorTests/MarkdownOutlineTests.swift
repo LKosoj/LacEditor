@@ -4,6 +4,88 @@ import XCTest
 
 @MainActor
 final class MarkdownOutlineTests: XCTestCase {
+    func testHeadingNumbersPreserveTitlesAndResetLowerLevels() {
+        let levels = [2, 1, 3, 3, 2, 3, 1]
+        let headings = levels.enumerated().map { index, level in
+            MarkdownHeading(level: level, title: "标题 \(index)", range: NSRange(location: index * 10, length: 5))
+        }
+        let numbered = MarkdownHeadingNumbering.applying(to: headings, enabled: true)
+        XCTAssertEqual(numbered.map(\.number), ["0.1. ", "1. ", "1.0.1. ", "1.0.2. ", "1.1. ", "1.1.1. ", "2. "])
+        XCTAssertEqual(numbered.map(\.title), headings.map(\.title))
+        XCTAssertEqual(numbered.map(\.range), headings.map(\.range))
+        XCTAssertEqual(MarkdownHeadingNumbering.applying(to: numbered, enabled: false).map(\.number), Array(repeating: nil, count: levels.count))
+        let emoji = MarkdownHeading(level: 1, title: ":smile:", range: NSRange(location: 0, length: 7),
+                                    emoji: [.init(range: NSRange(location: 0, length: 7), name: "smile")])
+        let resolved = MarkdownHeadingNumbering.applying(to: [emoji], enabled: true)[0].resolvingEmoji(["smile": "😄"])
+        XCTAssertEqual(resolved.numberedTitle, "1. 😄")
+        XCTAssertTrue(resolved.sameSource(as: emoji))
+    }
+
+    func testHeadingNumberingExcludesFootnoteDefinitions() {
+        for source in ["[^1]:\n    # Foot\n\n# Normal\n\nref [^1]\n",
+                       "# Normal\n\nref [^1]\n\n[^1]:\n    # Foot\n"] {
+            let numbered = MarkdownPresentationParser.parse(source).numberingHeadings(true)
+            XCTAssertEqual(numbered.headings.map(\.title), ["Normal"])
+            XCTAssertEqual(numbered.headings.map(\.number), ["1. "])
+        }
+    }
+
+    func testHeadingUppercaseProjectionMapsExpandedAndComposedCharacters() throws {
+        let source = "Straße iıİ e\u{301} 👩‍💻"
+        let projection = MarkdownHeadingUppercaseProjection(source)
+        XCTAssertEqual(projection.text, "STRASSE IIİ E\u{301} 👩‍💻")
+        let original = source as NSString
+        let display = projection.text as NSString
+        let sharpS = original.range(of: "ß")
+        let expanded = display.range(of: "SS")
+        XCTAssertEqual(projection.sourcePosition(for: expanded.location), sharpS.location)
+        XCTAssertEqual(projection.sourcePosition(for: expanded.location + 1), NSMaxRange(sharpS))
+        let accent = original.range(of: "e\u{301}")
+        let renderedAccent = display.range(of: "E\u{301}")
+        XCTAssertEqual(projection.sourcePosition(for: renderedAccent.location), accent.location)
+        XCTAssertEqual(projection.sourcePosition(for: renderedAccent.location, fraction: 0.75), NSMaxRange(accent))
+        XCTAssertEqual(projection.sourcePosition(for: NSMaxRange(renderedAccent)), NSMaxRange(accent))
+        let emoji = original.range(of: "👩‍💻")
+        let renderedEmoji = display.range(of: "👩‍💻")
+        XCTAssertEqual(projection.sourcePosition(for: renderedEmoji.location), emoji.location)
+        XCTAssertEqual(projection.sourcePosition(for: renderedEmoji.location, fraction: 0.75), NSMaxRange(emoji))
+        XCTAssertEqual(projection.sourcePosition(for: NSMaxRange(renderedEmoji)), NSMaxRange(emoji))
+        XCTAssertNil(projection.sourcePosition(for: display.length + 1))
+    }
+
+    func testUppercaseProjectionMapsConfirmedPiecesAndSourceGaps() throws {
+        let pieces: [MarkdownReadableText.Piece] = [
+            .init(sourceRange: NSRange(location: 102, length: 1), text: "ß", matchesSource: true),
+            .init(sourceRange: NSRange(location: 105, length: 5), text: "&", matchesSource: false),
+            .init(sourceRange: NSRange(location: 111, length: 2), text: "e\u{301}", matchesSource: true)
+        ]
+        let projection = try XCTUnwrap(MarkdownHeadingUppercaseProjection(pieces: pieces, sourceRange: NSRange(location: 100, length: 20)))
+        XCTAssertEqual(projection.text, "SS&E\u{301}")
+        XCTAssertEqual(projection.sourcePosition(for: 0), 2)
+        XCTAssertEqual(projection.sourcePosition(for: 1), 3)
+        XCTAssertEqual(projection.sourcePosition(for: 2), 5)
+        XCTAssertEqual(projection.sourcePosition(for: 2, fraction: 0.75), 10)
+        XCTAssertEqual(projection.sourcePosition(for: 3), 11)
+        XCTAssertEqual(projection.sourcePosition(for: 5), 13)
+        XCTAssertEqual(projection.displayRange(for: NSRange(location: 2, length: 1)), NSRange(location: 0, length: 2))
+        XCTAssertEqual(projection.displayRange(for: NSRange(location: 5, length: 5)), NSRange(location: 2, length: 1))
+        XCTAssertNil(projection.displayRange(for: NSRange(location: 6, length: 3)))
+        let splitAccent: [MarkdownReadableText.Piece] = [
+            .init(sourceRange: NSRange(location: 0, length: 1), text: "e", matchesSource: true),
+            .init(sourceRange: NSRange(location: 2, length: 1), text: "\u{301}", matchesSource: true)
+        ]
+        let accent = try XCTUnwrap(MarkdownHeadingUppercaseProjection(pieces: splitAccent, sourceRange: NSRange(location: 0, length: 3)))
+        XCTAssertEqual(accent.text, "E\u{301}")
+        XCTAssertEqual(accent.sourcePosition(for: 0, fraction: 0.25), 0)
+        XCTAssertEqual(accent.sourcePosition(for: 0, fraction: 0.75), 3)
+        XCTAssertEqual(accent.displayRange(for: NSRange(location: 0, length: 1)), NSRange(location: 0, length: 1))
+        XCTAssertEqual(accent.displayRange(for: NSRange(location: 2, length: 1)), NSRange(location: 1, length: 1))
+        XCTAssertNil(MarkdownHeadingUppercaseProjection(pieces: pieces, sourceRange: NSRange(location: 105, length: 5)))
+        let run = MarkdownHeading.UppercaseRun(pieces: pieces, styles: [.strong, .link])
+        let heading = MarkdownHeading(level: 1, title: "ß&e\u{301}", range: NSRange(location: 100, length: 20), uppercaseRuns: [run])
+        let numbered = MarkdownHeadingNumbering.applying(to: [heading], enabled: true)[0].resolvingEmoji([:])
+        XCTAssertEqual(numbered.uppercaseRuns, [run])
+    }
     func testNavigationRejectsStaleAndOtherDocumentHeadings() {
         let suite = "MarkdownOutlineTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -15,6 +97,10 @@ final class MarkdownOutlineTests: XCTestCase {
         let heading = MarkdownHeading(level: 1, title: "Title", range: NSRange(location: 2, length: 7))
         document.markdownHeadings = [heading]
         document.isMarkdownOutlineCurrent = true
+        state.revealMarkdownHeading(heading, in: document)
+        XCTAssertEqual(document.selectionRange, NSRange(location: 2, length: 0))
+        document.selectionRange = NSRange(location: 0, length: 0)
+        document.markdownHeadings = [MarkdownHeading(level: 1, title: "Title", range: heading.range, displayTitle: "Title 😄")]
         state.revealMarkdownHeading(heading, in: document)
         XCTAssertEqual(document.selectionRange, NSRange(location: 2, length: 0))
         document.selectionRange = NSRange(location: 0, length: 0)

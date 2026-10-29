@@ -7,20 +7,20 @@ private let markdownPerformanceLog = OSLog(subsystem: "com.laceditor.LacEditor",
 
 actor MarkdownRenderActor {
     static let shared = MarkdownRenderActor()
-    private let renderer: @Sendable (String, Bool) -> MarkdownRenderedPage
+    private let renderer: @Sendable (String, Bool, URL?, MarkdownSyntaxOptions) -> MarkdownRenderedPage
 
-    init(renderer: @escaping @Sendable (String, Bool) -> MarkdownRenderedPage = {
-        MarkdownRenderer.renderPage($0, darkMode: $1)
+    init(renderer: @escaping @Sendable (String, Bool, URL?, MarkdownSyntaxOptions) -> MarkdownRenderedPage = {
+        MarkdownRenderer.renderPage($0, darkMode: $1, renderEmoji: true, resolveLocalImages: true, documentURL: $2, prepareRemoteImages: true, syntax: $3, includeHeadingNumbers: true, includeListStyles: true)
     }) {
         self.renderer = renderer
     }
 
-    func render(_ markdown: String, darkMode: Bool, coordinator: DocumentTaskCoordinator,
-                generation: UInt) -> MarkdownRenderedPage? {
+    func render(_ markdown: String, darkMode: Bool, documentURL: URL? = nil, syntax: MarkdownSyntaxOptions = .init(), coordinator: DocumentTaskCoordinator,
+                generation: UInt) async -> MarkdownRenderedPage? {
         guard !Task.isCancelled, coordinator.isCurrent(generation, for: .preview) else { return nil }
         let signpost = OSSignpostID(log: markdownPerformanceLog)
         os_signpost(.begin, log: markdownPerformanceLog, name: "MarkdownRender", signpostID: signpost)
-        let page = renderer(markdown, darkMode)
+        let page = renderer(markdown, darkMode, documentURL, syntax)
         os_signpost(.end, log: markdownPerformanceLog, name: "MarkdownRender", signpostID: signpost)
         guard !Task.isCancelled, coordinator.isCurrent(generation, for: .preview) else { return nil }
         return page
@@ -39,6 +39,8 @@ extension EnvironmentValues {
 
 final class MarkdownWebView: WKWebView {
     var reloadRenderedContent: (() -> Void)?
+    var mathGeometryChanged: (() -> Void)?
+    var magnificationDidChange: ((CGFloat) -> Void)?
     private var pageDarkMode: Bool?
 
     func configurePageAppearance(darkMode: Bool) {
@@ -46,6 +48,21 @@ final class MarkdownWebView: WKWebView {
         pageDarkMode = darkMode
         appearance = NSAppearance(named: darkMode ? .darkAqua : .aqua)
         underPageBackgroundColor = NSColor(calibratedWhite: darkMode ? 0.105 : 251.0 / 255.0, alpha: 1)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        let changed = frame.size != newSize
+        super.setFrameSize(newSize)
+        if changed { mathGeometryChanged?() }
+    }
+
+    override func magnify(with event: NSEvent) {
+        super.magnify(with: event)
+        let value = magnification
+        DispatchQueue.main.async { [weak self] in
+            guard let self, abs(self.magnification - value) < 0.0001 else { return }
+            self.magnificationDidChange?(value)
+        }
     }
 
     override func reload() -> WKNavigation? {
@@ -63,6 +80,11 @@ struct MarkdownPreview: NSViewRepresentable {
     let markdown: String
     let revision: UInt
     let darkMode: Bool
+    var typography: MarkdownTypography? = nil
+    var mathOptions = MathJaxRenderService.Options()
+    var syntax = MarkdownSyntaxOptions()
+    var viewMagnification: CGFloat = 1
+    var magnificationDidChange: ((CGFloat) -> Void)? = nil
     @ObservedObject var document: EditorDocument
     @Environment(\.markdownPreviewActive) private var isActive
 
@@ -70,8 +92,12 @@ struct MarkdownPreview: NSViewRepresentable {
 
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
-        configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        Self.configureLinkRouting(configuration, coordinator: context.coordinator)
         let view = MarkdownWebView(frame: .zero, configuration: configuration)
+        view.allowsMagnification = true
+        view.magnification = viewMagnification
+        view.magnificationDidChange = magnificationDidChange
         view.navigationDelegate = context.coordinator
         // Native WebKit scrolling still underlaps the native titlebar (NT2).
         view.configurePageAppearance(darkMode: darkMode)
@@ -82,44 +108,122 @@ struct MarkdownPreview: NSViewRepresentable {
             coordinator.reloadLastRenderedHTML(in: view)
         }
         context.coordinator.setActive(isActive)
+        context.coordinator.setMathOptions(mathOptions)
         if isActive {
-            context.coordinator.render(markdown: markdown, revision: revision, darkMode: darkMode, immediately: true)
+            context.coordinator.render(markdown: markdown, revision: revision, darkMode: darkMode, typography: typography, syntax: syntax, immediately: true)
         }
         return view
     }
 
+    static func configureLinkRouting(_ configuration: WKWebViewConfiguration, coordinator: Coordinator) {
+        let script = """
+        document.addEventListener('click', function(event) {
+          const element = event.target instanceof Element ? event.target.closest('a[href]') : null;
+          if (!element || event.defaultPrevented || event.button !== 0) return;
+          const href = element.getAttribute('href');
+          if (!href || href.startsWith('#')) return;
+          event.preventDefault();
+          window.webkit.messageHandlers.lacLink.postMessage({href: href, domID: document.documentElement.dataset.mathDOMID});
+        }, true);
+        """
+        configuration.userContentController.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient))
+        configuration.userContentController.add(coordinator, contentWorld: .defaultClient, name: "lacLink")
+    }
+
     func updateNSView(_ nsView: WKWebView, context: Context) {
         (nsView as? MarkdownWebView)?.configurePageAppearance(darkMode: darkMode)
+        (nsView as? MarkdownWebView)?.magnificationDidChange = magnificationDidChange
+        if abs(nsView.magnification - viewMagnification) > 0.0001 {
+            nsView.setMagnification(viewMagnification, centeredAt: NSPoint(x: nsView.bounds.midX, y: nsView.bounds.midY))
+        }
         context.coordinator.document = document
         context.coordinator.setActive(isActive)
-        if isActive { context.coordinator.render(markdown: markdown, revision: revision, darkMode: darkMode) }
+        context.coordinator.setMathOptions(mathOptions)
+        if isActive { context.coordinator.render(markdown: markdown, revision: revision, darkMode: darkMode, typography: typography, syntax: syntax) }
     }
 
     static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
         coordinator.stop()
         nsView.stopLoading()
         nsView.navigationDelegate = nil
+        nsView.configuration.userContentController.removeScriptMessageHandler(forName: "lacLink", contentWorld: .defaultClient)
         (nsView as? MarkdownWebView)?.reloadRenderedContent = nil
+        (nsView as? MarkdownWebView)?.magnificationDidChange = nil
     }
 
     @MainActor
-    final class Coordinator: NSObject, WKNavigationDelegate {
-        weak var webView: WKWebView?
+    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+        weak var webView: WKWebView? {
+            didSet {
+                (oldValue as? MarkdownWebView)?.mathGeometryChanged = nil
+                (webView as? MarkdownWebView)?.mathGeometryChanged = { [weak self] in
+                    self?.refreshMathGeometry()
+                    self?.refreshDiagramGeometry()
+                }
+            }
+        }
         weak var document: EditorDocument?
+        private let imageSession: URLSession
         private var debounce: DispatchWorkItem?
         private var renderTask: Task<Void, Never>?
         private var taskGeneration: UInt?
         private var lastRequestedRevision: UInt?
         private var lastDarkMode: Bool?
+        private var lastTypography: MarkdownTypography?
+        private var lastSyntax = MarkdownSyntaxOptions()
+        private var renderedSyntax: MarkdownSyntaxOptions?
         private var renderedRevision: UInt?
+        private(set) var visibleRevision: UInt?
+        private var visibleDocumentURL: URL?
+        private var loadingRevision: UInt?
+        private var loadingDocumentURL: URL?
+        private var lastDocumentURL: URL?
+        private var renderedDocumentURL: URL?
         private var page: MarkdownRenderedPage?
+        private var visibleHeadingIDs: Set<String> = []
+        private var loadingHeadingIDs: Set<String> = []
         private var generation = 0
         private var latestNavigation: WKNavigation?
         private var pageIsReady = false
         private var isActive = true
         private var pendingScrollRatio = 0.0
+        private var pendingArticleScrollRatio = 0.0
         private var usesReloadFallback = false
-        private static let mermaidScript: String? = {
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.name == "lacLink", message.frameInfo.isMainFrame, let view = webView,
+                  message.webView === view, view.window?.isKeyWindow == true, isActive, pageIsReady,
+                  let document, document.language == .markdown, document.ioState == .idle,
+                  let body = message.body as? [String: String], let address = body["href"],
+                  let domID = body["domID"], domID == mathDOMID,
+                  !address.isEmpty, !address.hasPrefix("#"),
+                  let revision = renderedRevision, visibleRevision == revision, document.textRevision == revision,
+                  lastRequestedRevision == revision, document.url == renderedDocumentURL, document.url == visibleDocumentURL,
+                  !document.hasPendingLiveEdits else { return }
+            let snapshot = document.synchronizedSnapshot()
+            guard snapshot.revision == revision, !document.hasPendingLiveEdits else { return }
+            let requestGeneration = generation, sourceURL = document.url
+            let request = MarkdownLinkNavigationRequest(snapshot: snapshot, link: MarkdownLink(range: NSRange(location: 0, length: 0), url: address), headings: []) { [weak self, weak document, weak view] in
+                guard let self, let document, let view else { return false }
+                return self.webView === view && self.document === document && self.isActive && self.pageIsReady &&
+                    self.generation == requestGeneration && self.mathDOMID == domID && self.renderedRevision == revision && self.visibleRevision == revision &&
+                    document.url == sourceURL && document.textRevision == revision && !document.hasPendingLiveEdits
+            }
+            NotificationCenter.default.post(name: EditorCommandNotification.navigateMarkdownLink, object: request)
+        }
+        private var mathService: MathJaxRenderService?
+        private var legacyService: LegacyDiagramRenderService?
+        private var legacyToken: UUID?
+        private var legacyWidth: CGFloat?
+        private var legacyGeometryToken: UUID?
+        private var mathGeneration: Int?
+        private var mathToken: UUID?
+        private var mathDOMID = UUID().uuidString
+        private var mathWidth: CGFloat?
+        private var mathFontSize: CGFloat?
+        private var mathGeometryToken: UUID?
+        private var mathOptions = MathJaxRenderService.Options()
+        static let mermaidScript: String? = {
             #if SWIFT_PACKAGE
             let bundle = Bundle.module
             #else
@@ -132,7 +236,10 @@ struct MarkdownPreview: NSViewRepresentable {
             return library + "\n" + client + "\nvoid 0;"
         }()
 
-        init(document: EditorDocument) { self.document = document }
+        init(document: EditorDocument, imageSession: URLSession = .shared) {
+            self.document = document
+            self.imageSession = imageSession
+        }
 
         deinit {
             debounce?.cancel()
@@ -147,6 +254,15 @@ struct MarkdownPreview: NSViewRepresentable {
 
         func stop() {
             generation &+= 1
+            cancelLegacyDiagrams()
+            let previousMath = mathService
+            mathService = nil
+            mathGeneration = nil
+            mathToken = nil
+            mathWidth = nil
+            mathFontSize = nil
+            mathGeometryToken = nil
+            previousMath?.cancel()
             if pageIsReady, let webView {
                 webView.evaluateJavaScript("globalThis.lacMermaid?.invalidate(\(generation))",
                                            in: nil, in: .defaultClient, completionHandler: nil)
@@ -163,15 +279,30 @@ struct MarkdownPreview: NSViewRepresentable {
             lastRequestedRevision = nil
         }
 
-        func render(markdown: String, revision: UInt, darkMode: Bool, immediately: Bool = false) {
-            guard isActive,
-                  revision != lastRequestedRevision || darkMode != lastDarkMode else { return }
+        func render(markdown: String, revision: UInt, darkMode: Bool, typography: MarkdownTypography? = nil, syntax: MarkdownSyntaxOptions = .init(), immediately: Bool = false) {
+            guard isActive else { return }
+            let sourceURL = document?.url
+            if revision == lastRequestedRevision, darkMode == lastDarkMode, sourceURL == lastDocumentURL, syntax == lastSyntax {
+                guard typography != lastTypography else { return }
+                lastTypography = typography
+                if renderedRevision == revision, var page {
+                    page.typography = typography
+                    self.page = page
+                    if pageIsReady { patchPage(includingBody: false) }
+                    else if latestNavigation == nil, let webView { loadPage(in: webView) }
+                }
+                return
+            }
             stop()
             lastRequestedRevision = revision
             lastDarkMode = darkMode
+            lastDocumentURL = sourceURL
+            lastTypography = typography
+            lastSyntax = syntax
             let requestedGeneration = generation
-            if renderedRevision == revision, var page {
+            if renderedRevision == revision, renderedDocumentURL == sourceURL, renderedSyntax == syntax, var page {
                 page.darkMode = darkMode
+                page.typography = typography
                 self.page = page
                 if pageIsReady { patchPage(includingBody: false) }
                 else if latestNavigation == nil, let webView { loadPage(in: webView) }
@@ -179,7 +310,7 @@ struct MarkdownPreview: NSViewRepresentable {
             }
             let work = DispatchWorkItem { [weak self] in
                 guard let self, self.isActive, requestedGeneration == self.generation else { return }
-                self.beginRender(markdown: markdown, revision: revision, darkMode: darkMode,
+                self.beginRender(markdown: markdown, revision: revision, darkMode: darkMode, syntax: syntax,
                                  generation: requestedGeneration)
             }
             debounce = work
@@ -190,30 +321,49 @@ struct MarkdownPreview: NSViewRepresentable {
             }
         }
 
-        private func beginRender(markdown: String, revision: UInt, darkMode: Bool, generation requestedGeneration: Int) {
+        private func beginRender(markdown: String, revision: UInt, darkMode: Bool, syntax: MarkdownSyntaxOptions, generation requestedGeneration: Int) {
             guard let document else { return }
+            let sourceURL = document.url
+            let imageSession = self.imageSession
             let coordinator = document.taskCoordinator
             let taskGeneration = coordinator.begin(.preview)
             self.taskGeneration = taskGeneration
             let task = Task.detached(priority: .userInitiated) { [weak self, weak document] in
                 guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .preview) else { return }
-                guard let page = await MarkdownRenderActor.shared.render(
-                    markdown, darkMode: darkMode, coordinator: coordinator, generation: taskGeneration
+                guard var page = await MarkdownRenderActor.shared.render(
+                    markdown, darkMode: darkMode, documentURL: sourceURL, syntax: syntax, coordinator: coordinator, generation: taskGeneration
                 ) else { return }
                 guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .preview) else { return }
-                await MainActor.run { [weak self, weak document] in
-                    guard !Task.isCancelled, let self, let document, self.document === document, self.isActive,
+                @MainActor func apply(_ page: MarkdownRenderedPage, finished: Bool) -> Bool {
+                    guard !Task.isCancelled, let self, let document, self.document === document, document.url == sourceURL, self.isActive,
                           self.generation == requestedGeneration,
                           coordinator.isCurrent(taskGeneration, for: .preview),
-                          let webView = self.webView else { return }
-                    coordinator.finish(.preview, generation: taskGeneration)
-                    self.renderTask = nil
-                    self.taskGeneration = nil
+                          let webView = self.webView else { return false }
+                    if finished {
+                        coordinator.finish(.preview, generation: taskGeneration)
+                        self.renderTask = nil
+                        self.taskGeneration = nil
+                    }
+                    var page = page
+                    page.typography = self.lastTypography
                     self.page = page
                     self.renderedRevision = revision
+                    self.renderedSyntax = syntax
+                    self.renderedDocumentURL = sourceURL
                     if self.pageIsReady && !self.usesReloadFallback { self.patchPage(includingBody: true) }
-                    else if self.latestNavigation == nil { self.loadPage(in: webView) }
+                    else if self.latestNavigation == nil || (finished && self.usesReloadFallback) { self.loadPage(in: webView) }
+                    return true
                 }
+                if !page.remoteImageMarkers.isEmpty || !page.localMediaMarkers.isEmpty {
+                    var placeholder = page
+                    try? placeholder.hideRemoteImages()
+                    try? placeholder.prepareLocalMedia(load: false)
+                    guard await apply(placeholder, finished: false) else { return }
+                    try? await page.resolveRemoteImages(session: imageSession)
+                    try? page.prepareLocalMedia(load: true)
+                }
+                guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .preview) else { return }
+                _ = await apply(page, finished: true)
             }
             renderTask = task
             coordinator.attachTask(task, kind: .preview, generation: taskGeneration)
@@ -221,14 +371,43 @@ struct MarkdownPreview: NSViewRepresentable {
 
         private func loadPage(in webView: WKWebView) {
             guard let page else { return }
+            cancelLegacyDiagrams()
+            let previousMath = mathService
+            mathService = nil
+            mathGeneration = nil
+            mathToken = nil
+            mathWidth = nil
+            mathFontSize = nil
+            mathGeometryToken = nil
+            previousMath?.cancel()
+            mathDOMID = UUID().uuidString
             pageIsReady = false
+            visibleRevision = nil
+            loadingRevision = renderedRevision
+            loadingDocumentURL = renderedDocumentURL
+            visibleHeadingIDs = []
+            loadingHeadingIDs = page.headingIDs
             webView.stopLoading()
             latestNavigation = webView.loadHTMLString(page.html, baseURL: nil)
         }
 
         private func patchPage(includingBody: Bool, restoringScroll: Bool = false) {
             guard let webView, let page, let renderedRevision, pageIsReady else { return }
-            let requestedGeneration = generation
+            if includingBody {
+                visibleRevision = nil
+                cancelLegacyDiagrams()
+                mathDOMID = UUID().uuidString
+                visibleHeadingIDs = []
+                let previousMath = mathService
+                mathService = nil
+                mathGeneration = nil
+                mathToken = nil
+                mathWidth = nil
+                mathFontSize = nil
+                mathGeometryToken = nil
+                previousMath?.cancel()
+            }
+            let requestedGeneration = generation, requestedDOMID = mathDOMID, requestedURL = renderedDocumentURL
             let signpost = OSSignpostID(log: markdownPerformanceLog)
             os_signpost(.begin, log: markdownPerformanceLog, name: "MarkdownPageUpdate", signpostID: signpost)
             // Run only app-owned code in an isolated world. Page JavaScript
@@ -236,16 +415,37 @@ struct MarkdownPreview: NSViewRepresentable {
             webView.callAsyncJavaScript(Self.updateScript,
                 arguments: ["body": includingBody ? page.body as Any : NSNull(),
                             "dark": page.darkMode, "revision": String(renderedRevision),
-                            "generation": requestedGeneration, "fallbackRatio": pendingScrollRatio,
+                            "preserveWhitespace": page.preserveWhitespace,
+                            "fontSize": page.typography.flatMap { $0.usesCustomFontMetrics ? $0.fontSize : nil } as Any? ?? NSNull(),
+                            "lineHeight": page.typography.flatMap { $0.usesCustomFontMetrics ? $0.lineHeight : nil } as Any? ?? NSNull(),
+                            "textFamily": page.typography.flatMap { $0.usesCustomFontMetrics ? $0.textFamily : nil } as Any? ?? NSNull(),
+                            "codeFamily": page.typography.flatMap { $0.usesCustomFontMetrics ? $0.codeFamily : nil } as Any? ?? NSNull(),
+                            "contentWidth": page.typography?.maximumWidth as Any? ?? NSNull(),
+                            "ligatures": page.typography?.ligatureCSS as Any? ?? NSNull(),
+                            "smallCapsCSS": page.typography?.smallCapsCSS ?? "",
+                            "paragraphCSS": page.paragraphCSS,
+                            "tocMaxLevel": page.typography?.tocMaxLevel ?? 6,
+                            "colors": page.typography.map { (page.darkMode ? $0.darkColors : $0.lightColors).cssVariables } ?? [:],
+                            "generation": requestedGeneration, "mathDOMID": requestedDOMID, "fallbackRatio": pendingScrollRatio,
+                            "fallbackArticleRatio": pendingArticleScrollRatio,
                             "restore": restoringScroll,
                             "mermaidError": L10n.tr("无法显示 Mermaid 图表")],
                 in: nil, in: .defaultClient) { [weak self, weak webView] result in
                 os_signpost(.end, log: markdownPerformanceLog, name: "MarkdownPageUpdate", signpostID: signpost)
-                guard let self, let webView, requestedGeneration == self.generation else { return }
+                guard let self, let webView, requestedGeneration == self.generation,
+                      requestedDOMID == self.mathDOMID else { return }
                 switch result {
                 case let .success(value):
-                    if let ratio = value as? Double, ratio.isFinite {
-                        self.pendingScrollRatio = min(1, max(0, ratio))
+                    if includingBody {
+                        self.visibleHeadingIDs = page.headingIDs
+                        self.visibleRevision = renderedRevision
+                        self.visibleDocumentURL = requestedURL
+                    }
+                    self.refreshMathGeometry()
+                    self.refreshDiagramGeometry()
+                    if let ratios = value as? [String: Double] {
+                        if let ratio = ratios["window"], ratio.isFinite { self.pendingScrollRatio = min(1, max(0, ratio)) }
+                        if let ratio = ratios["article"], ratio.isFinite { self.pendingArticleScrollRatio = min(1, max(-1, ratio)) }
                     }
                 case .failure:
                     // A web-process/navigation failure can invalidate the DOM.
@@ -256,6 +456,227 @@ struct MarkdownPreview: NSViewRepresentable {
             }
         }
 
+        func setMathOptions(_ options: MathJaxRenderService.Options) {
+            guard options != mathOptions else { return }
+            mathOptions = options
+            let previous = mathService
+            mathService = nil
+            mathToken = nil
+            mathGeneration = nil
+            mathGeometryToken = nil
+            previous?.cancel()
+            refreshMathGeometry()
+        }
+
+        private func cancelLegacyDiagrams() {
+            let service = legacyService
+            legacyService = nil
+            legacyToken = nil
+            legacyWidth = nil
+            legacyGeometryToken = nil
+            service?.cancel()
+        }
+
+        private func refreshDiagramGeometry() {
+            guard isActive, pageIsReady, let page, !page.diagrams.isEmpty, let webView else { return }
+            let requestedGeneration = generation, domID = mathDOMID, geometryToken = UUID()
+            legacyGeometryToken = geometryToken
+            webView.callAsyncJavaScript("return document.querySelector('article').clientWidth;", arguments: [:], in: nil, in: .defaultClient) { [weak self] result in
+                guard let self, self.isActive, self.pageIsReady, self.generation == requestedGeneration,
+                      self.mathDOMID == domID, self.legacyGeometryToken == geometryToken,
+                      case let .success(value) = result, let width = (value as? NSNumber)?.doubleValue,
+                      width.isFinite, width > 0 else { return }
+                if self.legacyWidth == CGFloat(width) { return }
+                self.cancelLegacyDiagrams()
+                self.legacyWidth = CGFloat(width)
+                let token = UUID()
+                self.legacyToken = token
+                self.renderLegacyDiagram(at: 0, page: page, width: CGFloat(width), generation: requestedGeneration, domID: domID, token: token)
+            }
+        }
+
+        private func renderLegacyDiagram(at index: Int, page: MarkdownRenderedPage, width: CGFloat, generation: Int, domID: String, token: UUID) {
+            guard isActive, self.generation == generation, mathDOMID == domID, legacyToken == token,
+                  page.diagrams.indices.contains(index), let webView else { return }
+            let item = page.diagrams[index]
+            let kind: LegacyDiagramRenderService.Kind = item.kind == .flow ? .flow : .sequence
+            let service = LegacyDiagramRenderService(code: item.source, kind: kind, width: width) { [weak self, weak webView] result in
+                guard let self, let webView, self.isActive, self.generation == generation,
+                      self.mathDOMID == domID, self.legacyToken == token else { return }
+                self.legacyService = nil
+                var encoded: String?
+                if case let .success(image) = result, let data = image.tiffRepresentation,
+                   let bitmap = NSBitmapImageRep(data: data), let png = bitmap.representation(using: .png, properties: [:]) {
+                    encoded = png.base64EncodedString()
+                }
+                let script = """
+                    if (Number(document.documentElement.dataset.generation) !== generation || document.documentElement.dataset.mathDOMID !== domID) return;
+                    if (document.querySelector('article')?.clientWidth !== width) return;
+                    const target = document.querySelector(`[data-lac-diagram="${index}"]`);
+                    if (!target) return;
+                    if (png === null) {
+                        const article = document.querySelector('article');
+                        const maximum = Math.max(0, article.scrollWidth - article.clientWidth);
+                        const ratio = maximum > 0 ? article.scrollLeft / maximum : 0;
+                        target.textContent = source;
+                        article.scrollLeft = ratio * Math.max(0, article.scrollWidth - article.clientWidth);
+                        return;
+                    }
+                    const image = document.createElement('img');
+                    image.alt = source;
+                    image.src = 'data:image/png;base64,' + png;
+                    image.style.maxWidth = '100%';
+                    if (image.decode) await image.decode();
+                    if (Number(document.documentElement.dataset.generation) !== generation || document.documentElement.dataset.mathDOMID !== domID || document.querySelector('article')?.clientWidth !== width) return;
+                    const maximum = Math.max(0, document.documentElement.scrollHeight - innerHeight);
+                    const ratio = maximum > 0 ? scrollY / maximum : 0;
+                    const article = document.querySelector('article');
+                    const articleMaximum = Math.max(0, article.scrollWidth - article.clientWidth);
+                    const articleRatio = articleMaximum > 0 ? article.scrollLeft / articleMaximum : 0;
+                    target.replaceChildren(image);
+                    window.scrollTo(0, ratio * Math.max(0, document.documentElement.scrollHeight - innerHeight));
+                    article.scrollLeft = articleRatio * Math.max(0, article.scrollWidth - article.clientWidth);
+                    """
+                webView.callAsyncJavaScript(script, arguments: ["generation": generation, "domID": domID, "index": index,
+                    "source": item.source, "png": encoded as Any? ?? NSNull(), "width": Double(width)], in: nil, in: .defaultClient) { [weak self] _ in
+                    self?.renderLegacyDiagram(at: index + 1, page: page, width: width, generation: generation, domID: domID, token: token)
+                }
+            }
+            legacyService = service
+            service.start()
+        }
+
+        private func refreshMathGeometry() {
+            guard isActive, pageIsReady, let page, !page.formulas.isEmpty, let webView else { return }
+            let requestedGeneration = generation, domID = mathDOMID, geometryToken = UUID()
+            mathGeometryToken = geometryToken
+            webView.callAsyncJavaScript("return [document.querySelector('article').clientWidth, parseFloat(getComputedStyle(document.body).fontSize)];",
+                                        arguments: [:], in: nil, in: .defaultClient) { [weak self] result in
+                guard let self, self.isActive, self.pageIsReady, self.generation == requestedGeneration,
+                      self.mathDOMID == domID, self.mathGeometryToken == geometryToken, case let .success(value) = result,
+                      let dimensions = value as? [Double], dimensions.count == 2,
+                      dimensions.allSatisfy({ $0.isFinite && $0 > 0 }) else { return }
+                let width = CGFloat(dimensions[0]), fontSize = CGFloat(dimensions[1])
+                if self.mathWidth != width || self.mathFontSize != fontSize {
+                    let previous = self.mathService
+                    self.mathService = nil
+                    self.mathToken = nil
+                    self.mathGeneration = nil
+                    self.mathWidth = width
+                    self.mathFontSize = fontSize
+                    previous?.cancel()
+                }
+                self.renderMath(page, generation: requestedGeneration, width: width, fontSize: fontSize)
+            }
+        }
+
+        private func renderMath(_ page: MarkdownRenderedPage, generation requestedGeneration: Int, width: CGFloat, fontSize: CGFloat) {
+            guard isActive, pageIsReady, mathService == nil, mathGeneration != requestedGeneration,
+                  !page.formulas.isEmpty, let webView else { return }
+            let expressions = page.formulas.map { MathJaxRenderService.Expression(source: $0.source, display: $0.display) }
+            let token = UUID(), domID = mathDOMID
+            let service = MathJaxRenderService(expressions: expressions, outputIndices: Array(expressions.indices),
+                                               width: width, dark: page.darkMode, fontSize: fontSize, options: mathOptions) { [weak self, weak webView] result in
+                guard let self, let webView, self.isActive, self.generation == requestedGeneration,
+                      self.mathToken == token else { return }
+                let references = self.mathService?.references ?? [:]
+                let mathML = self.mathService?.mathML ?? [:]
+                self.mathService = nil
+                self.mathToken = nil
+                self.mathGeneration = requestedGeneration
+                let images: [NSImage?]
+                if case let .success(value) = result, value.count == expressions.count { images = value }
+                else { images = Array(repeating: nil, count: expressions.count) }
+                let payload: [Any] = images.map { image in
+                    guard let data = image?.tiffRepresentation, let bitmap = NSBitmapImageRep(data: data),
+                          let png = bitmap.representation(using: .png, properties: [:]) else { return NSNull() }
+                    return png.base64EncodedString()
+                }
+                let links: [[[String: Any]]] = expressions.indices.map { index in
+                    (references[index] ?? []).compactMap { reference in
+                        guard expressions.indices.contains(reference.targetIndex), reference.pixelSize.width > 0, reference.pixelSize.height > 0 else { return nil }
+                        return ["target": reference.targetIndex, "label": expressions[reference.targetIndex].source,
+                                "x": reference.rect.minX / reference.pixelSize.width, "y": reference.rect.minY / reference.pixelSize.height,
+                                "w": reference.rect.width / reference.pixelSize.width, "h": reference.rect.height / reference.pixelSize.height]
+                    }
+                }
+                let script = """
+                    const root = document.documentElement;
+                    if (Number(root.dataset.generation) !== generation || root.dataset.mathDOMID !== domID) return;
+                    const article = document.querySelector('article');
+                    if (!article || article.clientWidth !== width || parseFloat(getComputedStyle(document.body).fontSize) !== fontSize) return;
+                    const namespace = 'http://www.w3.org/1998/Math/MathML';
+                    const names = new Set(['math','mrow','mi','mn','mo','mtext','mspace','ms','mfrac','msqrt','mroot','mstyle','merror','mpadded','mphantom','mfenced','menclose','msub','msup','msubsup','munder','mover','munderover','mmultiscripts','mprescripts','none','mtable','mtr','mtd','mlabeledtr','semantics']);
+                    const attributes = new Set(['display','mathvariant','displaystyle','scriptlevel','stretchy','symmetric','fence','separator','accent','accentunder','movablelimits','largeop','form','lspace','rspace','width','height','depth','rowspan','columnspan','rowalign','columnalign','linethickness']);
+                    function safeMath(value) {
+                        if (typeof value !== 'string') return null;
+                        const parsed = new DOMParser().parseFromString(value, 'application/xml');
+                        if (parsed.querySelector('parsererror') || parsed.documentElement.localName !== 'math') return null;
+                        function copy(node) {
+                            if (node.nodeType === Node.TEXT_NODE) return document.createTextNode(node.nodeValue);
+                            if (node.nodeType !== Node.ELEMENT_NODE || node.namespaceURI !== namespace || !names.has(node.localName)) return null;
+                            const result = document.createElementNS(namespace, node.localName);
+                            for (const attribute of node.attributes) {
+                                if (attributes.has(attribute.name) && /^[a-zA-Z0-9 .,%+\\-]+$/.test(attribute.value)) result.setAttribute(attribute.name, attribute.value);
+                            }
+                            for (const child of node.childNodes) {
+                                const copied = copy(child);
+                                if (!copied) return null;
+                                result.appendChild(copied);
+                            }
+                            return result;
+                        }
+                        return copy(parsed.documentElement);
+                    }
+                    for (let i = 0; i < images.length; i++) {
+                        const target = document.querySelector(`[data-lac-math="${i}"]`);
+                        if (!target) continue;
+                        if (images[i] === null) {
+                            target.textContent = target.querySelector('img')?.alt ?? target.textContent;
+                            continue;
+                        }
+                        const image = document.createElement('img');
+                        image.alt = target.querySelector('img')?.alt ?? target.textContent;
+                        image.src = 'data:image/png;base64,' + images[i];
+                        const wrapper = document.createElement('span');
+                        Object.assign(wrapper.style, {position:'relative', display:'inline-block', maxWidth:'100%', verticalAlign:'baseline'});
+                        Object.assign(image.style, {display:'block', maxWidth:'100%'});
+                        wrapper.appendChild(image);
+                        const accessibleMath = safeMath(mathml[i]);
+                        if (accessibleMath) {
+                            const accessibilityContainer = document.createElement('span');
+                            Object.assign(accessibilityContainer.style, {position:'absolute', width:'1px', height:'1px', overflow:'hidden', clipPath:'inset(50%)', whiteSpace:'nowrap'});
+                            accessibilityContainer.appendChild(accessibleMath);
+                            wrapper.appendChild(accessibilityContainer);
+                        }
+                        for (const link of links[i]) {
+                            const button = document.createElement('button');
+                            button.type = 'button';
+                            button.setAttribute('aria-label', link.label);
+                            Object.assign(button.style, {position:'absolute', left:`${link.x * 100}%`, top:`${link.y * 100}%`,
+                                width:`${link.w * 100}%`, height:`${link.h * 100}%`, padding:'0', border:'0', background:'transparent', cursor:'pointer'});
+                            button.addEventListener('click', event => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                document.querySelector(`[data-lac-math="${link.target}"]`)?.scrollIntoView({block:'center'});
+                            });
+                            wrapper.appendChild(button);
+                        }
+                        const articleMaximum = Math.max(0, article.scrollWidth - article.clientWidth);
+                        const articleRatio = articleMaximum > 0 ? article.scrollLeft / articleMaximum : 0;
+                        target.replaceChildren(wrapper);
+                        article.scrollLeft = articleRatio * Math.max(0, article.scrollWidth - article.clientWidth);
+                    }
+                    """
+                let accessible: [Any] = expressions.indices.map { mathML[$0] as Any? ?? NSNull() }
+                webView.callAsyncJavaScript(script, arguments: ["generation": requestedGeneration, "domID": domID, "width": width, "fontSize": fontSize, "images": payload, "links": links, "mathml": accessible],
+                                            in: nil, in: .defaultClient, completionHandler: nil)
+            }
+            mathToken = token
+            mathService = service
+            service.start()
+        }
+
         private static let updateScript = """
             const root = document.documentElement;
             if (Number(root.dataset.generation || -1) > generation) return null;
@@ -263,10 +684,36 @@ struct MarkdownPreview: NSViewRepresentable {
             if (!article) throw new Error('Missing preview article');
             const maximum = Math.max(0, root.scrollHeight - window.innerHeight);
             const ratio = restore ? fallbackRatio : (maximum > 0 ? window.scrollY / maximum : fallbackRatio);
+            const articleMaximum = Math.max(0, article.scrollWidth - article.clientWidth);
+            const articleRatio = restore ? fallbackArticleRatio : (articleMaximum > 0 ? article.scrollLeft / articleMaximum : fallbackArticleRatio);
             const horizontal = Array.from(document.querySelectorAll('pre, .table-scroll'), el => el.scrollLeft);
             root.dataset.theme = dark ? 'dark' : 'light';
+            document.body.style.fontSize = fontSize === null ? '' : `${fontSize}px`;
+            document.body.style.lineHeight = lineHeight === null ? '' : `${lineHeight}px`;
+            document.body.style.fontFamily = textFamily === null ? '' : CSS.escape(textFamily);
+            document.body.style.fontVariantLigatures = ligatures === null ? '' : ligatures;
+            document.getElementById('lac-heading-small-caps').textContent = smallCapsCSS;
+            document.getElementById('lac-paragraph-settings').textContent = paragraphCSS;
+            document.getElementById('lac-whitespace').textContent = preserveWhitespace ? 'article span[data-lac-whitespace]{white-space:break-spaces}' : '';
+            if (codeFamily === null) document.body.style.removeProperty('--lac-code-font');
+            else document.body.style.setProperty('--lac-code-font', CSS.escape(codeFamily));
+            if (contentWidth === null) {
+                document.body.style.removeProperty('--lac-content-width');
+                document.body.style.removeProperty('--lac-print-width');
+            } else {
+                document.body.style.setProperty('--lac-content-width', `${contentWidth}px`);
+                document.body.style.setProperty('--lac-print-width', `min(100%, ${contentWidth}px)`);
+            }
+            for (const key of ['--text', '--page', '--accent', '--code', '--quote']) {
+                if (colors[key] === undefined) root.style.removeProperty(key);
+                else root.style.setProperty(key, colors[key]);
+            }
             if (body !== null) article.innerHTML = body;
+            article.querySelectorAll('nav[data-lac-toc] li[data-level]').forEach(item => {
+                item.hidden = Number(item.dataset.level) > tocMaxLevel;
+            });
             root.dataset.generation = String(generation);
+            root.dataset.mathDOMID = mathDOMID;
             root.dataset.revision = revision;
             if (globalThis.lacMermaid) {
                 await globalThis.lacMermaid.render(generation, dark, mermaidError);
@@ -285,7 +732,8 @@ struct MarkdownPreview: NSViewRepresentable {
                 el.scrollLeft = horizontal[index] || 0;
             });
             window.scrollTo(0, Math.max(0, Math.min(1, ratio)) * Math.max(0, root.scrollHeight - window.innerHeight));
-            return ratio;
+            article.scrollLeft = Math.max(-1, Math.min(1, articleRatio)) * Math.max(0, article.scrollWidth - article.clientWidth);
+            return {window: ratio, article: articleRatio};
             """
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -295,8 +743,11 @@ struct MarkdownPreview: NSViewRepresentable {
                 self.latestNavigation = nil
                 guard self.isActive else { return }
                 self.pageIsReady = true
+                self.visibleHeadingIDs = self.loadingHeadingIDs
+                self.visibleRevision = self.loadingRevision
+                self.visibleDocumentURL = self.loadingDocumentURL
                 if self.usesReloadFallback {
-                    webView.evaluateJavaScript("window.scrollTo(0, \(self.pendingScrollRatio) * Math.max(0, document.documentElement.scrollHeight - innerHeight))",
+                    webView.evaluateJavaScript("(() => { window.scrollTo(0, \(self.pendingScrollRatio) * Math.max(0, document.documentElement.scrollHeight - innerHeight)); const a = document.querySelector('article'); if (a) a.scrollLeft = \(self.pendingArticleScrollRatio) * Math.max(0, a.scrollWidth - a.clientWidth); })()",
                                                in: nil, in: .defaultClient, completionHandler: nil)
                 }
                 self.patchPage(includingBody: !self.usesReloadFallback, restoringScroll: true)
@@ -321,11 +772,12 @@ struct MarkdownPreview: NSViewRepresentable {
         func reloadLastRenderedHTML(in webView: WKWebView) {
             guard page != nil else { return }
             let requestedGeneration = generation
-            webView.evaluateJavaScript("window.scrollY / Math.max(1, document.documentElement.scrollHeight - innerHeight)",
+            webView.evaluateJavaScript("(() => { const a = document.querySelector('article'); return {window: window.scrollY / Math.max(1, document.documentElement.scrollHeight - innerHeight), article: a ? a.scrollLeft / Math.max(1, a.scrollWidth - a.clientWidth) : 0}; })()",
                                        in: nil, in: .defaultClient) { [weak self, weak webView] result in
                 guard let self, let webView, requestedGeneration == self.generation else { return }
-                if case let .success(value) = result, let ratio = value as? Double, ratio.isFinite {
-                    self.pendingScrollRatio = min(1, max(0, ratio))
+                if case let .success(value) = result, let ratios = value as? [String: Double] {
+                    if let ratio = ratios["window"], ratio.isFinite { self.pendingScrollRatio = min(1, max(0, ratio)) }
+                    if let ratio = ratios["article"], ratio.isFinite { self.pendingArticleScrollRatio = min(1, max(-1, ratio)) }
                 }
                 self.usesReloadFallback = false
                 self.loadPage(in: webView)
@@ -338,6 +790,13 @@ struct MarkdownPreview: NSViewRepresentable {
                 decisionHandler(.cancel)
                 reloadLastRenderedHTML(in: webView)
             } else if navigationAction.navigationType == .linkActivated {
+                if let url = navigationAction.request.url, url.scheme == "about", url.path == "blank",
+                   let fragment = url.fragment,
+                   fragment.hasPrefix("fn-") || fragment.hasPrefix("fnref-") ||
+                       visibleHeadingIDs.contains(fragment.removingPercentEncoding ?? fragment) {
+                    decisionHandler(.allow)
+                    return
+                }
                 if let url = navigationAction.request.url,
                    ["http", "https"].contains(url.scheme?.lowercased() ?? "") { NSWorkspace.shared.open(url) }
                 decisionHandler(.cancel)

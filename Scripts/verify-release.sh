@@ -46,6 +46,8 @@ swiftc \
     LacEditor/App/L10n.swift \
     LacEditor/Models/EditorLanguage.swift \
     LacEditor/Models/DocumentEditDelta.swift \
+    LacEditor/Models/DocumentStatistics.swift \
+    LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Models/EditorDocument.swift \
     LacEditor/Services/DocumentProvenance.swift \
     LacEditor/Services/FileService.swift \
@@ -56,6 +58,10 @@ swiftc \
     LacEditor/Editor/ListContinuationService.swift \
     LacEditor/Editor/LogicalLineIndex.swift \
     LacEditor/Models/MarkdownPresentation.swift \
+    LacEditor/Models/MarkdownColorOverrides.swift \
+    LacEditor/Models/MarkdownListStyle.swift \
+    LacEditor/Models/MarkdownMedia.swift \
+    LacEditor/Models/MarkdownInlineStyle.swift \
     LacEditor/Editor/FoldLayoutManager.swift \
     LacEditor/Editor/CodeLexicalScanner.swift \
     LacEditor/Editor/DelimiterMatchingService.swift \
@@ -66,7 +72,12 @@ swiftc \
 .build/core-verification
 
 swiftc \
+    LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Models/MarkdownPresentation.swift \
+    LacEditor/Models/MarkdownColorOverrides.swift \
+    LacEditor/Models/MarkdownListStyle.swift \
+    LacEditor/Models/MarkdownMedia.swift \
+    LacEditor/Models/MarkdownInlineStyle.swift \
     LacEditor/Editor/FoldLayoutManager.swift \
     LacEditor/Editor/LogicalLineIndex.swift \
     Verification/FoldLayoutVerification.swift \
@@ -77,8 +88,14 @@ swiftc \
     LacEditor/App/L10n.swift \
     LacEditor/Editor/ListContinuationService.swift \
     LacEditor/Services/TextCodecService.swift \
+    LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Models/MarkdownPresentation.swift \
+    LacEditor/Models/MarkdownColorOverrides.swift \
+    LacEditor/Models/MarkdownListStyle.swift \
+    LacEditor/Models/MarkdownMedia.swift \
+    LacEditor/Models/MarkdownInlineStyle.swift \
     LacEditor/Editor/FoldLayoutManager.swift \
+    LacEditor/Services/MarkdownAutoPairService.swift \
     LacEditor/Editor/LacTextView.swift \
     LacEditor/Services/DocumentProvenance.swift \
     Verification/EditorInteractionVerification.swift \

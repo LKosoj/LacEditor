@@ -9,6 +9,8 @@ let package = Package(
         .macOS("26.0")
     ],
     dependencies: [
+        .package(url: "https://github.com/scinfu/SwiftSoup.git", revision: "49dcadd93161f4a44b4994d3a3e8de9f085aface"),
+        .package(url: "https://github.com/jpsim/Yams.git", revision: "a27b21e0c81c5bf42049b897a62aaf387e80f279"),
         .package(
             url: "https://github.com/swiftlang/swift-cmark.git",
             exact: "0.8.0"
@@ -33,6 +35,8 @@ let package = Package(
         .executableTarget(
             name: "LacEditor",
             dependencies: [
+                .product(name: "Yams", package: "Yams"),
+                .product(name: "SwiftSoup", package: "SwiftSoup"),
                 .product(name: "cmark-gfm", package: "swift-cmark"),
                 .product(name: "cmark-gfm-extensions", package: "swift-cmark"),
                 .product(name: "SwiftTreeSitter", package: "swift-tree-sitter"),
@@ -50,12 +54,14 @@ let package = Package(
             ],
             path: "LacEditor",
             exclude: ["Assets.xcassets", "Info.plist"],
-            resources: [.process("zh-Hans.lproj"), .process("en.lproj"), .process("ru.lproj"), .copy("Resources/Pandoc"), .copy("Resources/Mermaid")],
+            resources: [.process("zh-Hans.lproj"), .process("en.lproj"), .process("ru.lproj"), .copy("Resources/Pandoc"), .copy("Resources/Mermaid"), .copy("Resources/MathJax"), .copy("Resources/LegacyDiagrams"), .copy("Resources/CodeMirror"), .copy("Resources/HighlightJS"), .copy("Resources/PrismJS"), .copy("Resources/Gemoji"), .copy("Resources/HTML-Entities-LICENSE.txt"), .copy("Resources/Yams-LICENSE.txt"), .copy("Resources/SwiftSoup-LICENSE.txt"), .copy("Resources/iPicUploader-LICENSE.txt")],
             linkerSettings: [
                 .linkedFramework("AppKit"),
+                .linkedFramework("CoreText"),
                 .linkedFramework("SwiftUI"),
                 .linkedFramework("UniformTypeIdentifiers"),
                 .linkedFramework("WebKit"),
+                .linkedFramework("JavaScriptCore"),
                 .linkedFramework("Security"),
                 .linkedFramework("ImageIO"),
                 .linkedFramework("PDFKit"),
@@ -65,7 +71,8 @@ let package = Package(
         .testTarget(
             name: "LacEditorTests",
             dependencies: ["LacEditor"],
-            path: "LacEditorTests"
+            path: "LacEditorTests",
+            resources: [.copy("Fixtures")]
         )
     ]
 )

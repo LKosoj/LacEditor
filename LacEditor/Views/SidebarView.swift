@@ -15,7 +15,7 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             if let document = appState.selectedDocument, document.language == .markdown {
                 DisclosureGroup(isExpanded: $appState.isMarkdownOutlineExpanded) {
-                    MarkdownOutlineView(document: document) { heading in
+                    MarkdownOutlineView(document: document, maximumLevel: appState.preferences.markdownTOCMaxLevel) { heading in
                         appState.revealMarkdownHeading(heading, in: document)
                     }
                 } label: {
@@ -27,9 +27,9 @@ struct SidebarView: View {
             }
             HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(.tertiary)
-                TextField(L10n.tr("筛选文件"), text: $filterQuery)
+                TextField(L10n.tr("筛选资料库文件"), text: $filterQuery)
                     .textFieldStyle(.plain).font(.system(size: 12))
-                    .accessibilityLabel(L10n.tr("筛选侧边栏文件"))
+                    .accessibilityLabel(L10n.tr("筛选资料库文件"))
                     .focused($filterFocused)
                     .onExitCommand { filterQuery = "" }
                 if !filterQuery.isEmpty {
@@ -43,11 +43,13 @@ struct SidebarView: View {
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 7))
             .editorFocusRing(filterFocused, radius: 7)
             .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 4)
-            .stableHelp(L10n.tr("按文件名或分组筛选，不搜索文件正文"))
+            .stableHelp(L10n.tr("按文件名或分组筛选资料库，不搜索工作文件夹正文"))
 
             SidebarLibraryView(
                 recentFiles: appState.recentFiles,
                 library: windowManager.sidebarLibrary,
+                folderWorkspace: appState.folderWorkspace,
+                folderSearch: appState.folderSearch,
                 query: filterQuery
             )
             .id(windowManager.primaryReopenGeneration)

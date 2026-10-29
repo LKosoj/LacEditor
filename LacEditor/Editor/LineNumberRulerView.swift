@@ -50,6 +50,10 @@ enum LineNumberGeometry {
         )
     }
 
+    static func horizontalLabelOrigin(rulerHeight: CGFloat, labelSize: NSSize, lineRect: NSRect) -> NSPoint {
+        NSPoint(x: floor(lineRect.midX - labelSize.width / 2), y: floor((rulerHeight - labelSize.height) / 2))
+    }
+
     static func selectionRange(
         from firstLine: NSRange,
         to lastLine: NSRange
@@ -72,8 +76,8 @@ final class LineNumberRulerView: NSRulerView {
     private var visibleLineMapCacheKey: LineNumberVisibleMapCacheKey?
     private var layoutGeneration: UInt = 0
 
-    init(scrollView: NSScrollView, textView: NSTextView) {
-        super.init(scrollView: scrollView, orientation: .verticalRuler)
+    init(scrollView: NSScrollView, textView: NSTextView, orientation: NSRulerView.Orientation = .verticalRuler) {
+        super.init(scrollView: scrollView, orientation: orientation)
         clientView = textView
         ruleThickness = 44
         wantsLayer = true
@@ -209,10 +213,10 @@ final class LineNumberRulerView: NSRulerView {
         // labels to the titlebar safe area: that pins the first visible number.
         let contentLayoutRect = scrollView.map {
             let viewport = convert($0.contentView.bounds, from: $0.contentView)
-            return bounds.intersection(NSRect(
-                x: bounds.minX, y: viewport.minY,
-                width: bounds.width, height: viewport.height
-            ))
+            let rect = orientation == .horizontalRuler
+                ? NSRect(x: viewport.minX, y: bounds.minY, width: viewport.width, height: bounds.height)
+                : NSRect(x: bounds.minX, y: viewport.minY, width: bounds.width, height: viewport.height)
+            return bounds.intersection(rect)
         } ?? bounds
         contentDrawingRect = contentLayoutRect
         guard !contentLayoutRect.isEmpty else {
@@ -248,7 +252,9 @@ final class LineNumberRulerView: NSRulerView {
             actualGlyphRange: nil
         )
         let firstCharacterLocation: Int
-        if containerRect.minY <= 0.5 || text.length == 0 {
+        if orientation == .horizontalRuler {
+            firstCharacterLocation = min(visibleCharacterRange.location, text.length)
+        } else if containerRect.minY <= 0.5 || text.length == 0 {
             firstCharacterLocation = 0
         } else {
             let firstGlyph = layoutManager.glyphIndex(
@@ -301,8 +307,8 @@ final class LineNumberRulerView: NSRulerView {
             textViewRect.origin.x += textView.textContainerOrigin.x
             textViewRect.origin.y += textView.textContainerOrigin.y
             var rulerRect = convert(textViewRect, from: textView)
-            rulerRect.origin.x = bounds.minX
-            rulerRect.size.width = bounds.width
+            if orientation == .horizontalRuler { rulerRect.origin.y = bounds.minY; rulerRect.size.height = bounds.height }
+            else { rulerRect.origin.x = bounds.minX; rulerRect.size.width = bounds.width }
             guard rulerRect.intersects(contentLayoutRect) else { continue }
             lines.append(LineNumberVisibleLine(
                 number: lineNumber,
@@ -331,8 +337,8 @@ final class LineNumberRulerView: NSRulerView {
                 textViewRect.origin.y += textView.textContainerOrigin.y
             }
             var rulerRect = convert(textViewRect, from: textView)
-            rulerRect.origin.x = bounds.minX
-            rulerRect.size.width = bounds.width
+            if orientation == .horizontalRuler { rulerRect.origin.y = bounds.minY; rulerRect.size.height = bounds.height }
+            else { rulerRect.origin.x = bounds.minX; rulerRect.size.width = bounds.width }
             if rulerRect.intersects(contentLayoutRect) {
                 lines.append(LineNumberVisibleLine(
                     number: lineNumber,
@@ -353,8 +359,7 @@ final class LineNumberRulerView: NSRulerView {
             return nil
         }
         return visibleLineMap.min { first, second in
-            verticalDistance(from: point.y, to: first.rulerRect)
-                < verticalDistance(from: point.y, to: second.rulerRect)
+            distance(from: point, to: first.rulerRect) < distance(from: point, to: second.rulerRect)
         }
     }
 
@@ -395,9 +400,13 @@ final class LineNumberRulerView: NSRulerView {
         displaySelectionImmediately()
     }
 
-    private func verticalDistance(from y: CGFloat, to rect: NSRect) -> CGFloat {
-        if rect.contains(NSPoint(x: rect.midX, y: y)) { return 0 }
-        return min(abs(y - rect.minY), abs(y - rect.maxY))
+    private func distance(from point: NSPoint, to rect: NSRect) -> CGFloat {
+        if orientation == .horizontalRuler {
+            if point.x >= rect.minX && point.x <= rect.maxX { return 0 }
+            return min(abs(point.x - rect.minX), abs(point.x - rect.maxX))
+        }
+        if point.y >= rect.minY && point.y <= rect.maxY { return 0 }
+        return min(abs(point.y - rect.minY), abs(point.y - rect.maxY))
     }
 
     private func draw(
@@ -412,11 +421,9 @@ final class LineNumberRulerView: NSRulerView {
         ]
         let value = "\(lineNumber)" as NSString
         let size = value.size(withAttributes: attributes)
-        let origin = LineNumberGeometry.labelOrigin(
-            rulerWidth: bounds.width,
-            labelSize: size,
-            lineRect: lineRect
-        )
+        let origin = orientation == .horizontalRuler
+            ? LineNumberGeometry.horizontalLabelOrigin(rulerHeight: bounds.height, labelSize: size, lineRect: lineRect)
+            : LineNumberGeometry.labelOrigin(rulerWidth: bounds.width, labelSize: size, lineRect: lineRect)
         let labelRect = NSRect(origin: origin, size: size)
         let visibleLabelRect = NSIntersectionRect(labelRect, drawingRect)
         guard !visibleLabelRect.isEmpty else { return }

@@ -183,20 +183,25 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     @Published var text: String {
         didSet {
             if isMarkdownOutlineCurrent { isMarkdownOutlineCurrent = false }
+            markdownReadableText = nil
             hasPendingLiveEdits = false
             pendingLiveTextIsEmpty = nil
             textRevision &+= 1
             textSnapshotCache = nil
-            scheduleMetricsRefresh()
+            if !isTakingMetricsSnapshot { scheduleMetricsRefresh() }
         }
     }
     @Published var url: URL?
-    @Published var language: EditorLanguage
+    @Published var language: EditorLanguage {
+        didSet { if language != oldValue { markdownReadableText = nil; scheduleMetricsRefresh() } }
+    }
     @Published private(set) var fileEncoding: String.Encoding
     @Published var isDirty: Bool
     @Published var cursorLine = 1
     @Published var cursorColumn = 1
-    @Published var selectionRange = NSRange(location: 0, length: 0)
+    @Published var selectionRange = NSRange(location: 0, length: 0) {
+        didSet { if selectionRange != oldValue && (selectionRange.length != 0 || oldValue.length != 0) { scheduleMetricsRefresh() } }
+    }
     @Published var statusMessage: String?
     @Published var textCodecSuggestionTitle: String?
     @Published var markdownHeadings: [MarkdownHeading] = []
@@ -206,7 +211,8 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     @Published var performanceProfile: DocumentPerformanceProfile
     @Published var featureOverrides = DocumentFeatureOverrides()
     @Published var ioState: DocumentIOState = .idle
-    @Published private(set) var wordCount: Int
+    @Published private(set) var statistics: DocumentStatistics?
+    @Published private(set) var statisticsUnavailable = false
     private(set) var textRevision: UInt = 0
     private var textSnapshotCache: DocumentTextSnapshot?
     var scrollPositionRatio: CGFloat = 0
@@ -225,7 +231,10 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     private var pendingLiveTextIsEmpty: Bool?
     private var isUpdatingDirtyState = false
     private var metricsGeneration: UInt = 0
+    private var statisticsReadingSpeed = 200
+    private var markdownReadableText: (revision: UInt, value: MarkdownReadableText)?
     private var metricsSuspended = false
+    private var isTakingMetricsSnapshot = false
     private var metricsDebounceWorkItem: DispatchWorkItem?
 
     init(
@@ -256,10 +265,10 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         self.performanceProfile = resolvedProfile
         self.isPreviewVisible = language == .markdown && resolvedProfile == .standard
         self.savedText = requiresExplicitSave ? nil : text
-        self.wordCount = text.utf16.count < 100_000
-            ? Self.countWords(in: text)
-            : 0
-        if text.utf16.count >= 100_000 {
+        self.statistics = language != .markdown && resolvedProfile == .standard && text.utf16.count < 100_000
+            ? DocumentStatistics.calculate(text)
+            : nil
+        if resolvedProfile == .standard && text.utf16.count >= 100_000 {
             scheduleMetricsRefresh()
         }
     }
@@ -406,8 +415,10 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     }
 
     func noteLiveEdit(isEmpty: Bool) {
+        markdownReadableText = nil
         hasPendingLiveEdits = true
         pendingLiveTextIsEmpty = isEmpty
+        scheduleMetricsRefresh()
         let shouldBeDirty = !(url == nil && isEmpty)
         updateDirtyState(shouldBeDirty)
     }
@@ -478,64 +489,101 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         objectWillChange.send()
     }
 
+    func setStatisticsReadingSpeed(_ wordsPerMinute: Int) {
+        guard wordsPerMinute > 0, wordsPerMinute != statisticsReadingSpeed else { return }
+        statisticsReadingSpeed = wordsPerMinute
+        scheduleMetricsRefresh()
+    }
+
+    var hasCurrentMarkdownReadableText: Bool {
+        !hasPendingLiveEdits && markdownReadableText?.revision == textRevision
+    }
+
+    @discardableResult
+    func installMarkdownReadableText(_ value: MarkdownReadableText, source: String) -> Bool {
+        guard language == .markdown, isWordCountEnabled, !metricsSuspended else { return false }
+        isTakingMetricsSnapshot = true
+        let snapshot = synchronizedSnapshot()
+        isTakingMetricsSnapshot = false
+        guard !hasPendingLiveEdits, snapshot.text.utf16.elementsEqual(source.utf16), value.sourceLength == (source as NSString).length else { return false }
+        markdownReadableText = (snapshot.revision, value)
+        scheduleMetricsRefresh()
+        return true
+    }
+
+    func invalidateMarkdownReadableText() {
+        guard markdownReadableText != nil else { return }
+        markdownReadableText = nil
+        scheduleMetricsRefresh()
+    }
+
     private func scheduleMetricsRefresh() {
         metricsGeneration &+= 1
         let generation = metricsGeneration
-        let revision = textRevision
-        let snapshot = text
         metricsDebounceWorkItem?.cancel()
         metricsDebounceWorkItem = nil
         taskCoordinator.cancel(.metrics)
-
-        guard !metricsSuspended else { return }
-
-        guard isWordCountEnabled else {
-            wordCount = 0
-            return
-        }
-
-        if snapshot.utf16.count < 100_000 {
-            wordCount = Self.countWords(in: snapshot)
-            return
-        }
+        if statistics != nil { statistics = nil }
+        if statisticsUnavailable { statisticsUnavailable = false }
+        guard !metricsSuspended, isWordCountEnabled else { return }
 
         let workItem = DispatchWorkItem { [weak self] in
-            guard let self,
-                  metricsGeneration == generation else { return }
-            metricsDebounceWorkItem = nil
-            startMetricsRefresh(for: snapshot, generation: generation, revision: revision)
+            guard let self, self.metricsGeneration == generation,
+                  !self.metricsSuspended, self.isWordCountEnabled else { return }
+            self.metricsDebounceWorkItem = nil
+            self.isTakingMetricsSnapshot = true
+            let snapshot = self.synchronizedSnapshot()
+            self.isTakingMetricsSnapshot = false
+            guard !self.hasPendingLiveEdits else { return }
+            let selection = self.selectionRange
+            let selectedText: String
+            if selection.length == 0 {
+                selectedText = snapshot.text
+            } else {
+                let source = snapshot.text as NSString
+                func isBoundary(_ location: Int) -> Bool {
+                    location == 0 || location == source.length ||
+                        (location < source.length && source.rangeOfComposedCharacterSequence(at: location).location == location)
+                }
+                guard selection.location != NSNotFound, selection.location >= 0, selection.length > 0,
+                      selection.location <= source.length, selection.length <= source.length - selection.location,
+                      isBoundary(selection.location), isBoundary(NSMaxRange(selection)),
+                      let range = Range(selection, in: snapshot.text) else {
+                    self.statisticsUnavailable = true
+                    return
+                }
+                selectedText = String(snapshot.text[range])
+            }
+            let readable: MarkdownReadableText?
+            if self.language == .markdown {
+                guard let cached = self.markdownReadableText, cached.revision == snapshot.revision else { return }
+                readable = cached.value
+            } else { readable = nil }
+            self.startMetricsRefresh(for: selectedText, source: snapshot.text, readable: readable,
+                                     selection: selection.length == 0 ? nil : selection, generation: generation, revision: snapshot.revision)
         }
         metricsDebounceWorkItem = workItem
-        DispatchQueue.main.asyncAfter(
-            deadline: .now() + 0.4,
-            execute: workItem
-        )
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: workItem)
     }
 
-    private func startMetricsRefresh(
-        for snapshot: String,
-        generation: UInt,
-        revision: UInt
-    ) {
+    private func startMetricsRefresh(for snapshot: String, source: String, readable: MarkdownReadableText?, selection: NSRange?, generation: UInt, revision: UInt) {
         let coordinator = taskCoordinator
         let taskGeneration = coordinator.begin(.metrics)
+        let readingSpeed = statisticsReadingSpeed
         let task = Task.detached(priority: .utility) { [weak self] in
-            guard !Task.isCancelled,
-                  let count = Self.countWords(
-                      in: snapshot,
-                      isCancelled: { Task.isCancelled }
-                  ),
-                  !Task.isCancelled,
-                  coordinator.isCurrent(taskGeneration, for: .metrics) else {
-                return
-            }
+            guard !Task.isCancelled else { return }
+            let prose = readable?.text(in: selection, source: source as NSString, isCancelled: { Task.isCancelled })
+            let unavailable = readable != nil && prose == nil
+            let result = unavailable ? nil : DocumentStatistics.calculate(snapshot, wordsPerMinute: readingSpeed, readableText: prose, isCancelled: { Task.isCancelled })
+            guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .metrics) else { return }
             await MainActor.run { [weak self] in
-                guard let self,
-                      self.metricsGeneration == generation,
-                      self.textRevision == revision,
-                      !Task.isCancelled,
+                guard let self, self.metricsGeneration == generation, self.textRevision == revision,
+                      !self.hasPendingLiveEdits,
+                      (self.selectionRange.length == 0 ? nil : self.selectionRange) == selection,
+                      !self.metricsSuspended, self.isWordCountEnabled, !Task.isCancelled,
                       coordinator.isCurrent(taskGeneration, for: .metrics) else { return }
-                self.wordCount = count
+                self.statistics = result
+                self.statisticsUnavailable = unavailable
                 coordinator.finish(.metrics, generation: taskGeneration)
             }
         }
@@ -548,33 +596,12 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         metricsDebounceWorkItem?.cancel()
         metricsDebounceWorkItem = nil
         taskCoordinator.cancel(.metrics)
+        if statistics != nil { statistics = nil }
     }
 
     func resumeMetricsRefresh() {
         guard metricsSuspended else { return }
         metricsSuspended = false
         scheduleMetricsRefresh()
-    }
-
-    private static func countWords(in text: String) -> Int {
-        countWords(in: text, isCancelled: { false }) ?? 0
-    }
-
-    private static func countWords(
-        in text: String,
-        isCancelled: () -> Bool
-    ) -> Int? {
-        var count = 0
-        var scannedCount = 0
-        for scalar in text.unicodeScalars {
-            if scannedCount.isMultiple(of: 4_096), isCancelled() {
-                return nil
-            }
-            if !CharacterSet.whitespacesAndNewlines.contains(scalar) {
-                count += 1
-            }
-            scannedCount += 1
-        }
-        return count
     }
 }

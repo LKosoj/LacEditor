@@ -1,0 +1,871 @@
+[
+  {
+    "name": "apl",
+    "aliases": [],
+    "mode": "apl",
+    "mime": "text/apl",
+    "example": "⍝ Conway's game of life\n\n⍝ This example was inspired by the impressive demo at\n⍝ http://www.youtube.com/watch?v=a9xAKttWgP4\n\n⍝ Create a matrix:\n⍝     0 1 1\n⍝     1 1 0\n⍝     0 1 0\ncreature ← (3 3 ⍴ ⍳ 9) ∈ 1 2 3 4 7   ⍝ Original creature from demo\ncreature ← (3 3 ⍴ ⍳ 9) ∈ 1 3 6 7 8   ⍝ Glider\n\n⍝ Place the creature on a larger board, near the centre\nboard ← ¯1 ⊖ ¯2 ⌽ 5 7 ↑ creature\n\n⍝ A function to move from one generation to the next\nlife ← {∨/ 1 ⍵ ∧ 3 4 = ⊂+/ +⌿ 1 0 ¯1 ∘.⊖ 1 0 ¯1 ⌽¨ ⊂⍵}\n\n⍝ Compute n-th generation and format it as a\n⍝ character matrix\ngen ← {' #'[(life ⍣ ⍵) board]}\n\n⍝ Show first three generations\n(gen 1) (gen 2) (gen 3)"
+  },
+  {
+    "name": "asn.1",
+    "aliases": [],
+    "mode": "asn.1",
+    "mime": "text/x-ttcn-asn",
+    "example": "--\n -- Sample ASN.1 Code\n --\n MyModule DEFINITIONS ::=\n BEGIN\n\n MyTypes ::= SEQUENCE {\n     myObjectId   OBJECT IDENTIFIER,\n     mySeqOf      SEQUENCE OF MyInt,\n     myBitString  BIT STRING {\n                         muxToken(0),\n                         modemToken(1)\n                  }\n }\n\n MyInt ::= INTEGER (0..65535)\n\n END"
+  },
+  {
+    "name": "asp",
+    "aliases": [
+      "aspx",
+      "asp.net"
+    ],
+    "mode": "htmlembedded",
+    "mime": "application/x-aspx",
+    "example": "<% string name = \"hello\"; %><p><%= name %></p>\n"
+  },
+  {
+    "name": "assembly",
+    "aliases": [
+      "asm",
+      "nasm",
+      "gas"
+    ],
+    "mode": "gas",
+    "mime": "text/x-gas",
+    "example": ".syntax unified\n.global main\n\n/* \n *  A\n *  multi-line\n *  comment.\n */\n\n@ A single line comment.\n\nmain:\n        push    {sp, lr}\n        ldr     r0, =message\n        bl      puts\n        mov     r0, #0\n        pop     {sp, pc}\n\nmessage:\n        .asciz \"Hello world!<br />\""
+  },
+  {
+    "name": "c",
+    "aliases": [
+      "clike"
+    ],
+    "mode": "clike",
+    "mime": "text/x-csrc",
+    "example": "int main(void) { return 0; }\n"
+  },
+  {
+    "name": "c#",
+    "aliases": [
+      "csharp"
+    ],
+    "mode": "clike",
+    "mime": "text/x-csharp",
+    "example": "class C { static void Main() {} }\n"
+  },
+  {
+    "name": "c++",
+    "aliases": [
+      "cpp",
+      "cc"
+    ],
+    "mode": "clike",
+    "mime": "text/x-c++src",
+    "example": "int main() { return 0; }\n"
+  },
+  {
+    "name": "ceylon",
+    "aliases": [],
+    "mode": "clike",
+    "mime": "text/x-ceylon",
+    "example": "shared void hello() { print(\"hello\"); }\n"
+  },
+  {
+    "name": "clojure",
+    "aliases": [],
+    "mode": "clojure",
+    "mime": "text/x-clojure",
+    "example": "(ns game-of-life\n  \"Conway's Game of Life, based on the work of\n  Christophe Grand (http://clj-me.cgrand.net/2011/08/19/conways-game-of-life)\n  and Laurent Petit (https://gist.github.com/1200343).\")\n\n;;; Core game of life's algorithm functions\n\n(defn neighbors\n  \"Given a cell's coordinates `[x y]`, returns the coordinates of its\n  neighbors.\"\n  [[x y]]\n  (for [dx [-1 0 1]\n        dy (if (zero? dx)\n             [-1 1]\n             [-1 0 1])]\n    [(+ dx x) (+ dy y)]))\n\n(defn step\n  \"Given a set of living `cells`, computes the new set of living cells.\"\n  [cells]\n  (set (for [[cell n] (frequencies (mapcat neighbors cells))\n             :when (or (= n 3)\n                       (and (= n 2)\n                            (cells cell)))]\n         cell)))\n\n;;; Utility methods for displaying game on a text terminal\n\n(defn print-grid\n  \"Prints a `grid` of `w` columns and `h` rows, on *out*, representing a\n  step in the game.\"\n  [grid w h]\n  (doseq [x (range (inc w))\n          y (range (inc h))]\n    (when (= y 0) (println))\n    (print (if (grid [x y])\n             \"[X]\"\n             \" . \"))))\n\n(defn print-grids\n  \"Prints a sequence of `grids` of `w` columns and `h` rows on *out*,\n  representing several steps.\"\n  [grids w h]\n  (doseq [grid grids]\n    (print-grid grid w h)\n    (println)))\n\n;;; Launches an example grid\n\n(def grid\n  \"`grid` represents the initial set of living cells\"\n  #{[2 1] [2 2] [2 3]})\n\n(print-grids (take 3 (iterate step grid)) 5 5)"
+  },
+  {
+    "name": "cmake",
+    "aliases": [],
+    "mode": "cmake",
+    "mime": "text/x-cmake",
+    "example": "# vim: syntax=cmake\nif(NOT CMAKE_BUILD_TYPE)\n    # default to Release build for GCC builds\n    set(CMAKE_BUILD_TYPE Release CACHE STRING\n        \"Choose the type of build, options are: None(CMAKE_CXX_FLAGS or CMAKE_C_FLAGS used) Debug Release RelWithDebInfo MinSizeRel.\"\n        FORCE)\nendif()\nmessage(STATUS \"cmake version ${CMAKE_VERSION}\")\nif(POLICY CMP0025)\n    cmake_policy(SET CMP0025 OLD) # report Apple's Clang as just Clang\nendif()\nif(POLICY CMP0042)\n    cmake_policy(SET CMP0042 NEW) # MACOSX_RPATH\nendif()\n\nproject (x265)\ncmake_minimum_required (VERSION 2.8.8) # OBJECT libraries require 2.8.8\ninclude(CheckIncludeFiles)\ninclude(CheckFunctionExists)\ninclude(CheckSymbolExists)\ninclude(CheckCXXCompilerFlag)\n\n# X265_BUILD must be incremented each time the public API is changed\nset(X265_BUILD 48)\nconfigure_file(\"${PROJECT_SOURCE_DIR}/x265.def.in\"\n               \"${PROJECT_BINARY_DIR}/x265.def\")\nconfigure_file(\"${PROJECT_SOURCE_DIR}/x265_config.h.in\"\n               \"${PROJECT_BINARY_DIR}/x265_config.h\")\n\nSET(CMAKE_MODULE_PATH \"${PROJECT_SOURCE_DIR}/cmake\" \"${CMAKE_MODULE_PATH}\")\n\n# System architecture detection\nstring(TOLOWER \"${CMAKE_SYSTEM_PROCESSOR}\" SYSPROC)\nset(X86_ALIASES x86 i386 i686 x86_64 amd64)\nlist(FIND X86_ALIASES \"${SYSPROC}\" X86MATCH)\nif(\"${SYSPROC}\" STREQUAL \"\" OR X86MATCH GREATER \"-1\")\n    message(STATUS \"Detected x86 target processor\")\n    set(X86 1)\n    add_definitions(-DX265_ARCH_X86=1)\n    if(\"${CMAKE_SIZEOF_VOID_P}\" MATCHES 8)\n        set(X64 1)\n        add_definitions(-DX86_64=1)\n    endif()\nelseif(${SYSPROC} STREQUAL \"armv6l\")\n    message(STATUS \"Detected ARM target processor\")\n    set(ARM 1)\n    add_definitions(-DX265_ARCH_ARM=1 -DHAVE_ARMV6=1)\nelse()\n    message(STATUS \"CMAKE_SYSTEM_PROCESSOR value `${CMAKE_SYSTEM_PROCESSOR}` is unknown\")\n    message(STATUS \"Please add this value near ${CMAKE_CURRENT_LIST_FILE}:${CMAKE_CURRENT_LIST_LINE}\")\nendif()\n\nif(UNIX)\n    list(APPEND PLATFORM_LIBS pthread)\n    find_library(LIBRT rt)\n    if(LIBRT)\n        list(APPEND PLATFORM_LIBS rt)\n    endif()\n    find_package(Numa)\n    if(NUMA_FOUND)\n        list(APPEND CMAKE_REQUIRED_LIBRARIES ${NUMA_LIBRARY})\n        check_symbol_exists(numa_node_of_cpu numa.h NUMA_V2)\n        if(NUMA_V2)\n            add_definitions(-DHAVE_LIBNUMA)\n            message(STATUS \"libnuma found, building with support for NUMA nodes\")\n            list(APPEND PLATFORM_LIBS ${NUMA_LIBRARY})\n            link_directories(${NUMA_LIBRARY_DIR})\n            include_directories(${NUMA_INCLUDE_DIR})\n        endif()\n    endif()\n    mark_as_advanced(LIBRT NUMA_FOUND)\nendif(UNIX)\n\nif(X64 AND NOT WIN32)\n    option(ENABLE_PIC \"Enable Position Independent Code\" ON)\nelse()\n    option(ENABLE_PIC \"Enable Position Independent Code\" OFF)\nendif(X64 AND NOT WIN32)\n\n# Compiler detection\nif(CMAKE_GENERATOR STREQUAL \"Xcode\")\n  set(XCODE 1)\nendif()\nif (APPLE)\n  add_definitions(-DMACOS)\nendif()"
+  },
+  {
+    "name": "cobol",
+    "aliases": [],
+    "mode": "cobol",
+    "mime": "text/x-cobol",
+    "example": "---------1---------2---------3---------4---------5---------6---------7---------8\n12345678911234567892123456789312345678941234567895123456789612345678971234567898\n000010 IDENTIFICATION DIVISION.                                        MODTGHERE\n000020 PROGRAM-ID.       SAMPLE.\n000030 AUTHOR.           TEST SAM. \n000040 DATE-WRITTEN.     5 February 2013\n000041\n000042* A sample program just to show the form.\n000043* The program copies its input to the output,\n000044* and counts the number of records.\n000045* At the end this number is printed.\n000046\n000050 ENVIRONMENT DIVISION.\n000060 INPUT-OUTPUT SECTION.\n000070 FILE-CONTROL.\n000080     SELECT STUDENT-FILE     ASSIGN TO SYSIN\n000090         ORGANIZATION IS LINE SEQUENTIAL.\n000100     SELECT PRINT-FILE       ASSIGN TO SYSOUT\n000110         ORGANIZATION IS LINE SEQUENTIAL.\n000120\n000130 DATA DIVISION.\n000140 FILE SECTION.\n000150 FD  STUDENT-FILE\n000160     RECORD CONTAINS 43 CHARACTERS\n000170     DATA RECORD IS STUDENT-IN.\n000180 01  STUDENT-IN              PIC X(43).\n000190\n000200 FD  PRINT-FILE\n000210     RECORD CONTAINS 80 CHARACTERS\n000220     DATA RECORD IS PRINT-LINE.\n000230 01  PRINT-LINE              PIC X(80).\n000240\n000250 WORKING-STORAGE SECTION.\n000260 01  DATA-REMAINS-SWITCH     PIC X(2)      VALUE SPACES.\n000261 01  RECORDS-WRITTEN         PIC 99.\n000270\n000280 01  DETAIL-LINE.\n000290     05  FILLER              PIC X(7)      VALUE SPACES.\n000300     05  RECORD-IMAGE        PIC X(43).\n000310     05  FILLER              PIC X(30)     VALUE SPACES.\n000311 \n000312 01  SUMMARY-LINE.\n000313     05  FILLER              PIC X(7)      VALUE SPACES.\n000314     05  TOTAL-READ          PIC 99.\n000315     05  FILLER              PIC X         VALUE SPACE.\n000316     05  FILLER              PIC X(17)     \n000317                 VALUE  'Records were read'.\n000318     05  FILLER              PIC X(53)     VALUE SPACES.\n000319\n000320 PROCEDURE DIVISION.\n000321\n000330 PREPARE-SENIOR-REPORT.\n000340     OPEN INPUT  STUDENT-FILE\n000350          OUTPUT PRINT-FILE.\n000351     MOVE ZERO TO RECORDS-WRITTEN.\n000360     READ STUDENT-FILE\n000370         AT END MOVE 'NO' TO DATA-REMAINS-SWITCH\n000380     END-READ.\n000390     PERFORM PROCESS-RECORDS\n000410         UNTIL DATA-REMAINS-SWITCH = 'NO'.\n000411     PERFORM PRINT-SUMMARY.\n000420     CLOSE STUDENT-FILE\n000430           PRINT-FILE.\n000440     STOP RUN.\n000450\n000460 PROCESS-RECORDS.\n000470     MOVE STUDENT-IN TO RECORD-IMAGE.\n000480     MOVE DETAIL-LINE TO PRINT-LINE.\n000490     WRITE PRINT-LINE.\n000500     ADD 1 TO RECORDS-WRITTEN.\n000510     READ STUDENT-FILE\n000520         AT END MOVE 'NO' TO DATA-REMAINS-SWITCH\n000530     END-READ. \n000540\n000550 PRINT-SUMMARY.\n000560     MOVE RECORDS-WRITTEN TO TOTAL-READ.\n000570     MOVE SUMMARY-LINE TO PRINT-LINE.\n000571     WRITE PRINT-LINE. \n000572\n000580"
+  },
+  {
+    "name": "coffeescript",
+    "aliases": [
+      "coffee"
+    ],
+    "mode": "coffeescript",
+    "mime": "application/vnd.coffeescript",
+    "example": "# CoffeeScript mode for CodeMirror\n# Copyright (c) 2011 Jeff Pickhardt, released under\n# the MIT License.\n#\n# Modified from the Python CodeMirror mode, which also is \n# under the MIT License Copyright (c) 2010 Timothy Farrell.\n#\n# The following script, Underscore.coffee, is used to \n# demonstrate CoffeeScript mode for CodeMirror.\n#\n# To download CoffeeScript mode for CodeMirror, go to:\n# https://github.com/pickhardt/coffeescript-codemirror-mode\n\n# **Underscore.coffee\n# (c) 2011 Jeremy Ashkenas, DocumentCloud Inc.**\n# Underscore is freely distributable under the terms of the\n# [MIT license](http://en.wikipedia.org/wiki/MIT_License).\n# Portions of Underscore are inspired by or borrowed from\n# [Prototype.js](http://prototypejs.org/api), Oliver Steele's\n# [Functional](http://osteele.com), and John Resig's\n# [Micro-Templating](http://ejohn.org).\n# For all details and documentation:\n# http://documentcloud.github.com/underscore/\n\n\n# Baseline setup\n# --------------\n\n# Establish the root object, `window` in the browser, or `global` on the server.\nroot = this\n\n\n# Save the previous value of the `_` variable.\npreviousUnderscore = root._\n\n### Multiline\n    comment\n###\n\n# Establish the object that gets thrown to break out of a loop iteration.\n# `StopIteration` is SOP on Mozilla.\nbreaker = if typeof(StopIteration) is 'undefined' then '__break__' else StopIteration\n\n\n#### Docco style single line comment (title)\n\n\n# Helper function to escape **RegExp** contents, because JS doesn't have one.\nescapeRegExp = (string) -> string.replace(/([.*+?^${}()|[\\]\\/\\\\])/g, '\\\\$1')\n\n\n# Save bytes in the minified (but not gzipped) version:\nArrayProto = Array.prototype\nObjProto = Object.prototype\n\n\n# Create quick reference variables for speed access to core prototypes.\nslice = ArrayProto.slice\nunshift = ArrayProto.unshift\ntoString = ObjProto.toString\nhasOwnProperty = ObjProto.hasOwnProperty\npropertyIsEnumerable = ObjProto.propertyIsEnumerable\n\n\n# All **ECMA5** native implementations we hope to use are declared here.\nnativeForEach = ArrayProto.forEach\nnativeMap = ArrayProto.map\nnativeReduce = ArrayProto.reduce\nnativeReduceRight = ArrayProto.reduceRight\nnativeFilter = ArrayProto.filter\nnativeEvery = ArrayProto.every\nnativeSome = ArrayProto.some\nnativeIndexOf = ArrayProto.indexOf\nnativeLastIndexOf = ArrayProto.lastIndexOf\nnativeIsArray = Array.isArray\nnativeKeys = Object.keys\n\n\n# Create a safe reference to the Underscore object for use below.\n_ = (obj) -> new wrapper(obj)\n\n\n# Export the Underscore object for **CommonJS**.\nif typeof(exports) != 'undefined' then exports._ = _\n\n\n# Export Underscore to global scope.\nroot._ = _\n\n\n# Current version.\n_.VERSION = '1.1.0'\n\n\n# Collection Functions\n# --------------------\n\n# The cornerstone, an **each** implementation.\n# Handles objects implementing **forEach**, arrays, and raw objects.\n_.each = (obj, iterator, context) ->\n  try\n    if nativeForEach and obj.forEach is nativeForEach\n      obj.forEach iterator, context\n    else if _.isNumber obj.length\n      iterator.call context, obj[i], i, obj for i in [0...obj.length]\n    else\n      iterator.call context, val, key, obj for own key, val of obj\n  catch e\n    throw e if e isnt breaker\n  obj\n\n\n# Return the results of applying the iterator to each element. Use JavaScript\n# 1.6's version of **map**, if possible.\n_.map = (obj, iterator, context) ->\n  return obj.map(iterator, context) if nativeMap and obj.map is nativeMap\n  results = []\n  _.each obj, (value, index, list) ->\n    results.push iterator.call context, value, index, list\n  results\n\n\n# **Reduce** builds up a single result from a list of values. Also known as\n# **inject**, or **foldl**. Uses JavaScript 1.8's version of **reduce**, if possible.\n_.reduce = (obj, iterator, memo, context) ->\n  if nativeReduce and obj.reduce is nativeReduce\n    iterator = _.bind iterator, context if context\n    return obj.reduce iterator, memo\n  _.each obj, (value, index, list) ->\n    memo = iterator.call context, memo, value, index, list\n  memo\n\n\n# The right-associative version of **reduce**, also known as **foldr**. Uses\n# JavaScript 1.8"
+  },
+  {
+    "name": "commonlisp",
+    "aliases": [
+      "lisp"
+    ],
+    "mode": "commonlisp",
+    "mime": "text/x-common-lisp",
+    "example": "(in-package :cl-postgres)\n\n;; These are used to synthesize reader and writer names for integer\n;; reading/writing functions when the amount of bytes and the\n;; signedness is known. Both the macro that creates the functions and\n;; some macros that use them create names this way.\n(eval-when (:compile-toplevel :load-toplevel :execute)\n  (defun integer-reader-name (bytes signed)\n    (intern (with-standard-io-syntax\n              (format nil \"~a~a~a~a\" '#:read- (if signed \"\" '#:u) '#:int bytes))))\n  (defun integer-writer-name (bytes signed)\n    (intern (with-standard-io-syntax\n              (format nil \"~a~a~a~a\" '#:write- (if signed \"\" '#:u) '#:int bytes)))))\n\n(defmacro integer-reader (bytes)\n  \"Create a function to read integers from a binary stream.\"\n  (let ((bits (* bytes 8)))\n    (labels ((return-form (signed)\n               (if signed\n                   `(if (logbitp ,(1- bits) result)\n                        (dpb result (byte ,(1- bits) 0) -1)\n                        result)\n                   `result))\n             (generate-reader (signed)\n               `(defun ,(integer-reader-name bytes signed) (socket)\n                  (declare (type stream socket)\n                           #.*optimize*)\n                  ,(if (= bytes 1)\n                       `(let ((result (the (unsigned-byte 8) (read-byte socket))))\n                          (declare (type (unsigned-byte 8) result))\n                          ,(return-form signed))\n                       `(let ((result 0))\n                          (declare (type (unsigned-byte ,bits) result))\n                          ,@(loop :for byte :from (1- bytes) :downto 0\n                                   :collect `(setf (ldb (byte 8 ,(* 8 byte)) result)\n                                                   (the (unsigned-byte 8) (read-byte socket))))\n                          ,(return-form signed))))))\n      `(progn\n;; This causes weird errors on SBCL in some circumstances. Disabled for now.\n;;         (declaim (inline ,(integer-reader-name bytes t)\n;;                          ,(integer-reader-name bytes nil)))\n         (declaim (ftype (function (t) (signed-byte ,bits))\n                         ,(integer-reader-name bytes t)))\n         ,(generate-reader t)\n         (declaim (ftype (function (t) (unsigned-byte ,bits))\n                         ,(integer-reader-name bytes nil)))\n         ,(generate-reader nil)))))\n\n(defmacro integer-writer (bytes)\n  \"Create a function to write integers to a binary stream.\"\n  (let ((bits (* 8 bytes)))\n    `(progn\n      (declaim (inline ,(integer-writer-name bytes t)\n                       ,(integer-writer-name bytes nil)))\n      (defun ,(integer-writer-name bytes nil) (socket value)\n        (declare (type stream socket)\n                 (type (unsigned-byte ,bits) value)\n                 #.*optimize*)\n        ,@(if (= bytes 1)\n              `((write-byte value socket))\n              (loop :for byte :from (1- bytes) :downto 0\n                    :collect `(write-byte (ldb (byte 8 ,(* byte 8)) value)\n                               socket)))\n        (values))\n      (defun ,(integer-writer-name bytes t) (socket value)\n        (declare (type stream socket)\n                 (type (signed-byte ,bits) value)\n                 #.*optimize*)\n        ,@(if (= bytes 1)\n              `((write-byte (ldb (byte 8 0) value) socket))\n              (loop :for byte :from (1- bytes) :downto 0\n                    :collect `(write-byte (ldb (byte 8 ,(* byte 8)) value)\n                               socket)))\n        (values)))))\n\n;; All the instances of the above that we need.\n\n(integer-reader 1)\n(integer-reader 2)\n(integer-reader 4)\n(integer-reader 8)\n\n(integer-writer 1)\n(integer-writer 2)\n(integer-writer 4)\n\n(defun write-bytes (socket bytes)\n  \"Write a byte-array to a stream.\"\n  (declare (type stream socket)\n           (type (simple-array (unsigned-byte 8)) bytes)\n           #.*optimize*)\n  (write-sequence bytes socket))\n\n(defun write-str (socket string)\n  \"Write a null-terminated string to a stream \\(encoding it when UTF-8\nsupport is enabled.).\"\n  (declare (type stream socket"
+  },
+  {
+    "name": "cql",
+    "aliases": [
+      "cassandra"
+    ],
+    "mode": "sql",
+    "mime": "text/x-cassandra",
+    "example": "-- SQL Mode for CodeMirror\nSELECT SQL_NO_CACHE DISTINCT\n\t\t@var1 AS `val1`, @'val2', @global.'sql_mode',\n\t\t1.1 AS `float_val`, .14 AS `another_float`, 0.09e3 AS `int_with_esp`,\n\t\t0xFA5 AS `hex`, x'fa5' AS `hex2`, 0b101 AS `bin`, b'101' AS `bin2`,\n\t\tDATE '1994-01-01' AS `sql_date`, { T \"1994-01-01\" } AS `odbc_date`,\n\t\t'my string', _utf8'your string', N'her string',\n        TRUE, FALSE, UNKNOWN\n\tFROM DUAL\n\t-- space needed after '--'\n\t# 1 line comment\n\t/* multiline\n\tcomment! */\n\tLIMIT 1 OFFSET 0;"
+  },
+  {
+    "name": "crystal",
+    "aliases": [],
+    "mode": "crystal",
+    "mime": "text/x-crystal",
+    "example": "# Features of Crystal\n# - Ruby-inspired syntax.\n# - Statically type-checked but without having to specify the type of variables or method arguments.\n# - Be able to call C code by writing bindings to it in Crystal.\n# - Have compile-time evaluation and generation of code, to avoid boilerplate code.\n# - Compile to efficient native code.\n\n# A very basic HTTP server\nrequire \"http/server\"\n\nserver = HTTP::Server.new(8080) do |request|\n  HTTP::Response.ok \"text/plain\", \"Hello world, got #{request.path}!\"\nend\n\nputs \"Listening on http://0.0.0.0:8080\"\nserver.listen\n\nmodule Foo\n  abstract def abstract_method : String\n\n  @[AlwaysInline]\n  def with_foofoo\n    with Foo.new(self) yield\n  end\n\n  struct Foo\n    def initialize(@foo : ::Foo)\n    end\n\n    def hello_world\n      @foo.abstract_method\n    end\n  end\nend\n\nclass Bar\n  include Foo\n\n  @@foobar = 12345\n\n  def initialize(@bar : Int32)\n  end\n\n  macro alias_method(name, method)\n    def {{ name }}(*args)\n      {{ method }}(*args)\n    end\n  end\n\n  def a_method\n    \"Hello, World\"\n  end\n\n  alias_method abstract_method, a_method\n\n  def show_instance_vars : Nil\n    {% for var in @type.instance_vars %}\n      puts \"@{{ var }} = #{ @{{ var }} }\"\n    {% end %}\n  end\nend\n\nclass Baz < Bar; end\n\nlib LibC\n  fun c_puts = \"puts\"(str : Char*) : Int\nend\n\nbaz = Baz.new(100)\nbaz.show_instance_vars\nbaz.with_foofoo do\n  LibC.c_puts hello_world\nend"
+  },
+  {
+    "name": "css",
+    "aliases": [],
+    "mode": "css",
+    "mime": "text/css",
+    "example": "/* Some example CSS */\n\n@import url(\"something.css\");\n\nbody {\n  margin: 0;\n  padding: 3em 6em;\n  font-family: tahoma, arial, sans-serif;\n  color: #000;\n}\n\n#navigation a {\n  font-weight: bold;\n  text-decoration: none !important;\n}\n\nh1 {\n  font-size: 2.5em;\n}\n\nh2 {\n  font-size: 1.7em;\n}\n\nh1:before, h2:before {\n  content: \"::\";\n}\n\ncode {\n  font-family: courier, monospace;\n  font-size: 80%;\n  color: #418A8A;\n}"
+  },
+  {
+    "name": "cypher",
+    "aliases": [],
+    "mode": "cypher",
+    "mime": "application/x-cypher-query",
+    "example": "// Cypher Mode for CodeMirror, using the neo theme\nMATCH (joe { name: 'Joe' })-[:knows*2..2]-(friend_of_friend)\nWHERE NOT (joe)-[:knows]-(friend_of_friend)\nRETURN friend_of_friend.name, COUNT(*)\nORDER BY COUNT(*) DESC , friend_of_friend.name"
+  },
+  {
+    "name": "cython",
+    "aliases": [],
+    "mode": "python",
+    "mime": "text/x-cython",
+    "example": "cdef int value = 42\n"
+  },
+  {
+    "name": "d",
+    "aliases": [],
+    "mode": "d",
+    "mime": "text/x-d",
+    "example": "/* D demo code // copied from phobos/sd/metastrings.d */\n// Written in the D programming language.\n\n/**\nTemplates with which to do compile-time manipulation of strings.\n\nMacros:\n WIKI = Phobos/StdMetastrings\n\nCopyright: Copyright Digital Mars 2007 - 2009.\nLicense:   <a href=\"http://www.boost.org/LICENSE_1_0.txt\">Boost License 1.0</a>.\nAuthors:   $(WEB digitalmars.com, Walter Bright),\n           Don Clugston\nSource:    $(PHOBOSSRC std/_metastrings.d)\n*/\n/*\n         Copyright Digital Mars 2007 - 2009.\nDistributed under the Boost Software License, Version 1.0.\n   (See accompanying file LICENSE_1_0.txt or copy at\n         http://www.boost.org/LICENSE_1_0.txt)\n */\nmodule std.metastrings;\n\n/**\nFormats constants into a string at compile time.  Analogous to $(XREF\nstring,format).\n\nParameters:\n\nA = tuple of constants, which can be strings, characters, or integral\n    values.\n\nFormats:\n *    The formats supported are %s for strings, and %%\n *    for the % character.\nExample:\n---\nimport std.metastrings;\nimport std.stdio;\n\nvoid main()\n{\n  string s = Format!(\"Arg %s = %s\", \"foo\", 27);\n  writefln(s); // \"Arg foo = 27\"\n}\n * ---\n */\n\ntemplate Format(A...)\n{\n    static if (A.length == 0)\n        enum Format = \"\";\n    else static if (is(typeof(A[0]) : const(char)[]))\n        enum Format = FormatString!(A[0], A[1..$]);\n    else\n        enum Format = toStringNow!(A[0]) ~ Format!(A[1..$]);\n}\n\ntemplate FormatString(const(char)[] F, A...)\n{\n    static if (F.length == 0)\n        enum FormatString = Format!(A);\n    else static if (F.length == 1)\n        enum FormatString = F[0] ~ Format!(A);\n    else static if (F[0..2] == \"%s\")\n        enum FormatString\n            = toStringNow!(A[0]) ~ FormatString!(F[2..$],A[1..$]);\n    else static if (F[0..2] == \"%%\")\n        enum FormatString = \"%\" ~ FormatString!(F[2..$],A);\n    else\n    {\n        static assert(F[0] != '%', \"unrecognized format %\" ~ F[1]);\n        enum FormatString = F[0] ~ FormatString!(F[1..$],A);\n    }\n}\n\nunittest\n{\n    auto s = Format!(\"hel%slo\", \"world\", -138, 'c', true);\n    assert(s == \"helworldlo-138ctrue\", \"[\" ~ s ~ \"]\");\n}\n\n/**\n * Convert constant argument to a string.\n */\n\ntemplate toStringNow(ulong v)\n{\n    static if (v < 10)\n        enum toStringNow = \"\" ~ cast(char)(v + '0');\n    else\n        enum toStringNow = toStringNow!(v / 10) ~ toStringNow!(v % 10);\n}\n\nunittest\n{\n    static assert(toStringNow!(1uL << 62) == \"4611686018427387904\");\n}\n\n/// ditto\ntemplate toStringNow(long v)\n{\n    static if (v < 0)\n        enum toStringNow = \"-\" ~ toStringNow!(cast(ulong) -v);\n    else\n        enum toStringNow = toStringNow!(cast(ulong) v);\n}\n\nunittest\n{\n    static assert(toStringNow!(0x100000000) == \"4294967296\");\n    static assert(toStringNow!(-138L) == \"-138\");\n}\n\n/// ditto\ntemplate toStringNow(uint U)\n{\n    enum toStringNow = toStringNow!(cast(ulong)U);\n}\n\n/// ditto\ntemplate toStringNow(int I)\n{\n    enum toStringNow = toStringNow!(cast(long)I);\n}\n\n/// ditto\ntemplate toStringNow(bool B)\n{\n    enum toStringNow = B ? \"true\" : \"false\";\n}\n\n/// ditto\ntemplate toStringNow(string S)\n{\n    enum toStringNow = S;\n}\n\n/// ditto\ntemplate toStringNow(char C)\n{\n    enum toStringNow = \"\" ~ C;\n}\n\n\n/********\n * Parse unsigned integer literal from the start of string s.\n * returns:\n *    .value = the integer literal as a string,\n *    .rest = the string following the integer literal\n * Otherwise:\n *    .value = null,\n *    .rest = s\n */\n\ntemplate parseUinteger(const(char)[] s)\n{\n    static if (s.length == 0)\n    {\n        enum value = \"\";\n        enum rest = \"\";\n    }\n    else static if (s[0] >= '0' && s[0] <= '9')\n    {\n        enum value = s[0] ~ parseUinteger!(s[1..$]).value;\n        enum rest = parseUinteger!(s[1..$]).rest;\n    }\n    else\n    {\n        enum value = \"\";\n        enum rest = s;\n    }\n}\n\n/********\nParse integer literal optionally preceded by $(D '-') from the start\nof string $(D s).\n\nReturns:\n   .value = the integer literal as a string,\n   .rest = the string following the integer literal\n\nOtherwise:\n   .value = null,\n   .rest = s\n*/\n\ntemplate parseInteger(const(char)[] s)\n{\n    static if "
+  },
+  {
+    "name": "dart",
+    "aliases": [],
+    "mode": "dart",
+    "mime": "application/dart",
+    "example": "void main() { print(\"hello\"); }\n"
+  },
+  {
+    "name": "diff",
+    "aliases": [],
+    "mode": "diff",
+    "mime": "text/x-diff",
+    "example": "diff --git a/index.html b/index.html\nindex c1d9156..7764744 100644\n--- a/index.html\n+++ b/index.html\n@@ -95,7 +95,8 @@ StringStream.prototype = {\n     <script>\n       var editor = CodeMirror.fromTextArea(document.getElementById(\"code\"), {\n         lineNumbers: true,\n-        autoMatchBrackets: true\n+        autoMatchBrackets: true,\n+      onGutterClick: function(x){console.log(x);}\n       });\n     </script>\n   </body>\ndiff --git a/lib/codemirror.js b/lib/codemirror.js\nindex 04646a9..9a39cc7 100644\n--- a/lib/codemirror.js\n+++ b/lib/codemirror.js\n@@ -399,10 +399,16 @@ var CodeMirror = (function() {\n     }\n \n     function onMouseDown(e) {\n-      var start = posFromMouse(e), last = start;    \n+      var start = posFromMouse(e), last = start, target = e.target();\n       if (!start) return;\n       setCursor(start.line, start.ch, false);\n       if (e.button() != 1) return;\n+      if (target.parentNode == gutter) {    \n+        if (options.onGutterClick)\n+          options.onGutterClick(indexOf(gutter.childNodes, target) + showingFrom);\n+        return;\n+      }\n+\n       if (!focused) onFocus();\n \n       e.stop();\n@@ -808,7 +814,7 @@ var CodeMirror = (function() {\n       for (var i = showingFrom; i < showingTo; ++i) {\n         var marker = lines[i].gutterMarker;\n         if (marker) html.push('<div class=\"' + marker.style + '\">' + htmlEscape(marker.text) + '</div>');\n-        else html.push(\"<div>\" + (options.lineNumbers ? i + 1 : \"\\u00a0\") + \"</div>\");\n+        else html.push(\"<div>\" + (options.lineNumbers ? i + options.firstLineNumber : \"\\u00a0\") + \"</div>\");\n       }\n       gutter.style.display = \"none\"; // TODO test whether this actually helps\n       gutter.innerHTML = html.join(\"\");\n@@ -1371,10 +1377,8 @@ var CodeMirror = (function() {\n         if (option == \"parser\") setParser(value);\n         else if (option === \"lineNumbers\") setLineNumbers(value);\n         else if (option === \"gutter\") setGutter(value);\n-        else if (option === \"readOnly\") options.readOnly = value;\n-        else if (option === \"indentUnit\") {options.indentUnit = indentUnit = value; setParser(options.parser);}\n-        else if (/^(?:enterMode|tabMode|indentWithTabs|readOnly|autoMatchBrackets|undoDepth)$/.test(option)) options[option] = value;\n-        else throw new Error(\"Can't set option \" + option);\n+        else if (option === \"indentUnit\") {options.indentUnit = value; setParser(options.parser);}\n+        else options[option] = value;\n       },\n       cursorCoords: cursorCoords,\n       undo: operation(undo),\n@@ -1402,7 +1406,8 @@ var CodeMirror = (function() {\n       replaceRange: operation(replaceRange),\n \n       operation: function(f){return operation(f)();},\n-      refresh: function(){updateDisplay([{from: 0, to: lines.length}]);}\n+      refresh: function(){updateDisplay([{from: 0, to: lines.length}]);},\n+      getInputField: function(){return input;}\n     };\n     return instance;\n   }\n@@ -1420,6 +1425,7 @@ var CodeMirror = (function() {\n     readOnly: false,\n     onChange: null,\n     onCursorActivity: null,\n+    onGutterClick: null,\n     autoMatchBrackets: false,\n     workTime: 200,\n     workDelay: 300,"
+  },
+  {
+    "name": "django",
+    "aliases": [],
+    "mode": "django",
+    "mime": "text/x-django",
+    "example": "<!doctype html>\n<html>\n  <head>\n    <title>My Django web application</title>\n  </head>\n  <body>\n    <h1>\n      {{ page.title|capfirst }}\n    </h1>\n    <ul class=\"my-list\">\n      {# traverse a list of items and produce links to their views. #}\n      {% for item in items %}\n      <li>\n        <a href=\"{% url 'item_view' item.name|slugify %}\">\n          {{ item.name }}\n        </a>\n      </li>\n      {% empty %}\n      <li>You have no items in your list.</li>\n      {% endfor %}\n    </ul>\n    {% comment \"this is a forgotten footer\" %}\n    <footer></footer>\n    {% endcomment %}\n  </body>\n</html>"
+  },
+  {
+    "name": "dockerfile",
+    "aliases": [],
+    "mode": "dockerfile",
+    "mime": "text/x-dockerfile",
+    "example": "# Install Ghost blogging platform and run development environment\n#\n# VERSION 1.0.0\n\nFROM ubuntu:12.10\nMAINTAINER Amer Grgic \"amer@livebyt.es\"\nWORKDIR /data/ghost\n\n# Install dependencies for nginx installation\nRUN apt-get update\nRUN apt-get install -y python g++ make software-properties-common --force-yes\nRUN add-apt-repository ppa:chris-lea/node.js\nRUN apt-get update\n# Install unzip\nRUN apt-get install -y unzip\n# Install curl\nRUN apt-get install -y curl\n# Install nodejs & npm\nRUN apt-get install -y rlwrap\nRUN apt-get install -y nodejs \n# Download Ghost v0.4.1\nRUN curl -L https://ghost.org/zip/ghost-latest.zip -o /tmp/ghost.zip\n# Unzip Ghost zip to /data/ghost\nRUN unzip -uo /tmp/ghost.zip -d /data/ghost\n# Add custom config js to /data/ghost\nADD ./config.example.js /data/ghost/config.js\n# Install Ghost with NPM\nRUN cd /data/ghost/ && npm install --production\n# Expose port 2368\nEXPOSE 2368\n# Run Ghost\nCMD [\"npm\",\"start\"]"
+  },
+  {
+    "name": "dtd",
+    "aliases": [
+      "xml-dtd"
+    ],
+    "mode": "dtd",
+    "mime": "application/xml-dtd",
+    "example": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\n<!ATTLIST title\n  xmlns\tCDATA\t#FIXED\t\"http://docbook.org/ns/docbook\"\n  role\tCDATA\t#IMPLIED\n  %db.common.attributes;\n  %db.common.linking.attributes;\n>\n\n<!--\n  Try: http://docbook.org/xml/5.0/dtd/docbook.dtd\n-->\n\n<!DOCTYPE xsl:stylesheet\n  [\n    <!ENTITY nbsp   \"&#160;\">\n    <!ENTITY copy   \"&#169;\">\n    <!ENTITY reg    \"&#174;\">\n    <!ENTITY trade  \"&#8482;\">\n    <!ENTITY mdash  \"&#8212;\">\n    <!ENTITY ldquo  \"&#8220;\">\n    <!ENTITY rdquo  \"&#8221;\">\n    <!ENTITY pound  \"&#163;\">\n    <!ENTITY yen    \"&#165;\">\n    <!ENTITY euro   \"&#8364;\">\n    <!ENTITY mathml \"http://www.w3.org/1998/Math/MathML\">\n  ]\n>\n\n<!ELEMENT title (#PCDATA|inlinemediaobject|remark|superscript|subscript|xref|link|olink|anchor|biblioref|alt|annotation|indexterm|abbrev|acronym|date|emphasis|footnote|footnoteref|foreignphrase|phrase|quote|wordasword|firstterm|glossterm|coref|trademark|productnumber|productname|database|application|hardware|citation|citerefentry|citetitle|citebiblioid|author|person|personname|org|orgname|editor|jobtitle|replaceable|package|parameter|termdef|nonterminal|systemitem|option|optional|property|inlineequation|tag|markup|token|symbol|literal|code|constant|email|uri|guiicon|guibutton|guimenuitem|guimenu|guisubmenu|guilabel|menuchoice|mousebutton|keycombo|keycap|keycode|keysym|shortcut|accel|prompt|envar|filename|command|computeroutput|userinput|function|varname|returnvalue|type|classname|exceptionname|interfacename|methodname|modifier|initializer|ooclass|ooexception|oointerface|errorcode|errortext|errorname|errortype)*>\n\n<!ENTITY % db.common.attributes \"\n  xml:id\tID\t#IMPLIED\n  version\tCDATA\t#IMPLIED\n  xml:lang\tCDATA\t#IMPLIED\n  xml:base\tCDATA\t#IMPLIED\n  remap\tCDATA\t#IMPLIED\n  xreflabel\tCDATA\t#IMPLIED\n  revisionflag\t(changed|added|deleted|off)\t#IMPLIED\n  dir\t(ltr|rtl|lro|rlo)\t#IMPLIED\n  arch\tCDATA\t#IMPLIED\n  audience\tCDATA\t#IMPLIED\n  condition\tCDATA\t#IMPLIED\n  conformance\tCDATA\t#IMPLIED\n  os\tCDATA\t#IMPLIED\n  revision\tCDATA\t#IMPLIED\n  security\tCDATA\t#IMPLIED\n  userlevel\tCDATA\t#IMPLIED\n  vendor\tCDATA\t#IMPLIED\n  wordsize\tCDATA\t#IMPLIED\n  annotations\tCDATA\t#IMPLIED\n\n\">"
+  },
+  {
+    "name": "dylan",
+    "aliases": [],
+    "mode": "dylan",
+    "mime": "text/x-dylan",
+    "example": "Module:       locators-internals\nSynopsis:     Abstract modeling of locations\nAuthor:       Andy Armstrong\nCopyright:    Original Code is Copyright (c) 1995-2004 Functional Objects, Inc.\n              All rights reserved.\nLicense:      See License.txt in this distribution for details.\nWarranty:     Distributed WITHOUT WARRANTY OF ANY KIND\n\ndefine open generic locator-server\n    (locator :: <locator>) => (server :: false-or(<server-locator>));\ndefine open generic locator-host\n    (locator :: <locator>) => (host :: false-or(<string>));\ndefine open generic locator-volume\n    (locator :: <locator>) => (volume :: false-or(<string>));\ndefine open generic locator-directory\n    (locator :: <locator>) => (directory :: false-or(<directory-locator>));\ndefine open generic locator-relative?\n    (locator :: <locator>) => (relative? :: <boolean>);\ndefine open generic locator-path\n    (locator :: <locator>) => (path :: <sequence>);\ndefine open generic locator-base\n    (locator :: <locator>) => (base :: false-or(<string>));\ndefine open generic locator-extension\n    (locator :: <locator>) => (extension :: false-or(<string>));\n\n/// Locator classes\n\ndefine open abstract class <directory-locator> (<physical-locator>)\nend class <directory-locator>;\n\ndefine open abstract class <file-locator> (<physical-locator>)\nend class <file-locator>;\n\ndefine method as\n    (class == <directory-locator>, string :: <string>)\n => (locator :: <directory-locator>)\n  as(<native-directory-locator>, string)\nend method as;\n\ndefine method make\n    (class == <directory-locator>,\n     #key server :: false-or(<server-locator>) = #f,\n          path :: <sequence> = #[],\n          relative? :: <boolean> = #f,\n          name :: false-or(<string>) = #f)\n => (locator :: <directory-locator>)\n  make(<native-directory-locator>,\n       server:    server,\n       path:      path,\n       relative?: relative?,\n       name:      name)\nend method make;\n\ndefine method as\n    (class == <file-locator>, string :: <string>)\n => (locator :: <file-locator>)\n  as(<native-file-locator>, string)\nend method as;\n\ndefine method make\n    (class == <file-locator>,\n     #key directory :: false-or(<directory-locator>) = #f,\n          base :: false-or(<string>) = #f,\n          extension :: false-or(<string>) = #f,\n          name :: false-or(<string>) = #f)\n => (locator :: <file-locator>)\n  make(<native-file-locator>,\n       directory: directory,\n       base:      base,\n       extension: extension,\n       name:      name)\nend method make;\n\n/// Locator coercion\n\n//---*** andrewa: This caching scheme doesn't work yet, so disable it.\ndefine constant $cache-locators?        = #f;\ndefine constant $cache-locator-strings? = #f;\n\ndefine constant $locator-to-string-cache = make(<object-table>, weak: #\"key\");\ndefine constant $string-to-locator-cache = make(<string-table>, weak: #\"value\");\n\ndefine open generic locator-as-string\n    (class :: subclass(<string>), locator :: <locator>)\n => (string :: <string>);\n\ndefine open generic string-as-locator\n    (class :: subclass(<locator>), string :: <string>)\n => (locator :: <locator>);\n\ndefine sealed sideways method as\n    (class :: subclass(<string>), locator :: <locator>)\n => (string :: <string>)\n  let string = element($locator-to-string-cache, locator, default: #f);\n  if (string)\n    as(class, string)\n  else\n    let string = locator-as-string(class, locator);\n    if ($cache-locator-strings?)\n      element($locator-to-string-cache, locator) := string;\n    else\n      string\n    end\n  end\nend method as;\n\ndefine sealed sideways method as\n    (class :: subclass(<locator>), string :: <string>)\n => (locator :: <locator>)\n  let locator = element($string-to-locator-cache, string, default: #f);\n  if (instance?(locator, class))\n    locator\n  else\n    let locator = string-as-locator(class, string);\n    if ($cache-locators?)\n      element($string-to-locator-cache, string) := locator;\n    else\n      locator\n    end\n  end\nend method as;\n\n/// Locator conditions\n\ndefine class <locator-error> (<format-string-condition>, <error>)\nend class <locator-error>;\n\ndefine function locator-error\n "
+  },
+  {
+    "name": "elm",
+    "aliases": [],
+    "mode": "elm",
+    "mime": "text/x-elm",
+    "example": "import Color exposing (..)\nimport Graphics.Collage exposing (..)\nimport Graphics.Element exposing (..)\nimport Time exposing (..)\n\nmain =\n  Signal.map clock (every second)\n\nclock t =\n  collage 400 400\n    [ filled    lightGrey   (ngon 12 110)\n    , outlined (solid grey) (ngon 12 110)\n    , hand orange   100  t\n    , hand charcoal 100 (t/60)\n    , hand charcoal 60  (t/720)\n    ]\n\nhand clr len time =\n  let angle = degrees (90 - 6 * inSeconds time)\n  in\n      segment (0,0) (fromPolar (len,angle))\n        |> traced (solid clr)"
+  },
+  {
+    "name": "embeddedjs",
+    "aliases": [
+      "ejs"
+    ],
+    "mode": "htmlembedded",
+    "mime": "application/x-ejs",
+    "example": "<% const value = 42; %><p><%= value %></p>\n"
+  },
+  {
+    "name": "erb",
+    "aliases": [],
+    "mode": "htmlembedded",
+    "mime": "application/x-erb",
+    "example": "<% value = 42 %><p><%= value %></p>\n"
+  },
+  {
+    "name": "erlang",
+    "aliases": [],
+    "mode": "erlang",
+    "mime": "text/x-erlang",
+    "example": "%% -*- mode: erlang; erlang-indent-level: 2 -*-\n%%% Created :  7 May 2012 by mats cronqvist <masse@klarna.com>\n\n%% @doc\n%% Demonstrates how to print a record.\n%% @end\n\n-module('ex').\n-author('mats cronqvist').\n-export([demo/0,\n         rec_info/1]).\n\n-record(demo,{a=\"One\",b=\"Two\",c=\"Three\",d=\"Four\"}).\n\nrec_info(demo) -> record_info(fields,demo).\n\ndemo() -> expand_recs(?MODULE,#demo{a=\"A\",b=\"BB\"}).\n\nexpand_recs(M,List) when is_list(List) ->\n  [expand_recs(M,L)||L<-List];\nexpand_recs(M,Tup) when is_tuple(Tup) ->\n  case tuple_size(Tup) of\n    L when L < 1 -> Tup;\n    L ->\n      try\n        Fields = M:rec_info(element(1,Tup)),\n        L = length(Fields)+1,\n        lists:zip(Fields,expand_recs(M,tl(tuple_to_list(Tup))))\n      catch\n        _:_ -> list_to_tuple(expand_recs(M,tuple_to_list(Tup)))\n      end\n  end;\nexpand_recs(_,Term) ->\n  Term."
+  },
+  {
+    "name": "f#",
+    "aliases": [],
+    "mode": "mllike",
+    "mime": "text/x-fsharp",
+    "example": "(* Summing a list of integers *)\nlet rec sum xs =\n  match xs with\n    | []       -> 0\n    | x :: xs' -> x + sum xs'\n\n(* Quicksort *)\nlet rec qsort = function\n   | [] -> []\n   | pivot :: rest ->\n       let is_less x = x < pivot in\n       let left, right = List.partition is_less rest in\n       qsort left @ [pivot] @ qsort right\n\n(* Fibonacci Sequence *)\nlet rec fib_aux n a b =\n  match n with\n  | 0 -> a\n  | _ -> fib_aux (n - 1) (a + b) a\nlet fib n = fib_aux n 0 1\n\n(* Birthday paradox *)\nlet year_size = 365.\n\nlet rec birthday_paradox prob people =\n    let prob' = (year_size -. float people) /. year_size *. prob  in\n    if prob' < 0.5 then\n        Printf.printf \"answer = %d\\n\" (people+1)\n    else\n        birthday_paradox prob' (people+1) ;;\n\nbirthday_paradox 1.0 1\n\n(* Church numerals *)\nlet zero f x = x\nlet succ n f x = f (n f x)\nlet one = succ zero\nlet two = succ (succ zero)\nlet add n1 n2 f x = n1 f (n2 f x)\nlet to_string n = n (fun k -> \"S\" ^ k) \"0\"\nlet _ = to_string (add (succ two) two)\n\n(* Elementary functions *)\nlet square x = x * x;;\nlet rec fact x =\n  if x <= 1 then 1 else x * fact (x - 1);;\n\n(* Automatic memory management *)\nlet l = 1 :: 2 :: 3 :: [];;\n[1; 2; 3];;\n5 :: l;;\n\n(* Polymorphism: sorting lists *)\nlet rec sort = function\n  | [] -> []\n  | x :: l -> insert x (sort l)\n\nand insert elem = function\n  | [] -> [elem]\n  | x :: l ->\n      if elem < x then elem :: x :: l else x :: insert elem l;;\n\n(* Imperative features *)\nlet add_polynom p1 p2 =\n  let n1 = Array.length p1\n  and n2 = Array.length p2 in\n  let result = Array.create (max n1 n2) 0 in\n  for i = 0 to n1 - 1 do result.(i) <- p1.(i) done;\n  for i = 0 to n2 - 1 do result.(i) <- result.(i) + p2.(i) done;\n  result;;\nadd_polynom [| 1; 2 |] [| 1; 2; 3 |];;\n\n(* We may redefine fact using a reference cell and a for loop *)\nlet fact n =\n  let result = ref 1 in\n  for i = 2 to n do\n    result := i * !result\n   done;\n   !result;;\nfact 5;;\n\n(* Triangle (graphics) *)\nlet () =\n  ignore( Glut.init Sys.argv );\n  Glut.initDisplayMode ~double_buffer:true ();\n  ignore (Glut.createWindow ~title:\"OpenGL Demo\");\n  let angle t = 10. *. t *. t in\n  let render () =\n    GlClear.clear [ `color ];\n    GlMat.load_identity ();\n    GlMat.rotate ~angle: (angle (Sys.time ())) ~z:1. ();\n    GlDraw.begins `triangles;\n    List.iter GlDraw.vertex2 [-1., -1.; 0., 1.; 1., -1.];\n    GlDraw.ends ();\n    Glut.swapBuffers () in\n  GlMat.mode `modelview;\n  Glut.displayFunc ~cb:render;\n  Glut.idleFunc ~cb:(Some Glut.postRedisplay);\n  Glut.mainLoop ()\n\n(* A Hundred Lines of Caml - http://caml.inria.fr/about/taste.en.html *)\n(* OCaml page on Wikipedia - http://en.wikipedia.org/wiki/OCaml *)\n\nmodule type S = sig type t end\n\nlet x = {| \n  this is a long string \n  with many lines and stuff\n  |}\n\nlet b = 0b00110\nlet h = 0x123abcd\nlet e = 1e-10\nlet i = 1.\nlet x = 30_000\nlet o = 0o1234\n\n[1; 2; 3] (* lists *)\n\n1 @ 2\n1. +. 2."
+  },
+  {
+    "name": "forth",
+    "aliases": [],
+    "mode": "forth",
+    "mime": "text/x-forth",
+    "example": "\\ Insertion sort\n\n: cell-  1 cells - ;\n\n: insert ( start end -- start )\n  dup @ >r ( r: v )\n  begin\n    2dup <\n  while\n    r@ over cell- @ <\n  while\n    cell-\n    dup @ over cell+ !\n  repeat then\n  r> swap ! ;\n\n: sort ( array len -- )\n  1 ?do\n    dup i cells + insert\n  loop drop ;"
+  },
+  {
+    "name": "fortran",
+    "aliases": [],
+    "mode": "fortran",
+    "mime": "text/x-fortran",
+    "example": "! Example Fortran code\n  program average\n\n  ! Read in some numbers and take the average\n  ! As written, if there are no data points, an average of zero is returned\n  ! While this may not be desired behavior, it keeps this example simple\n\n  implicit none\n\n  real, dimension(:), allocatable :: points\n  integer                         :: number_of_points\n  real                            :: average_points=0., positive_average=0., negative_average=0.\n\n  write (*,*) \"Input number of points to average:\"\n  read  (*,*) number_of_points\n\n  allocate (points(number_of_points))\n\n  write (*,*) \"Enter the points to average:\"\n  read  (*,*) points\n\n  ! Take the average by summing points and dividing by number_of_points\n  if (number_of_points > 0) average_points = sum(points) / number_of_points\n\n  ! Now form average over positive and negative points only\n  if (count(points > 0.) > 0) then\n     positive_average = sum(points, points > 0.) / count(points > 0.)\n  end if\n\n  if (count(points < 0.) > 0) then\n     negative_average = sum(points, points < 0.) / count(points < 0.)\n  end if\n\n  deallocate (points)\n\n  ! Print result to terminal\n  write (*,'(a,g12.4)') 'Average = ', average_points\n  write (*,'(a,g12.4)') 'Average of positive points = ', positive_average\n  write (*,'(a,g12.4)') 'Average of negative points = ', negative_average\n\n  end program average"
+  },
+  {
+    "name": "gfm",
+    "aliases": [],
+    "mode": "gfm",
+    "mime": "text/x-gfm",
+    "example": "GitHub Flavored Markdown\n========================\n\nEverything from markdown plus GFM features:\n\n## URL autolinking\n\nUnderscores_are_allowed_between_words.\n\n## Strikethrough text\n\nGFM adds syntax to strikethrough text, which is missing from standard Markdown.\n\n~~Mistaken text.~~\n~~**works with other formatting**~~\n\n~~spans across\nlines~~\n\n## Fenced code blocks (and syntax highlighting)\n\n```javascript\nfor (var i = 0; i < items.length; i++) {\n    console.log(items[i], i); // log them\n}\n```\n\n## Task Lists\n\n- [ ] Incomplete task list item\n- [x] **Completed** task list item\n\n## A bit of GitHub spice\n\nSee http://github.github.com/github-flavored-markdown/.\n\n(Set `gitHubSpice: false` in mode options to disable):\n\n* SHA: be6a8cc1c1ecfe9489fb51e4869af15a13fc2cd2\n* User@SHA ref: mojombo@be6a8cc1c1ecfe9489fb51e4869af15a13fc2cd2\n* User/Project@SHA: mojombo/god@be6a8cc1c1ecfe9489fb51e4869af15a13fc2cd2\n* \\#Num: #1\n* User/#Num: mojombo#1\n* User/Project#Num: mojombo/god#1\n\n(Set `emoji: false` in mode options to disable):\n\n* emoji: :smile:"
+  },
+  {
+    "name": "gherkin",
+    "aliases": [],
+    "mode": "gherkin",
+    "mime": "text/x-feature",
+    "example": "Feature: Using Google\n  Background: \n    Something something\n    Something else\n  Scenario: Has a homepage\n    When I navigate to the google home page\n    Then the home page should contain the menu and the search form\n  Scenario: Searching for a term \n    When I navigate to the google home page\n    When I search for Tofu\n    Then the search results page is displayed\n    Then the search results page contains 10 individual search results\n    Then the search results contain a link to the wikipedia tofu page"
+  },
+  {
+    "name": "go",
+    "aliases": [],
+    "mode": "go",
+    "mime": "text/x-go",
+    "example": "// Prime Sieve in Go.\n// Taken from the Go specification.\n// Copyright © The Go Authors.\n\npackage main\n\nimport \"fmt\"\n\n// Send the sequence 2, 3, 4, ... to channel 'ch'.\nfunc generate(ch chan<- int) {\n\tfor i := 2; ; i++ {\n\t\tch <- i  // Send 'i' to channel 'ch'\n\t}\n}\n\n// Copy the values from channel 'src' to channel 'dst',\n// removing those divisible by 'prime'.\nfunc filter(src <-chan int, dst chan<- int, prime int) {\n\tfor i := range src {    // Loop over values received from 'src'.\n\t\tif i%prime != 0 {\n\t\t\tdst <- i  // Send 'i' to channel 'dst'.\n\t\t}\n\t}\n}\n\n// The prime sieve: Daisy-chain filter processes together.\nfunc sieve() {\n\tch := make(chan int)  // Create a new channel.\n\tgo generate(ch)       // Start generate() as a subprocess.\n\tfor {\n\t\tprime := <-ch\n\t\tfmt.Print(prime, \"\\n\")\n\t\tch1 := make(chan int)\n\t\tgo filter(ch, ch1, prime)\n\t\tch = ch1\n\t}\n}\n\nfunc main() {\n\tsieve()\n}"
+  },
+  {
+    "name": "groovy",
+    "aliases": [],
+    "mode": "groovy",
+    "mime": "text/x-groovy",
+    "example": "//Pattern for groovy script\ndef p = ~/.*\\.groovy/\nnew File( 'd:\\\\scripts' ).eachFileMatch(p) {f ->\n  // imports list\n  def imports = []\n  f.eachLine {\n    // condition to detect an import instruction\n    ln -> if ( ln =~ '^import .*' ) {\n      imports << \"${ln - 'import '}\"\n    }\n  }\n  // print thmen\n  if ( ! imports.empty ) {\n    println f\n    imports.each{ println \"   $it\" }\n  }\n}\n\n/* Coin changer demo code from http://groovy.codehaus.org */\n\nenum UsCoin {\n  quarter(25), dime(10), nickel(5), penny(1)\n  UsCoin(v) { value = v }\n  final value\n}\n\nenum OzzieCoin {\n  fifty(50), twenty(20), ten(10), five(5)\n  OzzieCoin(v) { value = v }\n  final value\n}\n\ndef plural(word, count) {\n  if (count == 1) return word\n  word[-1] == 'y' ? word[0..-2] + \"ies\" : word + \"s\"\n}\n\ndef change(currency, amount) {\n  currency.values().inject([]){ list, coin ->\n     int count = amount / coin.value\n     amount = amount % coin.value\n     list += \"$count ${plural(coin.toString(), count)}\"\n  }\n}"
+  },
+  {
+    "name": "handlebars",
+    "aliases": [],
+    "mode": "handlebars",
+    "mime": "text/x-handlebars-template",
+    "example": "{{> breadcrumbs}}\n\n{{!--\n  You can use the t function to get\n  content translated to the current locale, es:\n  {{t 'article_list'}}\n--}}\n\n<h1>{{t 'article_list'}}</h1>\n\n{{! one line comment }}\n\n{{{propertyContainingRawHtml}}}\n\n{{#each articles}}\n  {{~title}}\n  <p>{{excerpt body size=120 ellipsis=true}}</p>\n\n  {{#with author}}\n    written by {{first_name}} {{last_name}}\n    from category: {{../category.title}}\n    {{#if @../last}}foobar!{{/if}}\n  {{/with~}}\n\n  {{#if promoted.latest}}Read this one! {{else}} This is ok! {{/if}}\n\n  {{#if @last}}<hr>{{/if}}\n{{/each}}\n\n{{#form new_comment}}\n  <input type=\"text\" name=\"body\">\n{{/form}}"
+  },
+  {
+    "name": "haskell",
+    "aliases": [],
+    "mode": "haskell",
+    "mime": "text/x-haskell",
+    "example": "module UniquePerms (\n    uniquePerms\n    )\nwhere\n\n-- | Find all unique permutations of a list where there might be duplicates.\nuniquePerms :: (Eq a) => [a] -> [[a]]\nuniquePerms = permBag . makeBag\n\n-- | An unordered collection where duplicate values are allowed,\n-- but represented with a single value and a count.\ntype Bag a = [(a, Int)]\n\nmakeBag :: (Eq a) => [a] -> Bag a\nmakeBag [] = []\nmakeBag (a:as) = mix a $ makeBag as\n  where\n    mix a []                        = [(a,1)]\n    mix a (bn@(b,n):bs) | a == b    = (b,n+1):bs\n                        | otherwise = bn : mix a bs\n\npermBag :: Bag a -> [[a]]\npermBag [] = [[]]\npermBag bs = concatMap (\\(f,cs) -> map (f:) $ permBag cs) . oneOfEach $ bs\n  where\n    oneOfEach [] = []\n    oneOfEach (an@(a,n):bs) =\n        let bs' = if n == 1 then bs else (a,n-1):bs\n        in (a,bs') : mapSnd (an:) (oneOfEach bs)\n    \n    apSnd f (a,b) = (a, f b)\n    mapSnd = map . apSnd"
+  },
+  {
+    "name": "haxe",
+    "aliases": [],
+    "mode": "haxe",
+    "mime": "text/x-haxe",
+    "example": "import one.two.Three;\n\n@attr(\"test\")\nclass Foo<T> extends Three\n{\n\tpublic function new()\n\t{\n\t\tnoFoo = 12;\n\t}\n\t\n\tpublic static inline function doFoo(obj:{k:Int, l:Float}):Int\n\t{\n\t\tfor(i in 0...10)\n\t\t{\n\t\t\tobj.k++;\n\t\t\ttrace(i);\n\t\t\tvar var1 = new Array();\n\t\t\tif(var1.length > 1)\n\t\t\t\tthrow \"Error\";\n\t\t}\n\t\t// The following line should not be colored, the variable is scoped out\n\t\tvar1;\n\t\t/* Multi line\n\t\t * Comment test\n\t\t */\n\t\treturn obj.k;\n\t}\n\tprivate function bar():Void\n\t{\n\t\t#if flash\n\t\tvar t1:String = \"1.21\";\n\t\t#end\n\t\ttry {\n\t\t\tdoFoo({k:3, l:1.2});\n\t\t}\n\t\tcatch (e : String) {\n\t\t\ttrace(e);\n\t\t}\n\t\tvar t2:Float = cast(3.2);\n\t\tvar t3:haxe.Timer = new haxe.Timer();\n\t\tvar t4 = {k:Std.int(t2), l:Std.parseFloat(t1)};\n\t\tvar t5 = ~/123+.*$/i;\n\t\tdoFoo(t4);\n\t\tuntyped t1 = 4;\n\t\tbob = new Foo<Int>\n\t}\n\tpublic var okFoo(default, never):Float;\n\tvar noFoo(getFoo, null):Int;\n\tfunction getFoo():Int {\n\t\treturn noFoo;\n\t}\n\t\n\tpublic var three:Int;\n}\nenum Color\n{\n\tred;\n\tgreen;\n\tblue;\n\tgrey( v : Int );\n\trgb (r:Int,g:Int,b:Int);\n}"
+  },
+  {
+    "name": "hive",
+    "aliases": [],
+    "mode": "sql",
+    "mime": "text/x-hive",
+    "example": "SELECT name FROM items WHERE id = 1;\n"
+  },
+  {
+    "name": "html",
+    "aliases": [
+      "htmlmixed"
+    ],
+    "mode": "htmlmixed",
+    "mime": "text/html",
+    "example": "<!doctype html>\n<html><body><p>Hello</p></body></html>\n"
+  },
+  {
+    "name": "http",
+    "aliases": [],
+    "mode": "http",
+    "mime": "message/http",
+    "example": "POST /somewhere HTTP/1.1\nHost: example.com\nIf-Modified-Since: Sat, 29 Oct 1994 19:43:31 GMT\nContent-Type: application/x-www-form-urlencoded;\n\tcharset=utf-8\nUser-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/536.11 (KHTML, like Gecko) Ubuntu/12.04 Chromium/20.0.1132.47 Chrome/20.0.1132.47 Safari/536.11\n\nThis is the request body!"
+  },
+  {
+    "name": "hxml",
+    "aliases": [],
+    "mode": "haxe",
+    "mime": "text/x-hxml",
+    "example": "import one.two.Three;\n\n@attr(\"test\")\nclass Foo<T> extends Three\n{\n\tpublic function new()\n\t{\n\t\tnoFoo = 12;\n\t}\n\t\n\tpublic static inline function doFoo(obj:{k:Int, l:Float}):Int\n\t{\n\t\tfor(i in 0...10)\n\t\t{\n\t\t\tobj.k++;\n\t\t\ttrace(i);\n\t\t\tvar var1 = new Array();\n\t\t\tif(var1.length > 1)\n\t\t\t\tthrow \"Error\";\n\t\t}\n\t\t// The following line should not be colored, the variable is scoped out\n\t\tvar1;\n\t\t/* Multi line\n\t\t * Comment test\n\t\t */\n\t\treturn obj.k;\n\t}\n\tprivate function bar():Void\n\t{\n\t\t#if flash\n\t\tvar t1:String = \"1.21\";\n\t\t#end\n\t\ttry {\n\t\t\tdoFoo({k:3, l:1.2});\n\t\t}\n\t\tcatch (e : String) {\n\t\t\ttrace(e);\n\t\t}\n\t\tvar t2:Float = cast(3.2);\n\t\tvar t3:haxe.Timer = new haxe.Timer();\n\t\tvar t4 = {k:Std.int(t2), l:Std.parseFloat(t1)};\n\t\tvar t5 = ~/123+.*$/i;\n\t\tdoFoo(t4);\n\t\tuntyped t1 = 4;\n\t\tbob = new Foo<Int>\n\t}\n\tpublic var okFoo(default, never):Float;\n\tvar noFoo(getFoo, null):Int;\n\tfunction getFoo():Int {\n\t\treturn noFoo;\n\t}\n\t\n\tpublic var three:Int;\n}\nenum Color\n{\n\tred;\n\tgreen;\n\tblue;\n\tgrey( v : Int );\n\trgb (r:Int,g:Int,b:Int);\n}"
+  },
+  {
+    "name": "idl",
+    "aliases": [],
+    "mode": "idl",
+    "mime": "text/x-idl",
+    "example": ";; Example IDL code\nFUNCTION mean_and_stddev,array\n  ;; This program reads in an array of numbers\n  ;; and returns a structure containing the\n  ;; average and standard deviation\n\n  ave = 0.0\n  count = 0.0\n\n  for i=0,N_ELEMENTS(array)-1 do begin\n      ave = ave + array[i]\n      count = count + 1\n  endfor\n  \n  ave = ave/count\n\n  std = stddev(array)  \n\n  return, {average:ave,std:std}\n\nEND"
+  },
+  {
+    "name": "jade",
+    "aliases": [],
+    "mode": "pug",
+    "mime": "text/x-pug",
+    "example": "doctype html\n  html\n    head\n      title= \"Pug Templating CodeMirror Mode Example\"\n      link(rel='stylesheet', href='/css/bootstrap.min.css')\n      link(rel='stylesheet', href='/css/index.css')\n      script(type='text/javascript', src='/js/jquery-1.9.1.min.js')\n      script(type='text/javascript', src='/js/bootstrap.min.js')\n    body\n      div.header\n        h1 Welcome to this Example\n      div.spots\n        if locals.spots\n          each spot in spots\n            div.spot.well\n         div\n           if spot.logo\n             img.img-rounded.logo(src=spot.logo)\n           else\n             img.img-rounded.logo(src=\"img/placeholder.png\")\n         h3\n           a(href=spot.hash) ##{spot.hash}\n           if spot.title\n             span.title #{spot.title}\n           if spot.desc\n             div #{spot.desc}\n        else\n          h3 There are no spots currently available."
+  },
+  {
+    "name": "java",
+    "aliases": [],
+    "mode": "clike",
+    "mime": "text/x-java",
+    "example": "class Main { public static void main(String[] args) {} }\n"
+  },
+  {
+    "name": "javascript",
+    "aliases": [
+      "js",
+      "text/javascript"
+    ],
+    "mode": "javascript",
+    "mime": "text/javascript",
+    "example": "// Demo code (the actual new parser character stream implementation)\n\nfunction StringStream(string) {\n  this.pos = 0;\n  this.string = string;\n}\n\nStringStream.prototype = {\n  done: function() {return this.pos >= this.string.length;},\n  peek: function() {return this.string.charAt(this.pos);},\n  next: function() {\n    if (this.pos < this.string.length)\n      return this.string.charAt(this.pos++);\n  },\n  eat: function(match) {\n    var ch = this.string.charAt(this.pos);\n    if (typeof match == \"string\") var ok = ch == match;\n    else var ok = ch && match.test ? match.test(ch) : match(ch);\n    if (ok) {this.pos++; return ch;}\n  },\n  eatWhile: function(match) {\n    var start = this.pos;\n    while (this.eat(match));\n    if (this.pos > start) return this.string.slice(start, this.pos);\n  },\n  backUp: function(n) {this.pos -= n;},\n  column: function() {return this.pos;},\n  eatSpace: function() {\n    var start = this.pos;\n    while (/\\s/.test(this.string.charAt(this.pos))) this.pos++;\n    return this.pos - start;\n  },\n  match: function(pattern, consume, caseInsensitive) {\n    if (typeof pattern == \"string\") {\n      function cased(str) {return caseInsensitive ? str.toLowerCase() : str;}\n      if (cased(this.string).indexOf(cased(pattern), this.pos) == this.pos) {\n        if (consume !== false) this.pos += str.length;\n        return true;\n      }\n    }\n    else {\n      var match = this.string.slice(this.pos).match(pattern);\n      if (match && consume !== false) this.pos += match[0].length;\n      return match;\n    }\n  }\n};"
+  },
+  {
+    "name": "jinja2",
+    "aliases": [],
+    "mode": "jinja2",
+    "mime": "text/jinja2",
+    "example": "{# this is a comment #}\n{%- for item in li -%}\n  <li>{{ item.label }}</li>\n{% endfor -%}\n{{ item.sand == true and item.keyword == false ? 1 : 0 }}\n{{ app.get(55, 1.2, true) }}\n{% if app.get('_route') == ('_home') %}home{% endif %}\n{% if app.session.flashbag.has('message') %}\n  {% for message in app.session.flashbag.get('message') %}\n    {{ message.content }}\n  {% endfor %}\n{% endif %}\n{{ path('_home', {'section': app.request.get('section')}) }}\n{{ path('_home', {\n    'section': app.request.get('section'),\n    'boolean': true,\n    'number': 55.33\n  })\n}}\n{% include ('test.incl.html.twig') %}\n\n# for item in seq:\n    <li>{{ item }} </li>    ## this comment is ignored\n# endfor\n# set text = \"Multiline\n\ttext\"\n# for href, caption in [('index.html', 'Index'),\n                        ('about.html', 'About')]:\n    <li><a href=\"{{ href }}\">{{ caption }}</a></li>\n# endfor"
+  },
+  {
+    "name": "json",
+    "aliases": [],
+    "mode": "javascript",
+    "mime": "application/json",
+    "example": "// Demo code (the actual new parser character stream implementation)\n\nfunction StringStream(string) {\n  this.pos = 0;\n  this.string = string;\n}\n\nStringStream.prototype = {\n  done: function() {return this.pos >= this.string.length;},\n  peek: function() {return this.string.charAt(this.pos);},\n  next: function() {\n    if (this.pos < this.string.length)\n      return this.string.charAt(this.pos++);\n  },\n  eat: function(match) {\n    var ch = this.string.charAt(this.pos);\n    if (typeof match == \"string\") var ok = ch == match;\n    else var ok = ch && match.test ? match.test(ch) : match(ch);\n    if (ok) {this.pos++; return ch;}\n  },\n  eatWhile: function(match) {\n    var start = this.pos;\n    while (this.eat(match));\n    if (this.pos > start) return this.string.slice(start, this.pos);\n  },\n  backUp: function(n) {this.pos -= n;},\n  column: function() {return this.pos;},\n  eatSpace: function() {\n    var start = this.pos;\n    while (/\\s/.test(this.string.charAt(this.pos))) this.pos++;\n    return this.pos - start;\n  },\n  match: function(pattern, consume, caseInsensitive) {\n    if (typeof pattern == \"string\") {\n      function cased(str) {return caseInsensitive ? str.toLowerCase() : str;}\n      if (cased(this.string).indexOf(cased(pattern), this.pos) == this.pos) {\n        if (consume !== false) this.pos += str.length;\n        return true;\n      }\n    }\n    else {\n      var match = this.string.slice(this.pos).match(pattern);\n      if (match && consume !== false) this.pos += match[0].length;\n      return match;\n    }\n  }\n};"
+  },
+  {
+    "name": "jsp",
+    "aliases": [],
+    "mode": "htmlembedded",
+    "mime": "application/x-jsp",
+    "example": "<% int count = 1; %><p><%= count %></p>\n"
+  },
+  {
+    "name": "jsx",
+    "aliases": [
+      "react"
+    ],
+    "mode": "jsx",
+    "mime": "text/jsx",
+    "example": "const App = () => <div>Hello</div>;\n"
+  },
+  {
+    "name": "julia",
+    "aliases": [],
+    "mode": "julia",
+    "mime": "text/x-julia",
+    "example": "#numbers\n1234\n1234im\n.234\n.234im\n2.23im\n2.3f3\n23e2\n0x234\n\n#strings\n'a'\n\"asdf\"\nr\"regex\"\nb\"bytestring\"\n\n\"\"\"\nmultiline string\n\"\"\"\n\n#identifiers\na\nas123\nfunction_name!\n\n#unicode identifiers\n# a = x\\ddot\na⃗ = ẍ\n# a = v\\dot\na⃗ = v̇\n#F\\vec = m \\cdotp a\\vec\nF⃗ = m·a⃗\n\n#literal identifier multiples\n3x\n4[1, 2, 3]\n\n#dicts and indexing\nx=[1, 2, 3]\nx[end-1]\nx={\"julia\"=>\"language of technical computing\"}\n\n\n#exception handling\ntry\n  f()\ncatch\n  @printf \"Error\"\nfinally\n  g()\nend\n\n#types\nimmutable Color{T<:Number}\n  r::T\n  g::T\n  b::T\nend\n\n#functions\nfunction change!(x::Vector{Float64})\n  for i = 1:length(x)\n    x[i] *= 2\n  end\nend\n\n#function invocation\nf('b', (2, 3)...)\n\n#operators\n|=\n&=\n^=\n\\-\n%=\n*=\n+=\n-=\n<=\n>=\n!=\n==\n%\n*\n+\n-\n<\n>\n!\n=\n|\n&\n^\n\\\n?\n~\n:\n$\n<:\n.<\n.>\n<<\n<<=\n>>\n>>>>\n>>=\n>>>=\n<<=\n<<<=\n.<=\n.>=\n.==\n->\n//\nin\n...\n//\n:=\n.//=\n.*=\n./=\n.^=\n.%=\n.+=\n.-=\n\\=\n\\\\=\n||\n===\n&&\n|=\n.|=\n<:\n>:\n|>\n<|\n::\nx ? y : z\n\n#macros\n@spawnat 2 1+1\n@eval(:x)\n\n#keywords and operators\nif else elseif while for\n begin let end do\ntry catch finally return break continue\nglobal local const \nexport import importall using\nfunction macro module baremodule \ntype immutable quote\ntrue false enumerate"
+  },
+  {
+    "name": "kotlin",
+    "aliases": [],
+    "mode": "clike",
+    "mime": "text/x-kotlin",
+    "example": "fun main() { println(\"hello\") }\n"
+  },
+  {
+    "name": "less",
+    "aliases": [],
+    "mode": "css",
+    "mime": "text/x-less",
+    "example": "@color: red; .box { color: @color; }\n"
+  },
+  {
+    "name": "livescript",
+    "aliases": [],
+    "mode": "livescript",
+    "mime": "text/x-livescript",
+    "example": "# LiveScript mode for CodeMirror\n# The following script, prelude.ls, is used to\n# demonstrate LiveScript mode for CodeMirror.\n#   https://github.com/gkz/prelude-ls\n\nexport objToFunc = objToFunc = (obj) ->\n  (key) -> obj[key]\n\nexport each = (f, xs) -->\n  if typeof! xs is \\Object\n    for , x of xs then f x\n  else\n    for x in xs then f x\n  xs\n\nexport map = (f, xs) -->\n  f = objToFunc f if typeof! f isnt \\Function\n  type = typeof! xs\n  if type is \\Object\n    {[key, f x] for key, x of xs}\n  else\n    result = [f x for x in xs]\n    if type is \\String then result * '' else result\n\nexport filter = (f, xs) -->\n  f = objToFunc f if typeof! f isnt \\Function\n  type = typeof! xs\n  if type is \\Object\n    {[key, x] for key, x of xs when f x}\n  else\n    result = [x for x in xs when f x]\n    if type is \\String then result * '' else result\n\nexport reject = (f, xs) -->\n  f = objToFunc f if typeof! f isnt \\Function\n  type = typeof! xs\n  if type is \\Object\n    {[key, x] for key, x of xs when not f x}\n  else\n    result = [x for x in xs when not f x]\n    if type is \\String then result * '' else result\n\nexport partition = (f, xs) -->\n  f = objToFunc f if typeof! f isnt \\Function\n  type = typeof! xs\n  if type is \\Object\n    passed = {}\n    failed = {}\n    for key, x of xs\n      (if f x then passed else failed)[key] = x\n  else\n    passed = []\n    failed = []\n    for x in xs\n      (if f x then passed else failed)push x\n    if type is \\String\n      passed *= ''\n      failed *= ''\n  [passed, failed]\n\nexport find = (f, xs) -->\n  f = objToFunc f if typeof! f isnt \\Function\n  if typeof! xs is \\Object\n    for , x of xs when f x then return x\n  else\n    for x in xs when f x then return x\n  void\n\nexport head = export first = (xs) ->\n  return void if not xs.length\n  xs.0\n\nexport tail = (xs) ->\n  return void if not xs.length\n  xs.slice 1\n\nexport last = (xs) ->\n  return void if not xs.length\n  xs[*-1]\n\nexport initial = (xs) ->\n  return void if not xs.length\n  xs.slice 0 xs.length - 1\n\nexport empty = (xs) ->\n  if typeof! xs is \\Object\n    for x of xs then return false\n    return yes\n  not xs.length\n\nexport values = (obj) ->\n  [x for , x of obj]\n\nexport keys = (obj) ->\n  [x for x of obj]\n\nexport len = (xs) ->\n  xs = values xs if typeof! xs is \\Object\n  xs.length\n\nexport cons = (x, xs) -->\n  if typeof! xs is \\String then x + xs else [x] ++ xs\n\nexport append = (xs, ys) -->\n  if typeof! ys is \\String then xs + ys else xs ++ ys\n\nexport join = (sep, xs) -->\n  xs = values xs if typeof! xs is \\Object\n  xs.join sep\n\nexport reverse = (xs) ->\n  if typeof! xs is \\String\n  then (xs / '')reverse! * ''\n  else xs.slice!reverse!\n\nexport fold = export foldl = (f, memo, xs) -->\n  if typeof! xs is \\Object\n    for , x of xs then memo = f memo, x\n  else\n    for x in xs then memo = f memo, x\n  memo\n\nexport fold1 = export foldl1 = (f, xs) --> fold f, xs.0, xs.slice 1\n\nexport foldr = (f, memo, xs) --> fold f, memo, xs.slice!reverse!\n\nexport foldr1 = (f, xs) -->\n  xs.=slice!reverse!\n  fold f, xs.0, xs.slice 1\n\nexport unfoldr = export unfold = (f, b) -->\n  if (f b)?\n    [that.0] ++ unfoldr f, that.1\n  else\n    []\n\nexport andList = (xs) ->\n  for x in xs when not x\n    return false\n  true\n\nexport orList = (xs) ->\n  for x in xs when x\n    return true\n  false\n\nexport any = (f, xs) -->\n  f = objToFunc f if typeof! f isnt \\Function\n  for x in xs when f x\n    return yes\n  no\n\nexport all = (f, xs) -->\n  f = objToFunc f if typeof! f isnt \\Function\n  for x in xs when not f x\n    return no\n  yes\n\nexport unique = (xs) ->\n  result = []\n  if typeof! xs is \\Object\n    for , x of xs when x not in result then result.push x\n  else\n    for x   in xs when x not in result then result.push x\n  if typeof! xs is \\String then result * '' else result\n\nexport sort = (xs) ->\n  xs.concat!sort (x, y) ->\n    | x > y =>  1\n    | x < y => -1\n    | _     =>  0\n\nexport sortBy = (f, xs) -->\n  return [] unless xs.length\n  xs.concat!sort f\n\nexport compare = (f, x, y) -->\n  | (f x) > (f y) =>  1\n  | (f x) < (f y) => -1\n  | otherwise     =>  0\n\nexport sum = (xs) ->\n  result = 0\n  if typeof! xs is \\Object\n    for , x of xs th"
+  },
+  {
+    "name": "lua",
+    "aliases": [],
+    "mode": "lua",
+    "mime": "text/x-lua",
+    "example": "--[[\nexample useless code to show lua syntax highlighting\nthis is multiline comment\n]]\n\nfunction blahblahblah(x)\n\n  local table = {\n    \"asd\" = 123,\n    \"x\" = 0.34,  \n  }\n  if x ~= 3 then\n    print( x )\n  elseif x == \"string\"\n    my_custom_function( 0x34 )\n  else\n    unknown_function( \"some string\" )\n  end\n\n  --single line comment\n  \nend\n\nfunction blablabla3()\n\n  for k,v in ipairs( table ) do\n    --abcde..\n    y=[=[\n  x=[[\n      x is a multi line string\n   ]]\n  but its definition is iside a highest level string!\n  ]=]\n    print(\" \\\"\\\" \")\n\n    s = math.sin( x )\n  end\n\nend"
+  },
+  {
+    "name": "mariadb",
+    "aliases": [],
+    "mode": "sql",
+    "mime": "text/x-mariadb",
+    "example": "SELECT name FROM items WHERE id = 1;\n"
+  },
+  {
+    "name": "markdown",
+    "aliases": [],
+    "mode": "markdown",
+    "mime": "text/x-markdown",
+    "example": "Markdown: Basics\n================\n\n<ul id=\"ProjectSubmenu\">\n    <li><a href=\"/projects/markdown/\" title=\"Markdown Project Page\">Main</a></li>\n    <li><a class=\"selected\" title=\"Markdown Basics\">Basics</a></li>\n    <li><a href=\"/projects/markdown/syntax\" title=\"Markdown Syntax Documentation\">Syntax</a></li>\n    <li><a href=\"/projects/markdown/license\" title=\"Pricing and License Information\">License</a></li>\n    <li><a href=\"/projects/markdown/dingus\" title=\"Online Markdown Web Form\">Dingus</a></li>\n</ul>\n\n\nGetting the Gist of Markdown's Formatting Syntax\n------------------------------------------------\n\nThis page offers a brief overview of what it's like to use Markdown.\nThe [syntax page] [s] provides complete, detailed documentation for\nevery feature, but Markdown should be very easy to pick up simply by\nlooking at a few examples of it in action. The examples on this page\nare written in a before/after style, showing example syntax and the\nHTML output produced by Markdown.\n\nIt's also helpful to simply try Markdown out; the [Dingus] [d] is a\nweb application that allows you type your own Markdown-formatted text\nand translate it to XHTML.\n\n**Note:** This document is itself written using Markdown; you\ncan [see the source for it by adding '.text' to the URL] [src].\n\n  [s]: /projects/markdown/syntax  \"Markdown Syntax\"\n  [d]: /projects/markdown/dingus  \"Markdown Dingus\"\n  [src]: /projects/markdown/basics.text\n\n\n## Paragraphs, Headers, Blockquotes ##\n\nA paragraph is simply one or more consecutive lines of text, separated\nby one or more blank lines. (A blank line is any line that looks like\na blank line -- a line containing nothing but spaces or tabs is\nconsidered blank.) Normal paragraphs should not be indented with\nspaces or tabs.\n\nMarkdown offers two styles of headers: *Setext* and *atx*.\nSetext-style headers for `<h1>` and `<h2>` are created by\n\"underlining\" with equal signs (`=`) and hyphens (`-`), respectively.\nTo create an atx-style header, you put 1-6 hash marks (`#`) at the\nbeginning of the line -- the number of hashes equals the resulting\nHTML header level.\n\nBlockquotes are indicated using email-style '`>`' angle brackets.\n\nMarkdown:\n\n    A First Level Header\n    ====================\n\n    A Second Level Header\n    ---------------------\n\n    Now is the time for all good men to come to\n    the aid of their country. This is just a\n    regular paragraph.\n\n    The quick brown fox jumped over the lazy\n    dog's back.\n\n    ### Header 3\n\n    > This is a blockquote.\n    >\n    > This is the second paragraph in the blockquote.\n    >\n    > ## This is an H2 in a blockquote\n\n\nOutput:\n\n    <h1>A First Level Header</h1>\n\n    <h2>A Second Level Header</h2>\n\n    <p>Now is the time for all good men to come to\n    the aid of their country. This is just a\n    regular paragraph.</p>\n\n    <p>The quick brown fox jumped over the lazy\n    dog's back.</p>\n\n    <h3>Header 3</h3>\n\n    <blockquote>\n        <p>This is a blockquote.</p>\n\n        <p>This is the second paragraph in the blockquote.</p>\n\n        <h2>This is an H2 in a blockquote</h2>\n    </blockquote>\n\n\n\n### Phrase Emphasis ###\n\nMarkdown uses asterisks and underscores to indicate spans of emphasis.\n\nMarkdown:\n\n    Some of these words *are emphasized*.\n    Some of these words _are emphasized also_.\n\n    Use two asterisks for **strong emphasis**.\n    Or, if you prefer, __use two underscores instead__.\n\nOutput:\n\n    <p>Some of these words <em>are emphasized</em>.\n    Some of these words <em>are emphasized also</em>.</p>\n\n    <p>Use two asterisks for <strong>strong emphasis</strong>.\n    Or, if you prefer, <strong>use two underscores instead</strong>.</p>\n\n\n\n## Lists ##\n\nUnordered (bulleted) lists use asterisks, pluses, and hyphens (`*`,\n`+`, and `-`) as list markers. These three markers are\ninterchangeable; this:\n\n    *   Candy.\n    *   Gum.\n    *   Booze.\n\nthis:\n\n    +   Candy.\n    +   Gum.\n    +   Booze.\n\nand this:\n\n    -   Candy.\n    -   Gum.\n    -   Booze.\n\nall produce the same output:\n\n    <ul>\n    <li>Candy.</li>\n    <li>Gum.</li>\n    <li>Booze.</li>\n    </ul>\n\nOrdered (numbered) lists "
+  },
+  {
+    "name": "mbox",
+    "aliases": [],
+    "mode": "mbox",
+    "mime": "application/mbox",
+    "example": "From timothygu99@gmail.com Sun Apr 17 01:40:43 2016\nFrom: Timothy Gu <timothygu99@gmail.com>\nDate: Sat, 16 Apr 2016 18:40:43 -0700\nSubject: mbox mode\nMessage-ID: <Z8d+bTT50U/az94FZnyPkDjZmW0=@gmail.com>\n\nmbox mode is working!\n\nTimothy"
+  },
+  {
+    "name": "mssql",
+    "aliases": [],
+    "mode": "sql",
+    "mime": "text/x-mssql",
+    "example": "SELECT TOP 1 name FROM items;\n"
+  },
+  {
+    "name": "mysql",
+    "aliases": [],
+    "mode": "sql",
+    "mime": "text/x-mysql",
+    "example": "SELECT name FROM items LIMIT 1;\n"
+  },
+  {
+    "name": "nginx",
+    "aliases": [],
+    "mode": "nginx",
+    "mime": "text/x-nginx-conf",
+    "example": "server {\n  listen 173.255.219.235:80;\n  server_name website.com.au;\n  rewrite / $scheme://www.$host$request_uri permanent; ## Forcibly prepend a www\n}\n\nserver {\n  listen 173.255.219.235:443;\n  server_name website.com.au;\n  rewrite / $scheme://www.$host$request_uri permanent; ## Forcibly prepend a www\n}\n\nserver {\n\n  listen      173.255.219.235:80;\n  server_name www.website.com.au;\n\n\n\n  root        /data/www;\n  index       index.html index.php;\n\n  location / {\n    index index.html index.php;     ## Allow a static html file to be shown first\n    try_files $uri $uri/ @handler;  ## If missing pass the URI to Magento's front handler\n    expires 30d;                    ## Assume all files are cacheable\n  }\n\n  ## These locations would be hidden by .htaccess normally\n  location /app/                { deny all; }\n  location /includes/           { deny all; }\n  location /lib/                { deny all; }\n  location /media/downloadable/ { deny all; }\n  location /pkginfo/            { deny all; }\n  location /report/config.xml   { deny all; }\n  location /var/                { deny all; }\n\n  location /var/export/ { ## Allow admins only to view export folder\n    auth_basic           \"Restricted\"; ## Message shown in login window\n    auth_basic_user_file /rs/passwords/testfile; ## See /etc/nginx/htpassword\n    autoindex            on;\n  }\n\n  location  /. { ## Disable .htaccess and other hidden files\n    return 404;\n  }\n\n  location @handler { ## Magento uses a common front handler\n    rewrite / /index.php;\n  }\n\n  location ~ .php/ { ## Forward paths like /js/index.php/x.js to relevant handler\n    rewrite ^/(.*.php)/ /$1 last;\n  }\n\n  location ~ \\.php$ {\n    if (!-e $request_filename) { rewrite / /index.php last; } ## Catch 404s that try_files miss\n\n    fastcgi_pass   127.0.0.1:9000;\n    fastcgi_index  index.php;\n    fastcgi_param PATH_INFO $fastcgi_script_name;\n    fastcgi_param  SCRIPT_FILENAME $document_root$fastcgi_script_name;\n    include        /rs/confs/nginx/fastcgi_params;\n  }\n\n}\n\n\nserver {\n\n  listen              173.255.219.235:443;\n  server_name         website.com.au www.website.com.au;\n\n  root   /data/www;\n  index index.html index.php;\n\n  ssl                 on;\n  ssl_certificate     /rs/ssl/ssl.crt;\n  ssl_certificate_key /rs/ssl/ssl.key;\n\n  ssl_session_timeout  5m;\n\n  ssl_protocols  SSLv2 SSLv3 TLSv1;\n  ssl_ciphers  ALL:!ADH:!EXPORT56:RC4+RSA:+HIGH:+MEDIUM:+LOW:+SSLv2:+EXP;\n  ssl_prefer_server_ciphers   on;\n\n\n\n  location / {\n    index index.html index.php; ## Allow a static html file to be shown first\n    try_files $uri $uri/ @handler; ## If missing pass the URI to Magento's front handler\n    expires 30d; ## Assume all files are cacheable\n  }\n\n  ## These locations would be hidden by .htaccess normally\n  location /app/                { deny all; }\n  location /includes/           { deny all; }\n  location /lib/                { deny all; }\n  location /media/downloadable/ { deny all; }\n  location /pkginfo/            { deny all; }\n  location /report/config.xml   { deny all; }\n  location /var/                { deny all; }\n\n  location /var/export/ { ## Allow admins only to view export folder\n    auth_basic           \"Restricted\"; ## Message shown in login window\n    auth_basic_user_file htpasswd; ## See /etc/nginx/htpassword\n    autoindex            on;\n  }\n\n  location  /. { ## Disable .htaccess and other hidden files\n    return 404;\n  }\n\n  location @handler { ## Magento uses a common front handler\n    rewrite / /index.php;\n  }\n\n  location ~ .php/ { ## Forward paths like /js/index.php/x.js to relevant handler\n    rewrite ^/(.*.php)/ /$1 last;\n  }\n\n  location ~ .php$ { ## Execute PHP scripts\n    if (!-e $request_filename) { rewrite  /index.php last; } ## Catch 404s that try_files miss\n\n    fastcgi_pass 127.0.0.1:9000;\n    fastcgi_index  index.php;\n    fastcgi_param PATH_INFO $fastcgi_script_name;\n    fastcgi_param  SCRIPT_FILENAME $document_root$fastcgi_script_name;\n    include        /rs/confs/nginx/fastcgi_params;\n\n    fastcgi_param HTTPS on;\n  }\n\n}"
+  },
+  {
+    "name": "nsis",
+    "aliases": [],
+    "mode": "nsis",
+    "mime": "text/x-nsis",
+    "example": "; This is a comment\n!ifdef ERROR\n    !error \"Something went wrong\"\n!endif\n\nOutFile \"demo.exe\"\nRequestExecutionLevel user\nSetDetailsPrint listonly\n\n!include \"LogicLib.nsh\"\n!include \"WinVer.nsh\"\n\nSection -mandatory\n\n    Call logWinVer\n\n    ${If} 1 > 0\n      MessageBox MB_OK \"Hello world\"\n    ${EndIf}\n\nSectionEnd\n\nFunction logWinVer\n\n    ${If} ${IsWin10}\n        DetailPrint \"Windows 10!\"\n    ${ElseIf} ${AtLeastWinVista}\n        DetailPrint \"We're post-XP\"\n    ${Else}\n        DetailPrint \"Legacy system\"\n    ${EndIf}\n\nFunctionEnd"
+  },
+  {
+    "name": "objective-c",
+    "aliases": [
+      "obj-c",
+      "objc"
+    ],
+    "mode": "clike",
+    "mime": "text/x-objectivec",
+    "example": "/* C demo code */\n\n#include <zmq.h>\n#include <pthread.h>\n#include <semaphore.h>\n#include <time.h>\n#include <stdio.h>\n#include <fcntl.h>\n#include <malloc.h>\n\ntypedef struct {\n  void* arg_socket;\n  zmq_msg_t* arg_msg;\n  char* arg_string;\n  unsigned long arg_len;\n  int arg_int, arg_command;\n\n  int signal_fd;\n  int pad;\n  void* context;\n  sem_t sem;\n} acl_zmq_context;\n\n#define p(X) (context->arg_##X)\n\nvoid* zmq_thread(void* context_pointer) {\n  acl_zmq_context* context = (acl_zmq_context*)context_pointer;\n  char ok = 'K', err = 'X';\n  int res;\n\n  while (1) {\n    while ((res = sem_wait(&context->sem)) == EINTR);\n    if (res) {write(context->signal_fd, &err, 1); goto cleanup;}\n    switch(p(command)) {\n    case 0: goto cleanup;\n    case 1: p(socket) = zmq_socket(context->context, p(int)); break;\n    case 2: p(int) = zmq_close(p(socket)); break;\n    case 3: p(int) = zmq_bind(p(socket), p(string)); break;\n    case 4: p(int) = zmq_connect(p(socket), p(string)); break;\n    case 5: p(int) = zmq_getsockopt(p(socket), p(int), (void*)p(string), &p(len)); break;\n    case 6: p(int) = zmq_setsockopt(p(socket), p(int), (void*)p(string), p(len)); break;\n    case 7: p(int) = zmq_send(p(socket), p(msg), p(int)); break;\n    case 8: p(int) = zmq_recv(p(socket), p(msg), p(int)); break;\n    case 9: p(int) = zmq_poll(p(socket), p(int), p(len)); break;\n    }\n    p(command) = errno;\n    write(context->signal_fd, &ok, 1);\n  }\n cleanup:\n  close(context->signal_fd);\n  free(context_pointer);\n  return 0;\n}\n\nvoid* zmq_thread_init(void* zmq_context, int signal_fd) {\n  acl_zmq_context* context = malloc(sizeof(acl_zmq_context));\n  pthread_t thread;\n\n  context->context = zmq_context;\n  context->signal_fd = signal_fd;\n  sem_init(&context->sem, 1, 0);\n  pthread_create(&thread, 0, &zmq_thread, context);\n  pthread_detach(thread);\n  return context;\n}"
+  },
+  {
+    "name": "ocaml",
+    "aliases": [],
+    "mode": "mllike",
+    "mime": "text/x-ocaml",
+    "example": "(* Summing a list of integers *)\nlet rec sum xs =\n  match xs with\n    | []       -> 0\n    | x :: xs' -> x + sum xs'\n\n(* Quicksort *)\nlet rec qsort = function\n   | [] -> []\n   | pivot :: rest ->\n       let is_less x = x < pivot in\n       let left, right = List.partition is_less rest in\n       qsort left @ [pivot] @ qsort right\n\n(* Fibonacci Sequence *)\nlet rec fib_aux n a b =\n  match n with\n  | 0 -> a\n  | _ -> fib_aux (n - 1) (a + b) a\nlet fib n = fib_aux n 0 1\n\n(* Birthday paradox *)\nlet year_size = 365.\n\nlet rec birthday_paradox prob people =\n    let prob' = (year_size -. float people) /. year_size *. prob  in\n    if prob' < 0.5 then\n        Printf.printf \"answer = %d\\n\" (people+1)\n    else\n        birthday_paradox prob' (people+1) ;;\n\nbirthday_paradox 1.0 1\n\n(* Church numerals *)\nlet zero f x = x\nlet succ n f x = f (n f x)\nlet one = succ zero\nlet two = succ (succ zero)\nlet add n1 n2 f x = n1 f (n2 f x)\nlet to_string n = n (fun k -> \"S\" ^ k) \"0\"\nlet _ = to_string (add (succ two) two)\n\n(* Elementary functions *)\nlet square x = x * x;;\nlet rec fact x =\n  if x <= 1 then 1 else x * fact (x - 1);;\n\n(* Automatic memory management *)\nlet l = 1 :: 2 :: 3 :: [];;\n[1; 2; 3];;\n5 :: l;;\n\n(* Polymorphism: sorting lists *)\nlet rec sort = function\n  | [] -> []\n  | x :: l -> insert x (sort l)\n\nand insert elem = function\n  | [] -> [elem]\n  | x :: l ->\n      if elem < x then elem :: x :: l else x :: insert elem l;;\n\n(* Imperative features *)\nlet add_polynom p1 p2 =\n  let n1 = Array.length p1\n  and n2 = Array.length p2 in\n  let result = Array.create (max n1 n2) 0 in\n  for i = 0 to n1 - 1 do result.(i) <- p1.(i) done;\n  for i = 0 to n2 - 1 do result.(i) <- result.(i) + p2.(i) done;\n  result;;\nadd_polynom [| 1; 2 |] [| 1; 2; 3 |];;\n\n(* We may redefine fact using a reference cell and a for loop *)\nlet fact n =\n  let result = ref 1 in\n  for i = 2 to n do\n    result := i * !result\n   done;\n   !result;;\nfact 5;;\n\n(* Triangle (graphics) *)\nlet () =\n  ignore( Glut.init Sys.argv );\n  Glut.initDisplayMode ~double_buffer:true ();\n  ignore (Glut.createWindow ~title:\"OpenGL Demo\");\n  let angle t = 10. *. t *. t in\n  let render () =\n    GlClear.clear [ `color ];\n    GlMat.load_identity ();\n    GlMat.rotate ~angle: (angle (Sys.time ())) ~z:1. ();\n    GlDraw.begins `triangles;\n    List.iter GlDraw.vertex2 [-1., -1.; 0., 1.; 1., -1.];\n    GlDraw.ends ();\n    Glut.swapBuffers () in\n  GlMat.mode `modelview;\n  Glut.displayFunc ~cb:render;\n  Glut.idleFunc ~cb:(Some Glut.postRedisplay);\n  Glut.mainLoop ()\n\n(* A Hundred Lines of Caml - http://caml.inria.fr/about/taste.en.html *)\n(* OCaml page on Wikipedia - http://en.wikipedia.org/wiki/OCaml *)\n\nmodule type S = sig type t end\n\nlet x = {| \n  this is a long string \n  with many lines and stuff\n  |}\n\nlet b = 0b00110\nlet h = 0x123abcd\nlet e = 1e-10\nlet i = 1.\nlet x = 30_000\nlet o = 0o1234\n\n[1; 2; 3] (* lists *)\n\n1 @ 2\n1. +. 2."
+  },
+  {
+    "name": "octave",
+    "aliases": [
+      "matlab"
+    ],
+    "mode": "octave",
+    "mime": "text/x-octave",
+    "example": "%numbers\n[1234 1234i 1234j]\n[.234 .234j 2.23i]\n[23e2 12E1j 123D-4 0x234]\n\n%strings\n'asda''a'\n\"asda\"\"a\"\n\n%identifiers\na + as123 - __asd__\n\n%operators\n-\n+\n=\n==\n>\n<\n>=\n<=\n&\n~\n...\nbreak zeros default margin round ones rand\nceil floor size clear zeros eye mean std cov\nerror eval function\nabs acos atan asin cos cosh exp log prod sum\nlog10 max min sign sin sinh sqrt tan reshape\nreturn\ncase switch\nelse elseif end if otherwise\ndo for while\ntry catch\nclassdef properties events methods\nglobal persistent\n\n%one line comment\n%{ multi \nline comment %}"
+  },
+  {
+    "name": "oz",
+    "aliases": [],
+    "mode": "oz",
+    "mime": "text/x-oz",
+    "example": "declare\nfun {Ints N Max}\n  if N == Max then nil\n  else\n    {Delay 1000}\n    N|{Ints N+1 Max}\n  end\nend\n\nfun {Sum S Stream}\n  case Stream of nil then S\n  [] H|T then S|{Sum H+S T} end\nend\n\nlocal X Y in\n  thread X = {Ints 0 1000} end\n  thread Y = {Sum 0 X} end\n  {Browse Y}\nend"
+  },
+  {
+    "name": "pascal",
+    "aliases": [],
+    "mode": "pascal",
+    "mime": "text/x-pascal",
+    "example": "(* Example Pascal code *)\n\nwhile a <> b do writeln('Waiting');\n \nif a > b then \n  writeln('Condition met')\nelse \n  writeln('Condition not met');\n \nfor i := 1 to 10 do \n  writeln('Iteration: ', i:1);\n \nrepeat\n  a := a + 1\nuntil a = 10;\n \ncase i of\n  0: write('zero');\n  1: write('one');\n  2: write('two')\nend;"
+  },
+  {
+    "name": "peg.js",
+    "aliases": [],
+    "mode": "pegjs",
+    "mime": "pegjs",
+    "example": "start = digits:[0-9]+ { return digits.join(\"\"); }\n"
+  },
+  {
+    "name": "perl",
+    "aliases": [],
+    "mode": "perl",
+    "mime": "text/x-perl",
+    "example": "#!/usr/bin/perl\n\nuse Something qw(func1 func2);\n\n# strings\nmy $s1 = qq'single line';\nour $s2 = q(multi-\n              line);\n\n=item Something\n\tExample.\n=cut\n\nmy $html=<<'HTML'\n<html>\n<title>hi!</title>\n</html>\nHTML\n\nprint \"first,\".join(',', 'second', qq~third~);\n\nif($s1 =~ m[(?<!\\s)(l.ne)\\z]o) {\n\t$h->{$1}=$$.' predefined variables';\n\t$s2 =~ s/\\-line//ox;\n\t$s1 =~ s[\n\t\t  line ]\n\t\t[\n\t\t  block\n\t\t]ox;\n}\n\n1; # numbers and comments\n\n__END__\nsomething..."
+  },
+  {
+    "name": "pgp",
+    "aliases": [
+      "asciiarmor",
+      "pgp-keys"
+    ],
+    "mode": "asciiarmor",
+    "mime": "application/pgp",
+    "example": "-----BEGIN PGP MESSAGE-----\nVersion: OpenPrivacy 0.99\n\nyDgBO22WxBHv7O8X7O/jygAEzol56iUKiXmV+XmpCtmpqQUKiQrFqclFqUDBovzS\nvBSFjNSiVHsuAA==\n=njUN\n-----END PGP MESSAGE-----"
+  },
+  {
+    "name": "php",
+    "aliases": [
+      "php+html"
+    ],
+    "mode": "php",
+    "mime": "text/x-php",
+    "example": "<?php echo \"hello\"; ?>\n"
+  },
+  {
+    "name": "plsql",
+    "aliases": [],
+    "mode": "sql",
+    "mime": "text/x-plsql",
+    "example": "BEGIN DBMS_OUTPUT.PUT_LINE('hello'); END;\n"
+  },
+  {
+    "name": "powershell",
+    "aliases": [],
+    "mode": "powershell",
+    "mime": "application/x-powershell",
+    "example": "# Paths\ncd c:\\\nc:\\windows\\calc.exe\n\n# Number Literals\n0 12345\n12kb 12mb 12gB 12Tb 12PB 12L 12D 12lkb 12dtb\n1.234 1.234e56 1. 1.e2 .2 .2e34\n1.2MB 1.kb .1dTb 1.e1gb\n0x1 0xabcdef 0x3tb 0xelmb\n\n# String Literals\n'Literal escaping'''\n'Literal $variable'\n\"Escaping 1`\"\"\n\"Escaping 2\"\"\"\n\"Escaped `$variable\"\n\"Text, $variable and more text\"\n\"Text, ${variable with spaces} and more text.\"\n\"Text, $($expression + 3) and more text.\"\n\"Text, $(\"interpolation $(\"inception\")\") and more text.\"\n\n@\"\nMultiline\nstring\n\"@\n# --\n@\"\nMultiline\nstring with quotes \"'\n\"@\n# --\n@'\nMultiline literal\nstring with quotes \"'\n'@\n\n# Array and Hash literals\n@( 'a','b','c' )\n@{ 'key': 'value' }\n\n# Variables\n$Variable = 5\n$global:variable = 5\n${Variable with spaces} = 5\n\n# Operators\n= += -= *= /= %=\n++ -- .. -f * / % + -\n-not ! -bnot\n-split -isplit -csplit\n-join\n-is -isnot -as\n-eq -ieq -ceq -ne -ine -cne\n-gt -igt -cgt -ge -ige -cge\n-lt -ilt -clt -le -ile -cle\n-like -ilike -clike -notlike -inotlike -cnotlike\n-match -imatch -cmatch -notmatch -inotmatch -cnotmatch\n-contains -icontains -ccontains -notcontains -inotcontains -cnotcontains\n-replace -ireplace -creplace\n-band\t-bor -bxor\n-and -or -xor\n\n# Punctuation\n() [] {} , : ` = ; .\n\n# Keywords\nelseif begin function for foreach return else trap while do data dynamicparam\nuntil end break if throw param continue finally in switch exit filter from try\nprocess catch\n\n# Built-in variables\n$$ $? $^ $_\n$args $ConfirmPreference $ConsoleFileName $DebugPreference $Error\n$ErrorActionPreference $ErrorView $ExecutionContext $false $FormatEnumerationLimit\n$HOME $Host $input $MaximumAliasCount $MaximumDriveCount $MaximumErrorCount\n$MaximumFunctionCount $MaximumHistoryCount $MaximumVariableCount $MyInvocation\n$NestedPromptLevel $null $OutputEncoding $PID $PROFILE $ProgressPreference\n$PSBoundParameters $PSCommandPath $PSCulture $PSDefaultParameterValues\n$PSEmailServer $PSHOME $PSScriptRoot $PSSessionApplicationName\n$PSSessionConfigurationName $PSSessionOption $PSUICulture $PSVersionTable $PWD\n$ShellId $StackTrace $true $VerbosePreference $WarningPreference $WhatIfPreference\n$true $false $null\n\n# Built-in functions\nA:\nAdd-Computer Add-Content Add-History Add-Member Add-PSSnapin Add-Type\nB:\nC:\nCheckpoint-Computer Clear-Content Clear-EventLog Clear-History Clear-Host Clear-Item\nClear-ItemProperty Clear-Variable Compare-Object Complete-Transaction Connect-PSSession\nConvertFrom-Csv ConvertFrom-Json ConvertFrom-SecureString ConvertFrom-StringData\nConvert-Path ConvertTo-Csv ConvertTo-Html ConvertTo-Json ConvertTo-SecureString\nConvertTo-Xml Copy-Item Copy-ItemProperty\nD:\nDebug-Process Disable-ComputerRestore Disable-PSBreakpoint Disable-PSRemoting\nDisable-PSSessionConfiguration Disconnect-PSSession\nE:\nEnable-ComputerRestore Enable-PSBreakpoint Enable-PSRemoting Enable-PSSessionConfiguration\nEnter-PSSession Exit-PSSession Export-Alias Export-Clixml Export-Console Export-Counter\nExport-Csv Export-FormatData Export-ModuleMember Export-PSSession\nF:\nForEach-Object Format-Custom Format-List Format-Table Format-Wide\nG:\nGet-Acl Get-Alias Get-AuthenticodeSignature Get-ChildItem Get-Command Get-ComputerRestorePoint\nGet-Content Get-ControlPanelItem Get-Counter Get-Credential Get-Culture Get-Date\nGet-Event Get-EventLog Get-EventSubscriber Get-ExecutionPolicy Get-FormatData Get-Help\nGet-History Get-Host Get-HotFix Get-Item Get-ItemProperty Get-Job Get-Location Get-Member\nGet-Module Get-PfxCertificate Get-Process Get-PSBreakpoint Get-PSCallStack Get-PSDrive\nGet-PSProvider Get-PSSession Get-PSSessionConfiguration Get-PSSnapin Get-Random Get-Service\nGet-TraceSource Get-Transaction Get-TypeData Get-UICulture  Get-Unique Get-Variable Get-Verb\nGet-WinEvent Get-WmiObject Group-Object\nH:\nhelp\nI:\nImport-Alias Import-Clixml Import-Counter Import-Csv Import-LocalizedData Import-Module\nImport-PSSession ImportSystemModules Invoke-Command Invoke-Expression Invoke-History\nInvoke-Item Invoke-RestMethod Invoke-WebRequest Invoke-WmiMethod\nJ:\nJoin-Path\nK:\nL:\nLimit-EventLog\nM:\nMeasure-Command Measure-Object mkdir more Move-Item Move-ItemProperty\nN:\nNew-Alias New-Event New-Event"
+  },
+  {
+    "name": "postgresql",
+    "aliases": [],
+    "mode": "sql",
+    "mime": "text/x-pgsql",
+    "example": "SELECT name FROM items LIMIT 1;\n"
+  },
+  {
+    "name": "properties",
+    "aliases": [
+      "ini"
+    ],
+    "mode": "properties",
+    "mime": "text/x-properties",
+    "example": "# This is a properties file\na.key = A value\nanother.key = http://example.com\n! Exclamation mark as comment\nbut.not=Within ! A value # indeed\n   # Spaces at the beginning of a line\n   spaces.before.key=value\nbackslash=Used for multi\\\n          line entries,\\\n          that's convenient.\n# Unicode sequences\nunicode.key=This is \\u0020 Unicode\nno.multiline=here\n# Colons\ncolons : can be used too\n# Spaces\nspaces\\ in\\ keys=Not very common..."
+  },
+  {
+    "name": "protobuf",
+    "aliases": [],
+    "mode": "protobuf",
+    "mime": "text/x-protobuf",
+    "example": "package addressbook;\n\nmessage Address {\n   required string street = 1;\n   required string postCode = 2;\n}\n\nmessage PhoneNumber {\n   required string number = 1;\n}\n\nmessage Person {\n   optional int32 id = 1;\n   required string name = 2;\n   required string surname = 3;\n   optional Address address = 4;\n   repeated PhoneNumber phoneNumbers = 5;\n   optional uint32 age = 6;\n   repeated uint32 favouriteNumbers = 7;\n   optional string license = 8;\n   enum Gender {\n      MALE = 0;\n      FEMALE = 1;\n   }\n   optional Gender gender = 9;\n   optional fixed64 lastUpdate = 10;\n   required bool deleted = 11 [default = false];\n}"
+  },
+  {
+    "name": "pug",
+    "aliases": [],
+    "mode": "pug",
+    "mime": "text/x-pug",
+    "example": "doctype html\n  html\n    head\n      title= \"Pug Templating CodeMirror Mode Example\"\n      link(rel='stylesheet', href='/css/bootstrap.min.css')\n      link(rel='stylesheet', href='/css/index.css')\n      script(type='text/javascript', src='/js/jquery-1.9.1.min.js')\n      script(type='text/javascript', src='/js/bootstrap.min.js')\n    body\n      div.header\n        h1 Welcome to this Example\n      div.spots\n        if locals.spots\n          each spot in spots\n            div.spot.well\n         div\n           if spot.logo\n             img.img-rounded.logo(src=spot.logo)\n           else\n             img.img-rounded.logo(src=\"img/placeholder.png\")\n         h3\n           a(href=spot.hash) ##{spot.hash}\n           if spot.title\n             span.title #{spot.title}\n           if spot.desc\n             div #{spot.desc}\n        else\n          h3 There are no spots currently available."
+  },
+  {
+    "name": "python",
+    "aliases": [],
+    "mode": "python",
+    "mime": "text/x-python",
+    "example": "# Literals\n1234\n0.0e101\n.123\n0b01010011100\n0o01234567\n0x0987654321abcdef\n7\n2147483647\n3L\n79228162514264337593543950336L\n0x100000000L\n79228162514264337593543950336\n0xdeadbeef\n3.14j\n10.j\n10j\n.001j\n1e100j\n3.14e-10j\n\n\n# String Literals\n'For\\''\n\"God\\\"\"\n\"\"\"so loved\nthe world\"\"\"\n'''that he gave\nhis only begotten\\' '''\n'that whosoever believeth \\\nin him'\n''\n\n# Identifiers\n__a__\na.b\na.b.c\n\n#Unicode identifiers on Python3\n# a = x\\ddot\na⃗ = ẍ\n# a = v\\dot\na⃗ = v̇\n\n#F\\vec = m \\cdot a\\vec\nF⃗ = m•a⃗ \n\n# Operators\n+ - * / % & | ^ ~ < >\n== != <= >= <> << >> // **\nand or not in is\n\n#infix matrix multiplication operator (PEP 465)\nA @ B\n\n# Delimiters\n() [] {} , : ` = ; @ .  # Note that @ and . require the proper context on Python 2.\n+= -= *= /= %= &= |= ^=\n//= >>= <<= **=\n\n# Keywords\nas assert break class continue def del elif else except\nfinally for from global if import lambda pass raise\nreturn try while with yield\n\n# Python 2 Keywords (otherwise Identifiers)\nexec print\n\n# Python 3 Keywords (otherwise Identifiers)\nnonlocal\n\n# Types\nbool classmethod complex dict enumerate float frozenset int list object\nproperty reversed set slice staticmethod str super tuple type\n\n# Python 2 Types (otherwise Identifiers)\nbasestring buffer file long unicode xrange\n\n# Python 3 Types (otherwise Identifiers)\nbytearray bytes filter map memoryview open range zip\n\n# Some Example code\nimport os\nfrom package import ParentClass\n\n@nonsenseDecorator\ndef doesNothing():\n    pass\n\nclass ExampleClass(ParentClass):\n    @staticmethod\n    def example(inputStr):\n        a = list(inputStr)\n        a.reverse()\n        return ''.join(a)\n\n    def __init__(self, mixin = 'Hello'):\n        self.mixin = mixin\n\n# Python 3.6 f-strings (https://www.python.org/dev/peps/pep-0498/)\nf'My name is {name}, my age next year is {age+1}, my anniversary is {anniversary:%A, %B %d, %Y}.'\nf'He said his name is {name!r}.'\nf\"\"\"He said his name is {name!r}.\"\"\"\nf'{\"quoted string\"}'\nf'{{ {4*10} }}'\nf'This is an error }'\nf'This is ok }}'\nfr'x={4*10}\\n'"
+  },
+  {
+    "name": "q",
+    "aliases": [],
+    "mode": "q",
+    "mime": "text/x-q",
+    "example": "/ utilities to quickly load a csv file - for more exhaustive analysis of the csv contents see csvguess.q\n/ 2009.09.20 - updated to match latest csvguess.q \n\n/ .csv.colhdrs[file] - return a list of colhdrs from file\n/ info:.csv.info[file] - return a table of information about the file\n/ columns are: \n/\tc - column name; ci - column index; t - load type; mw - max width; \n/\tdchar - distinct characters in values; rule - rule that caught the type\n/\tmaybe - needs checking, _could_ be say a date, but perhaps just a float?\n/ .csv.info0[file;onlycols] - like .csv.info except that it only analyses <onlycols>\n/ example:\n/\tinfo:.csv.info0[file;(.csv.colhdrs file)like\"*price\"]\n/\tinfo:.csv.infolike[file;\"*price\"]\n/\tshow delete from info where t=\" \"\n/ .csv.data[file;info] - use the info from .csv.info to read the data\n/ .csv.data10[file;info] - like .csv.data but only returns the first 10 rows\n/ bulkload[file;info] - bulk loads file into table DATA (which must be already defined :: DATA:() )\n/ .csv.read[file]/read10[file] - for when you don't care about checking/tweaking the <info> before reading \n\n\\d .csv\nDELIM:\",\"\nZAPHDRS:0b / lowercase and remove _ from colhdrs (junk characters are always removed)\nWIDTHHDR:25000 / number of characters read to get the header\nREADLINES:222 / number of lines read and used to guess the types\nSYMMAXWIDTH:11 / character columns narrower than this are stored as symbols\nSYMMAXGR:10 / max symbol granularity% before we give up and keep as a * string\nFORCECHARWIDTH:30 / every field (of any type) with values this wide or more is forced to character \"*\"\nDISCARDEMPTY:0b / completely ignore empty columns if true else set them to \"C\"\nCHUNKSIZE:50000000 / used in fs2 (modified .Q.fs)\n\nk)nameltrim:{$[~@x;.z.s'x;~(*x)in aA:.Q.a,.Q.A;(+/&\\~x in aA)_x;x]}\nk)fs2:{[f;s]((-7!s)>){[f;s;x]i:1+last@&0xa=r:1:(s;x;CHUNKSIZE);f@`\\:i#r;x+i}[f;s]/0j}\ncleanhdrs:{{$[ZAPHDRS;lower x except\"_\";x]}x where x in DELIM,.Q.an}\ncancast:{nw:x$\"\";if[not x in\"BXCS\";nw:(min 0#;max 0#;::)@\\:nw];$[not any nw in x$(11&count y)#y;$[11<count y;not any nw in x$y;1b];0b]}\n\nread:{[file]data[file;info[file]]}  \nread10:{[file]data10[file;info[file]]}  \n\ncolhdrs:{[file]\n\t`$nameltrim DELIM vs cleanhdrs first read0(file;0;1+first where 0xa=read1(file;0;WIDTHHDR))}\ndata:{[file;info]\n\t(exec c from info where not t=\" \")xcol(exec t from info;enlist DELIM)0:file}\ndata10:{[file;info]\n\tdata[;info](file;0;1+last 11#where 0xa=read1(file;0;15*WIDTHHDR))}\ninfo0:{[file;onlycols]\n\tcolhdrs:`$nameltrim DELIM vs cleanhdrs first head:read0(file;0;1+last where 0xa=read1(file;0;WIDTHHDR));\n\tloadfmts:(count colhdrs)#\"S\";if[count onlycols;loadfmts[where not colhdrs in onlycols]:\"C\"];\n\tbreaks:where 0xa=read1(file;0;floor(10+READLINES)*WIDTHHDR%count head);\n\tnas:count as:colhdrs xcol(loadfmts;enlist DELIM)0:(file;0;1+last((1+READLINES)&count breaks)#breaks);\n\tinfo:([]c:key flip as;v:value flip as);as:();\n\treserved:key`.q;reserved,:.Q.res;reserved,:`i;\n\tinfo:update res:c in reserved from info;\n\tinfo:update ci:i,t:\"?\",ipa:0b,mdot:0,mw:0,rule:0,gr:0,ndv:0,maybe:0b,empty:0b,j10:0b,j12:0b from info;\n\tinfo:update ci:`s#ci from info;\n\tif[count onlycols;info:update t:\" \",rule:10 from info where not c in onlycols];\n\tinfo:update sdv:{string(distinct x)except`}peach v from info; \n\tinfo:update ndv:count each sdv from info;\n\tinfo:update gr:floor 0.5+100*ndv%nas,mw:{max count each x}peach sdv from info where 0<ndv;\n\tinfo:update t:\"*\",rule:20 from info where mw>.csv.FORCECHARWIDTH; / long values\n\tinfo:update t:\"C \"[.csv.DISCARDEMPTY],rule:30,empty:1b from info where t=\"?\",mw=0; / empty columns\n\tinfo:update dchar:{asc distinct raze x}peach sdv from info where t=\"?\";\n\tinfo:update mdot:{max sum each\".\"=x}peach sdv from info where t=\"?\",{\".\"in x}each dchar;\n\tinfo:update t:\"n\",rule:40 from info where t=\"?\",{any x in\"0123456789\"}each dchar; / vaguely numeric..\n\tinfo:update t:\"I\",rule:50,ipa:1b from info where t=\"n\",mw within 7 15,mdot=3,{all x in\".0123456789\"}each dchar,.csv.cancast[\"I\"]peach sdv; / ip-address\n\tinfo:update t:\"J\",rule:60 from info where t=\"n\",mdot=0,{all x in\"+-0123456789\"}each dchar,."
+  },
+  {
+    "name": "r",
+    "aliases": [
+      "rlang",
+      "r-lang"
+    ],
+    "mode": "r",
+    "mime": "text/x-rsrc",
+    "example": "X <- list(height = 5.4, weight = 54)\ncat(\"Printing objects: \"); print(X)\nprint(\"Accessing individual elements:\")\ncat(sprintf(\"Your height is %s and your weight is %s\\n\", X$height, X$weight))\n\n# Functions:\nsquare <- function(x) {\n  return(x * x)\n}\ncat(sprintf(\"The square of 3 is %s\\n\", square(3)))\n\n# In R, the last expression in a function is, by default, what is\n# returned. The idiomatic way to write the function is:\nsquare <- function(x) {\n  x * x\n}\n# or, for functions with short content:\nsquare <- function(x) x * x\n\n# Function arguments with default values:\ncube <- function(x = 5) x * x * x\ncat(sprintf(\"Calling cube with 2 : %s\\n\", cube(2))  # will give 2^3\ncat(sprintf(\"Calling cube        : %s\\n\", cube())   # will default to 5^3.\n\npowers <- function(x) list(x2 = x*x, x3 = x*x*x, x4 = x*x*x*x)\n\ncat(\"Powers of 3: \"); print(powers(3))\n\n# Data frames\ndf <- data.frame(letters = letters[1:5], '#letter' = 1:5)\nprint(df$letters)\nprint(df$`#letter`)\n\n# Operators:\nm1 <- matrix(1:6, 2, 3)\nm2 <- m1 %*% t(m1)\ncat(\"Matrix product: \"); print(m2)\n\n# Assignments:\na <- 1\nb <<- 2\nc = 3\n4 -> d\n5 ->> e"
+  },
+  {
+    "name": "rst",
+    "aliases": [
+      "restructuredtext"
+    ],
+    "mode": "rst",
+    "mime": "text/x-rst",
+    "example": ".. This is an excerpt from Sphinx documentation: http://sphinx.pocoo.org/_sources/rest.txt\n\n.. highlightlang:: rest\n\n.. _rst-primer:\n\nreStructuredText Primer\n=======================\n\nThis section is a brief introduction to reStructuredText (reST) concepts and\nsyntax, intended to provide authors with enough information to author documents\nproductively.  Since reST was designed to be a simple, unobtrusive markup\nlanguage, this will not take too long.\n\n.. seealso::\n\n   The authoritative `reStructuredText User Documentation\n   <http://docutils.sourceforge.net/rst.html>`_.  The \"ref\" links in this\n   document link to the description of the individual constructs in the reST\n   reference.\n\n\nParagraphs\n----------\n\nThe paragraph (:duref:`ref <paragraphs>`) is the most basic block in a reST\ndocument.  Paragraphs are simply chunks of text separated by one or more blank\nlines.  As in Python, indentation is significant in reST, so all lines of the\nsame paragraph must be left-aligned to the same level of indentation.\n\n\n.. _inlinemarkup:\n\nInline markup\n-------------\n\nThe standard reST inline markup is quite simple: use\n\n* one asterisk: ``*text*`` for emphasis (italics),\n* two asterisks: ``**text**`` for strong emphasis (boldface), and\n* backquotes: ````text```` for code samples.\n\nIf asterisks or backquotes appear in running text and could be confused with\ninline markup delimiters, they have to be escaped with a backslash.\n\nBe aware of some restrictions of this markup:\n\n* it may not be nested,\n* content may not start or end with whitespace: ``* text*`` is wrong,\n* it must be separated from surrounding text by non-word characters.  Use a\n  backslash escaped space to work around that: ``thisis\\ *one*\\ word``.\n\nThese restrictions may be lifted in future versions of the docutils.\n\nreST also allows for custom \"interpreted text roles\"', which signify that the\nenclosed text should be interpreted in a specific way.  Sphinx uses this to\nprovide semantic markup and cross-referencing of identifiers, as described in\nthe appropriate section.  The general syntax is ``:rolename:`content```.\n\nStandard reST provides the following roles:\n\n* :durole:`emphasis` -- alternate spelling for ``*emphasis*``\n* :durole:`strong` -- alternate spelling for ``**strong**``\n* :durole:`literal` -- alternate spelling for ````literal````\n* :durole:`subscript` -- subscript text\n* :durole:`superscript` -- superscript text\n* :durole:`title-reference` -- for titles of books, periodicals, and other\n  materials\n\nSee :ref:`inline-markup` for roles added by Sphinx.\n\n\nLists and Quote-like blocks\n---------------------------\n\nList markup (:duref:`ref <bullet-lists>`) is natural: just place an asterisk at\nthe start of a paragraph and indent properly.  The same goes for numbered lists;\nthey can also be autonumbered using a ``#`` sign::\n\n   * This is a bulleted list.\n   * It has two items, the second\n     item uses two lines.\n\n   1. This is a numbered list.\n   2. It has two items too.\n\n   #. This is a numbered list.\n   #. It has two items too.\n\n\nNested lists are possible, but be aware that they must be separated from the\nparent list items by blank lines::\n\n   * this is\n   * a list\n\n     * with a nested list\n     * and some subitems\n\n   * and here the parent list continues\n\nDefinition lists (:duref:`ref <definition-lists>`) are created as follows::\n\n   term (up to a line of text)\n      Definition of the term, which must be indented\n\n      and can even consist of multiple paragraphs\n\n   next term\n      Description.\n\nNote that the term cannot have more than one line of text.\n\nQuoted paragraphs (:duref:`ref <block-quotes>`) are created by just indenting\nthem more than the surrounding paragraphs.\n\nLine blocks (:duref:`ref <line-blocks>`) are a way of preserving line breaks::\n\n   | These lines are\n   | broken exactly like in\n   | the source file.\n\nThere are also several more special blocks available:\n\n* field lists (:duref:`ref <field-lists>`)\n* option lists (:duref:`ref <option-lists>`)\n* quoted literal blocks (:duref:`ref <quoted-literal-blocks>`)\n* doctest blocks (:duref:`ref <doctest-bloc"
+  },
+  {
+    "name": "ruby",
+    "aliases": [],
+    "mode": "ruby",
+    "mime": "text/x-ruby",
+    "example": "# Code from http://sandbox.mc.edu/~bennet/ruby/code/poly_rb.html\n#\n# This program evaluates polynomials.  It first asks for the coefficients\n# of a polynomial, which must be entered on one line, highest-order first.\n# It then requests values of x and will compute the value of the poly for\n# each x.  It will repeatedly ask for x values, unless you the user enters\n# a blank line.  It that case, it will ask for another polynomial.  If the\n# user types quit for either input, the program immediately exits.\n#\n\n#\n# Function to evaluate a polynomial at x.  The polynomial is given\n# as a list of coefficients, from the greatest to the least.\ndef polyval(x, coef)\n    sum = 0\n    coef = coef.clone           # Don't want to destroy the original\n    while true\n        sum += coef.shift       # Add and remove the next coef\n        break if coef.empty?    # If no more, done entirely.\n        sum *= x                # This happens the right number of times.\n    end\n    return sum\nend\n\n#\n# Function to read a line containing a list of integers and return\n# them as an array of integers.  If the string conversion fails, it\n# throws TypeError.  If the input line is the word 'quit', then it\n# converts it to an end-of-file exception\ndef readints(prompt)\n    # Read a line\n    print prompt\n    line = readline.chomp\n    raise EOFError.new if line == 'quit' # You can also use a real EOF.\n            \n    # Go through each item on the line, converting each one and adding it\n    # to retval.\n    retval = [ ]\n    for str in line.split(/\\s+/)\n        if str =~ /^\\-?\\d+$/\n            retval.push(str.to_i)\n        else\n            raise TypeError.new\n        end\n    end\n\n    return retval\nend\n\n#\n# Take a coeff and an exponent and return the string representation, ignoring\n# the sign of the coefficient.\ndef term_to_str(coef, exp)\n    ret = \"\"\n\n    # Show coeff, unless it's 1 or at the right\n    coef = coef.abs\n    ret = coef.to_s     unless coef == 1 && exp > 0\n    ret += \"x\" if exp > 0                               # x if exponent not 0\n    ret += \"^\" + exp.to_s if exp > 1                    # ^exponent, if > 1.\n\n    return ret\nend\n\n#\n# Create a string of the polynomial in sort-of-readable form.\ndef polystr(p)\n    # Get the exponent of first coefficient, plus 1.\n    exp = p.length\n\n    # Assign exponents to each term, making pairs of coeff and exponent,\n    # Then get rid of the zero terms.\n    p = (p.map { |c| exp -= 1; [ c, exp ] }).select { |p| p[0] != 0 }\n\n    # If there's nothing left, it's a zero\n    return \"0\" if p.empty?\n\n    # *** Now p is a non-empty list of [ coef, exponent ] pairs. ***\n\n    # Convert the first term, preceded by a \"-\" if it's negative.\n    result = (if p[0][0] < 0 then \"-\" else \"\" end) + term_to_str(*p[0])\n\n    # Convert the rest of the terms, in each case adding the appropriate\n    # + or - separating them.  \n    for term in p[1...p.length]\n        # Add the separator then the rep. of the term.\n        result += (if term[0] < 0 then \" - \" else \" + \" end) + \n                term_to_str(*term)\n    end\n\n    return result\nend\n        \n#\n# Run until some kind of endfile.\nbegin\n    # Repeat until an exception or quit gets us out.\n    while true\n        # Read a poly until it works.  An EOF will except out of the\n        # program.\n        print \"\\n\"\n        begin\n            poly = readints(\"Enter a polynomial coefficients: \")\n        rescue TypeError\n            print \"Try again.\\n\"\n            retry\n        end\n        break if poly.empty?\n\n        # Read and evaluate x values until the user types a blank line.\n        # Again, an EOF will except out of the pgm.\n        while true\n            # Request an integer.\n            print \"Enter x value or blank line: \"\n            x = readline.chomp\n            break if x == ''\n            raise EOFError.new if x == 'quit'\n\n            # If it looks bad, let's try again.\n            if x !~ /^\\-?\\d+$/\n                print \"That doesn't look like an integer.  Please try again.\\n\"\n                next\n            end\n\n            # Convert to an integer and print the result.\n           "
+  },
+  {
+    "name": "rust",
+    "aliases": [],
+    "mode": "rust",
+    "mime": "text/x-rustsrc",
+    "example": "// Demo code.\n\ntype foo<T> = i32;\nenum bar {\n    Some(i32, foo<f32>),\n    None\n}\n\nfn check_crate(x: i32) {\n    let v = 10;\n    match foo {\n        1 ... 3 {\n            print_foo();\n            if x {\n                blah().to_string();\n            }\n        }\n        (x, y) { \"bye\" }\n        _ { \"hi\" }\n    }\n}"
+  },
+  {
+    "name": "sas",
+    "aliases": [],
+    "mode": "sas",
+    "mime": "text/x-sas",
+    "example": "libname foo \"/tmp/foobar\";\n%let count=1;\n\n/* Multi line\nComment\n*/\ndata _null_;\n    x=ranuni();\n    * single comment;\n    x2=x**2;\n    sx=sqrt(x);\n    if x=x2 then put \"x must be 1\";\n    else do;\n        put x=;\n    end;\nrun;\n\n/* embedded comment\n* comment;\n*/\n\nproc glm data=sashelp.class;\n    class sex;\n    model weight = height sex;\nrun;\n\nproc sql;\n    select count(*)\n    from sashelp.class;\n\n    create table foo as\n    select * from sashelp.class;\n\n    select *\n    from foo;\nquit;"
+  },
+  {
+    "name": "scala",
+    "aliases": [],
+    "mode": "clike",
+    "mime": "text/x-scala",
+    "example": "object Main { def main(args: Array[String]): Unit = println(\"hi\") }\n"
+  },
+  {
+    "name": "scheme",
+    "aliases": [],
+    "mode": "scheme",
+    "mime": "text/x-scheme",
+    "example": "; See if the input starts with a given symbol.\n(define (match-symbol input pattern)\n  (cond ((null? (remain input)) #f)\n\t((eqv? (car (remain input)) pattern) (r-cdr input))\n\t(else #f)))\n\n; Allow the input to start with one of a list of patterns.\n(define (match-or input pattern)\n  (cond ((null? pattern) #f)\n\t((match-pattern input (car pattern)))\n\t(else (match-or input (cdr pattern)))))\n\n; Allow a sequence of patterns.\n(define (match-seq input pattern)\n  (if (null? pattern)\n      input\n      (let ((match (match-pattern input (car pattern))))\n\t(if match (match-seq match (cdr pattern)) #f))))\n\n; Match with the pattern but no problem if it does not match.\n(define (match-opt input pattern)\n  (let ((match (match-pattern input (car pattern))))\n    (if match match input)))\n\n; Match anything (other than '()), until pattern is found. The rather\n; clumsy form of requiring an ending pattern is needed to decide where\n; the end of the match is. If none is given, this will match the rest\n; of the sentence.\n(define (match-any input pattern)\n  (cond ((null? (remain input)) #f)\n\t((null? pattern) (f-cons (remain input) (clear-remain input)))\n\t(else\n\t (let ((accum-any (collector)))\n\t   (define (match-pattern-any input pattern)\n\t     (cond ((null? (remain input)) #f)\n\t\t   (else (accum-any (car (remain input)))\n\t\t\t (cond ((match-pattern (r-cdr input) pattern))\n\t\t\t       (else (match-pattern-any (r-cdr input) pattern))))))\n\t   (let ((retval (match-pattern-any input (car pattern))))\n\t     (if retval\n\t\t (f-cons (accum-any) retval)\n\t\t #f))))))"
+  },
+  {
+    "name": "scss",
+    "aliases": [],
+    "mode": "css",
+    "mime": "text/x-scss",
+    "example": "$color: red; .box { color: $color; }\n"
+  },
+  {
+    "name": "shell",
+    "aliases": [
+      "sh",
+      "bash"
+    ],
+    "mode": "shell",
+    "mime": "text/x-sh",
+    "example": "#!/bin/bash\n\n# clone the repository\ngit clone http://github.com/garden/tree\n\n# generate HTTPS credentials\ncd tree\nopenssl genrsa -aes256 -out https.key 1024\nopenssl req -new -nodes -key https.key -out https.csr\nopenssl x509 -req -days 365 -in https.csr -signkey https.key -out https.crt\ncp https.key{,.orig}\nopenssl rsa -in https.key.orig -out https.key\n\n# start the server in HTTPS mode\ncd web\nsudo node ../server.js 443 'yes' >> ../node.log &\n\n# here is how to stop the server\nfor pid in `ps aux | grep 'node ../server.js' | awk '{print $2}'` ; do\n  sudo kill -9 $pid 2> /dev/null\ndone\n\nexit 0"
+  },
+  {
+    "name": "smalltalk",
+    "aliases": [],
+    "mode": "smalltalk",
+    "mime": "text/x-stsrc",
+    "example": "\" \n    This is a test of the Smalltalk code\n\"\nSeaside.WAComponent subclass: #MyCounter [\n    | count |\n    MyCounter class >> canBeRoot [ ^true ]\n\n    initialize [\n        super initialize.\n        count := 0.\n    ]\n    states [ ^{ self } ]\n    renderContentOn: html [\n        html heading: count.\n        html anchor callback: [ count := count + 1 ]; with: '++'.\n        html space.\n        html anchor callback: [ count := count - 1 ]; with: '--'.\n    ]\n]\n\nMyCounter registerAsApplication: 'mycounter'"
+  },
+  {
+    "name": "smarty",
+    "aliases": [],
+    "mode": "smarty",
+    "mime": "text/x-smarty",
+    "example": "{extends file=\"parent.tpl\"}\n{include file=\"template.tpl\"}\n\n{* some example Smarty content *}\n{if isset($name) && $name == 'Blog'}\n  This is a {$var}.\n  {$integer = 451}, {$array[] = \"a\"}, {$stringvar = \"string\"}\n  {assign var='bob' value=$var.prop}\n{elseif $name == $foo}\n  {function name=menu level=0}\n    {foreach $data as $entry}\n      {if is_array($entry)}\n        - {$entry@key}\n        {menu data=$entry level=$level+1}\n      {else}\n        {$entry}\n      {/if}\n    {/foreach}\n  {/function}\n{/if}"
+  },
+  {
+    "name": "spreadsheet",
+    "aliases": [],
+    "mode": "spreadsheet",
+    "mime": "text/x-spreadsheet",
+    "example": "=IF(A1:B2, TRUE, FALSE) / 100"
+  },
+  {
+    "name": "sql",
+    "aliases": [],
+    "mode": "sql",
+    "mime": "text/x-sql",
+    "example": "-- SQL Mode for CodeMirror\nSELECT SQL_NO_CACHE DISTINCT\n\t\t@var1 AS `val1`, @'val2', @global.'sql_mode',\n\t\t1.1 AS `float_val`, .14 AS `another_float`, 0.09e3 AS `int_with_esp`,\n\t\t0xFA5 AS `hex`, x'fa5' AS `hex2`, 0b101 AS `bin`, b'101' AS `bin2`,\n\t\tDATE '1994-01-01' AS `sql_date`, { T \"1994-01-01\" } AS `odbc_date`,\n\t\t'my string', _utf8'your string', N'her string',\n        TRUE, FALSE, UNKNOWN\n\tFROM DUAL\n\t-- space needed after '--'\n\t# 1 line comment\n\t/* multiline\n\tcomment! */\n\tLIMIT 1 OFFSET 0;"
+  },
+  {
+    "name": "squirrel",
+    "aliases": [],
+    "mode": "clike",
+    "mime": "text/x-squirrel",
+    "example": "function square(x) { return x * x; }\n"
+  },
+  {
+    "name": "stylus",
+    "aliases": [],
+    "mode": "stylus",
+    "mime": "text/x-styl",
+    "example": "/* Stylus mode */\n\n#id,\n.class,\narticle\n  font-family Arial, sans-serif\n\n#id,\n.class,\narticle {\n  font-family: Arial, sans-serif;\n}\n\n// Variables\nfont-size-base = 16px\nline-height-base = 1.5\nfont-family-base = \"Helvetica Neue\", Helvetica, Arial, sans-serif\ntext-color = lighten(#000, 20%)\n\nbody\n  font font-size-base/line-height-base font-family-base\n  color text-color\n\nbody {\n  font: 400 16px/1.5 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n  color: #333;\n}\n\n// Variables\nlink-color = darken(#428bca, 6.5%)\nlink-hover-color = darken(link-color, 15%)\nlink-decoration = none\nlink-hover-decoration = false\n\n// Mixin\ntab-focus()\n  outline thin dotted\n  outline 5px auto -webkit-focus-ring-color\n  outline-offset -2px\n\na\n  color link-color\n  if link-decoration\n    text-decoration link-decoration\n  &:hover\n  &:focus\n    color link-hover-color\n    if link-hover-decoration\n      text-decoration link-hover-decoration\n  &:focus\n    tab-focus()\n\na {\n  color: #3782c4;\n  text-decoration: none;\n}\na:hover,\na:focus {\n  color: #2f6ea7;\n}\na:focus {\n  outline: thin dotted;\n  outline: 5px auto -webkit-focus-ring-color;\n  outline-offset: -2px;\n}"
+  },
+  {
+    "name": "swift",
+    "aliases": [],
+    "mode": "swift",
+    "mime": "text/x-swift",
+    "example": "protocol HeaderViewProtocol {\n    func setTitle(_ string: String)\n}\n\nstruct AnyHeaderView {\n    let view: UIView\n    let headerView: HeaderViewProtocol\n    init<T: UIView>(view: T) where T: HeaderViewProtocol {\n        self.view = view\n        self.headerView = view\n    }\n}\n\nlet header = AnyHeaderView(view: myView)\nheader.headerView.setTitle(\"hi\")\n\nstruct HeaderView {\n    let view: UIView\n    let setTitle: (String) -> ()\n}\n\nvar label = UILabel()\nlet header = HeaderView(view: label) { str in\n    label.text = str\n}\nheader.setTitle(\"hello\")"
+  },
+  {
+    "name": "systemverilog",
+    "aliases": [],
+    "mode": "verilog",
+    "mime": "text/x-systemverilog",
+    "example": "module top; logic clk; endmodule\n"
+  },
+  {
+    "name": "tcl",
+    "aliases": [],
+    "mode": "tcl",
+    "mime": "text/x-tcl",
+    "example": "##############################################################################################\n##  ##     whois.tcl for eggdrop by Ford_Lawnmower irc.geekshed.net #Script-Help        ##  ##\n##############################################################################################\n## To use this script you must set channel flag +whois (ie .chanset #chan +whois)           ##\n##############################################################################################\n##      ____                __                 ###########################################  ##\n##     / __/___ _ ___ _ ___/ /____ ___   ___   ###########################################  ##\n##    / _/ / _ `// _ `// _  // __// _ \\ / _ \\  ###########################################  ##\n##   /___/ \\_, / \\_, / \\_,_//_/   \\___// .__/  ###########################################  ##\n##        /___/ /___/                 /_/      ###########################################  ##\n##                                             ###########################################  ##\n##############################################################################################\n##  ##                             Start Setup.                                         ##  ##\n##############################################################################################\nnamespace eval whois {\n## change cmdchar to the trigger you want to use                                        ##  ##\n  variable cmdchar \"!\"\n## change command to the word trigger you would like to use.                            ##  ##\n## Keep in mind, This will also change the .chanset +/-command                          ##  ##\n  variable command \"whois\"\n## change textf to the colors you want for the text.                                    ##  ##\n  variable textf \"\\017\\00304\"\n## change tagf to the colors you want for tags:                                         ##  ##\n  variable tagf \"\\017\\002\"\n## Change logo to the logo you want at the start of the line.                           ##  ##\n  variable logo \"\\017\\00304\\002\\[\\00306W\\003hois\\00304\\]\\017\"\n## Change lineout to the results you want. Valid results are channel users modes topic  ##  ##\n  variable lineout \"channel users modes topic\"\n##############################################################################################\n##  ##                           End Setup.                                              ## ##\n##############################################################################################\n  variable channel \"\"\n  setudef flag $whois::command\n  bind pub -|- [string trimleft $whois::cmdchar]${whois::command} whois::list\n  bind raw -|- \"311\" whois::311\n  bind raw -|- \"312\" whois::312\n  bind raw -|- \"319\" whois::319\n  bind raw -|- \"317\" whois::317\n  bind raw -|- \"313\" whois::multi\n  bind raw -|- \"310\" whois::multi\n  bind raw -|- \"335\" whois::multi\n  bind raw -|- \"301\" whois::301\n  bind raw -|- \"671\" whois::multi\n  bind raw -|- \"320\" whois::multi\n  bind raw -|- \"401\" whois::multi\n  bind raw -|- \"318\" whois::318\n  bind raw -|- \"307\" whois::307\n}\nproc whois::311 {from key text} {\n  if {[regexp -- {^[^\\s]+\\s(.+?)\\s(.+?)\\s(.+?)\\s\\*\\s\\:(.+)$} $text wholematch nick ident host realname]} {\n    putserv \"PRIVMSG $whois::channel :${whois::logo} ${whois::tagf}Host:${whois::textf} \\\n        $nick \\(${ident}@${host}\\) ${whois::tagf}Realname:${whois::textf} $realname\"\n  }\n}\nproc whois::multi {from key text} {\n  if {[regexp {\\:(.*)$} $text match $key]} {\n    putserv \"PRIVMSG $whois::channel :${whois::logo} ${whois::tagf}Note:${whois::textf} [subst $$key]\"\n        return 1\n  }\n}\nproc whois::312 {from key text} {\n  regexp {([^\\s]+)\\s\\:} $text match server\n  putserv \"PRIVMSG $whois::channel :${whois::logo} ${whois::tagf}Server:${whois::textf} $server\"\n}\nproc whois::319 {from key text} {\n  if {[regexp {.+\\:(.+)$} $text match channels]} {\n    putserv \"PRIVMSG $whois::channel :${whois::logo} ${whois::tagf}Channels:${whois::textf} $channels\"\n  }\n}\nproc whois::317 {from key text} {\n  if {[regexp -- {.*\\s(\\d+)\\s(\\d+)\\s\\:} $text wholematch idle signon]} {\n    putser"
+  },
+  {
+    "name": "tex",
+    "aliases": [
+      "stex",
+      "latex"
+    ],
+    "mode": "stex",
+    "mime": "text/x-latex",
+    "example": "\\begin{module}[id=bbt-size]\n\\importmodule[balanced-binary-trees]{balanced-binary-trees}\n\\importmodule[\\KWARCslides{dmath/en/cardinality}]{cardinality}\n\n\\begin{frame}\n  \\frametitle{Size Lemma for Balanced Trees}\n  \\begin{itemize}\n  \\item\n    \\begin{assertion}[id=size-lemma,type=lemma] \n    Let $G=\\tup{V,E}$ be a \\termref[cd=binary-trees]{balanced binary tree} \n    of \\termref[cd=graph-depth,name=vertex-depth]{depth}$n>i$, then the set\n     $\\defeq{\\livar{V}i}{\\setst{\\inset{v}{V}}{\\gdepth{v} = i}}$ of\n    \\termref[cd=graphs-intro,name=node]{nodes} at \n    \\termref[cd=graph-depth,name=vertex-depth]{depth} $i$ has\n    \\termref[cd=cardinality,name=cardinality]{cardinality} $\\power2i$.\n   \\end{assertion}\n  \\item\n    \\begin{sproof}[id=size-lemma-pf,proofend=,for=size-lemma]{via induction over the depth $i$.}\n      \\begin{spfcases}{We have to consider two cases}\n        \\begin{spfcase}{$i=0$}\n          \\begin{spfstep}[display=flow]\n            then $\\livar{V}i=\\set{\\livar{v}r}$, where $\\livar{v}r$ is the root, so\n            $\\eq{\\card{\\livar{V}0},\\card{\\set{\\livar{v}r}},1,\\power20}$.\n          \\end{spfstep}\n        \\end{spfcase}\n        \\begin{spfcase}{$i>0$}\n          \\begin{spfstep}[display=flow]\n           then $\\livar{V}{i-1}$ contains $\\power2{i-1}$ vertexes \n           \\begin{justification}[method=byIH](IH)\\end{justification}\n          \\end{spfstep}\n          \\begin{spfstep}\n           By the \\begin{justification}[method=byDef]definition of a binary\n              tree\\end{justification}, each $\\inset{v}{\\livar{V}{i-1}}$ is a leaf or has\n            two children that are at depth $i$.\n          \\end{spfstep}\n          \\begin{spfstep}\n           As $G$ is \\termref[cd=balanced-binary-trees,name=balanced-binary-tree]{balanced} and $\\gdepth{G}=n>i$, $\\livar{V}{i-1}$ cannot contain\n            leaves.\n          \\end{spfstep}\n          \\begin{spfstep}[type=conclusion]\n           Thus $\\eq{\\card{\\livar{V}i},{\\atimes[cdot]{2,\\card{\\livar{V}{i-1}}}},{\\atimes[cdot]{2,\\power2{i-1}}},\\power2i}$.\n          \\end{spfstep}\n        \\end{spfcase}\n      \\end{spfcases}\n    \\end{sproof}\n  \\item \n    \\begin{assertion}[id=fbbt,type=corollary]\t\n      A fully balanced tree of depth $d$ has $\\power2{d+1}-1$ nodes.\n    \\end{assertion}\n  \\item\n      \\begin{sproof}[for=fbbt,id=fbbt-pf]{}\n        \\begin{spfstep}\n          Let $\\defeq{G}{\\tup{V,E}}$ be a fully balanced tree\n        \\end{spfstep}\n        \\begin{spfstep}\n          Then $\\card{V}=\\Sumfromto{i}1d{\\power2i}= \\power2{d+1}-1$.\n        \\end{spfstep}\n      \\end{sproof}\n    \\end{itemize}\n  \\end{frame}\n\\begin{note}\n  \\begin{omtext}[type=conclusion,for=binary-tree]\n    This shows that balanced binary trees grow in breadth very quickly, a consequence of\n    this is that they are very shallow (and this compute very fast), which is the essence of\n    the next result.\n  \\end{omtext}\n\\end{note}\n\\end{module}\n\n%%% Local Variables: \n%%% mode: LaTeX\n%%% TeX-master: \"all\"\n%%% End: \\end{document}"
+  },
+  {
+    "name": "tiddlywiki",
+    "aliases": [
+      "wiki"
+    ],
+    "mode": "tiddlywiki",
+    "mime": "text/x-tiddlywiki",
+    "example": "!TiddlyWiki Formatting\n* Rendered versions can be found at: http://www.tiddlywiki.com/#Reference\n\n|!Option            | !Syntax            |\n|bold font          | ''bold''           |\n|italic type        | //italic//         |\n|underlined text    | __underlined__     |\n|strikethrough text | --strikethrough--  |\n|superscript text   | super^^script^^    |\n|subscript text     | sub~~script~~      |\n|highlighted text   | @@highlighted@@    |\n|preformatted text  | {{{preformatted}}} |\n\n!Block Elements\n<<<\n!Heading 1\n\n!!Heading 2\n\n!!!Heading 3\n\n!!!!Heading 4\n\n!!!!!Heading 5\n<<<\n\n!!Lists\n<<<\n* unordered list, level 1\n** unordered list, level 2\n*** unordered list, level 3\n\n# ordered list, level 1\n## ordered list, level 2\n### unordered list, level 3\n\n; definition list, term\n: definition list, description\n<<<\n\n!!Blockquotes\n<<<\n> blockquote, level 1\n>> blockquote, level 2\n>>> blockquote, level 3\n\n> blockquote\n<<<\n\n!!Preformatted Text\n<<<\n{{{\npreformatted (e.g. code)\n}}}\n<<<\n\n!!Code Sections\n<<<\n{{{\nText style code\n}}}\n\n//{{{\nJS styled code. TiddlyWiki mixed mode should support highlighter switching in the future.\n//}}}\n\n<!--{{{-->\nXML styled code. TiddlyWiki mixed mode should support highlighter switching in the future.\n<!--}}}-->\n<<<\n\n!!Tables\n<<<\n|CssClass|k\n|!heading column 1|!heading column 2|\n|row 1, column 1|row 1, column 2|\n|row 2, column 1|row 2, column 2|\n|>|COLSPAN|\n|ROWSPAN| ... |\n|~| ... |\n|CssProperty:value;...| ... |\n|caption|c\n\n''Annotation:''\n* The {{{>}}} marker creates a \"colspan\", causing the current cell to merge with the one to the right.\n* The {{{~}}} marker creates a \"rowspan\", causing the current cell to merge with the one above.\n<<<\n!!Images /% TODO %/\ncf. [[TiddlyWiki.com|http://www.tiddlywiki.com/#EmbeddedImages]]\n\n!Hyperlinks\n* [[WikiWords|WikiWord]] are automatically transformed to hyperlinks to the respective tiddler\n** the automatic transformation can be suppressed by preceding the respective WikiWord with a tilde ({{{~}}}): {{{~WikiWord}}}\n* [[PrettyLinks]] are enclosed in square brackets and contain the desired tiddler name: {{{[[tiddler name]]}}}\n** optionally, a custom title or description can be added, separated by a pipe character ({{{|}}}): {{{[[title|target]]}}}<br>'''N.B.:''' In this case, the target can also be any website (i.e. URL).\n\n!Custom Styling\n* {{{@@CssProperty:value;CssProperty:value;...@@}}}<br>''N.B.:'' CSS color definitions should use lowercase letters to prevent the inadvertent creation of WikiWords.\n* <html><code>{{customCssClass{...}}}</code></html>\n* raw HTML can be inserted by enclosing the respective code in HTML tags: {{{<html> ... </html>}}}\n\n!Special Markers\n* {{{<br>}}} forces a manual line break\n* {{{----}}} creates a horizontal ruler\n* [[HTML entities|http://www.tiddlywiki.com/#HtmlEntities]]\n* [[HTML entities local|HtmlEntities]]\n* {{{<<macroName>>}}} calls the respective [[macro|Macros]]\n* To hide text within a tiddler so that it is not displayed, it can be wrapped in {{{/%}}} and {{{%/}}}.<br/>This can be a useful trick for hiding drafts or annotating complex markup.\n* To prevent wiki markup from taking effect for a particular section, that section can be enclosed in three double quotes: e.g. {{{\"\"\"WikiWord\"\"\"}}}."
+  },
+  {
+    "name": "tiki",
+    "aliases": [
+      "tikiwiki",
+      "tiki-wiki"
+    ],
+    "mode": "tiki",
+    "mime": "text/tiki",
+    "example": "Headings\n!Header 1\n!!Header 2\n!!!Header 3\n!!!!Header 4\n!!!!!Header 5\n!!!!!!Header 6\n\nStyling\n-=titlebar=-\n^^ Box on multi\nlines\nof content^^\n__bold__\n''italic''\n===underline===\n::center::\n--Line Through--\n\nOperators\n~np~No parse~/np~\n\nLink\n[link|desc|nocache]\n\nWiki\n((Wiki))\n((Wiki|desc))\n((Wiki|desc|timeout))\n\nTable\n||row1 col1|row1 col2|row1 col3\nrow2 col1|row2 col2|row2 col3\nrow3 col1|row3 col2|row3 col3||\n\nLists:\n*bla\n**bla-1\n++continue-bla-1\n***bla-2\n++continue-bla-1\n*bla\n+continue-bla\n#bla\n** tra-la-la\n+continue-bla\n#bla\n\nPlugin (standard):\n{PLUGIN(attr=\"my attr\")}\nPlugin Body\n{PLUGIN}\n\nPlugin (inline):\n{plugin attr=\"my attr\"}"
+  },
+  {
+    "name": "toml",
+    "aliases": [],
+    "mode": "toml",
+    "mime": "text/x-toml",
+    "example": "# This is a TOML document. Boom.\n\ntitle = \"TOML Example\"\n\n[owner]\nname = \"Tom Preston-Werner\"\norganization = \"GitHub\"\nbio = \"GitHub Cofounder & CEO\\nLikes tater tots and beer.\"\ndob = 1979-05-27T07:32:00Z # First class dates? Why not?\n\n[database]\nserver = \"192.168.1.1\"\nports = [ 8001, 8001, 8002 ]\nconnection_max = 5000\nenabled = true\n\n[servers]\n\n  # You can indent as you please. Tabs or spaces. TOML don't care.\n  [servers.alpha]\n  ip = \"10.0.0.1\"\n  dc = \"eqdc10\"\n  \n  [servers.beta]\n  ip = \"10.0.0.2\"\n  dc = \"eqdc10\"\n  \n[clients]\ndata = [ [\"gamma\", \"delta\"], [1, 2] ]\n\n# Line breaks are OK when inside arrays\nhosts = [\n  \"alpha\",\n  \"omega\"\n]"
+  },
+  {
+    "name": "turtle",
+    "aliases": [],
+    "mode": "turtle",
+    "mime": "text/turtle",
+    "example": "@prefix foaf: <http://xmlns.com/foaf/0.1/> .\n@prefix geo: <http://www.w3.org/2003/01/geo/wgs84_pos#> .\n@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n\n<http://purl.org/net/bsletten> \n    a foaf:Person;\n    foaf:interest <http://www.w3.org/2000/01/sw/>;\n    foaf:based_near [\n        geo:lat \"34.0736111\" ;\n        geo:lon \"-118.3994444\"\n   ]"
+  },
+  {
+    "name": "twig",
+    "aliases": [],
+    "mode": "twig",
+    "mime": "text/x-twig",
+    "example": "{% extends \"layout.twig\" %}\n{% block title %}CodeMirror: Twig mode{% endblock %}\n{# this is a comment #}\n{% block content %}\n  {% for foo in bar if foo.baz is divisible by(3) %}\n    Hello {{ foo.world }}\n  {% else %}\n    {% set msg = \"Result not found\" %}\n    {% include \"empty.twig\" with { message: msg } %}\n  {% endfor %}\n{% endblock %}"
+  },
+  {
+    "name": "typescript",
+    "aliases": [],
+    "mode": "javascript",
+    "mime": "application/typescript",
+    "example": "// Demo code (the actual new parser character stream implementation)\n\nfunction StringStream(string) {\n  this.pos = 0;\n  this.string = string;\n}\n\nStringStream.prototype = {\n  done: function() {return this.pos >= this.string.length;},\n  peek: function() {return this.string.charAt(this.pos);},\n  next: function() {\n    if (this.pos < this.string.length)\n      return this.string.charAt(this.pos++);\n  },\n  eat: function(match) {\n    var ch = this.string.charAt(this.pos);\n    if (typeof match == \"string\") var ok = ch == match;\n    else var ok = ch && match.test ? match.test(ch) : match(ch);\n    if (ok) {this.pos++; return ch;}\n  },\n  eatWhile: function(match) {\n    var start = this.pos;\n    while (this.eat(match));\n    if (this.pos > start) return this.string.slice(start, this.pos);\n  },\n  backUp: function(n) {this.pos -= n;},\n  column: function() {return this.pos;},\n  eatSpace: function() {\n    var start = this.pos;\n    while (/\\s/.test(this.string.charAt(this.pos))) this.pos++;\n    return this.pos - start;\n  },\n  match: function(pattern, consume, caseInsensitive) {\n    if (typeof pattern == \"string\") {\n      function cased(str) {return caseInsensitive ? str.toLowerCase() : str;}\n      if (cased(this.string).indexOf(cased(pattern), this.pos) == this.pos) {\n        if (consume !== false) this.pos += str.length;\n        return true;\n      }\n    }\n    else {\n      var match = this.string.slice(this.pos).match(pattern);\n      if (match && consume !== false) this.pos += match[0].length;\n      return match;\n    }\n  }\n};"
+  },
+  {
+    "name": "vb",
+    "aliases": [
+      "basic"
+    ],
+    "mode": "vb",
+    "mime": "text/x-vb",
+    "example": "Class rocket\n  Private quality as Double\n  Public Sub launch() as String\n    If quality > 0.8\n      launch = \"Successful\"\n    Else\n      launch = \"Failed\"\n    End If\n  End sub\nEnd class"
+  },
+  {
+    "name": "vbscript",
+    "aliases": [],
+    "mode": "vbscript",
+    "mime": "text/vbscript",
+    "example": "' Pete Guhl\n' 03-04-2012\n'\n' Basic VBScript support for codemirror2\n\nConst ForReading = 1, ForWriting = 2, ForAppending = 8\n\nCall Sub020_PostBroadcastToUrbanAirship(strUserName, strPassword, intTransmitID, strResponse)\n\nIf Not IsNull(strResponse) AND Len(strResponse) = 0 Then\n\tboolTransmitOkYN = False\nElse\n\t' WScript.Echo \"Oh Happy Day! Oh Happy DAY!\"\n\tboolTransmitOkYN = True\nEnd If"
+  },
+  {
+    "name": "velocity",
+    "aliases": [],
+    "mode": "velocity",
+    "mime": "text/velocity",
+    "example": "## Velocity Code Demo\n#*\n   based on PL/SQL mode by Peter Raganitsch, adapted to Velocity by Steve O'Hara ( http://www.pivotal-solutions.co.uk )\n   August 2011\n*#\n\n#*\n   This is a multiline comment.\n   This is the second line\n*#\n\n#[[ hello steve\n   This has invalid syntax that would normally need \"poor man's escaping\" like:\n\n   #define()\n\n   ${blah\n]]#\n\n#include( \"disclaimer.txt\" \"opinion.txt\" )\n#include( $foo $bar )\n\n#parse( \"lecorbusier.vm\" )\n#parse( $foo )\n\n#evaluate( 'string with VTL #if(true)will be displayed#end' )\n\n#define( $hello ) Hello $who #end #set( $who = \"World!\") $hello ## displays Hello World!\n\n#foreach( $customer in $customerList )\n\n    $foreach.count $customer.Name\n\n    #if( $foo == ${bar})\n        it's true!\n        #break\n    #{else}\n        it's not!\n        #stop\n    #end\n\n    #if ($foreach.parent.hasNext)\n        $velocityCount\n    #end\n#end\n\n$someObject.getValues(\"this is a string split\n        across lines\")\n\n$someObject(\"This plus $something in the middle\").method(7567).property\n\n#set($something = \"Parseable string with '$quotes'!\")\n\n#macro( tablerows $color $somelist )\n    #foreach( $something in $somelist )\n        <tr><td bgcolor=$color>$something</td></tr>\n        <tr><td bgcolor=$color>$bodyContent</td></tr>\n    #end\n#end\n\n#tablerows(\"red\" [\"dadsdf\",\"dsa\"])\n#@tablerows(\"red\" [\"dadsdf\",\"dsa\"]) some body content #end\n\n   Variable reference: #set( $monkey = $bill )\n   String literal: #set( $monkey.Friend = 'monica' )\n   Property reference: #set( $monkey.Blame = $whitehouse.Leak )\n   Method reference: #set( $monkey.Plan = $spindoctor.weave($web) )\n   Number literal: #set( $monkey.Number = 123 )\n   Range operator: #set( $monkey.Numbers = [1..3] )\n   Object list: #set( $monkey.Say = [\"Not\", $my, \"fault\"] )\n   Object map: #set( $monkey.Map = {\"banana\" : \"good\", \"roast beef\" : \"bad\"})\n\nThe RHS can also be a simple arithmetic expression, such as:\nAddition: #set( $value = $foo + 1 )\n   Subtraction: #set( $value = $bar - 1 )\n   Multiplication: #set( $value = $foo * $bar )\n   Division: #set( $value = $foo / $bar )\n   Remainder: #set( $value = $foo % $bar )"
+  },
+  {
+    "name": "verilog",
+    "aliases": [],
+    "mode": "verilog",
+    "mime": "text/x-verilog",
+    "example": "// Literals\n1'b0\n1'bx\n1'bz\n16'hDC78\n'hdeadbeef\n'b0011xxzz\n1234\n32'd5678\n3.4e6\n-128.7\n\n// Macro definition\n`define BUS_WIDTH = 8;\n\n// Module definition\nmodule block(\n  input                   clk,\n  input                   rst_n,\n  input  [`BUS_WIDTH-1:0] data_in,\n  output [`BUS_WIDTH-1:0] data_out\n);\n  \n  always @(posedge clk or negedge rst_n) begin\n\n    if (~rst_n) begin\n      data_out <= 8'b0;\n    end else begin\n      data_out <= data_in;\n    end\n    \n    if (~rst_n)\n      data_out <= 8'b0;\n    else\n      data_out <= data_in;\n    \n    if (~rst_n)\n      begin\n        data_out <= 8'b0;\n      end\n    else\n      begin\n        data_out <= data_in;\n      end\n\n  end\n  \nendmodule\n\n// Class definition\nclass test;\n\n  /**\n   * Sum two integers\n   */\n  function int sum(int a, int b);\n    int result = a + b;\n    string msg = $sformatf(\"%d + %d = %d\", a, b, result);\n    $display(msg);\n    return result;\n  endfunction\n  \n  task delay(int num_cycles);\n    repeat(num_cycles) #1;\n  endtask\n  \nendclass"
+  },
+  {
+    "name": "vue",
+    "aliases": [
+      "vue.js",
+      "vue-template"
+    ],
+    "mode": "vue",
+    "mime": "script/x-vue",
+    "example": "<template><div>{{ message }}</div></template>\n<script>export default { data() { return { message: \"hi\" }; } }</script>\n"
+  },
+  {
+    "name": "web-idl",
+    "aliases": [],
+    "mode": "webidl",
+    "mime": "text/x-webidl",
+    "example": "[NamedConstructor=Image(optional unsigned long width, optional unsigned long height)]\ninterface HTMLImageElement : HTMLElement {\n           attribute DOMString alt;\n           attribute DOMString src;\n           attribute DOMString srcset;\n           attribute DOMString sizes;\n           attribute DOMString? crossOrigin;\n           attribute DOMString useMap;\n           attribute boolean isMap;\n           attribute unsigned long width;\n           attribute unsigned long height;\n  readonly attribute unsigned long naturalWidth;\n  readonly attribute unsigned long naturalHeight;\n  readonly attribute boolean complete;\n  readonly attribute DOMString currentSrc;\n\n  // also has obsolete members\n};\n\npartial interface HTMLImageElement {\n  attribute DOMString name;\n  attribute DOMString lowsrc;\n  attribute DOMString align;\n  attribute unsigned long hspace;\n  attribute unsigned long vspace;\n  attribute DOMString longDesc;\n\n  [TreatNullAs=EmptyString] attribute DOMString border;\n};"
+  },
+  {
+    "name": "xml",
+    "aliases": [],
+    "mode": "xml",
+    "mime": "application/xml",
+    "example": "<html style=\"color: green\">\n  <!-- this is a comment -->\n  <head>\n    <title>HTML Example</title>\n  </head>\n  <body>\n    The indentation tries to be <em>somewhat &quot;do what\n    I mean&quot;</em>... but might not match your style.\n  </body>\n</html>"
+  },
+  {
+    "name": "xquery",
+    "aliases": [],
+    "mode": "xquery",
+    "mime": "application/xquery",
+    "example": "xquery version \"1.0-ml\";\n(: this is\n : a \n   \"comment\" :)\nlet $let := <x attr=\"value\">\"test\"<func>function() $var {function()} {$var}</func></x>\nlet $joe:=1\nreturn element element {\n\tattribute attribute { 1 },\n\telement test { 'a' }, \n\tattribute foo { \"bar\" },\n\tfn:doc()[ foo/@bar eq $let ],\n\t//x }    \n \n(: a more 'evil' test :)\n(: Modified Blakeley example (: with nested comment :) ... :)\ndeclare private function local:declare() {()};\ndeclare private function local:private() {()};\ndeclare private function local:function() {()};\ndeclare private function local:local() {()};\nlet $let := <let>let $let := \"let\"</let>\nreturn element element {\n\tattribute attribute { try { xdmp:version() } catch($e) { xdmp:log($e) } },\n\tattribute fn:doc { \"bar\" castable as xs:string },\n\telement text { text { \"text\" } },\n\tfn:doc()[ child::eq/(@bar | attribute::attribute) eq $let ],\n\t//fn:doc\n}\n\n\n\nxquery version \"1.0-ml\";\n\n(: Copyright 2006-2010 Mark Logic Corporation. :)\n\n(:\n : Licensed under the Apache License, Version 2.0 (the \"License\");\n : you may not use this file except in compliance with the License.\n : You may obtain a copy of the License at\n :\n :     http://www.apache.org/licenses/LICENSE-2.0\n :\n : Unless required by applicable law or agreed to in writing, software\n : distributed under the License is distributed on an \"AS IS\" BASIS,\n : WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n : See the License for the specific language governing permissions and\n : limitations under the License.\n :)\n\nmodule namespace json = \"http://marklogic.com/json\";\ndeclare default function namespace \"http://www.w3.org/2005/xpath-functions\";\n\n(: Need to backslash escape any double quotes, backslashes, and newlines :)\ndeclare function json:escape($s as xs:string) as xs:string {\n  let $s := replace($s, \"\\\\\", \"\\\\\\\\\")\n  let $s := replace($s, \"\"\"\", \"\\\\\"\"\")\n  let $s := replace($s, codepoints-to-string((13, 10)), \"\\\\n\")\n  let $s := replace($s, codepoints-to-string(13), \"\\\\n\")\n  let $s := replace($s, codepoints-to-string(10), \"\\\\n\")\n  return $s\n};\n\ndeclare function json:atomize($x as element()) as xs:string {\n  if (count($x/node()) = 0) then 'null'\n  else if ($x/@type = \"number\") then\n    let $castable := $x castable as xs:float or\n                     $x castable as xs:double or\n                     $x castable as xs:decimal\n    return\n    if ($castable) then xs:string($x)\n    else error(concat(\"Not a number: \", xdmp:describe($x)))\n  else if ($x/@type = \"boolean\") then\n    let $castable := $x castable as xs:boolean\n    return\n    if ($castable) then xs:string(xs:boolean($x))\n    else error(concat(\"Not a boolean: \", xdmp:describe($x)))\n  else concat('\"', json:escape($x), '\"')\n};\n\n(: Print the thing that comes after the colon :)\ndeclare function json:print-value($x as element()) as xs:string {\n  if (count($x/*) = 0) then\n    json:atomize($x)\n  else if ($x/@quote = \"true\") then\n    concat('\"', json:escape(xdmp:quote($x/node())), '\"')\n  else\n    string-join(('{',\n      string-join(for $i in $x/* return json:print-name-value($i), \",\"),\n    '}'), \"\")\n};\n\n(: Print the name and value both :)\ndeclare function json:print-name-value($x as element()) as xs:string? {\n  let $name := name($x)\n  let $first-in-array :=\n    count($x/preceding-sibling::*[name(.) = $name]) = 0 and\n    (count($x/following-sibling::*[name(.) = $name]) > 0 or $x/@array = \"true\")\n  let $later-in-array := count($x/preceding-sibling::*[name(.) = $name]) > 0\n  return\n\n  if ($later-in-array) then\n    ()  (: I was handled previously :)\n  else if ($first-in-array) then\n    string-join(('\"', json:escape($name), '\":[',\n      string-join((for $i in ($x, $x/following-sibling::*[name(.) = $name]) return json:print-value($i)), \",\"),\n    ']'), \"\")\n   else\n     string-join(('\"', json:escape($name), '\":', json:print-value($x)), \"\")\n};\n\n(:~\n  Transforms an XML element into a JSON string representation.  See http://json.org.\n  <p/>\n  Sample usage:\n  <pre>\n    xquery version \"1.0-ml\";\n    import module namespace json=\"http://marklogic.com/json\" at \"json.xqy\";\n    json:serialize(&lt;foo&gt;&lt;bar&gt;ki"
+  },
+  {
+    "name": "yacas",
+    "aliases": [],
+    "mode": "yacas",
+    "mime": "text/x-yacas",
+    "example": "// example yacas code\nGraph(edges_IsList) <-- [\n    Local(v, e, f, t);\n\n    vertices := {};\n\n    ForEach (e, edges) [\n        If (IsList(e), e := Head(e));\n        {f, t} := Tail(Listify(e));\n\n        DestructiveAppend(vertices, f);\n        DestructiveAppend(vertices, t);\n    ];\n\n    Graph(RemoveDuplicates(vertices), edges);\n];\n\n10 # IsGraph(Graph(vertices_IsList, edges_IsList)) <-- True;\n20 # IsGraph(_x) <-- False;\n\nEdges(Graph(vertices_IsList, edges_IsList)) <-- edges;\nVertices(Graph(vertices_IsList, edges_IsList)) <-- vertices;\n\nAdjacencyList(g_IsGraph) <-- [\n    Local(l, vertices, edges, e, op, f, t);\n\n    l := Association'Create();\n\n    vertices := Vertices(g);\n    ForEach (v, vertices)\n        Association'Set(l, v, {});\n\n    edges := Edges(g);\n\n    ForEach(e, edges) [\n        If (IsList(e), e := Head(e));\n        {op, f, t} := Listify(e);\n        DestructiveAppend(Association'Get(l, f), t);\n        If (String(op) = \"<->\", DestructiveAppend(Association'Get(l, t), f));\n    ];\n\n    l;\n];"
+  },
+  {
+    "name": "yaml",
+    "aliases": [],
+    "mode": "yaml",
+    "mime": "text/x-yaml",
+    "example": "--- # Favorite movies\n- Casablanca\n- North by Northwest\n- The Man Who Wasn't There\n--- # Shopping list\n[milk, pumpkin pie, eggs, juice]\n--- # Indented Blocks, common in YAML data files, use indentation and new lines to separate the key: value pairs\n  name: John Smith\n  age: 33\n--- # Inline Blocks, common in YAML data streams, use commas to separate the key: value pairs between braces\n{name: John Smith, age: 33}\n---\nreceipt:     Oz-Ware Purchase Invoice\ndate:        2007-08-06\ncustomer:\n    given:   Dorothy\n    family:  Gale\n\nitems:\n    - part_no:   A4786\n      descrip:   Water Bucket (Filled)\n      price:     1.47\n      quantity:  4\n\n    - part_no:   E1628\n      descrip:   High Heeled \"Ruby\" Slippers\n      size:       8\n      price:     100.27\n      quantity:  1\n\nbill-to:  &id001\n    street: |\n            123 Tornado Alley\n            Suite 16\n    city:   East Centerville\n    state:  KS\n\nship-to:  *id001\n\nspecialDelivery:  >\n    Follow the Yellow Brick\n    Road to the Emerald City.\n    Pay no attention to the\n    man behind the curtain.\n..."
+  }
+]

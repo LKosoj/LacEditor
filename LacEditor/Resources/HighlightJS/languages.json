@@ -1,0 +1,11 @@
+{
+  "abap": "abap",
+  "elixir": "elixir",
+  "glsl": "glsl",
+  "htaccess": "apache",
+  "makefile": "makefile",
+  "nim": "nim",
+  "stata": "stata",
+  "svelte": "svelte",
+  "yara": "yara"
+}

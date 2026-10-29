@@ -381,6 +381,17 @@ final class NativeTabsTests: XCTestCase {
         let first = manager.openNewWindow(with: EditorDocument(text: "未保存的中文", isDirty: true, requiresExplicitSave: true))
         try await Task.sleep(for: .milliseconds(200))
         let second = manager.openNativeTab(from: first)
+        XCTAssertNil(second.folderWorkspace.rootURL)
+        let firstRoot = folder.appendingPathComponent("first-root", isDirectory: true)
+        let secondRoot = folder.appendingPathComponent("second-root", isDirectory: true)
+        try FileManager.default.createDirectory(at: firstRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondRoot, withIntermediateDirectories: true)
+        let firstLoad = try XCTUnwrap(first.folderWorkspace.setRoot(firstRoot))
+        let secondLoad = try XCTUnwrap(second.folderWorkspace.setRoot(secondRoot))
+        await firstLoad.value
+        await secondLoad.value
+        second.folderWorkspace.setSort(.modified)
+        second.folderWorkspace.setDisplay(.list)
         second.selectedDocument?.text = "second draft"
         let firstWindow = try XCTUnwrap(first.hostWindow)
         let secondWindow = try XCTUnwrap(second.hostWindow)
@@ -393,6 +404,7 @@ final class NativeTabsTests: XCTestCase {
         XCTAssertEqual(captured.windows.count, 1)
         XCTAssertEqual(captured.windows.first?.documents.map(\.text), ["未保存的中文", "second draft"])
         XCTAssertEqual(captured.windows.first?.selectedDocumentID, second.selectedDocumentID)
+        XCTAssertEqual(captured.windows.first?.documents.map { $0.folderWorkspace?.rootPath }, [firstRoot.path, secondRoot.path])
         let saved = await withCheckedContinuation { continuation in
             store.save(captured) { continuation.resume(returning: $0) }
         }
@@ -414,6 +426,9 @@ final class NativeTabsTests: XCTestCase {
         XCTAssertEqual(roundTrip.windows.count, 1)
         XCTAssertEqual(roundTrip.windows.first?.documents.map(\.text), captured.windows.first?.documents.map(\.text))
         XCTAssertEqual(roundTrip.windows.first?.selectedDocumentID, captured.windows.first?.selectedDocumentID)
+        XCTAssertEqual(roundTrip.windows.first?.documents.map { $0.folderWorkspace?.rootPath }, [firstRoot.path, secondRoot.path])
+        XCTAssertEqual(roundTrip.windows.first?.documents.last?.folderWorkspace?.sort, "modified")
+        XCTAssertEqual(roundTrip.windows.first?.documents.last?.folderWorkspace?.view, "list")
         XCTAssertTrue(roundTrip.windows.first?.documents.allSatisfy(\.isDirty) == true)
     }
 

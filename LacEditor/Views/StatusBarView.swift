@@ -35,7 +35,24 @@ struct StatusBarView: View {
                 Spacer(minLength: 0)
                 if geometry.size.width >= 420 { statusItem(document.encodingName).help(L10n.tr("文件编码")) }
                 if geometry.size.width >= 620, document.isWordCountEnabled {
-                    statusItem(L10n.tr("%@ 字", String(describing: document.wordCount))).help(L10n.tr("文档字数"))
+                    Menu {
+                        if let statistics = document.statistics {
+                            Text(document.selectionRange.length > 0 ? L10n.tr("选中内容统计") : L10n.tr("文档统计"))
+                            if document.language == .markdown { Text(L10n.tr("词数按可读内容统计；字符和行数按源文本统计。")) }
+                            Text(L10n.tr("词数：%@", String(statistics.words)))
+                            Text(L10n.tr("字符数：%@", String(statistics.characters)))
+                            Text(L10n.tr("不含空白的字符数：%@", String(statistics.charactersWithoutWhitespace)))
+                            Text(L10n.tr("行数：%@", String(statistics.lines)))
+                            Text(L10n.tr("预计阅读：%@ 分钟（%@ 词/分钟）", String(statistics.readingMinutes), String(appState.preferences.readingWordsPerMinute)))
+                        } else {
+                            Text(L10n.tr(document.statisticsUnavailable ? "无法统计此内容" : "统计更新中"))
+                        }
+                    } label: {
+                        Text(document.statistics.map { statisticsLabel($0) } ?? L10n.tr(document.statisticsUnavailable ? "无法统计此内容" : "统计更新中"))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help(L10n.tr("查看文档统计"))
                 }
                 statusItem(geometry.size.width >= 360
                            ? L10n.tr("行 %@，列 %@", String(describing: document.cursorLine), String(describing: document.cursorColumn))
@@ -49,6 +66,9 @@ struct StatusBarView: View {
             .frame(width: geometry.size.width, height: LacEditorDesign.statusBarHeight)
         }
         .frame(height: LacEditorDesign.statusBarHeight)
+        .onAppear { document.setStatisticsReadingSpeed(appState.preferences.readingWordsPerMinute) }
+        .onChange(of: document.id) { _, _ in document.setStatisticsReadingSpeed(appState.preferences.readingWordsPerMinute) }
+        .onChange(of: appState.preferences.readingWordsPerMinute) { _, value in document.setStatisticsReadingSpeed(value) }
         .background(Color(nsColor: .lacEditorBackground))
         .task(id: document.ioState) {
             showsBusyIndicator = false
@@ -58,6 +78,16 @@ struct StatusBarView: View {
                 showsBusyIndicator = true
             default: break
             }
+        }
+    }
+
+    private func statisticsLabel(_ value: DocumentStatistics) -> String {
+        switch appState.preferences.statisticsDisplayUnit {
+        case .words: L10n.tr("%@ 词", String(value.words))
+        case .characters: L10n.tr("%@ 字符", String(value.characters))
+        case .charactersWithoutWhitespace: L10n.tr("%@ 字符（不含空白）", String(value.charactersWithoutWhitespace))
+        case .lines: L10n.tr("%@ 行", String(value.lines))
+        case .readingMinutes: L10n.tr("%@ 分钟", String(value.readingMinutes))
         }
     }
 

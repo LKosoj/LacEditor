@@ -1,5 +1,7 @@
 import AppKit
 import CoreFoundation
+import CryptoKit
+import Darwin
 import Foundation
 import UniformTypeIdentifiers
 
@@ -33,6 +35,12 @@ struct DocumentFileIdentity: Hashable, Sendable {
     }
 }
 
+enum ImageFileMutationError: Error {
+    case movedWithoutIdentity(URL)
+    case moveIncomplete(URL, URL)
+    case trashedWithoutLocation
+}
+
 struct FileRevisionSnapshot: Equatable, Sendable {
     let identity: DocumentFileIdentity
     let modificationDate: Date?
@@ -56,6 +64,23 @@ struct FileRevisionSnapshot: Equatable, Sendable {
 struct FileEncodingChoice: Sendable {
     let name: String
     let encoding: String.Encoding
+}
+
+struct WorkspaceItemSnapshot: Equatable, Sendable {
+    struct Entry: Equatable, Sendable {
+        let path: String
+        let kind: String
+        let content: Data
+    }
+    let rootDevice: UInt64
+    let rootInode: UInt64
+    let entries: [Entry]
+    let fileIdentities: [DocumentFileIdentity]
+}
+
+struct WorkspaceNodeIdentity: Equatable, Sendable {
+    let device: UInt64
+    let inode: UInt64
 }
 
 enum PreparedFileRead {
@@ -290,6 +315,202 @@ final class FileService {
         }
         try FileManager.default.moveItem(at: url, to: destination)
         return destination
+    }
+
+    func moveImageFile(_ source: URL, to destination: URL, expectedIdentity: WorkspaceNodeIdentity,
+                       identityReader: ((URL) throws -> WorkspaceNodeIdentity)? = nil,
+                       move: ((URL, URL) throws -> Void)? = nil) throws -> WorkspaceNodeIdentity {
+        let identify = identityReader ?? workspaceNodeIdentity
+        guard source.isFileURL, destination.isFileURL,
+              try identify(source) == expectedIdentity else { throw CocoaError(.fileWriteNoPermission) }
+        guard (try? FileManager.default.attributesOfItem(atPath: destination.path)) == nil else { throw FileServiceError.destinationExists }
+        do {
+            if let move { try move(source, destination) }
+            else { try FileManager.default.moveItem(at: source, to: destination) }
+        } catch {
+            if (try? FileManager.default.attributesOfItem(atPath: destination.path)) != nil ||
+                (try? FileManager.default.attributesOfItem(atPath: source.path)) == nil {
+                throw ImageFileMutationError.moveIncomplete(source, destination)
+            }
+            throw error
+        }
+        do { return try identify(destination) }
+        catch { throw ImageFileMutationError.movedWithoutIdentity(destination) }
+    }
+
+    func trashImageFile(_ source: URL, expectedIdentity: WorkspaceNodeIdentity) throws -> (URL, WorkspaceNodeIdentity) {
+        guard source.isFileURL, try workspaceNodeIdentity(source) == expectedIdentity else { throw CocoaError(.fileWriteNoPermission) }
+        var result: NSURL?
+        try FileManager.default.trashItem(at: source, resultingItemURL: &result)
+        guard let result = result as URL? else { throw ImageFileMutationError.trashedWithoutLocation }
+        do { return (result, try workspaceNodeIdentity(result)) }
+        catch { throw ImageFileMutationError.movedWithoutIdentity(result) }
+    }
+
+    /// Verify each directory separately so a displayed folder replaced by a
+    /// symlink is not followed by workspace operations.
+    nonisolated func validateWorkspaceDirectory(_ directory: URL, root: URL) throws {
+        let root = root.standardizedFileURL
+        let directory = directory.standardizedFileURL
+        let base = root.pathComponents
+        let components = directory.pathComponents
+        guard components.starts(with: base) else { throw CocoaError(.fileReadNoPermission) }
+        var current = root
+        func validateCurrent() throws {
+            let fresh = URL(fileURLWithPath: current.path)
+            let values = try fresh.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            guard values.isDirectory == true, values.isSymbolicLink != true else {
+                throw CocoaError(.fileReadNoPermission)
+            }
+        }
+        try validateCurrent()
+        for component in components.dropFirst(base.count) {
+            current.appendPathComponent(component, isDirectory: true)
+            try validateCurrent()
+        }
+    }
+
+    nonisolated func workspaceDestination(named name: String, in directory: URL, root: URL) throws -> URL {
+        guard !name.isEmpty, name != ".", name != "..", !name.contains("/") else {
+            throw FileServiceError.invalidFileName
+        }
+        try validateWorkspaceDirectory(directory, root: root)
+        return directory.appendingPathComponent(name).standardizedFileURL
+    }
+
+    nonisolated func createWorkspaceItem(named name: String, in directory: URL, root: URL, isDirectory: Bool) throws -> URL {
+        let destination = try workspaceDestination(named: name, in: directory, root: root)
+        if isDirectory {
+            guard mkdir(destination.path, 0o777) == 0 else {
+                throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+            }
+        } else {
+            try Data().write(to: destination, options: .withoutOverwriting)
+        }
+        return destination
+    }
+
+    nonisolated func createLinkedMarkdownFile(at url: URL) throws {
+        guard url.isFileURL, ["md", "markdown"].contains(url.pathExtension.lowercased()) else {
+            throw FileServiceError.invalidFileName
+        }
+        try Data().write(to: url, options: .withoutOverwriting)
+    }
+
+    nonisolated func copyWorkspaceItem(_ source: URL, named name: String, root: URL) throws -> URL {
+        try validateWorkspaceDirectory(source.deletingLastPathComponent(), root: root)
+        let destination = try workspaceDestination(named: name, in: source.deletingLastPathComponent(), root: root)
+        try FileManager.default.copyItem(at: source, to: destination)
+        return destination
+    }
+
+    nonisolated func moveWorkspaceItem(_ source: URL, to directory: URL, named name: String, root: URL) throws -> URL {
+        let source = source.standardizedFileURL
+        guard source != root.standardizedFileURL else { throw CocoaError(.fileWriteNoPermission) }
+        try validateWorkspaceDirectory(source.deletingLastPathComponent(), root: root)
+        let destination = try workspaceDestination(named: name, in: directory, root: root)
+        guard !directory.standardizedFileURL.pathComponents.starts(with: source.pathComponents) else {
+            throw CocoaError(.fileWriteInvalidFileName)
+        }
+        try FileManager.default.moveItem(at: source, to: destination)
+        return destination
+    }
+
+    nonisolated func trashWorkspaceItem(_ source: URL, root: URL, expectedIdentity: WorkspaceNodeIdentity) throws -> URL? {
+        guard source.standardizedFileURL != root.standardizedFileURL else {
+            throw CocoaError(.fileWriteNoPermission)
+        }
+        try validateWorkspaceDirectory(source.deletingLastPathComponent(), root: root)
+        guard try workspaceNodeIdentity(source) == expectedIdentity else { throw CocoaError(.fileWriteNoPermission) }
+        var result: NSURL?
+        try FileManager.default.trashItem(at: source, resultingItemURL: &result)
+        return result as URL?
+    }
+
+    nonisolated func workspaceNodeIdentity(_ url: URL) throws -> WorkspaceNodeIdentity {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        guard let device = (attributes[.systemNumber] as? NSNumber)?.uint64Value,
+              let inode = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        return WorkspaceNodeIdentity(device: device, inode: inode)
+    }
+
+    nonisolated func restoreWorkspaceTrashItem(_ trashURL: URL, to destination: URL, root: URL,
+                                               expectedIdentity: WorkspaceNodeIdentity) throws {
+        try validateWorkspaceDirectory(destination.deletingLastPathComponent(), root: root)
+        guard try workspaceNodeIdentity(trashURL) == expectedIdentity else { throw CocoaError(.fileWriteNoPermission) }
+        try FileManager.default.moveItem(at: trashURL, to: destination)
+    }
+
+    nonisolated func removeEmptyWorkspaceItem(_ url: URL, root: URL, snapshot: WorkspaceItemSnapshot) throws {
+        try validateWorkspaceDirectory(url.deletingLastPathComponent(), root: root)
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        guard (attributes[.systemNumber] as? NSNumber)?.uint64Value == snapshot.rootDevice,
+              (attributes[.systemFileNumber] as? NSNumber)?.uint64Value == snapshot.rootInode else {
+            throw CocoaError(.fileWriteNoPermission)
+        }
+        let kind = attributes[.type] as? FileAttributeType
+        let status: Int32
+        if kind == .typeDirectory {
+            status = rmdir(url.path)
+        } else if kind == .typeRegular, (attributes[.size] as? NSNumber)?.uint64Value == 0 {
+            status = unlink(url.path)
+        } else {
+            throw CocoaError(.fileWriteNoPermission)
+        }
+        guard status == 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+    }
+
+    nonisolated func removeCopiedWorkspaceItem(_ url: URL, root: URL, snapshot: WorkspaceItemSnapshot) throws {
+        try validateWorkspaceDirectory(url.deletingLastPathComponent(), root: root)
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        guard (attributes[.systemNumber] as? NSNumber)?.uint64Value == snapshot.rootDevice,
+              (attributes[.systemFileNumber] as? NSNumber)?.uint64Value == snapshot.rootInode else {
+            throw CocoaError(.fileWriteNoPermission)
+        }
+        try FileManager.default.removeItem(at: url)
+    }
+
+    /// Called off the main thread after duplication and before its undo.
+    /// The digest detects changes between snapshots, not concurrent races.
+    nonisolated func workspaceItemSnapshot(_ url: URL) throws -> WorkspaceItemSnapshot {
+        let manager = FileManager.default
+        let rootAttributes = try manager.attributesOfItem(atPath: url.path)
+        guard let device = (rootAttributes[.systemNumber] as? NSNumber)?.uint64Value,
+              let inode = (rootAttributes[.systemFileNumber] as? NSNumber)?.uint64Value else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        var entries: [WorkspaceItemSnapshot.Entry] = []
+        var fileIdentities: [DocumentFileIdentity] = []
+        func read(_ current: URL, relative: String) throws {
+            let attributes = try manager.attributesOfItem(atPath: current.path)
+            guard let kind = attributes[.type] as? FileAttributeType else { throw CocoaError(.fileReadUnknown) }
+            switch kind {
+            case .typeDirectory:
+                entries.append(.init(path: relative, kind: "directory", content: Data()))
+                let children = try manager.contentsOfDirectory(atPath: current.path).sorted()
+                for name in children {
+                    try read(current.appendingPathComponent(name), relative: relative.isEmpty ? name : relative + "/" + name)
+                }
+            case .typeSymbolicLink:
+                let target = try manager.destinationOfSymbolicLink(atPath: current.path)
+                entries.append(.init(path: relative, kind: "link", content: Data(target.utf8)))
+            case .typeRegular:
+                fileIdentities.append(DocumentFileIdentity.resolve(current))
+                let handle = try FileHandle(forReadingFrom: current)
+                defer { try? handle.close() }
+                var digest = SHA256()
+                while let chunk = try handle.read(upToCount: 64 * 1024), !chunk.isEmpty {
+                    digest.update(data: chunk)
+                }
+                entries.append(.init(path: relative, kind: "file", content: Data(digest.finalize())))
+            default:
+                throw CocoaError(.fileReadUnsupportedScheme)
+            }
+        }
+        try read(url, relative: "")
+        return WorkspaceItemSnapshot(rootDevice: device, rootInode: inode, entries: entries, fileIdentities: fileIdentities)
     }
 
     static var supportedContentTypes: [UTType] {

@@ -25,7 +25,9 @@ struct PandocImportResult {
 enum PandocImportService {
     static let readers = [
         "docx": "docx", "odt": "odt", "rtf": "rtf", "epub": "epub",
-        "html": "html+raw_html", "htm": "html+raw_html", "tex": "latex", "latex": "latex", "fb2": "fb2"
+        "html": "html+raw_html", "htm": "html+raw_html", "tex": "latex", "latex": "latex", "fb2": "fb2",
+        "ltx": "latex", "rst": "rst", "rest": "rst", "org": "org", "wiki": "mediawiki",
+        "dokuwiki": "dokuwiki", "textile": "textile", "opml": "opml"
     ]
     static let extensions = readers.keys.sorted()
 
@@ -52,14 +54,18 @@ enum PandocImportService {
         let process = Process()
         process.executableURL = pandoc
         process.currentDirectoryURL = source.deletingLastPathComponent()
-        process.arguments = ["--from=\(reader)", "--to=gfm", "--lua-filter", filter.path,
+        process.arguments = ["--from=\(reader)", "--to=gfm+yaml_metadata_block", "--standalone", "--lua-filter", filter.path,
                              "--output", output.path, "--", source.path]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = stderr
         try process.run()
         process.waitUntilExit()
         try stderr.synchronize()
-        let diagnostics = (try? String(contentsOf: log, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let rawDiagnostics = (try? String(contentsOf: log, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let diagnostics = rawDiagnostics.components(separatedBy: .newlines).map { line in
+            line.trimmingCharacters(in: .whitespaces).hasSuffix("LACEDITOR_UNSUPPORTED_FIGURE")
+                ? L10n.tr("复杂图片结构已保留为原始 HTML，预览可能无法显示。") : line
+        }.joined(separator: "\n")
         guard process.terminationStatus == 0 else {
             throw PandocImportError.conversionFailed(diagnostics.isEmpty ? "Pandoc (\(process.terminationStatus))" : diagnostics)
         }

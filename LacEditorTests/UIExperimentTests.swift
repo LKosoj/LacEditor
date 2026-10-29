@@ -367,7 +367,7 @@ final class UIExperimentTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(350))
             try await captureFixture(window, name: "UI4-samples-\(theme.rawValue)")
         }
-        let filtered = SidebarLibraryView(recentFiles: manager.recentFiles, library: manager.sidebarLibrary, query: "JS")
+        let filtered = SidebarLibraryView(recentFiles: manager.recentFiles, library: manager.sidebarLibrary, folderWorkspace: state.folderWorkspace, folderSearch: state.folderSearch, query: "JS")
             .environmentObject(state).environmentObject(manager)
         let filterHost = NSHostingView(rootView: filtered)
         filterHost.frame = NSRect(x: 0, y: 0, width: 250, height: 500)
