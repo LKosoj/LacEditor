@@ -34,6 +34,7 @@ final class AIFeaturePreferencesTests: XCTestCase {
         XCTAssertEqual(AppPreferences(defaults: defaults).markdownListStyles, .init())
     }
 
+    @MainActor
     func testHeadingNumberingPreferenceDefaultsOffAndPersists() throws {
         let suite = UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

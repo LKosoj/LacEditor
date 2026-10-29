@@ -10,10 +10,12 @@ import cmark_gfm_extensions
 @inline(__always) func cmark_node_get_title(_ node: OpaquePointer) -> UnsafePointer<CChar>? { cmark_node_get_title(UnsafeMutablePointer<cmark_node>(node)) }
 @inline(__always) func cmark_node_get_fence_info(_ node: OpaquePointer) -> UnsafePointer<CChar>? { cmark_node_get_fence_info(UnsafeMutablePointer<cmark_node>(node)) }
 @inline(__always) func cmark_node_set_literal(_ node: OpaquePointer, _ content: UnsafePointer<CChar>) -> Int32 { cmark_node_set_literal(UnsafeMutablePointer<cmark_node>(node), content) }
+@inline(__always) func cmark_node_set_string_content(_ node: OpaquePointer, _ content: UnsafePointer<CChar>) -> Int32 { cmark_node_set_string_content(UnsafeMutablePointer<cmark_node>(node), content) }
 @inline(__always) func cmark_node_next(_ node: OpaquePointer) -> OpaquePointer? { cmark_node_next(UnsafeMutablePointer<cmark_node>(node)).map(OpaquePointer.init) }
 @inline(__always) func cmark_node_previous(_ node: OpaquePointer) -> OpaquePointer? { cmark_node_previous(UnsafeMutablePointer<cmark_node>(node)).map(OpaquePointer.init) }
 @inline(__always) func cmark_node_parent(_ node: OpaquePointer) -> OpaquePointer? { cmark_node_parent(UnsafeMutablePointer<cmark_node>(node)).map(OpaquePointer.init) }
 @inline(__always) func cmark_node_first_child(_ node: OpaquePointer) -> OpaquePointer? { cmark_node_first_child(UnsafeMutablePointer<cmark_node>(node)).map(OpaquePointer.init) }
+@inline(__always) func cmark_node_last_child(_ node: OpaquePointer) -> OpaquePointer? { cmark_node_last_child(UnsafeMutablePointer<cmark_node>(node)).map(OpaquePointer.init) }
 @inline(__always) func cmark_node_parent_footnote_def(_ node: OpaquePointer) -> OpaquePointer? { cmark_node_parent_footnote_def(UnsafeMutablePointer<cmark_node>(node)).map(OpaquePointer.init) }
 @inline(__always) func cmark_node_get_start_line(_ node: OpaquePointer) -> Int32 { cmark_node_get_start_line(UnsafeMutablePointer<cmark_node>(node)) }
 @inline(__always) func cmark_node_get_start_column(_ node: OpaquePointer) -> Int32 { cmark_node_get_start_column(UnsafeMutablePointer<cmark_node>(node)) }

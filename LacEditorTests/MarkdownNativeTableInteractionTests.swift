@@ -367,7 +367,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
         }
         let accessibleTable = try XCTUnwrap(table)
         XCTAssertEqual(accessibleTable.accessibilityRowCount(), 2)
-        XCTAssertEqual(accessibleTable.accessibilityColumnCount(), 2)
+        XCTAssertEqual(accessibleTable.tableAccessibilityColumnCount(), 2)
         let headers = try XCTUnwrap(accessibleTable.accessibilityColumnHeaderUIElements())
         XCTAssertEqual(headers.compactMap { ($0 as? NSAccessibilityElement)?.accessibilityLabel() }, ["A", "B"])
         let rows = try XCTUnwrap(accessibleTable.accessibilityRows())

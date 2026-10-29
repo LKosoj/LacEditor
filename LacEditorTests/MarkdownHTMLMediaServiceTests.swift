@@ -145,7 +145,7 @@ final class MarkdownHTMLMediaServiceTests: XCTestCase {
                 guard let paragraph = cmark_node_first_child(root) else { return nil }
                 var opening: OpaquePointer?, closing: OpaquePointer?, child = cmark_node_first_child(paragraph)
                 while let node = child {
-                    if cmark_node_get_type(node) == CMMARK_NODE_HTML_INLINE, let pointer = cmark_node_get_literal(node) {
+                    if cmark_node_get_type(node) == CMARK_NODE_HTML_INLINE, let pointer = cmark_node_get_literal(node) {
                         let value = String(cString: pointer)
                         if value.hasPrefix("<" + name) { opening = node }
                         if value == "</" + name + ">" { closing = node }

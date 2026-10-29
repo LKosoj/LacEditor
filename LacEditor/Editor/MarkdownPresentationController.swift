@@ -178,6 +178,7 @@ final class MarkdownPresentationController {
     private var animatedImages: [NSRange: NSImageView] = [:]
     private var editingTableCell: NSRange?
     var imageSession = URLSession.shared
+    var projectedImageSource: ((String) -> String?)?
     var imageLoadDidComplete: ((NSRange, Bool) -> Void)?
     var audioLoadDidComplete: ((NSRange, Bool) -> Void)?
     var audioJobDidFinish: ((NSRange) -> Void)?
@@ -419,6 +420,7 @@ final class MarkdownPresentationController {
         }
         imageBaseURL = document.url
         let formatChanged = self.enabled != enabled
+        if formatChanged { cancel() }
         let activated = !self.isActive && isActive
         if self.isActive && !isActive && textView?.hasMarkedText() == true { needsRefresh = true }
         if documentChanged { self.document?.invalidateMarkdownReadableText() }
@@ -801,6 +803,14 @@ final class MarkdownPresentationController {
         guard isActive else { needsRefresh = true; return }
         invalidatePresentation(in: visibleRange())
         if enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || (mathPairEnabled && mathPairContext?.revision != revision) { schedule(revision: revision) }
+    }
+
+    func projectionChanged(revision: UInt) {
+        parsedResult = nil
+        parsedSource = nil
+        self.revision = revision
+        cancel()
+        needsRefresh = true
     }
 
     func compositionFinished(revision: UInt) {
@@ -1382,6 +1392,7 @@ final class MarkdownPresentationController {
         guard let textView, let text = textView.textStorage?.string as NSString? else { return nil }
         let selection = textView.selectedRange()
         guard selection.location <= text.length else { return nil }
+        if selectionTouchesImage(selection) { return nil }
         return NSRange(location: selection.location, length: min(selection.length, text.length - selection.location))
     }
 
@@ -1389,8 +1400,19 @@ final class MarkdownPresentationController {
         guard let textView, let text = textView.textStorage?.string as NSString? else { return nil }
         let selection = textView.selectedRange()
         guard selection.location <= text.length else { return nil }
+        if selectionTouchesImage(selection) { return nil }
         let length = min(selection.length, text.length - selection.location)
         return text.lineRange(for: NSRange(location: selection.location, length: length))
+    }
+
+    private func selectionTouchesImage(_ selection: NSRange) -> Bool {
+        presentation?.images.contains { image in
+            let range = image.isInline ? image.range : image.paragraphRange
+            if selection.length == 0 {
+                return selection.location >= range.location && selection.location <= NSMaxRange(range)
+            }
+            return NSIntersectionRange(selection, range).length > 0
+        } == true
     }
 
     private func intersecting(_ range: NSRange) -> [MarkdownPresentationSpan] {
@@ -2809,10 +2831,11 @@ final class MarkdownPresentationController {
             let revision = self.revision
             let baseURL = document.url
             let paths = resourcePaths, rootInvalid = resourceRootInvalid
+            let projectedSource = projectedImageSource?(image.url)
             let operation = BlockOperation()
             operation.addExecutionBlock { [weak self, weak document, weak operation] in
                 guard let operation, !operation.isCancelled,
-                      let data = markdownPresentationImageData(image.url, baseURL: baseURL, paths: paths, rootInvalid: rootInvalid), !operation.isCancelled else {
+                      let data = markdownPresentationImageData(projectedSource ?? image.url, baseURL: baseURL, paths: paths, rootInvalid: rootInvalid), !operation.isCancelled else {
                     DispatchQueue.main.async { [weak self, weak operation] in
                         guard let self, let operation, !operation.isCancelled, self.generation == generation,
                               self.imageOperations[key] === operation else { return }

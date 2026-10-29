@@ -15,6 +15,23 @@ private let taskPerformanceLog = OSLog(
     category: "DocumentTasks"
 )
 
+private final class ImportFormatFilterController: NSObject {
+    private weak var panel: NSOpenPanel?
+    private let allTypes: [UTType]
+    private let individualTypes: [UTType]
+
+    init(panel: NSOpenPanel, allTypes: [UTType], individualTypes: [UTType]) {
+        self.panel = panel
+        self.allTypes = allTypes
+        self.individualTypes = individualTypes
+    }
+
+    @objc func selectFormat(_ sender: NSPopUpButton) {
+        let index = sender.indexOfSelectedItem
+        panel?.allowedContentTypes = index == 0 ? allTypes : [individualTypes[index - 1]]
+    }
+}
+
 private func documentTaskSignpostName(
     for kind: DocumentTaskCoordinator.Kind
 ) -> StaticString {
@@ -693,13 +710,43 @@ final class AppState: ObservableObject {
         guard let manager = windowManager, let window = hostWindow,
               let document = selectedDocument else { return }
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = PandocImportService.extensions.compactMap { UTType(filenameExtension: $0) }
+        let formats = (PandocImportService.extensions + ["pdf"]).sorted().compactMap { fileExtension in
+            UTType(filenameExtension: fileExtension).map { (fileExtension, $0) }
+        }
+        let extensions = formats.map(\.0)
+        let types = formats.map(\.1)
+        panel.allowedContentTypes = types
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
+
+        let formatPopup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 260, height: 26))
+        formatPopup.addItem(withTitle: L10n.tr("所有支持的格式"))
+        formatPopup.addItems(withTitles: extensions.map { ".\($0.uppercased())" })
+        let formatFilter = ImportFormatFilterController(
+            panel: panel,
+            allTypes: types,
+            individualTypes: types
+        )
+        formatPopup.target = formatFilter
+        formatPopup.action = #selector(ImportFormatFilterController.selectFormat(_:))
+
+        let formatLabel = NSTextField(labelWithString: L10n.tr("格式："))
+        let accessory = NSStackView(views: [formatLabel, formatPopup])
+        accessory.orientation = .horizontal
+        accessory.alignment = .centerY
+        accessory.spacing = 8
+        panel.accessoryView = accessory
+
         guard panel.runModal() == .OK, let source = panel.url,
               manager.ownsVisibleState(self, window: window),
               documents.contains(where: { $0 === document }) else { return }
         DispatchQueue.global(qos: .userInitiated).async { [weak self, weak manager, weak window, weak document] in
-            let result = Result { try PandocImportService.convert(source: source) }
+            let result = Result {
+                source.pathExtension.lowercased() == "pdf"
+                    ? try PDFImportService.convert(source: source)
+                    : try PandocImportService.convert(source: source)
+            }
             DispatchQueue.main.async {
                 guard let self, let manager, let window, let document,
                       manager.ownsVisibleState(self, window: window),
@@ -1640,6 +1687,8 @@ final class AppState: ObservableObject {
         exportingDocumentIDs.insert(document.id)
         let initial = document.synchronizedSnapshot()
         let info = NSPrintInfo.shared.copy() as! NSPrintInfo
+        info.paperSize = NSSize(width: 595.28, height: 841.89)
+        info.orientation = .portrait
         let panel = NSPrintPanel()
         panel.beginSheet(using: info, on: window) { [weak self, weak document] result in
             guard let self, let document else {
@@ -2666,6 +2715,7 @@ final class AppState: ObservableObject {
             document.$language.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
             document.$isDirty.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
             document.$isPreviewVisible.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            document.$isMarkdownFormatted.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
             document.$performanceProfile.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
             document.$featureOverrides.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
             document.$ioState.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher()

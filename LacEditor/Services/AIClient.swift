@@ -188,7 +188,9 @@ struct AIClient {
                   url.host != nil, url.user == nil, url.password == nil {
             data = try await fetch(URLRequest(url: url))
         } else { throw AIError.invalidResponse }
-        guard CGImageSourceCreateWithData(data as CFData, nil) != nil else { throw AIError.invalidResponse }
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetCount(source) > 0,
+              CGImageSourceCreateImageAtIndex(source, 0, nil) != nil else { throw AIError.invalidResponse }
         return data
     }
 }

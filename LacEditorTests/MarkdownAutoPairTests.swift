@@ -300,7 +300,11 @@ final class MarkdownAutoPairTests: XCTestCase {
         view.insertText("(", replacementRange: view.markedRange())
         XCTAssertEqual(view.string, "(")
         view.string = "ab"
-        view.setSelectedRanges([NSValue(range: NSRange(location: 0, length: 0)), NSValue(range: NSRange(location: 2, length: 0))])
+        view.setSelectedRanges(
+            [NSValue(range: NSRange(location: 0, length: 0)), NSValue(range: NSRange(location: 2, length: 0))],
+            affinity: .downstream,
+            stillSelecting: false
+        )
         if view.selectedRanges.count == 2 {
             view.insertText("(", replacementRange: input)
             XCTAssertFalse(view.string.contains("()"))

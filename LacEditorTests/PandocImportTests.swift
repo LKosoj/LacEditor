@@ -1,3 +1,5 @@
+import AppKit
+import CoreGraphics
 import Foundation
 import UniformTypeIdentifiers
 import XCTest
@@ -41,6 +43,59 @@ final class PandocImportTests: XCTestCase {
         for ext in PandocImportService.extensions {
             XCTAssertNotNil(UTType(filenameExtension: ext), "The import panel cannot offer .\(ext) without a system type")
         }
+    }
+
+    func testPDFImportExtractsTextAndEmbeddedImageWithoutChangingSource() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent("source.pdf")
+        try makePDFWithTextAndImage(at: source)
+        let original = try Data(contentsOf: source)
+
+        let imported = try PDFImportService.convert(source: source)
+
+        XCTAssertEqual(try Data(contentsOf: source), original)
+        XCTAssertTrue(imported.text.contains("PDF text layer"))
+        XCTAssertTrue(imported.text.contains("data:image/"))
+        let html = MarkdownRenderer.render(imported.text, darkMode: false)
+        XCTAssertTrue(html.contains("PDF text layer"))
+        XCTAssertTrue(html.contains("<img"))
+        XCTAssertTrue(html.contains("data:image/"))
+    }
+
+    private func makePDFWithTextAndImage(at url: URL) throws {
+        var mediaBox = CGRect(x: 0, y: 0, width: 400, height: 500)
+        let consumer = try XCTUnwrap(CGDataConsumer(url: url as CFURL))
+        let context = try XCTUnwrap(CGContext(consumer: consumer, mediaBox: &mediaBox, nil))
+        context.beginPDFPage(nil)
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+        ("PDF text layer" as NSString).draw(
+            at: NSPoint(x: 40, y: 420),
+            withAttributes: [.font: NSFont.systemFont(ofSize: 18), .foregroundColor: NSColor.black]
+        )
+        NSGraphicsContext.restoreGraphicsState()
+
+        let pixels = Data([255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 0])
+        let provider = try XCTUnwrap(CGDataProvider(data: pixels as CFData))
+        let image = try XCTUnwrap(CGImage(
+            width: 2,
+            height: 2,
+            bitsPerComponent: 8,
+            bitsPerPixel: 24,
+            bytesPerRow: 6,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: false,
+            intent: .defaultIntent
+        ))
+        context.draw(image, in: CGRect(x: 40, y: 300, width: 80, height: 80))
+        context.endPDFPage()
+        context.closePDF()
     }
 
     func testNewTextReadersProduceRenderableMarkdownAndPreserveSources() throws {

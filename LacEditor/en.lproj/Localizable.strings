@@ -1276,3 +1276,10 @@
 "markdown.strictMode" = "Strict Markdown parsing";
 
 "markdown.strictMode.detail" = "Require a space after heading markers and full indentation for list content.";
+
+"支持的导入格式：%@" = "Supported import formats: %@";
+"所有支持的格式" = "All supported formats";
+"格式：" = "Format:";
+"无法读取 PDF 文档。" = "The PDF document could not be read.";
+"PDF не содержит текстового слоя." = "The PDF does not contain a text layer.";
+"Страница PDF %lld, изображение %lld" = "PDF page %lld, image %lld";

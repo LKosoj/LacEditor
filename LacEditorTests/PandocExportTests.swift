@@ -7,6 +7,19 @@ import XCTest
 
 @MainActor
 final class PandocExportTests: XCTestCase {
+    private func unzip(_ archive: URL, _ name: String) throws -> Data {
+        let process = Process()
+        let pipe = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        process.arguments = ["-p", archive.path, name]
+        process.standardOutput = pipe
+        try process.run()
+        let bytes = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationStatus, 0)
+        return bytes
+    }
+
     func testMathMarkersRestoreAdjacentTextAndRejectWrongLocations() throws {
         let source = "前$x$後\n\n$$\ny\n$$"
         let presentation = MarkdownPresentationParser.parse(source)
@@ -1502,7 +1515,7 @@ final class PandocExportTests: XCTestCase {
         state.latexExportWillCommit = { url in
             sidecar = url
             document.text = source
-            NotificationCenter.default.post(name: .documentContentDidChange, object: document.id)
+            NotificationCenter.default.post(name: EditorCommandNotification.documentContentDidChange, object: document.id)
             reached.fulfill()
         }
         let timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in

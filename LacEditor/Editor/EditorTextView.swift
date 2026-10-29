@@ -428,12 +428,14 @@ struct EditorTextView: NSViewRepresentable {
             context.coordinator.isApplyingExternalUpdate = true
             context.coordinator.clearFold()
             let requestedSelection = document.selectionRange
-            textView.string = document.text
-            context.coordinator.resetLineIndex(with: document.text)
-            let textLength = (document.text as NSString).length
-            let selectionLocation = min(requestedSelection.location, textLength)
+            let displayedText = context.coordinator.displayedText(for: document.text)
+            textView.string = displayedText
+            context.coordinator.resetLineIndex(with: displayedText)
+            let displayedSelection = context.coordinator.displayedRange(for: requestedSelection, in: displayedText)
+            let textLength = (displayedText as NSString).length
+            let selectionLocation = min(displayedSelection.location, textLength)
             let selectionLength = min(
-                requestedSelection.length,
+                displayedSelection.length,
                 textLength - selectionLocation
             )
             textView.setSelectedRange(NSRange(

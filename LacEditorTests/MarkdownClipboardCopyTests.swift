@@ -79,8 +79,8 @@ final class MarkdownClipboardCopyTests: XCTestCase {
         let whole = try XCTUnwrap(MarkdownClipboardCopyService.project(source as String, selection: NSRange(location: 0, length: source.length)))
         XCTAssertTrue(whole.text.contains("before")); XCTAssertTrue(whole.text.contains("after"))
         XCTAssertNil(MarkdownClipboardCopyService.project(source as String, selection: source.range(of: "Sunsets 中文")))
-        let unsafe = source.replacingOccurrences(of: "widgets.js", with: "other.js") as NSString
-        XCTAssertNil(MarkdownClipboardCopyService.project(unsafe as String, selection: unsafe.range(of: "Sunsets 中文")))
+        let unsafeSource = source.replacingOccurrences(of: "widgets.js", with: "other.js") as NSString
+        XCTAssertNil(MarkdownClipboardCopyService.project(unsafeSource as String, selection: unsafeSource.range(of: "Sunsets 中文")))
     }
 
     func testStandaloneSelfClosingMediaCopyIsAtomic() throws {
@@ -110,9 +110,9 @@ final class MarkdownClipboardCopyTests: XCTestCase {
         XCTAssertTrue(only.hasUnverifiedHTMLBlocks)
         XCTAssertNil(MarkdownClipboardCopyService.project(source as String, selection: source.range(of: "fallback")))
         XCTAssertNil(MarkdownClipboardCopyService.project(source as String, selection: NSRange(location: range.location, length: range.length - 1)))
-        let unsafe = "before <video src=\"https://example.invalid/a\" onplay=\"evil()\">hidden</video> after" as NSString
-        XCTAssertNil(MarkdownClipboardCopyService.project(unsafe as String, selection: unsafe.range(of: "hidden")))
-        XCTAssertEqual(MarkdownClipboardCopyService.project(unsafe as String, selection: unsafe.range(of: "before"))?.text, "before")
+        let unsafeSource = "before <video src=\"https://example.invalid/a\" onplay=\"evil()\">hidden</video> after" as NSString
+        XCTAssertNil(MarkdownClipboardCopyService.project(unsafeSource as String, selection: unsafeSource.range(of: "hidden")))
+        XCTAssertEqual(MarkdownClipboardCopyService.project(unsafeSource as String, selection: unsafeSource.range(of: "before"))?.text, "before")
         for malformed in ["before <video src=\"https://example.invalid/a\">hidden",
                           "before <video src=\"https://example.invalid/a\"><audio src=\"https://example.invalid/b\">hidden</video></audio>"] {
             let raw = malformed as NSString
@@ -185,8 +185,8 @@ final class MarkdownClipboardCopyTests: XCTestCase {
             let result = try XCTUnwrap(MarkdownClipboardCopyService.project(text, selection: NSRange(location: 0, length: raw.length)))
             XCTAssertTrue(result.html.contains("<kbd>key</kbd>"), text)
         }
-        let unsafe = "before <kbd onclick='bad()'>key</kbd> after" as NSString
-        XCTAssertNil(MarkdownClipboardCopyService.project(unsafe as String, selection: NSRange(location: 0, length: unsafe.length)))
+        let unsafeSource = "before <kbd onclick='bad()'>key</kbd> after" as NSString
+        XCTAssertNil(MarkdownClipboardCopyService.project(unsafeSource as String, selection: NSRange(location: 0, length: unsafeSource.length)))
     }
 
     func testStyledSpanCopyInheritsFields() throws {
@@ -250,8 +250,8 @@ final class MarkdownClipboardCopyTests: XCTestCase {
             selection: NSRange(location: source.range(of: "<span").location, length: 3)))
         let other = "| A |\n| --- |\n| <kbd>key</kbd> |" as NSString
         XCTAssertNil(MarkdownClipboardCopyService.project(other as String, selection: NSRange(location: 0, length: other.length)))
-        let unsafe = "| A | B |\n| --- | --- |\n| <span style='position:fixed'>hidden</span> | visible |" as NSString
-        XCTAssertNil(MarkdownClipboardCopyService.project(unsafe as String, selection: unsafe.range(of: "hidden")))
+        let unsafeSource = "| A | B |\n| --- | --- |\n| <span style='position:fixed'>hidden</span> | visible |" as NSString
+        XCTAssertNil(MarkdownClipboardCopyService.project(unsafeSource as String, selection: unsafeSource.range(of: "hidden")))
     }
 
     func testNestedHTMLBlockCopyPreservesBlockBoundaries() throws {
@@ -1000,9 +1000,9 @@ final class MarkdownClipboardCopyTests: XCTestCase {
         let linkedResult = try XCTUnwrap(MarkdownClipboardCopyService.project(linked,
             selection: NSRange(location: 0, length: (linked as NSString).length), includeImages: true, allowRemoteImages: true))
         XCTAssertEqual(linkedResult.html, "<a href=\"https://example.com/target\"><img src=\"https://example.com/a.png\" alt=\"x\"></a>")
-        let unsafe = "[![x](https://example.com/a.png)](javascript:evil)"
-        XCTAssertNil(MarkdownClipboardCopyService.project(unsafe,
-            selection: NSRange(location: 0, length: (unsafe as NSString).length), includeImages: true, allowRemoteImages: true))
+        let unsafeSource = "[![x](https://example.com/a.png)](javascript:evil)"
+        XCTAssertNil(MarkdownClipboardCopyService.project(unsafeSource,
+            selection: NSRange(location: 0, length: (unsafeSource as NSString).length), includeImages: true, allowRemoteImages: true))
     }
     func testEmbeddedImagesPreserveBytesAndReplaceOnlyConfirmedAddresses() throws {
         let png = try XCTUnwrap(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"))

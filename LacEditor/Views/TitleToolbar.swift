@@ -5,12 +5,21 @@ import Combine
 /// titlebar controls in one toolbar lets macOS provide a single active/inactive
 /// surface and align the sidebar boundary with the split view divider.
 @MainActor
-final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
+final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDelegate {
     private enum ItemIdentifier {
+        static let sidebar = NSToolbarItem.Identifier("LacEditor.Sidebar")
         static let title = NSToolbarItem.Identifier("LacEditor.WindowTitle")
         static let history = NSToolbarItem.Identifier("LacEditor.History")
         static let language = NSToolbarItem.Identifier("LacEditor.Language")
         static let preview = NSToolbarItem.Identifier("LacEditor.Preview")
+        static let newDocument = NSToolbarItem.Identifier("LacEditor.NewDocument")
+        static let open = NSToolbarItem.Identifier("LacEditor.Open")
+        static let save = NSToolbarItem.Identifier("LacEditor.Save")
+        static let find = NSToolbarItem.Identifier("LacEditor.Find")
+        static let markdownPresentation = NSToolbarItem.Identifier("LacEditor.MarkdownPresentation")
+        static let aiWriting = NSToolbarItem.Identifier("LacEditor.AIWriting")
+        static let importDocument = NSToolbarItem.Identifier("LacEditor.Import")
+        static let export = NSToolbarItem.Identifier("LacEditor.Export")
     }
 
     private weak var appState: AppState?
@@ -28,6 +37,8 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         let sidebar: Bool
         let dirty: Bool
         let preview: Bool
+        let markdownFormatted: Bool
+        let aiWritingVisible: Bool
         let canUndo: Bool
         let canRedo: Bool
     }
@@ -36,12 +47,19 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
     private weak var sidebarItem: NSToolbarItem?
     private weak var historyItem: NSToolbarItemGroup?
     private weak var previewItem: NSToolbarItem?
+    private weak var saveItem: NSToolbarItem?
+    private weak var findItem: NSToolbarItem?
+    private weak var markdownPresentationItem: NSToolbarItem?
+    private weak var aiWritingItem: NSToolbarItem?
+    private weak var exportItem: NSMenuToolbarItem?
+    private let exportMenu = NSMenu()
 
     init(appState: AppState) {
         self.appState = appState
         super.init()
         configureTitleField()
         configureLanguageButton()
+        exportMenu.delegate = self
         stateObservation = appState.objectWillChange.sink { [weak self, weak appState] in
             guard let self, !self.updateScheduled else { return }
             self.updateScheduled = true
@@ -54,13 +72,14 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
     }
 
     func makeToolbar() -> NSToolbar {
+        migrateSidebarItemIdentifier()
         let toolbar = EditorWindowToolbar(
             identifier: NSToolbar.Identifier("LacEditor.EditorToolbar")
         )
         toolbar.controller = self
         toolbar.delegate = self
-        toolbar.allowsUserCustomization = false
-        toolbar.autosavesConfiguration = false
+        toolbar.allowsUserCustomization = true
+        toolbar.autosavesConfiguration = true
         toolbar.displayMode = .iconOnly
         toolbar.sizeMode = .regular
         update()
@@ -83,6 +102,8 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
             sidebar: appState.isSidebarVisible,
             dirty: document?.isDirty == true,
             preview: document?.isPreviewEffectivelyEnabled == true,
+            markdownFormatted: document?.isMarkdownFormatted == true,
+            aiWritingVisible: appState.isAIWritingVisible,
             canUndo: manager?.canUndo == true,
             canRedo: manager?.canRedo == true
         )
@@ -99,6 +120,8 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         }
         undoItem?.isEnabled = presentation.canUndo
         redoItem?.isEnabled = presentation.canRedo
+        saveItem?.isEnabled = document != nil
+        findItem?.isEnabled = document != nil
         sidebarItem?.toolTip = appState.isSidebarVisible
             ? L10n.tr("隐藏侧边栏（⌃⌘B）")
             : L10n.tr("显示侧边栏（⌃⌘B）")
@@ -106,11 +129,14 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         // an identifier. Native isHidden is explicitly local to each instance,
         // so Markdown and code tabs can safely show different controls.
         previewItem?.isHidden = document?.language != .markdown
+        markdownPresentationItem?.isHidden = document?.language != .markdown
+        exportItem?.isEnabled = document?.language == .markdown
 
         guard let document = appState.selectedDocument else {
             historyItem?.isEnabled = false
             languageButton.isEnabled = false
             previewItem?.isEnabled = false
+            markdownPresentationItem?.isEnabled = false
             return
         }
 
@@ -133,23 +159,61 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         previewItem?.toolTip = document.isPreviewEffectivelyEnabled
             ? L10n.tr("隐藏 Markdown 预览（⌥⌘P）")
             : L10n.tr("显示 Markdown 预览（⌥⌘P）")
+        markdownPresentationItem?.isEnabled = document.language == .markdown
+        markdownPresentationItem?.image = NSImage(
+            systemSymbolName: document.isMarkdownFormatted ? "text.document.fill" : "text.document",
+            accessibilityDescription: document.isMarkdownFormatted
+                ? L10n.tr("Markdown 源码")
+                : L10n.tr("格式化文本")
+        )
+        markdownPresentationItem?.toolTip = document.isMarkdownFormatted
+            ? L10n.tr("Markdown 源码")
+            : L10n.tr("格式化文本")
+        aiWritingItem?.image = NSImage(
+            systemSymbolName: appState.isAIWritingVisible ? "sparkles.rectangle.stack.fill" : "sparkles.rectangle.stack",
+            accessibilityDescription: L10n.tr("显示或隐藏 AI 助手")
+        )
+        aiWritingItem?.toolTip = L10n.tr("显示或隐藏 AI 助手")
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
             .flexibleSpace,
-            .toggleSidebar,
+            ItemIdentifier.sidebar,
             .sidebarTrackingSeparator,
             ItemIdentifier.title,
             .flexibleSpace,
+            ItemIdentifier.newDocument,
+            ItemIdentifier.open,
+            ItemIdentifier.save,
             ItemIdentifier.history,
+            ItemIdentifier.find,
             ItemIdentifier.language,
+            ItemIdentifier.aiWriting,
+            ItemIdentifier.markdownPresentation,
             ItemIdentifier.preview
         ]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
+        [
+            ItemIdentifier.sidebar,
+            .sidebarTrackingSeparator,
+            ItemIdentifier.title,
+            ItemIdentifier.newDocument,
+            ItemIdentifier.open,
+            ItemIdentifier.save,
+            ItemIdentifier.history,
+            ItemIdentifier.find,
+            ItemIdentifier.language,
+            ItemIdentifier.aiWriting,
+            ItemIdentifier.markdownPresentation,
+            ItemIdentifier.preview,
+            ItemIdentifier.importDocument,
+            ItemIdentifier.export,
+            .space,
+            .flexibleSpace
+        ]
     }
 
     func toolbar(
@@ -158,7 +222,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
         switch itemIdentifier {
-        case .toggleSidebar:
+        case ItemIdentifier.sidebar:
             return makeSidebarItem()
         case ItemIdentifier.title:
             return makeTitleItem()
@@ -168,6 +232,64 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
             return makeLanguageItem()
         case ItemIdentifier.preview:
             return makePreviewItem()
+        case ItemIdentifier.newDocument:
+            return makeActionItem(
+                identifier: itemIdentifier,
+                label: L10n.tr("新建标签页"),
+                symbol: "plus.square.on.square",
+                toolTip: L10n.tr("新建标签页"),
+                action: #selector(newDocument)
+            )
+        case ItemIdentifier.open:
+            return makeActionItem(
+                identifier: itemIdentifier,
+                label: L10n.tr("打开…"),
+                symbol: "folder",
+                toolTip: L10n.tr("打开…"),
+                action: #selector(openDocument)
+            )
+        case ItemIdentifier.save:
+            let item = makeActionItem(
+                identifier: itemIdentifier,
+                label: L10n.tr("保存"),
+                symbol: "externaldrive.fill",
+                toolTip: L10n.tr("保存"),
+                action: #selector(saveDocument)
+            )
+            saveItem = item
+            return item
+        case ItemIdentifier.find:
+            let item = makeActionItem(
+                identifier: itemIdentifier,
+                label: L10n.tr("查找…"),
+                symbol: "magnifyingglass",
+                toolTip: L10n.tr("查找…"),
+                action: #selector(find)
+            )
+            findItem = item
+            return item
+        case ItemIdentifier.aiWriting:
+            let item = makeActionItem(
+                identifier: itemIdentifier,
+                label: L10n.tr("AI 写作助手"),
+                symbol: "sparkles.rectangle.stack",
+                toolTip: L10n.tr("显示或隐藏 AI 助手"),
+                action: #selector(toggleAIWriting)
+            )
+            aiWritingItem = item
+            return item
+        case ItemIdentifier.markdownPresentation:
+            return makeMarkdownPresentationItem()
+        case ItemIdentifier.importDocument:
+            return makeActionItem(
+                identifier: itemIdentifier,
+                label: L10n.tr("导入…"),
+                symbol: "square.and.arrow.down",
+                toolTip: L10n.tr("导入…"),
+                action: #selector(importDocument)
+            )
+        case ItemIdentifier.export:
+            return makeExportItem()
         default:
             // AppKit supplies flexible space and the sidebar tracking
             // separator. The latter discovers the native split view and keeps
@@ -177,7 +299,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
     }
 
     private func makeSidebarItem() -> NSToolbarItem {
-        let item = NSToolbarItem(itemIdentifier: .toggleSidebar)
+        let item = NSToolbarItem(itemIdentifier: ItemIdentifier.sidebar)
         item.label = L10n.tr("侧边栏")
         item.paletteLabel = L10n.tr("侧边栏")
         item.image = NSImage(
@@ -189,6 +311,21 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         item.isNavigational = true
         sidebarItem = item
         return item
+    }
+
+    private func migrateSidebarItemIdentifier() {
+        let key = "NSToolbar Configuration LacEditor.EditorToolbar"
+        guard var configuration = UserDefaults.standard.dictionary(forKey: key) else { return }
+        let oldIdentifier = NSToolbarItem.Identifier.toggleSidebar.rawValue
+        let newIdentifier = ItemIdentifier.sidebar.rawValue
+        var changed = false
+        for listKey in ["TB Default Item Identifiers", "TB Item Identifiers"] {
+            guard let identifiers = configuration[listKey] as? [String],
+                  identifiers.contains(oldIdentifier) else { continue }
+            configuration[listKey] = identifiers.map { $0 == oldIdentifier ? newIdentifier : $0 }
+            changed = true
+        }
+        if changed { UserDefaults.standard.set(configuration, forKey: key) }
     }
 
     private func makeTitleItem() -> NSToolbarItem {
@@ -254,6 +391,97 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         return item
     }
 
+    private func makeMarkdownPresentationItem() -> NSToolbarItem {
+        let item = makeActionItem(
+            identifier: ItemIdentifier.markdownPresentation,
+            label: L10n.tr("Markdown 编辑方式"),
+            symbol: "text.document",
+            toolTip: L10n.tr("格式化文本"),
+            action: #selector(toggleMarkdownPresentation)
+        )
+        item.isHidden = appState?.selectedDocument?.language != .markdown
+        markdownPresentationItem = item
+        return item
+    }
+
+    private func makeExportItem() -> NSToolbarItem {
+        let item = NSMenuToolbarItem(itemIdentifier: ItemIdentifier.export)
+        item.label = L10n.tr("导出")
+        item.paletteLabel = L10n.tr("导出")
+        item.image = NSImage(
+            systemSymbolName: "square.and.arrow.up",
+            accessibilityDescription: L10n.tr("导出")
+        )
+        item.toolTip = L10n.tr("导出")
+        item.menu = exportMenu
+        item.showsIndicator = true
+        item.isEnabled = appState?.selectedDocument?.language == .markdown
+        exportItem = item
+        rebuildExportMenu()
+        return item
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === exportMenu else { return }
+        rebuildExportMenu()
+    }
+
+    private func rebuildExportMenu() {
+        exportMenu.removeAllItems()
+        addExportItem(title: "HTML", action: #selector(exportHTML))
+        addExportItem(title: L10n.tr("HTML（无样式）"), action: #selector(exportPlainHTML))
+        addExportItem(title: "PDF", action: #selector(exportPDF))
+        addExportItem(title: "PNG", action: #selector(exportPNG))
+
+        let profiles = appState?.preferences.markdownExportConfiguration.profiles.filter(\.enabled) ?? []
+        if !profiles.isEmpty {
+            exportMenu.addItem(.separator())
+            for profile in profiles {
+                let item = NSMenuItem(
+                    title: profile.name,
+                    action: #selector(exportProfile(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = self
+                item.representedObject = profile
+                exportMenu.addItem(item)
+            }
+        }
+
+        exportMenu.addItem(.separator())
+        let repeatItem = NSMenuItem(
+            title: L10n.tr("使用上次设置导出"),
+            action: #selector(repeatExport),
+            keyEquivalent: ""
+        )
+        repeatItem.target = self
+        repeatItem.isEnabled = appState?.hasPreviousMarkdownExport == true
+        exportMenu.addItem(repeatItem)
+    }
+
+    private func addExportItem(title: String, action: Selector) {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        exportMenu.addItem(item)
+    }
+
+    private func makeActionItem(
+        identifier: NSToolbarItem.Identifier,
+        label: String,
+        symbol: String,
+        toolTip: String,
+        action: Selector
+    ) -> NSToolbarItem {
+        let item = NSToolbarItem(itemIdentifier: identifier)
+        item.label = label
+        item.paletteLabel = label
+        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+        item.toolTip = toolTip
+        item.target = self
+        item.action = action
+        return item
+    }
+
     private func configureTitleField() {
         titleField.font = .systemFont(ofSize: 13, weight: .semibold)
         titleField.textColor = .labelColor
@@ -302,6 +530,58 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
         appState?.toggleSidebar()
     }
 
+    @objc private func newDocument() {
+        appState?.newDocument()
+    }
+
+    @objc private func openDocument() {
+        appState?.openFiles()
+    }
+
+    @objc private func saveDocument() {
+        appState?.save()
+    }
+
+    @objc private func find() {
+        appState?.presentFindReplace(mode: .find)
+    }
+
+    @objc private func toggleAIWriting() {
+        guard let appState else { return }
+        if appState.isDistractionFree { appState.toggleDistractionFree() }
+        appState.isAIWritingVisible.toggle()
+        update()
+    }
+
+    @objc private func importDocument() {
+        appState?.importDocument()
+    }
+
+    @objc private func exportHTML() {
+        appState?.exportMarkdown(as: .html)
+    }
+
+    @objc private func exportPlainHTML() {
+        appState?.exportMarkdown(as: .htmlPlain)
+    }
+
+    @objc private func exportPDF() {
+        appState?.exportMarkdown(as: .pdf)
+    }
+
+    @objc private func exportPNG() {
+        appState?.exportMarkdownImage()
+    }
+
+    @objc private func exportProfile(_ sender: NSMenuItem) {
+        guard let profile = sender.representedObject as? MarkdownExportProfile else { return }
+        appState?.exportMarkdown(profile: profile)
+    }
+
+    @objc private func repeatExport() {
+        appState?.repeatMarkdownExport(overwrite: false)
+    }
+
     @objc private func performUndo() {
         guard let documentID = appState?.selectedDocument?.id else { return }
         NotificationCenter.default.post(
@@ -328,6 +608,13 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate {
 
     @objc private func togglePreview() {
         appState?.togglePreview()
+        update()
+    }
+
+    @objc private func toggleMarkdownPresentation() {
+        guard let document = appState?.selectedDocument,
+              document.language == .markdown else { return }
+        document.isMarkdownFormatted.toggle()
         update()
     }
 }
@@ -360,7 +647,7 @@ func configureEditorWindowToolbar(_ window: NSWindow, appState: AppState) {
 @MainActor
 private func localizeNativeToolbarItems(in toolbar: NSToolbar) {
     for item in toolbar.items {
-        guard item.itemIdentifier == .toggleSidebar else { continue }
+        guard item.itemIdentifier.rawValue == "LacEditor.Sidebar" else { continue }
         item.label = L10n.tr("侧边栏")
         item.paletteLabel = L10n.tr("侧边栏")
         item.toolTip = L10n.tr("显示或隐藏侧边栏（⌃⌘B）")

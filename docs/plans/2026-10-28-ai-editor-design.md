@@ -335,7 +335,7 @@ Mac не проверены. Linux не предоставляет Swift/AppKit/
 Для указанных пользователем локальных серверов Info.plist объявляет
 NSAllowsLocalNetworking и трёхъязычное NSLocalNetworkUsageDescription через
 InfoPlist.strings. Общие ограничения сетевых соединений не отключались:
-NSAllowsArbitraryLoads отсутствует. Публичные серверы должны использовать HTTPS;
+NSAllowsArbitraryLoads включён для указанных пользователем HTTP AI/Jina-серверов;
 локальный доступ и системный запрос необходимо проверить в приложении на Mac.
 Основание: [ATS локальной сети](https://developer.apple.com/documentation/bundleresources/information-property-list/nsapptransportsecurity/nsallowslocalnetworking)
 и [описание разрешения сети](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy).

@@ -908,11 +908,11 @@ final class MarkdownPDFExportTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
         let pdf = try XCTUnwrap(PDFDocument(url: file))
         let attributes = try XCTUnwrap(pdf.documentAttributes)
-        XCTAssertEqual(attributes[.titleAttribute] as? String, "中文 title")
-        XCTAssertEqual(attributes[.authorAttribute] as? String, "Alice, Bob")
-        XCTAssertEqual(attributes[.creatorAttribute] as? String, "LacEditor")
-        XCTAssertEqual(attributes[.subjectAttribute] as? String, "Test")
-        XCTAssertEqual(attributes[.keywordsAttribute] as? [String], ["one", "中文"])
+        XCTAssertEqual(attributes[PDFDocumentAttribute.titleAttribute] as? String, "中文 title")
+        XCTAssertEqual(attributes[PDFDocumentAttribute.authorAttribute] as? String, "Alice, Bob")
+        XCTAssertEqual(attributes[PDFDocumentAttribute.creatorAttribute] as? String, "LacEditor")
+        XCTAssertEqual(attributes[PDFDocumentAttribute.subjectAttribute] as? String, "Test")
+        XCTAssertEqual(attributes[PDFDocumentAttribute.keywordsAttribute] as? [String], ["one", "中文"])
         XCTAssertEqual(pdf.outlineRoot?.child(at: 0)?.label, "Heading")
         let page = try XCTUnwrap(pdf.page(at: 0))
         XCTAssertTrue(page.annotations.contains { $0.contents == "中文 title" && $0.shouldPrint })
@@ -1565,7 +1565,7 @@ final class MarkdownPDFExportTests: XCTestCase {
         XCTAssertTrue(targetPage.bounds(for: .mediaBox).contains(try XCTUnwrap(link.destination).point))
         XCTAssertTrue(sourcePage.annotations.contains { $0.url?.absoluteString == "https://example.com" })
         XCTAssertTrue(sourcePage.annotations.contains { $0.contents == "Page 1" && $0.shouldPrint })
-        XCTAssertEqual(pdf.documentAttributes?[.titleAttribute] as? String, "PDF math")
+        XCTAssertEqual(pdf.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String, "PDF math")
         for index in 0..<pdf.pageCount {
             XCTAssertFalse(try XCTUnwrap(pdf.page(at: index)).annotations.contains { $0.url?.host == "laceditor.invalid" })
         }

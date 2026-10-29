@@ -705,7 +705,7 @@ final class MarkdownLayoutTests: XCTestCase {
         for offset in 0..<2 {
             layout.updateMarkdownRevealedRange((source as NSString).range(of: "end"))
             layout.ensureLayout(for: container)
-            let glyphs = displayLayout.glyphRange(forCharacterRange: NSRange(location: expanded.location + offset, length: 1), actualGlyphRange: nil)
+            let glyphs = displayLayout.glyphRange(forCharacterRange: NSRange(location: expanded.location + offset, length: 1), actualCharacterRange: nil)
             let rect = displayLayout.boundingRect(forGlyphRange: glyphs, in: displayContainer)
             let displayPoint = NSPoint(x: rect.minX + rect.width * 0.25, y: rect.midY)
             let blockPoint = NSPoint(x: line.minX + container.lineFragmentPadding + displayPoint.x, y: line.minY + displayPoint.y)
@@ -727,7 +727,7 @@ final class MarkdownLayoutTests: XCTestCase {
         func click(_ offset: Int, modifiers: NSEvent.ModifierFlags = [], count: Int = 1, drag: NSPoint? = nil) throws {
             layout.updateMarkdownRevealedRange((source as NSString).range(of: "end"))
             layout.ensureLayout(for: container)
-            let glyphs = displayLayout.glyphRange(forCharacterRange: NSRange(location: expanded.location + offset, length: 1), actualGlyphRange: nil)
+            let glyphs = displayLayout.glyphRange(forCharacterRange: NSRange(location: expanded.location + offset, length: 1), actualCharacterRange: nil)
             let rect = displayLayout.boundingRect(forGlyphRange: glyphs, in: displayContainer)
             let point = NSPoint(x: line.minX + container.lineFragmentPadding + rect.minX + rect.width * 0.25 + view.textContainerOrigin.x,
                                 y: line.minY + rect.midY + view.textContainerOrigin.y)
@@ -878,7 +878,7 @@ final class MarkdownLayoutTests: XCTestCase {
         displayLayout.addTextContainer(displayContainer)
         displayLayout.ensureLayout(for: displayContainer)
         for (displayOffset, sourceOffset) in [(4, raw.range(of: "ß").location), (7, entity.location), (8, code.location)] {
-            let glyph = displayLayout.glyphRange(forCharacterRange: NSRange(location: displayOffset, length: 1), actualGlyphRange: nil)
+            let glyph = displayLayout.glyphRange(forCharacterRange: NSRange(location: displayOffset, length: 1), actualCharacterRange: nil)
             let rect = displayLayout.boundingRect(forGlyphRange: glyph, in: displayContainer)
             let point = NSPoint(x: line.minX + container.lineFragmentPadding + rect.minX + rect.width * 0.25, y: line.minY + rect.midY)
             XCTAssertEqual(layout.uppercaseHeadingSourcePosition(at: point, in: container), sourceOffset)
@@ -935,7 +935,7 @@ final class MarkdownLayoutTests: XCTestCase {
         window.makeFirstResponder(view)
         view.setLayoutOrientation(.vertical)
         scroll.magnification = 1.5
-        container.containerSize = NSSize(width: .greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+        container.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         let parsed = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeUppercaseRuns: true)
         let heading = try XCTUnwrap(parsed.headings.first)
         let runs = try XCTUnwrap(heading.uppercaseRuns)
@@ -1189,7 +1189,7 @@ final class MarkdownLayoutTests: XCTestCase {
                 let lastLine = layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: storage.length - 1), effectiveRange: nil)
                 XCTAssertGreaterThan(lastLine.minY, firstLine.minY)
                 for offset in 0..<2 {
-                    let glyph = layout.glyphRange(forCharacterRange: NSRange(location: expanded.location + offset, length: 1), actualGlyphRange: nil)
+                    let glyph = layout.glyphRange(forCharacterRange: NSRange(location: expanded.location + offset, length: 1), actualCharacterRange: nil)
                     let rect = layout.boundingRect(forGlyphRange: glyph, in: container)
                     let local = NSPoint(x: rect.minX + rect.width * 0.25 + view.textContainerOrigin.x, y: rect.midY + view.textContainerOrigin.y)
                     let physical = scroll.contentView.convert(local, from: view)
@@ -1202,7 +1202,7 @@ final class MarkdownLayoutTests: XCTestCase {
                 for value in ["e\u{301}", "👩‍💻"] {
                     let sourceRange = (source as NSString).range(of: value)
                     let displayRange = (projection.text as NSString).range(of: value.uppercased(with: Locale(identifier: "und")))
-                    let glyphs = layout.glyphRange(forCharacterRange: displayRange, actualGlyphRange: nil)
+                    let glyphs = layout.glyphRange(forCharacterRange: displayRange, actualCharacterRange: nil)
                     let rect = layout.boundingRect(forGlyphRange: glyphs, in: container)
                     var sides: [Bool] = []
                     for x in [CGFloat(0.2), CGFloat(0.8)] {
@@ -1484,7 +1484,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "<span style='color:red'>first</span>\n\n" + String(repeating: "plain 中文\n\n", count: 600) + "<span style='color:red'>last</span>\n\nend"
         let document = EditorDocument(text: source, language: .markdown)
         let (storage, layout, container) = makeLayout(source)
-        container.containerSize = NSSize(width: 400, height: .greatestFiniteMagnitude)
+        container.containerSize = NSSize(width: 400, height: CGFloat.greatestFiniteMagnitude)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 30_000), textContainer: container)
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 200))
         scroll.documentView = view
@@ -1516,7 +1516,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "# first\n\n" + String(repeating: "plain 中文\n\n", count: 600) + "# last\n\nend"
         let document = EditorDocument(text: source, language: .markdown)
         let (storage, layout, container) = makeLayout(source)
-        container.containerSize = NSSize(width: 400, height: .greatestFiniteMagnitude)
+        container.containerSize = NSSize(width: 400, height: CGFloat.greatestFiniteMagnitude)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 30_000), textContainer: container)
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 200))
         scroll.documentView = view
@@ -1552,7 +1552,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = String(repeating: "office 中文\n", count: 600)
         let document = EditorDocument(text: source, language: .markdown)
         let (storage, layout, container) = makeLayout(source)
-        container.containerSize = NSSize(width: 400, height: .greatestFiniteMagnitude)
+        container.containerSize = NSSize(width: 400, height: CGFloat.greatestFiniteMagnitude)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 20_000), textContainer: container)
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 200))
         scroll.documentView = view
@@ -1646,7 +1646,7 @@ final class MarkdownLayoutTests: XCTestCase {
         _ = NSApplication.shared
         let source = String(repeating: "long words ", count: 30) + "\n\nnext"
         let (storage, layout, container) = makeLayout(source)
-        container.containerSize = NSSize(width: 160, height: .greatestFiniteMagnitude)
+        container.containerSize = NSSize(width: 160, height: CGFloat.greatestFiniteMagnitude)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 160, height: 1000), textContainer: container)
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
@@ -1671,7 +1671,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "9. first\n\n" + String(repeating: "plain 中文\n\n", count: 600) + "9. last\n\nend"
         let document = EditorDocument(text: source, language: .markdown)
         let (storage, layout, container) = makeLayout(source)
-        container.containerSize = NSSize(width: 400, height: .greatestFiniteMagnitude)
+        container.containerSize = NSSize(width: 400, height: CGFloat.greatestFiniteMagnitude)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 30_000), textContainer: container)
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 200))
         scroll.documentView = view
@@ -2615,7 +2615,7 @@ final class MarkdownLayoutTests: XCTestCase {
         }
         XCTAssertNotNil(background)
         XCTAssertTrue(layout.isMarkdownMarkerHidden(at: 0))
-        controller.restoreBackground(in: NSRange(location: 2, length: 1))
+        controller.restoreBackground(in: [NSRange(location: 2, length: 1)])
         XCTAssertEqual(layout.temporaryAttributes(atCharacterIndex: 2, effectiveRange: nil)[.backgroundColor] as? NSColor,
                        NSColor.systemYellow.withAlphaComponent(0.3))
         controller.update(document: document, enabled: false, isActive: true, revision: 0, currentRevision: { 0 })
@@ -2717,7 +2717,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let (storage, layout, container) = makeLayout(source)
         layout.backgroundLayoutEnabled = false
         layout.allowsNonContiguousLayout = false
-        container.containerSize = NSSize(width: 600, height: .greatestFiniteMagnitude)
+        container.containerSize = NSSize(width: 600, height: CGFloat.greatestFiniteMagnitude)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 300_000), textContainer: container)
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 600, height: 150))
         scroll.documentView = view

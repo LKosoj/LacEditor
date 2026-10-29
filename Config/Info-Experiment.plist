@@ -6,7 +6,7 @@
     <string>录制你主动开始的语音草稿，供你预览并选择发送给所配置的语音识别服务。</string>
     <key>NSAppTransportSecurity</key>
     <dict>
-        <key>NSAllowsLocalNetworking</key>
+        <key>NSAllowsArbitraryLoads</key>
         <true/>
     </dict>
     <key>NSLocalNetworkUsageDescription</key>

@@ -147,6 +147,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     private func show(windowManager: WindowManager) {
         guard let state = windowManager.activeState else { return }
+        let presentationScreen = NSApp.keyWindow?.screen ?? NSScreen.main
 
         if let window = windowController?.window {
             if presentedManager !== windowManager {
@@ -181,7 +182,15 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.setFrameAutosaveName("LacEditor.UI2.Settings")
-        if !window.setFrameUsingName("LacEditor.UI2.Settings") { window.center() }
+        _ = window.setFrameUsingName("LacEditor.UI2.Settings")
+        if let visibleFrame = presentationScreen?.visibleFrame {
+            window.setFrameOrigin(NSPoint(
+                x: visibleFrame.midX - window.frame.width / 2,
+                y: visibleFrame.midY - window.frame.height / 2
+            ))
+        } else {
+            window.center()
+        }
         let controller = NSWindowController(window: window)
         windowController = controller
         presentedManager = windowManager
@@ -319,6 +328,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             await Self.sharedManager?.prepareExperimentSamples()
         }
+    }
+
+    @objc func showLocalizedAboutPanel(_ sender: Any?) {
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .applicationName: AppEnvironment.displayName
+        ])
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(
@@ -507,26 +522,14 @@ final class AppearanceMenuController: NSObject {
 /// intact and translate only the visible top-level menu labels.
 @MainActor
 final class MenuLocalizationController: NSObject {
-    private var observer: NSObjectProtocol?
+    private var observers: [NSObjectProtocol] = []
     private var localizationAttempts = 0
 
     override init() {
         super.init()
-        observer = NotificationCenter.default.addObserver(
-            forName: NSMenu.didBeginTrackingNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard self != nil else { return }
-                Self.localizeMainMenu()
-                // SwiftUI may refresh the command hierarchy immediately when
-                // tracking starts. Apply one more pass after that refresh.
-                DispatchQueue.main.async {
-                    Self.localizeMainMenu()
-                }
-            }
-        }
+        observe(NSMenu.didBeginTrackingNotification)
+        observe(NSMenu.didAddItemNotification)
+        observe(NSWindow.didBecomeKeyNotification)
         // SwiftUI creates the command menu after the App initializer returns.
         // Retry briefly after launch so the native menu is translated after it
         // actually exists, rather than relying on a single early pass.
@@ -534,9 +537,29 @@ final class MenuLocalizationController: NSObject {
     }
 
     deinit {
-        if let observer {
+        for observer in observers {
             NotificationCenter.default.removeObserver(observer)
         }
+    }
+
+    private func observe(_ name: Notification.Name) {
+        observers.append(
+            NotificationCenter.default.addObserver(
+                forName: name,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard self != nil else { return }
+                    Self.localizeMainMenu()
+                    // SwiftUI can replace the menu while a window becomes key
+                    // or immediately after menu tracking starts.
+                    DispatchQueue.main.async {
+                        Self.localizeMainMenu()
+                    }
+                }
+            }
+        )
     }
 
     static func localizeMainMenu() {
@@ -548,7 +571,24 @@ final class MenuLocalizationController: NSObject {
             "Window": L10n.tr("Window"),
             "Help": L10n.tr("Help")
         ]
-        for item in menu.items {
+        if let applicationItem = menu.items.first {
+            let bundleName = (Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String)
+                ?? applicationItem.title
+            applicationItem.title = AppEnvironment.displayName
+            for item in applicationItem.submenu?.items ?? [] {
+                if !bundleName.isEmpty {
+                    item.title = item.title.replacingOccurrences(
+                        of: bundleName,
+                        with: AppEnvironment.displayName
+                    )
+                }
+                if item.action == #selector(NSApplication.orderFrontStandardAboutPanel(_:)) {
+                    item.target = NSApp.delegate
+                    item.action = #selector(AppDelegate.showLocalizedAboutPanel(_:))
+                }
+            }
+        }
+        for item in menu.items.dropFirst() {
             if let translated = translations[item.title] {
                 item.title = translated
             }

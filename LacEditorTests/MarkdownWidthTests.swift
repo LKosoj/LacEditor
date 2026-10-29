@@ -1122,11 +1122,11 @@ final class MarkdownWidthTests: XCTestCase {
             XCTAssertTrue(layout.setMarkdownInlineImage(NSImage(size: NSSize(width: 30, height: 20)), for: range))
         }
         layout.ensureLayout(for: container)
-        XCTAssertEqual(layout.markdownRenderedImageRects(for: ranges, in: container).count, 2)
+        XCTAssertEqual(layout.markdownRenderedImageRects(for: Set(ranges), in: container).count, 2)
         if let first = ranges.first {
             layout.updateMarkdownRevealedRange(first)
             layout.ensureLayout(for: container)
-            XCTAssertNil(layout.markdownRenderedImageRects(for: [first], in: container)[first])
+            XCTAssertNil(layout.markdownRenderedImageRects(for: Set([first]), in: container)[first])
         }
         XCTAssertEqual(storage.string, source)
         withExtendedLifetime(view) {}

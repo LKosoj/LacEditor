@@ -18,6 +18,22 @@ private final class JinaTestProtocol: URLProtocol {
 }
 
 final class JinaClientTests: XCTestCase {
+    private func body(_ request: URLRequest) throws -> Data {
+        if let body = request.httpBody { return body }
+        let stream = try XCTUnwrap(request.httpBodyStream)
+        stream.open()
+        defer { stream.close() }
+        var result = Data()
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count < 0 { throw try XCTUnwrap(stream.streamError) }
+            if count == 0 { break }
+            result.append(buffer, count: count)
+        }
+        return result
+    }
+
     func testSearchAndReadUseConfiguredEndpoints() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [JinaTestProtocol.self]
@@ -30,7 +46,7 @@ final class JinaClientTests: XCTestCase {
         JinaTestProtocol.handler = { request in
             XCTAssertEqual(request.httpMethod, "POST")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
-            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: String])
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: self.body(request)) as? [String: String])
             if request.url?.path == "/find" {
                 XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer search-key")
                 XCTAssertEqual(body["q"], "claim")
@@ -72,12 +88,12 @@ final class JinaClientTests: XCTestCase {
                 return (200, Data(#"{"data":[{"title":"Broken","url":"https://example.org/broken"},{"title":"Good","url":"https://example.org/good"}]}"#.utf8))
             }
             if request.url?.host == "r.jina.ai" {
-                let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: String])
+                let body = try XCTUnwrap(JSONSerialization.jsonObject(with: self.body(request)) as? [String: String])
                 if body["url"] == "https://example.org/broken" { return (503, Data()) }
                 XCTAssertEqual(body["url"], "https://example.org/good")
                 return (200, Data(#"{"data":{"title":"Good","url":"https://example.org/good","content":"source quote"}}"#.utf8))
             }
-            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any])
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: self.body(request)) as? [String: Any])
             let input = try XCTUnwrap(body["input"] as? String)
             let evidence = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(input.utf8)) as? [String: Any])
             let sources = try XCTUnwrap(evidence["sources"] as? [[String: Any]])

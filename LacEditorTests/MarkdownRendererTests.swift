@@ -1243,6 +1243,7 @@ final class MarkdownRendererTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testTypographyKeepsLegacyDefaultsAndPersistsExplicitChanges() throws {
         let suite = "MarkdownTypographyTests." + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

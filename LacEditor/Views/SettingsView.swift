@@ -101,7 +101,7 @@ struct SettingsView: View {
             }.padding(12)
         }
         .padding(.horizontal, 12).padding(.bottom, 12)
-        .frame(width: 176)
+        .frame(width: 240)
         .background(SidebarMaterialBackground())
     }
 
@@ -583,7 +583,7 @@ struct SettingsView: View {
                     Text(L10n.tr("打开即写，轻装编辑。暂无登录、云同步或文档内容采集。"))
                     Text(L10n.tr("界面基于 SwiftUI 与 AppKit；编辑使用 TextKit，语法解析使用 Tree-sitter，Markdown 使用 cmark-gfm。"))
                         .foregroundStyle(.secondary)
-                    Link(L10n.tr("查看项目与开源说明 ↗"), destination: URL(string: "https://github.com/kolmh/LacEditor")!)
+                    Link(L10n.tr("查看项目与开源说明 ↗"), destination: URL(string: "https://github.com/LKosoj/LacEditor")!)
                 }.font(.system(size: 12)).padding(16)
             }
         }
@@ -626,7 +626,9 @@ private struct SettingsNavigationRow: View {
             HStack(spacing: 10) {
                 Image(systemName: section.symbol).font(.system(size: 14)).frame(width: 20)
                     .foregroundStyle(selected ? LacEditorDesign.accent : .secondary)
-                Text(L10n.tr(section.rawValue)).font(.system(size: 13, weight: selected ? .semibold : .regular))
+                Text(L10n.tr(section.rawValue))
+                    .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                    .lineLimit(1)
                 Spacer()
             }.padding(.horizontal, 12).frame(height: 38).contentShape(Rectangle())
                 .background(selected ? LacEditorDesign.selectionFill : (hovering ? LacEditorDesign.hoverFill : .clear),

@@ -3,6 +3,100 @@ import os
 import SwiftUI
 import UniformTypeIdentifiers
 
+private struct MarkdownDataImageProjection {
+    struct Entry {
+        let token: String
+        let source: String
+    }
+
+    private(set) var entries: [Entry] = []
+
+    mutating func project(_ source: String) -> String {
+        entries.removeAll(keepingCapacity: true)
+        let pattern = #"data:image/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=]{16384,}"#
+        guard let expression = try? NSRegularExpression(pattern: pattern) else { return source }
+        let raw = source as NSString
+        let matches = expression.matches(in: source, range: NSRange(location: 0, length: raw.length))
+        guard !matches.isEmpty else { return source }
+        let projected = NSMutableString(string: source)
+        for (index, match) in matches.enumerated().reversed() {
+            let original = raw.substring(with: match.range)
+            guard let comma = original.firstIndex(of: ",") else { continue }
+            let mediaType = String(original[..<comma])
+            let token = "\(mediaType),AA==#lac-image-\(index)-\(UUID().uuidString)"
+            entries.append(Entry(token: token, source: original))
+            projected.replaceCharacters(in: match.range, with: token)
+        }
+        entries.reverse()
+        return projected as String
+    }
+
+    func restore(_ display: String) -> String {
+        let source = NSMutableString(string: display)
+        for entry in entries {
+            source.replaceOccurrences(of: entry.token, with: entry.source,
+                                      range: NSRange(location: 0, length: source.length))
+        }
+        return source as String
+    }
+
+    func source(for address: String) -> String? {
+        entries.first(where: { $0.token == address })?.source
+    }
+
+    func sourceRange(for displayRange: NSRange, in display: String) -> NSRange {
+        let raw = display as NSString
+        func map(_ position: Int, trailing: Bool) -> Int {
+            var delta = 0
+            for entry in entries {
+                let range = raw.range(of: entry.token)
+                guard range.location != NSNotFound else { continue }
+                if position <= range.location { return position + delta }
+                let sourceLength = (entry.source as NSString).length
+                if position < NSMaxRange(range) {
+                    return range.location + delta + (trailing ? sourceLength : 0)
+                }
+                delta += sourceLength - range.length
+            }
+            return position + delta
+        }
+        let start = map(displayRange.location, trailing: false)
+        let end = map(NSMaxRange(displayRange), trailing: true)
+        return NSRange(location: start, length: max(0, end - start))
+    }
+
+    func displayRange(for sourceRange: NSRange, in display: String) -> NSRange {
+        let raw = display as NSString
+        func map(_ position: Int, trailing: Bool) -> Int {
+            var delta = 0
+            for entry in entries {
+                let range = raw.range(of: entry.token)
+                guard range.location != NSNotFound else { continue }
+                let sourceLength = (entry.source as NSString).length
+                let sourceStart = range.location + delta
+                if position <= sourceStart { return position - delta }
+                if position < sourceStart + sourceLength {
+                    return trailing ? NSMaxRange(range) : range.location
+                }
+                delta += sourceLength - range.length
+            }
+            return position - delta
+        }
+        let start = map(sourceRange.location, trailing: false)
+        let end = map(NSMaxRange(sourceRange), trailing: true)
+        return NSRange(location: max(0, start), length: max(0, end - start))
+    }
+
+    func intersectsToken(_ range: NSRange, in display: String) -> Bool {
+        let raw = display as NSString
+        return entries.contains { entry in
+            let token = raw.range(of: entry.token)
+            return token.location != NSNotFound && (NSIntersectionRange(token, range).length > 0 ||
+                (range.length == 0 && range.location > token.location && range.location < NSMaxRange(token)))
+        }
+    }
+}
+
 
 extension EditorTextView {
     @preconcurrency @MainActor
@@ -78,6 +172,8 @@ extension EditorTextView {
         private var highlightGeneration: UInt = 0
         var isMarkdownOutlineVisible = false
         private var markdownPresentation: MarkdownPresentationController?
+        private var markdownImageProjection = MarkdownDataImageProjection()
+        private var markdownImageProjectionEnabled = false
         private var mathOptions = MathJaxRenderService.Options()
         private var contentRevision: UInt
         private(set) var markdownLinkTask: Task<Void, Never>?
@@ -603,7 +699,7 @@ extension EditorTextView {
         func installObservers(scrollView: NSScrollView) {
             textView?.markdownLinkHandler = { [weak self] point in self?.navigateMarkdownLink(at: point) ?? false }
             textView?.diagramMenuHandler = { [weak self] point in self?.diagramMenu(at: point) ?? [] }
-            textView?.appearanceChangedHandler = { [weak self] in self?.markdownMetricsChanged() }
+            textView?.appearanceChangedHandler = { [weak self] in self?.editorAppearanceChanged() }
             textView?.paragraphStylesChangedHandler = { [weak self] range in
                 self?.markdownPresentation?.paragraphStylesDidChange(in: range)
             }
@@ -1794,12 +1890,55 @@ extension EditorTextView {
                 provider: { [weak self] in
                     guard let self else { return nil }
                     if self.tableCellEditor?.hasMarkedText() == true { return self.tableCellSource() }
-                    return self.textView?.string
+                    guard let text = self.textView?.string else { return nil }
+                    return self.markdownImageProjectionEnabled
+                        ? self.markdownImageProjection.restore(text)
+                        : text
                 },
                 acknowledgement: { [weak self] revision in
                     self?.lastSynchronizedRevision = revision
                 }
             )
+        }
+
+        func displayedText(for source: String) -> String {
+            guard document.language == .markdown, document.isMarkdownFormatted else {
+                markdownImageProjectionEnabled = false
+                markdownImageProjection = MarkdownDataImageProjection()
+                return source
+            }
+            markdownImageProjectionEnabled = true
+            return markdownImageProjection.project(source)
+        }
+
+        func displayedRange(for sourceRange: NSRange, in display: String) -> NSRange {
+            guard markdownImageProjectionEnabled else { return sourceRange }
+            return markdownImageProjection.displayRange(for: sourceRange, in: display)
+        }
+
+        private func synchronizeMarkdownImageProjection() {
+            guard let textView, !textView.hasMarkedText() else { return }
+            let shouldProject = document.language == .markdown && document.isMarkdownFormatted
+            guard shouldProject != markdownImageProjectionEnabled else { return }
+            let oldDisplay = textView.string
+            let source = markdownImageProjectionEnabled ? markdownImageProjection.restore(oldDisplay) : oldDisplay
+            let sourceSelection = markdownImageProjectionEnabled
+                ? markdownImageProjection.sourceRange(for: textView.selectedRange(), in: oldDisplay)
+                : textView.selectedRange()
+            let next = shouldProject ? displayedText(for: source) : source
+            if !shouldProject {
+                markdownImageProjectionEnabled = false
+                markdownImageProjection = MarkdownDataImageProjection()
+            }
+            isApplyingExternalUpdate = true
+            textView.textStorage?.replaceCharacters(in: NSRange(location: 0, length: (oldDisplay as NSString).length), with: next)
+            let selection = shouldProject
+                ? markdownImageProjection.displayRange(for: sourceSelection, in: next)
+                : sourceSelection
+            textView.setSelectedRange(NSIntersectionRange(selection, NSRange(location: 0, length: (next as NSString).length)))
+            resetLineIndex(with: next)
+            isApplyingExternalUpdate = false
+            markdownPresentation?.projectionChanged(revision: contentRevision)
         }
 
         private func apply(
@@ -2820,8 +2959,12 @@ extension EditorTextView {
 
         func updateMarkdownPresentation() {
             guard let textView, let foldLayoutManager else { return }
+            synchronizeMarkdownImageProjection()
             if markdownPresentation == nil {
                 markdownPresentation = MarkdownPresentationController(textView: textView, layout: foldLayoutManager)
+                markdownPresentation?.projectedImageSource = { [weak self] address in
+                    self?.markdownImageProjection.source(for: address)
+                }
                 markdownPresentation?.setMathPairContextEnabled(mathPairContextEnabled)
                 markdownPresentation?.setStrikeCompletedTasks(strikeCompletedTasks)
                 markdownPresentation?.setHeadingNumbering(headingNumbering)
@@ -2926,6 +3069,26 @@ extension EditorTextView {
             markdownPresentation?.metricsChanged()
             applyTableCellColors()
             view.needsDisplay = true
+        }
+
+        private func editorAppearanceChanged() {
+            guard let view = textView else { return }
+            view.applyOrDeferTextMetrics { [weak self, weak view] in
+                guard let self, let view else { return }
+                let colors = foldLayoutManager?.markdownColors ?? .init()
+                let foreground = colors.text?.nsColor ?? NSColor.labelColor
+                view.textColor = foreground
+                view.backgroundColor = colors.background?.nsColor ?? .lacEditorBackground
+                view.insertionPointColor = foreground
+                var typingAttributes = view.typingAttributes
+                typingAttributes[.foregroundColor] = foreground
+                view.typingAttributes = typingAttributes
+                highlightedRanges.removeAll()
+                scheduleHighlight(delay: 0)
+                markdownMetricsChanged()
+                applyTableCellColors()
+                view.needsDisplay = true
+            }
         }
 
         private func applyTableCellColors() {
@@ -3508,6 +3671,11 @@ extension EditorTextView {
                     nsText.length - safeLocation
                 )
             )
+            if markdownImageProjectionEnabled,
+               markdownImageProjection.intersectsToken(safeRange, in: nsText as String) {
+                NSSound.beep()
+                return false
+            }
             let replacementLength = (replacement as NSString).length
             func recordProvenance() {
                 let source: DocumentProvenance.Source
@@ -4208,7 +4376,9 @@ extension EditorTextView {
             guard let textView,
                   let text = textView.textStorage?.mutableString else { return }
             let selection = textView.selectedRange()
-            document.selectionRange = selection
+            document.selectionRange = markdownImageProjectionEnabled
+                ? markdownImageProjection.sourceRange(for: selection, in: text as String)
+                : selection
             let location = min(selection.location, text.length)
             let position = lineIndex.position(
                 at: location,

@@ -1,6 +1,7 @@
 import XCTest
 @testable import LacEditor
 
+@MainActor
 final class MarkdownLinkNavigationTests: XCTestCase {
     func testExtensionlessTargetPrefersExactThenMarkdownVariants() {
         let base = URL(fileURLWithPath: "/tmp/a #b")

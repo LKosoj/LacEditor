@@ -35,7 +35,24 @@ final class AIClientTests: XCTestCase {
     }
 
     private func body(_ request: URLRequest) throws -> [String: Any] {
-        try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any])
+        let data: Data
+        if let body = request.httpBody {
+            data = body
+        } else {
+            let stream = try XCTUnwrap(request.httpBodyStream)
+            stream.open()
+            defer { stream.close() }
+            var result = Data()
+            var buffer = [UInt8](repeating: 0, count: 4_096)
+            while stream.hasBytesAvailable {
+                let count = stream.read(&buffer, maxLength: buffer.count)
+                if count < 0 { throw try XCTUnwrap(stream.streamError) }
+                if count == 0 { break }
+                result.append(buffer, count: count)
+            }
+            data = result
+        }
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
     func testModelsAndResponsesRequest() async throws {

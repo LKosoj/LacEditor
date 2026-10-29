@@ -309,7 +309,11 @@ struct MarkdownRenderedPage: Sendable {
         a { text-decoration-color: currentColor; }
       }
       @media (prefers-reduced-transparency: reduce) { body { background: var(--page); } }
-      @media print { body { padding: 0; } article { max-width: var(--lac-print-width, none); } }
+      @media print {
+        body { padding: 0; }
+        article { max-width: var(--lac-print-width, none); }
+        img, .mermaid-diagram svg { max-height: var(--lac-print-height, none); object-fit: contain; }
+      }
     """
 }
 

@@ -531,7 +531,7 @@ final class MarkdownPDFExportService: NSObject, WKNavigationDelegate {
             guard case .success = result else { self.finish(.failure(ExportError.rendering)); return }
             if case .png = self.mode { self.beginImage(in: webView) }
             else if case .htmlPlain = self.mode { self.beginHTML(in: webView) }
-            else if case let .printJob(info) = self.mode, info.jobDisposition == .spool { self.beginPrint() }
+            else if case let .printJob(info) = self.mode, info.jobDisposition == .spool { self.schedulePrint() }
             else { self.prepareBookmarkMarkers(in: webView) }
         }
     }
@@ -647,7 +647,15 @@ final class MarkdownPDFExportService: NSObject, WKNavigationDelegate {
                 parsed.append(BookmarkHeading(url: url, title: title, level: level))
             }
             self.bookmarkHeadings = parsed
-            self.beginPrint()
+            self.schedulePrint()
+        }
+    }
+
+    private func schedulePrint() {
+        // Return from WebKit's JavaScript callback before entering AppKit's
+        // modal print loop to avoid reentrant WKWebView rendering.
+        DispatchQueue.main.async { [weak self] in
+            self?.beginPrint()
         }
     }
 
@@ -699,7 +707,7 @@ final class MarkdownPDFExportService: NSObject, WKNavigationDelegate {
     }
 
     private func beginPrint() {
-        guard let window, let webView, !cancelled, isCurrent() else { finish(.failure(ExportError.cancelled)); return }
+        guard let webView, !cancelled, isCurrent() else { finish(.failure(ExportError.cancelled)); return }
         do {
             let info: NSPrintInfo
             if case let .printJob(selected) = mode { info = selected.copy() as! NSPrintInfo }
@@ -756,16 +764,153 @@ final class MarkdownPDFExportService: NSObject, WKNavigationDelegate {
                 temporaryDirectory = directory
                 info.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = directory.appendingPathComponent("output.pdf") as NSURL
             } else if info.jobDisposition != .spool { throw ExportError.unsupportedPrintDestination }
-            let operation = webView.printOperation(with: info)
-            operation.showsPrintPanel = false
-            operation.showsProgressPanel = false
-            operation.canSpawnSeparateThread = false
-            printOperation = operation
-            printLifetime = self
-            operation.runModal(for: window, delegate: self, didRun: #selector(printDidRun(_:success:contextInfo:)), contextInfo: nil)
+            let printableHeight = info.paperSize.height - info.topMargin - info.bottomMargin
+            guard printableHeight.isFinite, printableHeight > 0 else { throw ExportError.invalidOptions }
+            webView.evaluateJavaScript("document.documentElement.style.setProperty('--lac-print-height', '\(printableHeight)pt')") { [weak self, weak webView] _, error in
+                guard let self, let webView else { return }
+                guard !self.cancelled, self.isCurrent() else { self.finish(.failure(ExportError.cancelled)); return }
+                guard error == nil else { self.finish(.failure(ExportError.rendering)); return }
+                self.runPrint(in: webView, with: info)
+            }
         } catch {
             finish(.failure(error))
         }
+    }
+
+    private func runPrint(in webView: WKWebView, with info: NSPrintInfo) {
+        guard let window, !cancelled, isCurrent() else { finish(.failure(ExportError.cancelled)); return }
+        let operation = webView.printOperation(with: info)
+        if info.jobDisposition == .save {
+            guard let output = temporaryDirectory?.appendingPathComponent("output.pdf") else {
+                finish(.failure(ExportError.printFailed))
+                return
+            }
+            printOperation = operation
+            printLifetime = self
+            webView.createPDF(configuration: WKPDFConfiguration()) { [weak self] result in
+                guard let self else { return }
+                guard !self.cancelled, self.isCurrent() else {
+                    self.printOperation = nil
+                    self.finish(.failure(ExportError.cancelled))
+                    return
+                }
+                do {
+                    let data = try result.get()
+                    guard !data.isEmpty else { throw ExportError.printFailed }
+                    let paginated = try self.paginatePDF(data, printInfo: info)
+                    try paginated.write(to: output, options: .withoutOverwriting)
+                    self.printDidRun(operation, success: true, contextInfo: nil)
+                } catch {
+                    self.printOperation = nil
+                    self.finish(.failure(error))
+                }
+            }
+            return
+        }
+        operation.showsPrintPanel = false
+        operation.showsProgressPanel = false
+        operation.canSpawnSeparateThread = false
+        printOperation = operation
+        printLifetime = self
+        operation.runModal(for: window, delegate: self, didRun: #selector(printDidRun(_:success:contextInfo:)), contextInfo: nil)
+    }
+
+    private func paginatePDF(_ data: Data, printInfo: NSPrintInfo) throws -> Data {
+        guard let provider = CGDataProvider(data: data as CFData), let source = CGPDFDocument(provider),
+              source.numberOfPages > 0, let sourceDocument = PDFDocument(data: data) else {
+            throw ExportError.printFailed
+        }
+        var paperSize = printInfo.paperSize
+        if printInfo.orientation == .landscape, paperSize.width < paperSize.height {
+            paperSize = NSSize(width: paperSize.height, height: paperSize.width)
+        } else if printInfo.orientation == .portrait, paperSize.width > paperSize.height {
+            paperSize = NSSize(width: paperSize.height, height: paperSize.width)
+        }
+        let printableWidth = paperSize.width - printInfo.leftMargin - printInfo.rightMargin
+        let printableHeight = paperSize.height - printInfo.topMargin - printInfo.bottomMargin
+        guard paperSize.width.isFinite, paperSize.height.isFinite, printableWidth.isFinite, printableHeight.isFinite,
+              paperSize.width > 0, paperSize.height > 0, printableWidth > 0, printableHeight > 0 else {
+            throw ExportError.invalidOptions
+        }
+        struct Slice {
+            let sourcePage: Int
+            let sourceBounds: CGRect
+            let sourceRect: CGRect
+            let destinationPage: Int
+            let scale: CGFloat
+        }
+        var slices: [Slice] = []
+        for sourceIndex in 0..<source.numberOfPages {
+            guard let page = source.page(at: sourceIndex + 1) else { throw ExportError.printFailed }
+            let bounds = page.getBoxRect(.mediaBox)
+            guard bounds.width.isFinite, bounds.height.isFinite, bounds.width > 0, bounds.height > 0 else {
+                throw ExportError.printFailed
+            }
+            let scale = printableWidth / bounds.width
+            let sourceHeight = printableHeight / scale
+            let count = max(1, Int(ceil(bounds.height / sourceHeight)))
+            for index in 0..<count {
+                let maximumY = bounds.maxY - CGFloat(index) * sourceHeight
+                let minimumY = max(bounds.minY, maximumY - sourceHeight)
+                slices.append(Slice(sourcePage: sourceIndex, sourceBounds: bounds,
+                                    sourceRect: CGRect(x: bounds.minX, y: minimumY, width: bounds.width,
+                                                       height: maximumY - minimumY),
+                                    destinationPage: slices.count, scale: scale))
+            }
+        }
+        let output = NSMutableData()
+        guard let consumer = CGDataConsumer(data: output as CFMutableData) else { throw ExportError.printFailed }
+        var mediaBox = CGRect(origin: .zero, size: paperSize)
+        guard let context = CGContext(consumer: consumer, mediaBox: &mediaBox, nil) else { throw ExportError.printFailed }
+        let printableBounds = CGRect(x: printInfo.leftMargin, y: printInfo.bottomMargin,
+                                     width: printableWidth, height: printableHeight)
+        for slice in slices {
+            guard let page = source.page(at: slice.sourcePage + 1) else { throw ExportError.printFailed }
+            context.beginPDFPage(nil)
+            context.setFillColor(CGColor(gray: 1, alpha: 1))
+            context.fill(mediaBox)
+            context.saveGState()
+            context.clip(to: printableBounds)
+            context.translateBy(x: printableBounds.minX, y: printableBounds.minY)
+            context.scaleBy(x: slice.scale, y: slice.scale)
+            context.translateBy(x: -slice.sourceBounds.minX, y: -slice.sourceRect.minY)
+            context.drawPDFPage(page)
+            context.restoreGState()
+            context.endPDFPage()
+        }
+        context.closePDF()
+        guard let paginated = PDFDocument(data: output as Data), paginated.pageCount == slices.count else {
+            throw ExportError.printFailed
+        }
+        func destination(for sourcePage: Int, point: CGPoint) -> PDFDestination? {
+            guard let slice = slices.first(where: { $0.sourcePage == sourcePage && point.y >= $0.sourceRect.minY && point.y <= $0.sourceRect.maxY }),
+                  let page = paginated.page(at: slice.destinationPage) else { return nil }
+            let transformed = CGPoint(x: printableBounds.minX + (point.x - slice.sourceBounds.minX) * slice.scale,
+                                      y: printableBounds.minY + (point.y - slice.sourceRect.minY) * slice.scale)
+            return PDFDestination(page: page, at: transformed)
+        }
+        for slice in slices {
+            guard let sourcePage = sourceDocument.page(at: slice.sourcePage),
+                  let destinationPage = paginated.page(at: slice.destinationPage) else { throw ExportError.printFailed }
+            for annotation in sourcePage.annotations {
+                let intersection = annotation.bounds.intersection(slice.sourceRect)
+                guard !intersection.isNull, !intersection.isEmpty else { continue }
+                let bounds = CGRect(x: printableBounds.minX + (intersection.minX - slice.sourceBounds.minX) * slice.scale,
+                                    y: printableBounds.minY + (intersection.minY - slice.sourceRect.minY) * slice.scale,
+                                    width: intersection.width * slice.scale, height: intersection.height * slice.scale)
+                let copy = PDFAnnotation(bounds: bounds, forType: .link, withProperties: nil)
+                copy.url = annotation.url
+                copy.contents = annotation.contents
+                copy.shouldPrint = annotation.shouldPrint
+                if let target = annotation.destination, let targetPage = target.page {
+                    let targetIndex = sourceDocument.index(for: targetPage)
+                    copy.destination = destination(for: targetIndex, point: target.point)
+                }
+                destinationPage.addAnnotation(copy)
+            }
+        }
+        guard let result = paginated.dataRepresentation(), !result.isEmpty else { throw ExportError.printFailed }
+        return result
     }
 
     @objc private func printDidRun(_ operation: NSPrintOperation, success: Bool, contextInfo: UnsafeMutableRawPointer?) {

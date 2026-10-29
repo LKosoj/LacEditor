@@ -1725,7 +1725,6 @@ final class WindowManager: ObservableObject {
         to state: AppState,
         window: NSWindow
     ) {
-        state.isSidebarVisible = restoration.isSidebarVisible
         if let id = restoration.documents.first?.id, let folder = restoration.folderStates[id] {
             state.folderWorkspace.restore(folder)
         }
@@ -1734,7 +1733,6 @@ final class WindowManager: ObservableObject {
         var previousWindow = window
         for document in restoration.documents.dropFirst() {
             let tabState = openNewWindow(with: document)
-            tabState.isSidebarVisible = restoration.isSidebarVisible
             if let folder = restoration.folderStates[document.id] { tabState.folderWorkspace.restore(folder) }
             guard let tabWindow = tabState.hostWindow else { continue }
             previousWindow.addTabbedWindow(tabWindow, ordered: .above)

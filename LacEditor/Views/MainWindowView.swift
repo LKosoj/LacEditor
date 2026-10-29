@@ -221,7 +221,8 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         controller.splitView.isVertical = true
         controller.view.wantsLayer = true
         DispatchQueue.main.async { [weak controller] in
-            guard let controller else { return }
+            guard let controller,
+                  controller.splitViewItems.first?.isCollapsed == false else { return }
             controller.splitView.setPosition(
                 LacEditorDesign.sidebarWidth,
                 ofDividerAt: 0
@@ -253,12 +254,22 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         )
     }
 
+    static func dismantleNSViewController(
+        _ controller: NSSplitViewController,
+        coordinator: Coordinator
+    ) {
+        coordinator.stopObservingCollapseState()
+    }
+
+    @MainActor
     final class Coordinator {
         var sidebarController: NSHostingController<AnyView>?
         var contentController: NSHostingController<AnyView>?
         weak var sidebarItem: NSSplitViewItem?
         private var collapseObservation: NSKeyValueObservation?
+        private var splitResizeObservation: NSObjectProtocol?
         private var isApplyingCollapseState = false
+        private var isDismantling = false
 
         func observeCollapseState(appState: AppState) {
             // The system toolbar button changes NSSplitViewItem directly.
@@ -266,12 +277,39 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
             collapseObservation = sidebarItem?.observe(\.isCollapsed, options: [.new]) {
                 [weak self, weak appState] item, _ in
                 MainActor.assumeIsolated {
-                    guard let self, let appState, !self.isApplyingCollapseState, !appState.isDistractionFree else { return }
-                    let isVisible = !item.isCollapsed
-                    if appState.isSidebarVisible != isVisible {
-                        appState.isSidebarVisible = isVisible
+                    self?.synchronizeCollapseState(item: item, appState: appState)
+                }
+            }
+            if let splitView = sidebarItem?.viewController.parent?.view as? NSSplitView {
+                splitResizeObservation = NotificationCenter.default.addObserver(
+                    forName: NSSplitView.didResizeSubviewsNotification,
+                    object: splitView,
+                    queue: .main
+                ) { [weak self, weak appState] _ in
+                    MainActor.assumeIsolated {
+                        guard let sidebarItem = self?.sidebarItem else { return }
+                        self?.synchronizeCollapseState(item: sidebarItem, appState: appState)
                     }
                 }
+            }
+        }
+
+        private func synchronizeCollapseState(item: NSSplitViewItem, appState: AppState?) {
+            guard let appState, !isDismantling, !isApplyingCollapseState,
+                  !appState.isDistractionFree else { return }
+            let isVisible = !item.isCollapsed
+            if appState.isSidebarVisible != isVisible {
+                appState.isSidebarVisible = isVisible
+            }
+        }
+
+        func stopObservingCollapseState() {
+            isDismantling = true
+            collapseObservation?.invalidate()
+            collapseObservation = nil
+            if let splitResizeObservation {
+                NotificationCenter.default.removeObserver(splitResizeObservation)
+                self.splitResizeObservation = nil
             }
         }
 

@@ -85,7 +85,7 @@ final class MarkdownRubyRenderServiceTests: XCTestCase {
         }
         XCTAssertNil(two.caretPositions(at: 2))
         XCTAssertNil(two.caretPositions(at: 4))
-        XCTAssertNil(two.characterIndex(at: NSPoint(x: .nan, y: 0)))
+        XCTAssertNil(two.characterIndex(at: NSPoint(x: CGFloat.nan, y: 0)))
     }
 
     func testOriginalFontDescriptorAndFeaturesReachCoreText() throws {
@@ -179,7 +179,7 @@ final class MarkdownRubyRenderServiceTests: XCTestCase {
         for (scale, size) in [(CGFloat.nan, NSSize(width: 100, height: 100)),
                               (0, NSSize(width: 100, height: 100)),
                               (2, NSSize(width: 1, height: 1)),
-                              (2, NSSize(width: .infinity, height: 100)),
+                              (2, NSSize(width: CGFloat.infinity, height: 100)),
                               (CGFloat.greatestFiniteMagnitude, NSSize(width: 100, height: 100))] {
             XCTAssertNil(MarkdownRubyRenderService.render(base: value, annotation: "kan", scale: scale, availableSize: size))
         }

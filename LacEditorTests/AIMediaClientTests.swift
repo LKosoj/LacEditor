@@ -22,6 +22,27 @@ private final class AIMediaURLProtocol: URLProtocol {
 }
 
 final class AIMediaClientTests: XCTestCase {
+    private func requestBody(_ request: URLRequest) throws -> Data {
+        if let body = request.httpBody { return body }
+        let stream = try XCTUnwrap(request.httpBodyStream)
+        stream.open()
+        defer { stream.close() }
+        var body = Data()
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count < 0 { throw try XCTUnwrap(stream.streamError) }
+            if count == 0 { break }
+            body.append(buffer, count: count)
+        }
+        return body
+    }
+
+    private func pdfPage() throws -> PDFPage {
+        let data = try XCTUnwrap(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="))
+        return try XCTUnwrap(PDFPage(image: try XCTUnwrap(NSImage(data: data))))
+    }
+
     private func client() -> AIMediaClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [AIMediaURLProtocol.self]
@@ -48,7 +69,7 @@ final class AIMediaClientTests: XCTestCase {
                 XCTAssertEqual(request.url?.path, "/gateway/v1/audio/transcriptions")
                 XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer secret")
                 XCTAssertTrue(request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data; boundary=") == true)
-                let body = try XCTUnwrap(request.httpBody)
+                let body = try self.requestBody(request)
                 XCTAssertNotNil(body.range(of: bytes))
                 XCTAssertNotNil(body.range(of: Data("name=\"model\"\r\n\r\nexample/model".utf8)))
                 XCTAssertNotNil(body.range(of: Data("name=\"response_format\"\r\n\r\ntext".utf8)))
@@ -60,14 +81,14 @@ final class AIMediaClientTests: XCTestCase {
     }
     func testPDFMultipartAndDOCXConversion() async throws {
         let document = PDFDocument()
-        document.insert(PDFPage(image: NSImage(size: NSSize(width: 10, height: 10)))!, at: 0)
+        document.insert(try pdfPage(), at: 0)
         let file = try temporaryFile(try XCTUnwrap(document.dataRepresentation()), extension: "pdf")
         defer { try? FileManager.default.removeItem(at: file) }
         AIMediaURLProtocol.handler = { request in
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer secret")
             XCTAssertEqual(request.httpMethod, "POST")
             XCTAssertEqual(request.url?.path, "/gateway/v1/pdf/convert")
-            let body = try XCTUnwrap(request.httpBody)
+            let body = try self.requestBody(request)
             for field in ["name=\"output\"\r\n\r\ndocx", "Content-Type: application/pdf"] {
                 XCTAssertNotNil(body.range(of: Data(field.utf8)))
             }
@@ -98,7 +119,7 @@ final class AIMediaClientTests: XCTestCase {
 
     func testInvalidPDFConversionResponse() async throws {
         let document = PDFDocument()
-        document.insert(PDFPage(image: NSImage(size: NSSize(width: 10, height: 10)))!, at: 0)
+        document.insert(try pdfPage(), at: 0)
         let file = try temporaryFile(try XCTUnwrap(document.dataRepresentation()), extension: "pdf")
         defer { try? FileManager.default.removeItem(at: file) }
         AIMediaURLProtocol.handler = { _ in (200, Data(#"{"docx_base64":"not-base64"}"#.utf8)) }
@@ -112,7 +133,7 @@ final class AIMediaClientTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: file) }
         AIMediaURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.path, "/gateway/v1/responses")
-            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any])
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: self.requestBody(request)) as? [String: Any])
             let input = try XCTUnwrap(body["input"] as? [[String: Any]])
             let content = try XCTUnwrap(input.first?["content"] as? [[String: Any]])
             let url = try XCTUnwrap(content.first?["image_url"] as? String)
@@ -120,7 +141,7 @@ final class AIMediaClientTests: XCTestCase {
             let encoded = String(url.dropFirst("data:image/png;base64,".count))
             let output = try XCTUnwrap(Data(base64Encoded: encoded))
             XCTAssertNotNil(NSBitmapImageRep(data: output))
-            return (200, Data(#"{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"# Text"}]}]}"#.utf8))
+            return (200, Data(##"{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"# Text"}]}]}"##.utf8))
         }
         let result = try await client().recognize(fileURL: file, profile: profile(.responses), key: nil)
         XCTAssertEqual(result, "# Text")
@@ -134,7 +155,7 @@ final class AIMediaClientTests: XCTestCase {
         let file = try temporaryFile(tiff, extension: "tiff")
         defer { try? FileManager.default.removeItem(at: file) }
         AIMediaURLProtocol.handler = { request in
-            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any])
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: self.requestBody(request)) as? [String: Any])
             let input = try XCTUnwrap(body["input"] as? [[String: Any]])
             let content = try XCTUnwrap(input.first?["content"] as? [[String: Any]])
             let url = try XCTUnwrap(content.first?["image_url"] as? String)
@@ -163,7 +184,7 @@ final class AIMediaClientTests: XCTestCase {
         let file = try temporaryFile(encoded as Data, extension: "jpg")
         defer { try? FileManager.default.removeItem(at: file) }
         AIMediaURLProtocol.handler = { request in
-            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any])
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: self.requestBody(request)) as? [String: Any])
             let input = try XCTUnwrap(body["input"] as? [[String: Any]])
             let content = try XCTUnwrap(input.first?["content"] as? [[String: Any]])
             let url = try XCTUnwrap(content.first?["image_url"] as? String)
@@ -178,7 +199,7 @@ final class AIMediaClientTests: XCTestCase {
         let result = try await client().recognize(fileURL: file, profile: profile(.responses), key: nil)
         XCTAssertEqual(result, "Text")
         AIMediaURLProtocol.handler = { request in
-            let body = try XCTUnwrap(request.httpBody)
+            let body = try self.requestBody(request)
             let start = try XCTUnwrap(body.range(of: Data("%PDF".utf8)))
             let end = try XCTUnwrap(body.range(of: Data("%%EOF".utf8), in: start.lowerBound..<body.endIndex))
             let pdf = try XCTUnwrap(PDFDocument(data: body.subdata(in: start.lowerBound..<end.upperBound)))
@@ -195,7 +216,7 @@ final class AIMediaClientTests: XCTestCase {
 
     func testCancellationDuringDOCXConversionDiscardsResultAndTemporaryFile() async throws {
         let document = PDFDocument()
-        document.insert(PDFPage(image: NSImage(size: NSSize(width: 10, height: 10)))!, at: 0)
+        document.insert(try pdfPage(), at: 0)
         let file = try temporaryFile(try XCTUnwrap(document.dataRepresentation()), extension: "pdf")
         defer { try? FileManager.default.removeItem(at: file) }
         AIMediaURLProtocol.handler = { _ in (200, Data(#"{"docx_base64":"UEsDBA=="}"#.utf8)) }

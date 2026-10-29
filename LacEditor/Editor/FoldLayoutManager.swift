@@ -21,77 +21,7 @@ enum EditorLayoutPolicy {
     }
 }
 
-private final class MarkdownCollapsingGlyphGenerator: NSGlyphGenerator {
-    weak var layoutManager: FoldLayoutManager?
-
-    init(layoutManager: FoldLayoutManager) {
-        self.layoutManager = layoutManager
-        super.init()
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-    }
-
-    override func generateGlyphs(
-        for glyphStorage: any NSGlyphStorage,
-        desiredNumberOfCharacters numberOfCharacters: Int,
-        glyphIndex: UnsafeMutablePointer<Int>?,
-        characterIndex: UnsafeMutablePointer<Int>?
-    ) {
-        guard let glyphIndex, let characterIndex, let layoutManager else {
-            NSGlyphGenerator.shared.generateGlyphs(
-                for: glyphStorage,
-                desiredNumberOfCharacters: numberOfCharacters,
-                glyphIndex: glyphIndex,
-                characterIndex: characterIndex
-            )
-            return
-        }
-
-        let end = characterIndex.pointee + numberOfCharacters
-        while characterIndex.pointee < end {
-            guard let range = layoutManager.collapsibleMarkdownImageRange(
-                atOrAfter: characterIndex.pointee,
-                before: end
-            ) else {
-                NSGlyphGenerator.shared.generateGlyphs(
-                    for: glyphStorage,
-                    desiredNumberOfCharacters: end - characterIndex.pointee,
-                    glyphIndex: glyphIndex,
-                    characterIndex: characterIndex
-                )
-                return
-            }
-
-            if characterIndex.pointee < range.location {
-                NSGlyphGenerator.shared.generateGlyphs(
-                    for: glyphStorage,
-                    desiredNumberOfCharacters: range.location - characterIndex.pointee,
-                    glyphIndex: glyphIndex,
-                    characterIndex: characterIndex
-                )
-                continue
-            }
-
-            var glyph = NSGlyph(NSNullGlyph)
-            withUnsafePointer(to: &glyph) { pointer in
-                glyphStorage.insertGlyphs(
-                    pointer,
-                    length: 1,
-                    forStartingGlyphAt: glyphIndex.pointee,
-                    characterIndex: characterIndex.pointee
-                )
-            }
-            glyphIndex.pointee += 1
-            characterIndex.pointee = min(end, NSMaxRange(range))
-        }
-    }
-}
-
 final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
-    private static let collapsedImageGlyphThreshold = 64 * 1024
-    private lazy var markdownGlyphGenerator = MarkdownCollapsingGlyphGenerator(layoutManager: self)
     static let defaultLineSpacing: CGFloat = 4
 
     /// The font selected by the user, not the fallback font AppKit may return
@@ -818,18 +748,6 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         invalidateMarkdownLayout(in: range)
     }
 
-    fileprivate func collapsibleMarkdownImageRange(atOrAfter location: Int, before end: Int) -> NSRange? {
-        markdownImages.lazy
-            .filter {
-                $0.range.length >= Self.collapsedImageGlyphThreshold
-                    && imageIsVisible($0.range)
-                    && NSMaxRange($0.range) > location
-                    && $0.range.location < end
-            }
-            .map(\.range)
-            .min { $0.location < $1.location }
-    }
-
     func clearMarkdownImages() {
         let ranges = markdownImages.map(\.range)
         markdownImages.removeAll()
@@ -1428,9 +1346,32 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     }
 
     override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
-        super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
-        guard let container = textContainers.first else { return }
         let visible = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
+        var drawableRanges = [glyphsToShow]
+        for entry in markdownImages where imageIsVisible(entry.range)
+            && NSIntersectionRange(entry.range, visible).length > 0 {
+            let hidden = NSIntersectionRange(
+                glyphRange(forCharacterRange: entry.range, actualCharacterRange: nil),
+                glyphsToShow
+            )
+            guard hidden.length > 0 else { continue }
+            drawableRanges = drawableRanges.flatMap { candidate in
+                let intersection = NSIntersectionRange(candidate, hidden)
+                guard intersection.length > 0 else { return [candidate] }
+                var result: [NSRange] = []
+                if candidate.location < intersection.location {
+                    result.append(NSRange(location: candidate.location, length: intersection.location - candidate.location))
+                }
+                if NSMaxRange(intersection) < NSMaxRange(candidate) {
+                    result.append(NSRange(location: NSMaxRange(intersection), length: NSMaxRange(candidate) - NSMaxRange(intersection)))
+                }
+                return result
+            }
+        }
+        for range in drawableRanges where range.length > 0 {
+            super.drawGlyphs(forGlyphRange: range, at: origin)
+        }
+        guard let container = textContainers.first else { return }
         var replacementIndex = upperBound(visible.location, count: markdownTextReplacements.count) { markdownTextReplacements[$0].range.location }
         if replacementIndex > 0 { replacementIndex -= 1 }
         while replacementIndex < markdownTextReplacements.count {
@@ -1824,14 +1765,12 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
 
     override init() {
         super.init()
-        glyphGenerator = markdownGlyphGenerator
         delegate = self
         updateFontMetrics()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
-        glyphGenerator = markdownGlyphGenerator
         delegate = self
         updateFontMetrics()
     }
@@ -2136,7 +2075,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         }
         if let entry = markdownBlockImages.first(where: { imageIsVisible($0.range) && NSIntersectionRange($0.range, characters).length > 0 }),
            entry.image.size.width > 0, entry.image.size.height > 0 {
-            let first = characters.location <= entry.range.location && NSMaxRange(characters) > entry.range.location
+            let first = NSLocationInRange(glyphIndexForCharacter(at: entry.range.location), glyphRange)
             let indent = listImageIndent(entry.range)
             let extent: CGFloat
             if let visual = uppercaseHeadingVisuals[entry.range] {
@@ -2152,7 +2091,10 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         }
         if let entry = markdownImages.first(where: { imageIsVisible($0.range) && NSIntersectionRange($0.range, characters).length > 0 }),
            entry.image.size.width > 0, entry.image.size.height > 0 {
-            let height = max(editorLineHeight, imageLogicalSize(entry.image, in: textContainer, centered: true).height)
+            let first = NSLocationInRange(glyphIndexForCharacter(at: entry.range.location), glyphRange)
+            let height = first
+                ? max(editorLineHeight, imageLogicalSize(entry.image, in: textContainer, centered: true).height)
+                : 0.01
             lineFragmentRect.pointee.size.height = height
             lineFragmentUsedRect.pointee.size.height = height
             baselineOffset.pointee = editorBaselineOffset(orientation: textContainer.layoutOrientation)

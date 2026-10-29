@@ -127,7 +127,7 @@ final class MarkdownImageTests: XCTestCase {
         let storage = NSTextStorage(string: source)
         let layout = FoldLayoutManager()
         storage.addLayoutManager(layout)
-        let container = NSTextContainer(containerSize: NSSize(width: 400, height: .greatestFiniteMagnitude))
+        let container = NSTextContainer(containerSize: NSSize(width: 400, height: CGFloat.greatestFiniteMagnitude))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 5_000), textContainer: container)
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 120))

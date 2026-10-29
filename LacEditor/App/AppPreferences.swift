@@ -8,11 +8,23 @@ enum AppEnvironment {
     static let experimentIdentifier = "com.laceditor.ui-experiment"
     static var isExperiment: Bool { Bundle.main.bundleIdentifier == experimentIdentifier }
     static var displayName: String {
+        let variant: (english: String, russian: String, chinese: String)?
         switch Bundle.main.bundleIdentifier {
-        case experimentIdentifier: L10n.tr("LacEditor 实验版")
-        case "com.laceditor.development": L10n.tr("LacEditor 开发版")
-        case "com.laceditor.acceptance": L10n.tr("LacEditor 验收版")
-        default: "LacEditor"
+        case experimentIdentifier:
+            variant = ("LacEditor Experiment", "LacEditor: экспериментальная версия", "LacEditor 实验版")
+        case "com.laceditor.development":
+            variant = ("LacEditor Development", "LacEditor: версия для разработки", "LacEditor 开发版")
+        case "com.laceditor.acceptance":
+            variant = ("LacEditor Acceptance", "LacEditor: приёмочная версия", "LacEditor 验收版")
+        default:
+            variant = nil
+        }
+
+        guard let variant else { return "LacEditor" }
+        switch L10n.languageCode {
+        case "ru": return variant.russian
+        case "zh-Hans": return variant.chinese
+        default: return variant.english
         }
     }
     static var experimentIteration: String { Bundle.main.object(forInfoDictionaryKey: "LacEditorExperimentIteration") as? String ?? "UI8" }
@@ -138,7 +150,7 @@ struct MarkdownImageUploadConfiguration: Codable, Equatable {
 
 struct MarkdownNativeExportOptions: Codable, Equatable {
     var pageBreakTopHeadings: Bool? = nil
-    var paper = "system"
+    var paper = "a4"
     var paperWidth = 595.28
     var paperHeight = 841.89
     var customMargins = false

@@ -11,7 +11,7 @@ final class WritingModesTests: XCTestCase {
         let storage = NSTextStorage(string: source, attributes: [.font: lacEditorFont(size: 14), .foregroundColor: NSColor.systemRed])
         let layout = FoldLayoutManager()
         storage.addLayoutManager(layout)
-        let container = NSTextContainer(containerSize: NSSize(width: 400, height: .greatestFiniteMagnitude))
+        let container = NSTextContainer(containerSize: NSSize(width: 400, height: CGFloat.greatestFiniteMagnitude))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 400), textContainer: container)
         view.isVerticallyResizable = true
@@ -94,7 +94,7 @@ final class WritingModesTests: XCTestCase {
         XCTAssertEqual(view.textContainer?.containerSize.width ?? 0, scroll.contentView.bounds.width, accuracy: 1)
         if let layout = view.layoutManager, let container = view.textContainer {
             layout.ensureLayout(for: container)
-            let glyphs = layout.glyphRange(forCharacterRange: NSRange(location: 2, length: 1), actualGlyphRange: nil)
+            let glyphs = layout.glyphRange(forCharacterRange: NSRange(location: 2, length: 1), actualCharacterRange: nil)
             let rect = layout.boundingRect(forGlyphRange: glyphs, in: container).offsetBy(dx: view.textContainerOrigin.x, dy: view.textContainerOrigin.y)
             let point = NSPoint(x: rect.minX + rect.width * 0.25, y: rect.midY)
             let physical = scroll.contentView.convert(point, from: view)
