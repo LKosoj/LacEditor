@@ -62,8 +62,8 @@ struct TextTransformationView: View {
                 }
                 HStack(spacing: 10) {
                     Text(state.message ?? L10n.tr("正文保持不变，直到你点击「替换原文」。"))
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
-                        .lineLimit(1).help(state.message ?? "")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                        .lineLimit(3).fixedSize(horizontal: false, vertical: true).help(state.message ?? "")
                     Spacer(minLength: 12)
                     Button(L10n.tr("关闭"), action: close).keyboardShortcut(.cancelAction)
                     CopyTransformationResultButton(feedback: state.copyFeedback) { appState.copyTextTransformationResult() }
@@ -87,12 +87,12 @@ struct TextTransformationView: View {
                     .foregroundStyle(result ? LacEditorDesign.accent : .secondary)
                 Text(title).fontWeight(.medium)
                 Spacer()
-                Text(L10n.tr("%@ 字符", String(describing: (text as NSString).length))).foregroundStyle(.tertiary).monospacedDigit()
-            }.font(.system(size: 11)).padding(12)
+                Text(L10n.tr("%@ 字符", String(describing: (text as NSString).length))).foregroundStyle(.secondary).monospacedDigit()
+            }.font(.subheadline).padding(12)
             Divider().opacity(0.5)
             ScrollView(.vertical) {
                 Text(previewText(text))
-                    .font(.system(size: 13, design: .monospaced)).lineSpacing(4)
+                    .font(.body.monospaced()).lineSpacing(4)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .fixedSize(horizontal: false, vertical: true).padding(14)
@@ -123,7 +123,7 @@ private struct CopyTransformationResultButton: View {
         Button(action: action) {
             Label(feedback.item == nil ? L10n.tr("复制结果") : L10n.tr("已复制"),
                   systemImage: feedback.item == nil ? "doc.on.doc" : "checkmark")
-                .frame(width: 82)
+                .frame(minWidth: 96)
         }
         .accessibilityIdentifier("transformation.copy")
         .accessibilityLabel(feedback.item == nil ? L10n.tr("复制转换结果") : L10n.tr("转换结果已复制"))

@@ -748,6 +748,7 @@ func configureEditorWindowChrome(_ window: NSWindow, appState: AppState? = nil) 
     window.tabbingMode = .preferred
     window.tab.title = appState?.selectedDocument?.displayName ?? L10n.tr("未命名")
     window.isDocumentEdited = appState?.selectedDocument?.isDirty == true
+    window.representedURL = appState?.selectedDocument?.url
     // This is the same structure used by Finder: the native split sidebar is
     // allowed to extend through the titlebar, while one compact AppKit toolbar
     // owns every titlebar control and tracks the split-view divider.

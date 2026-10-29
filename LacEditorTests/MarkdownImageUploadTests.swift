@@ -1334,7 +1334,10 @@ final class MarkdownImageUploadTests: XCTestCase {
         state.uploadMarkdownImages(selectedOnly: true)
         for _ in 0..<150 where !FileManager.default.fileExists(atPath: started.path) { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertTrue(FileManager.default.fileExists(atPath: started.path))
-        XCTAssertNotNil(state.takeDocumentForTransfer(document))
+        document.markSaved()
+        state.close(document)
+        for _ in 0..<100 where state.documents.contains(where: { $0 === document }) { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertFalse(state.documents.contains { $0 === document })
         try await Task.sleep(for: .milliseconds(1200))
         XCTAssertFalse(FileManager.default.fileExists(atPath: late.path))
         XCTAssertEqual(view.string, source)

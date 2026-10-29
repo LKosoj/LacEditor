@@ -305,13 +305,16 @@ final class AppPreferences: ObservableObject {
 
     func markdownColors(darkMode: Bool) -> MarkdownColorOverrides { darkMode ? markdownDarkColors : markdownLightColors }
 
+    static let defaultMarkdownMaximumWidth: Double = 760
+
     @Published var markdownMaximumWidth: Double? {
         didSet {
             if let value = markdownMaximumWidth, !value.isFinite || value <= 0 {
                 markdownMaximumWidth = oldValue
                 return
             }
-            defaults.set(markdownMaximumWidth, forKey: Keys.markdownMaximumWidth)
+            // 0 — явный выбор «без ограничения»; отсутствие ключа означает ширину по умолчанию.
+            defaults.set(markdownMaximumWidth ?? 0, forKey: Keys.markdownMaximumWidth)
         }
     }
 
@@ -497,13 +500,15 @@ final class AppPreferences: ObservableObject {
 
     var markdownTypography: MarkdownTypography? {
         let customMetrics = defaults.bool(forKey: Keys.markdownTypographyCustomized)
-        guard customMetrics || markdownMaximumWidth != nil || markdownTOCMaxLevel != 6 || editorLigatures != nil || !markdownSmallCapsLevels.isEmpty || !markdownUppercaseHeadingLevels.isEmpty || !markdownCenteredHeadingLevels.isEmpty || markdownTextAlignment != nil || markdownRightToLeft || markdownVerticalWriting || markdownStrikeCompletedTasks || markdownNumberHeadings || !markdownListStyles.ordered.isEmpty || !markdownListStyles.unordered.isEmpty || markdownParagraphSpacing != nil || !markdownLightColors.isEmpty || !markdownDarkColors.isEmpty else { return nil }
+        // Ширина по умолчанию не считается настройкой: иначе печать и PDF получили бы лишнее ограничение.
+        let explicitWidth = defaults.object(forKey: Keys.markdownMaximumWidth) == nil ? nil : markdownMaximumWidth
+        guard customMetrics || explicitWidth != nil || markdownTOCMaxLevel != 6 || editorLigatures != nil || !markdownSmallCapsLevels.isEmpty || !markdownUppercaseHeadingLevels.isEmpty || !markdownCenteredHeadingLevels.isEmpty || markdownTextAlignment != nil || markdownRightToLeft || markdownVerticalWriting || markdownStrikeCompletedTasks || markdownNumberHeadings || !markdownListStyles.ordered.isEmpty || !markdownListStyles.unordered.isEmpty || markdownParagraphSpacing != nil || !markdownLightColors.isEmpty || !markdownDarkColors.isEmpty else { return nil }
         let font = Self.textFont(family: editorTextFontFamily, size: editorFontSize)
         let lineHeight = NSLayoutManager().defaultLineHeight(for: font) + editorLineSpacing
         let textFamily = Self.availableFont(family: editorTextFontFamily, size: editorFontSize)?.familyName
         let codeFamily = Self.availableFont(family: editorCodeFontFamily, size: editorFontSize)?.familyName
         return MarkdownTypography(fontSize: Double(editorFontSize), lineHeight: Double(lineHeight),
-                                  textFamily: textFamily, codeFamily: codeFamily, maximumWidth: markdownMaximumWidth, usesCustomFontMetrics: customMetrics,
+                                  textFamily: textFamily, codeFamily: codeFamily, maximumWidth: explicitWidth, usesCustomFontMetrics: customMetrics,
                                   tocMaxLevel: markdownTOCMaxLevel, ligatures: editorLigatures, smallCapsLevels: markdownSmallCapsLevels, centeredHeadingLevels: markdownCenteredHeadingLevels,
                                   textAlignment: markdownTextAlignment?.rawValue, rightToLeft: markdownRightToLeft, verticalWriting: markdownVerticalWriting, strikeCompletedTasks: markdownStrikeCompletedTasks, numberHeadings: markdownNumberHeadings, paragraphSpacing: markdownParagraphSpacing,
                                   listStyles: markdownListStyles, uppercaseHeadingLevels: markdownUppercaseHeadingLevels, lightColors: markdownLightColors, darkColors: markdownDarkColors)
@@ -547,7 +552,13 @@ final class AppPreferences: ObservableObject {
         markdownLightColors = defaults.data(forKey: Keys.markdownLightColors).flatMap { try? JSONDecoder().decode(MarkdownColorOverrides.self, from: $0) } ?? MarkdownColorOverrides()
         markdownDarkColors = defaults.data(forKey: Keys.markdownDarkColors).flatMap { try? JSONDecoder().decode(MarkdownColorOverrides.self, from: $0) } ?? MarkdownColorOverrides()
         let savedWidth = (defaults.object(forKey: Keys.markdownMaximumWidth) as? NSNumber)?.doubleValue
-        markdownMaximumWidth = savedWidth.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        if let savedWidth, savedWidth.isFinite, savedWidth > 0 {
+            markdownMaximumWidth = savedWidth
+        } else if savedWidth == 0 {
+            markdownMaximumWidth = nil
+        } else {
+            markdownMaximumWidth = Self.defaultMarkdownMaximumWidth
+        }
         statisticsDisplayUnit = StatisticsDisplayUnit(rawValue: defaults.string(forKey: Keys.statisticsDisplayUnit) ?? "") ?? .words
         let readingSpeed = defaults.integer(forKey: Keys.readingWordsPerMinute)
         readingWordsPerMinute = readingSpeed > 0 ? readingSpeed : 200

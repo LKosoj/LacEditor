@@ -1,6 +1,63 @@
 import AppKit
 import Combine
 
+/// Components for the title's path menu: the file first, then each parent up to the volume root (same order as the standard proxy-icon menu).
+enum TitlePathMenu {
+    static func components(for url: URL?) -> [URL] {
+        guard let url, url.isFileURL else { return [] }
+        var result: [URL] = []
+        var current = url.standardizedFileURL
+        while true {
+            result.append(current)
+            let parent = current.deletingLastPathComponent()
+            if parent.path == current.path || current.path == "/" { break }
+            current = parent
+        }
+        return result
+    }
+}
+
+/// The window title is hidden, so the system proxy-icon menu is not drawn; Cmd-click or right-click on the title shows the path instead.
+@MainActor
+final class TitlePathField: NSTextField {
+    var pathURL: URL?
+
+    private func pathMenu() -> NSMenu? {
+        let urls = TitlePathMenu.components(for: pathURL)
+        guard !urls.isEmpty else { return nil }
+        let menu = NSMenu()
+        for url in urls {
+            let item = NSMenuItem(
+                title: FileManager.default.displayName(atPath: url.path),
+                action: #selector(revealPathItem(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = url
+            let icon = NSWorkspace.shared.icon(forFile: url.path)
+            icon.size = NSSize(width: 16, height: 16)
+            item.image = icon
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? { pathMenu() ?? super.menu(for: event) }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.command), let menu = pathMenu() {
+            NSMenu.popUpContextMenu(menu, with: event, for: self)
+        } else {
+            super.mouseDown(with: event)
+        }
+    }
+
+    @objc private func revealPathItem(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+}
+
 /// Owns the editor window's toolbar as a native AppKit toolbar. Keeping all
 /// titlebar controls in one toolbar lets macOS provide a single active/inactive
 /// surface and align the sidebar boundary with the split view divider.
@@ -42,7 +99,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         let canUndo: Bool
         let canRedo: Bool
     }
-    private let titleField = NSTextField(labelWithString: "LacEditor")
+    private let titleField = TitlePathField(labelWithString: "LacEditor")
     private let languageButton = NSPopUpButton(frame: .zero, pullsDown: false)
     private weak var sidebarItem: NSToolbarItem?
     private weak var historyItem: NSToolbarItemGroup?
@@ -113,10 +170,12 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         if previewItem != nil { lastPresentation = presentation }
         titleField.stringValue = presentation.title
         titleField.toolTip = document?.url?.path ?? L10n.tr("未命名文档")
+        titleField.pathURL = document?.url
         if let window = appState.hostWindow {
             if window.title != appState.windowTitle { window.title = appState.windowTitle }
             if window.tab.title != presentation.title { window.tab.title = presentation.title }
             if window.isDocumentEdited != presentation.dirty { window.isDocumentEdited = presentation.dirty }
+            if window.representedURL != presentation.url { window.representedURL = presentation.url }
         }
         undoItem?.isEnabled = presentation.canUndo
         redoItem?.isEnabled = presentation.canRedo
@@ -160,15 +219,14 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             ? L10n.tr("隐藏 Markdown 预览（⌥⌘P）")
             : L10n.tr("显示 Markdown 预览（⌥⌘P）")
         markdownPresentationItem?.isEnabled = document.language == .markdown
+        let presentationTip = document.isMarkdownFormatted
+            ? L10n.tr("显示 Markdown 源码")
+            : L10n.tr("显示格式化文本")
         markdownPresentationItem?.image = NSImage(
-            systemSymbolName: document.isMarkdownFormatted ? "text.document.fill" : "text.document",
-            accessibilityDescription: document.isMarkdownFormatted
-                ? L10n.tr("Markdown 源码")
-                : L10n.tr("格式化文本")
+            systemSymbolName: document.isMarkdownFormatted ? "chevron.left.forwardslash.chevron.right" : "textformat",
+            accessibilityDescription: presentationTip
         )
-        markdownPresentationItem?.toolTip = document.isMarkdownFormatted
-            ? L10n.tr("Markdown 源码")
-            : L10n.tr("格式化文本")
+        markdownPresentationItem?.toolTip = presentationTip
         aiWritingItem?.image = NSImage(
             systemSymbolName: appState.isAIWritingVisible ? "sparkles.rectangle.stack.fill" : "sparkles.rectangle.stack",
             accessibilityDescription: L10n.tr("显示或隐藏 AI 助手")
@@ -183,13 +241,8 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             .sidebarTrackingSeparator,
             ItemIdentifier.title,
             .flexibleSpace,
-            ItemIdentifier.newDocument,
-            ItemIdentifier.open,
-            ItemIdentifier.save,
-            ItemIdentifier.history,
             ItemIdentifier.find,
             ItemIdentifier.language,
-            ItemIdentifier.aiWriting,
             ItemIdentifier.markdownPresentation,
             ItemIdentifier.preview
         ]
@@ -252,7 +305,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             let item = makeActionItem(
                 identifier: itemIdentifier,
                 label: L10n.tr("保存"),
-                symbol: "externaldrive.fill",
+                symbol: "tray.and.arrow.down",
                 toolTip: L10n.tr("保存"),
                 action: #selector(saveDocument)
             )
@@ -395,8 +448,8 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         let item = makeActionItem(
             identifier: ItemIdentifier.markdownPresentation,
             label: L10n.tr("Markdown 编辑方式"),
-            symbol: "text.document",
-            toolTip: L10n.tr("格式化文本"),
+            symbol: "textformat",
+            toolTip: L10n.tr("显示格式化文本"),
             action: #selector(toggleMarkdownPresentation)
         )
         item.isHidden = appState?.selectedDocument?.language != .markdown
@@ -483,7 +536,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
     }
 
     private func configureTitleField() {
-        titleField.font = .systemFont(ofSize: 13, weight: .semibold)
+        titleField.font = NSFont.preferredFont(forTextStyle: .headline)
         titleField.textColor = .labelColor
         titleField.lineBreakMode = .byTruncatingMiddle
         titleField.maximumNumberOfLines = 1
@@ -497,7 +550,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
     private func configureLanguageButton() {
         languageButton.bezelStyle = .toolbar
         languageButton.controlSize = .regular
-        languageButton.font = .systemFont(ofSize: 12)
+        languageButton.font = NSFont.preferredFont(forTextStyle: .callout)
         languageButton.imagePosition = .imageLeading
         languageButton.target = self
         languageButton.action = #selector(selectLanguage(_:))

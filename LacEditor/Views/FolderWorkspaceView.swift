@@ -9,20 +9,22 @@ struct FolderWorkspaceView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(L10n.tr("工作文件夹"))
-                    .font(.system(size: 12, weight: .semibold))
+                    .sidebarHeadingStyle()
+                    .accessibilityAddTraits(.isHeader)
                 Spacer()
                 if store.rootURL != nil {
                     Button { store.refresh() } label: {
                         Image(systemName: "arrow.clockwise")
                     }
                     .buttonStyle(.plain)
+                    .padding(.trailing, 8)
                     .help(L10n.tr("刷新文件夹"))
                     .accessibilityLabel(L10n.tr("刷新文件夹"))
                 }
             }
             if let root = store.rootURL {
                 Text(root.lastPathComponent)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.callout.weight(.medium))
                     .lineLimit(1)
                     .help(root.path)
                     .contextMenu {
@@ -58,6 +60,9 @@ struct FolderWorkspaceView: View {
                     Text(notice).font(.caption).foregroundStyle(.secondary)
                 }
             } else {
+                Text(L10n.tr("选择包含文档的文件夹"))
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 Button(L10n.tr("打开文件夹…")) { appState.openFolder() }
                     .controlSize(.small)
             }
@@ -124,16 +129,96 @@ struct FolderWorkspaceVisibleRow: Identifiable {
     }
 }
 
+/// Строка с клавиатурным фокусом в дереве папки или в результатах поиска: фокус = выделение.
+/// `order` — только выбираемые строки в порядке показа; не сохраняется в сессии.
+@MainActor
+final class FolderListNavigation: ObservableObject {
+    @Published var focused: AnyHashable?
+    var order: [AnyHashable] = []
+    /// Цель клавиатурного перехода, ещё не созданная ленивым списком; см. SidebarSelection.focusRequest.
+    var focusRequest: AnyHashable?
+
+    func setOrder(_ ids: [AnyHashable]) {
+        order = ids
+        if let focused, !ids.contains(focused) { self.focused = nil }
+    }
+
+    func move(from current: AnyHashable?, offset: Int) {
+        if let next = SidebarKeyboardNavigation.moved(from: current, offset: offset, in: order) {
+            focusRequest = next == current ? nil : next
+            focused = next
+        }
+    }
+}
+
+/// Подсветка строки списка: выделение / hover; фокус рисует editorFocusRing снаружи.
+struct SidebarRowChrome: ViewModifier {
+    let isSelected: Bool
+    let isHovering: Bool
+    @Environment(\.controlActiveState) private var activeState
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 6).padding(.vertical, 4)
+            .contentShape(Rectangle())
+            .background(isSelected ? (activeState == .inactive ? Color.primary.opacity(0.07) : LacEditorDesign.selectionFill)
+                                   : (isHovering ? LacEditorDesign.hoverFill : .clear),
+                        in: RoundedRectangle(cornerRadius: LacEditorDesign.compactCornerRadius, style: .continuous))
+    }
+}
+
+extension View {
+    func sidebarRowChrome(selected: Bool, hovering: Bool) -> some View {
+        modifier(SidebarRowChrome(isSelected: selected, isHovering: hovering))
+    }
+}
+
+/// Общее поведение выбираемой строки дерева и поиска: hover, фокус, выделение, Вверх/Вниз/Return.
+struct FolderListRowNavigation: ViewModifier {
+    let id: AnyHashable
+    @ObservedObject var navigation: FolderListNavigation
+    let onReturn: () -> KeyPress.Result
+    @State private var isHovering = false
+    @FocusState private var isFocused: Bool
+
+    init(id: AnyHashable, navigation: FolderListNavigation, onReturn: @escaping () -> KeyPress.Result) {
+        self.id = id
+        self.navigation = navigation
+        self.onReturn = onReturn
+    }
+
+    private var isSelected: Bool { navigation.focused == id }
+
+    func body(content: Content) -> some View {
+        content
+            .buttonStyle(SoftRowButtonStyle())
+            .sidebarRowChrome(selected: isSelected, hovering: isHovering)
+            .focused($isFocused)
+            .editorFocusRing(isFocused)
+            .onHover { isHovering = $0 }
+            .onChange(of: navigation.focused) { _, value in if value == id { isFocused = true } }
+            .onChange(of: isFocused) { _, focused in if focused { navigation.focused = id; navigation.focusRequest = nil } }
+            .onAppear { if navigation.focusRequest == id { isFocused = true } }
+            .onKeyPress(.upArrow) { navigation.move(from: id, offset: -1); return .handled }
+            .onKeyPress(.downArrow) { navigation.move(from: id, offset: 1); return .handled }
+            .onKeyPress(.return) { onReturn() }
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
 struct FolderWorkspaceRowView: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject var store: FolderWorkspaceStore
     let row: FolderWorkspaceVisibleRow
+    let rows: [FolderWorkspaceVisibleRow]
+    let navigation: FolderListNavigation
 
     var body: some View {
         Group {
             switch row.content {
             case let .group(title):
                 Text(title).fontWeight(.semibold).foregroundStyle(.secondary)
+                    .accessibilityAddTraits(.isHeader)
             case .loading:
                 Text(L10n.tr("正在读取文件夹…"))
                     .foregroundStyle(.secondary)
@@ -141,19 +226,28 @@ struct FolderWorkspaceRowView: View {
                 Text(L10n.tr("文件夹为空"))
                     .foregroundStyle(.secondary)
             case let .error(error):
-                Text(L10n.tr("无法读取文件夹：%@", error))
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.tr("无法读取文件夹：%@", error))
+                        .foregroundStyle(.secondary)
+                    if row.id.url == store.rootURL {
+                        Button(L10n.tr("选择其他文件夹…")) { appState.openFolder() }.controlSize(.small)
+                    }
+                }
             case let .entry(entry):
                 entryView(entry)
                     .contextMenu {
+                        if !(entry.isDirectory && !entry.isSymbolicLink) {
+                            Button(L10n.tr("打开")) { perform(.return) }
+                            Divider()
+                        }
                         if entry.isDirectory && !entry.isSymbolicLink {
                             Button(L10n.tr("新建文件")) { appState.createFolderWorkspaceItem(in: entry.url, isDirectory: false) }
                             Button(L10n.tr("新建文件夹")) { appState.createFolderWorkspaceItem(in: entry.url, isDirectory: true) }
                         }
                         Button(L10n.tr("复制文件或文件夹")) { appState.duplicateFolderWorkspaceItem(entry.url) }
-                        Button(L10n.tr("重命名")) { appState.moveFolderWorkspaceItem(entry.url, rename: true) }
+                        Button(L10n.tr("重命名…")) { appState.moveFolderWorkspaceItem(entry.url, rename: true) }
                         Button(L10n.tr("移动到…")) { appState.moveFolderWorkspaceItem(entry.url, rename: false) }
-                        Button(L10n.tr("移到废纸篓")) { appState.trashFolderWorkspaceItem(entry.url) }
+                        Divider()
                         Button(L10n.tr("复制路径")) {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(entry.url.path, forType: .string)
@@ -161,39 +255,68 @@ struct FolderWorkspaceRowView: View {
                         Button(L10n.tr("在 Finder 中显示")) {
                             NSWorkspace.shared.activateFileViewerSelecting([entry.url])
                         }
+                        Divider()
+                        Button(L10n.tr("移到废纸篓"), role: .destructive) { appState.trashFolderWorkspaceItem(entry.url) }
                     }
             }
         }
-        .font(.system(size: 12))
+        .font(.callout)
         .padding(.leading, CGFloat(row.depth) * 14)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
     private func entryView(_ entry: FolderWorkspaceEntry) -> some View {
+        let id = AnyHashable(row.id)
         if entry.isDirectory && !entry.isSymbolicLink {
             Button {
-                if store.display == .list { store.showDirectory(entry.url) }
-                else if store.expanded.contains(entry.url) { store.collapse(entry.url) }
-                else { store.expand(entry.url) }
+                navigation.focused = id
+                perform(.return)
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: store.display == .tree && store.expanded.contains(entry.url) ? "chevron.down" : "chevron.right")
+                        .accessibilityHidden(true)
                     Label(entry.name, systemImage: "folder")
                         .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .accessibilityValue(L10n.tr(store.expanded.contains(entry.url) ? "已展开" : "已收起"))
-            .buttonStyle(.plain)
+            .modifier(FolderListRowNavigation(id: id, navigation: navigation) { perform(.return) })
+            .onKeyPress(.leftArrow) { perform(.left) }
+            .onKeyPress(.rightArrow) { perform(.right) }
         } else {
-            Button { appState.openFile(entry.url) } label: {
+            Button {
+                navigation.focused = id
+                perform(.return)
+            } label: {
                 Label(entry.name, systemImage: entry.isSymbolicLink ? "doc.on.doc" : "doc.text")
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .buttonStyle(.plain)
+            .modifier(FolderListRowNavigation(id: id, navigation: navigation) { perform(.return) })
+            .onKeyPress(.leftArrow) { perform(.left) }
+            .onKeyPress(.rightArrow) { perform(.right) }
             .help(entry.url.path)
         }
+    }
+
+    /// Единый путь для клика и клавиш: действие выбирает `FolderTreeKeyResolver`.
+    @discardableResult
+    private func perform(_ key: FolderTreeKey) -> KeyPress.Result {
+        guard case let .entry(entry) = row.content,
+              let action = FolderTreeKeyResolver.resolve(key: key, row: row, rows: rows, display: store.display,
+                                                         isExpanded: store.expanded.contains(entry.url)) else { return .ignored }
+        switch action {
+        case let .toggle(url): if store.expanded.contains(url) { store.collapse(url) } else { store.expand(url) }
+        case let .showDirectory(url): store.showDirectory(url)
+        case let .open(url): appState.openFile(url)
+        case let .expand(url): store.expand(url)
+        case let .collapse(url): store.collapse(url)
+        case let .focus(id):
+            navigation.focused = AnyHashable(id)
+            navigation.focusRequest = AnyHashable(id)
+        }
+        return .handled
     }
 }

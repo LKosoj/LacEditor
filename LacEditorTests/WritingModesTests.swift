@@ -91,7 +91,7 @@ final class WritingModesTests: XCTestCase {
         coordinator.updateViewMagnification(1.5)
         XCTAssertEqual(scroll.magnification, 1.5, accuracy: 0.001)
         coordinator.updateLayout(wordWrap: true, force: true)
-        XCTAssertEqual(view.textContainer?.containerSize.width ?? 0, scroll.contentView.bounds.width, accuracy: 1)
+        XCTAssertEqual(view.textContainer?.containerSize.width ?? 0, scroll.contentView.bounds.width - 2 * EditorTextView.minimumHorizontalInset, accuracy: 1)
         if let layout = view.layoutManager, let container = view.textContainer {
             layout.ensureLayout(for: container)
             let glyphs = layout.glyphRange(forCharacterRange: NSRange(location: 2, length: 1), actualCharacterRange: nil)
@@ -125,7 +125,7 @@ final class WritingModesTests: XCTestCase {
         await fulfillment(of: [applied], timeout: 2)
         XCTAssertEqual(scroll.magnification, 2, accuracy: 0.001)
         coordinator.updateLayout(wordWrap: true, force: true)
-        XCTAssertEqual(view.textContainer?.containerSize.width ?? 0, scroll.contentView.bounds.width, accuracy: 1)
+        XCTAssertEqual(view.textContainer?.containerSize.width ?? 0, scroll.contentView.bounds.width - 2 * EditorTextView.minimumHorizontalInset, accuracy: 1)
         view.setMarkedText("文", selectedRange: NSRange(location: 1, length: 0), replacementRange: view.selectedRange())
         coordinator.updateViewMagnification(1.5)
         view.setMarkedText("", selectedRange: NSRange(location: 0, length: 0), replacementRange: view.markedRange())
@@ -139,7 +139,7 @@ final class WritingModesTests: XCTestCase {
         coordinator.updateViewMagnification(0.5)
         scroll.frame.size = NSSize(width: 300, height: 320)
         coordinator.updateLayout(wordWrap: true, force: true)
-        XCTAssertEqual(view.textContainer?.containerSize.width ?? 0, scroll.contentView.bounds.width, accuracy: 1)
+        XCTAssertEqual(view.textContainer?.containerSize.width ?? 0, scroll.contentView.bounds.width - 2 * EditorTextView.minimumHorizontalInset, accuracy: 1)
         coordinator.updateMarkdownVerticalWriting(true)
         coordinator.updateLayout(wordWrap: true, force: true)
         XCTAssertEqual(view.textContainer?.containerSize.width ?? 0, scroll.contentView.bounds.height, accuracy: 1)
@@ -151,7 +151,7 @@ final class WritingModesTests: XCTestCase {
         coordinator.updateLayout(wordWrap: true, force: true)
         XCTAssertNotNil(scroll.verticalRulerView)
         XCTAssertEqual(view.textContainer?.containerSize.width ?? 0,
-                       scroll.contentView.bounds.width - (scroll.verticalRulerView?.ruleThickness ?? 0) / scroll.magnification, accuracy: 1)
+                       scroll.contentView.bounds.width - (scroll.verticalRulerView?.ruleThickness ?? 0) / scroll.magnification - 2 * EditorTextView.minimumHorizontalInset, accuracy: 1)
     }
 
     func testFocusRectsRespectSelectionAndKeepAttributes() throws {
@@ -186,6 +186,7 @@ final class WritingModesTests: XCTestCase {
         XCTAssertEqual(view.textContainerInset.height, scroll.contentView.bounds.height / 2, accuracy: 0.5)
         coordinator.updateWritingModes(focus: false, typewriter: false)
         XCTAssertEqual(view.textContainerInset.height, 12, accuracy: 0.5)
+        XCTAssertEqual(view.textContainerInset.width, 16, accuracy: 0.5)
         coordinator.updateWritingModes(focus: false, typewriter: true)
         scroll.frame.size.height = 300
         NotificationCenter.default.post(name: NSView.boundsDidChangeNotification, object: scroll.contentView)

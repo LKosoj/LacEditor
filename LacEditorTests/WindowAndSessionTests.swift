@@ -185,8 +185,6 @@ final class WindowAndSessionTests: XCTestCase {
         XCTAssertFalse(modalTimedOut, "Opening error dialog did not appear")
         XCTAssertTrue(state.hasFailedOpeningPlaceholder)
         let placeholder = try XCTUnwrap(state.selectedDocument)
-        XCTAssertFalse(manager.beginTabDrag(placeholder, from: state))
-        XCTAssertNil(state.takeDocumentForTransfer(placeholder))
         XCTAssertFalse(state.save())
         var result: Bool?
         manager.requestApplicationTermination { result = $0 }
@@ -375,7 +373,7 @@ final class WindowAndSessionTests: XCTestCase {
         XCTAssertEqual(restored[0].statusMessage, L10n.tr("已恢复上次工作区，尚未保存"))
     }
 
-    func testRealWindowsRegisterAndCrossWindowTabDragMovesDocument() {
+    func testRealWindowsRegisterSetsHostWindow() {
         _ = NSApplication.shared
         let manager = WindowManager()
         let sourceDocument = EditorDocument(text: "source")
@@ -406,41 +404,6 @@ final class WindowAndSessionTests: XCTestCase {
 
         XCTAssertTrue(sourceState.hostWindow === sourceWindow)
         XCTAssertTrue(targetState.hostWindow === targetWindow)
-
-        manager.beginTabDrag(sourceDocument, from: sourceState)
-        manager.setTabDragTarget(in: targetState, before: targetDocument.id)
-        XCTAssertTrue(
-            manager.acceptTabDrag(
-                into: targetState,
-                before: targetDocument.id
-            )
-        )
-
-        XCTAssertFalse(sourceState.documents.contains { $0.id == sourceDocument.id })
-        XCTAssertEqual(
-            targetState.documents.map(\.id),
-            [sourceDocument.id, targetDocument.id]
-        )
-        XCTAssertEqual(targetState.selectedDocumentID, sourceDocument.id)
-    }
-
-    func testTabDragCanPlaceFirstDocumentAtTrailingEnd() {
-        let manager = WindowManager()
-        let first = EditorDocument(text: "first")
-        let state = makeState(document: first)
-        state.newDocument()
-        state.newDocument()
-        let originalIDs = state.documents.map(\.id)
-
-        manager.beginTabDrag(first, from: state)
-        manager.setTabDragTarget(in: state, before: nil)
-        XCTAssertTrue(manager.acceptTabDrag(into: state, before: nil))
-
-        XCTAssertEqual(
-            state.documents.map(\.id),
-            [originalIDs[1], originalIDs[2], originalIDs[0]]
-        )
-        XCTAssertEqual(state.selectedDocumentID, first.id)
     }
 
     func testEditorSessionCacheUsesLRUAndReturnsRealScrollView() {

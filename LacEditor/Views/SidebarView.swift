@@ -20,30 +20,41 @@ struct SidebarView: View {
                     }
                 } label: {
                     Text(L10n.tr("文档大纲"))
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.subheadline.weight(.semibold)).tracking(0.5)
+                        .foregroundStyle(.secondary)
                 }
-                .padding(.horizontal, 14)
+                // одна величина горизонтального отступа (10) для оглавления, фильтра и списка
+                .padding(.horizontal, 10)
                 .padding(.top, 12)
             }
             HStack(spacing: 7) {
-                Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(.tertiary)
+                Image(systemName: "magnifyingglass").font(.callout).foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
                 TextField(L10n.tr("筛选资料库文件"), text: $filterQuery)
-                    .textFieldStyle(.plain).font(.system(size: 12))
+                    .textFieldStyle(.plain).font(.callout)
                     .accessibilityLabel(L10n.tr("筛选资料库文件"))
+                    .accessibilityHint(L10n.tr("仅筛选资料库文件，不含工作文件夹"))
                     .focused($filterFocused)
                     .onExitCommand { filterQuery = "" }
                 if !filterQuery.isEmpty {
                     Button { filterQuery = "" } label: {
-                        Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
                     }.buttonStyle(.plain).accessibilityLabel(L10n.tr("清除筛选"))
                         .focused($clearFocused).editorFocusRing(clearFocused, radius: 3)
                 }
             }
             .padding(.horizontal, 10).frame(height: 30)
-            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 7))
+            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 7))
+            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color(nsColor: .separatorColor)).allowsHitTesting(false))
             .editorFocusRing(filterFocused, radius: 7)
-            .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 4)
+            .padding(.horizontal, 10).padding(.top, 12).padding(.bottom, 4)
             .stableHelp(L10n.tr("按文件名或分组筛选资料库，不搜索工作文件夹正文"))
+            if !filterQuery.isEmpty {
+                Text(L10n.tr("仅筛选资料库文件，不含工作文件夹"))
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 10)
+            }
 
             SidebarLibraryView(
                 recentFiles: appState.recentFiles,
@@ -68,14 +79,14 @@ struct SidebarView: View {
                     Spacer()
                     if AppEnvironment.isExperiment {
                         Text(AppEnvironment.experimentIteration)
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .font(.system(.caption, design: .rounded, weight: .medium))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
                             .background(LacEditorDesign.selectionFill, in: Capsule())
                             .accessibilityLabel(L10n.tr("界面实验 %@", String(describing: AppEnvironment.experimentIteration)))
                     }
                 }
-                    .font(.system(size: 13))
+                    .font(.body)
                     .foregroundStyle(isSettingsHovering ? .primary : .secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 8)
@@ -118,11 +129,16 @@ private struct SidebarOperationFeedback: View {
                 Spacer(minLength: 0)
             }
         }
-        .font(.system(size: 10)).foregroundStyle(.secondary)
+        .font(.caption).foregroundStyle(.secondary)
         .padding(.horizontal, 18).frame(height: 28)
         .contentShape(Rectangle())
         .onHover { hovering = $0; state.setInteracting(hovering || undoFocused) }
         .onChange(of: undoFocused) { state.setInteracting(hovering || undoFocused) }
+        .onChange(of: state.item) { old, item in
+            // сообщение после «Отменить» с тем же заголовком не озвучиваем второй раз; новые события озвучиваем всегда
+            guard let item, !(old?.canUndo == true && old?.title == item.title && !item.canUndo) else { return }
+            AccessibilityNotification.Announcement(item.title).post()
+        }
         .onDisappear { state.setInteracting(false) }
     }
 }
@@ -143,7 +159,7 @@ private struct ExperimentSampleControls: View {
                     Text(samples.isPreparing ? L10n.tr("正在准备示例…") : L10n.tr("打开体验文档"))
                     Spacer(minLength: 0)
                     Image(systemName: "arrow.up.right").font(.system(size: 9))
-                }.font(.system(size: 11)).padding(.horizontal, 9).frame(height: 32)
+                }.font(.subheadline).padding(.horizontal, 9).frame(height: 32)
                     .contentShape(Rectangle())
             }
             .buttonStyle(QuietActionButtonStyle())
@@ -159,7 +175,7 @@ private struct ExperimentSampleControls: View {
                 }
             }
             if let error = samples.errorMessage {
-                Text(error).font(.system(size: 10)).foregroundStyle(.secondary)
+                Text(error).font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true).padding(.horizontal, 9)
             }
         }.padding(.horizontal, 10)

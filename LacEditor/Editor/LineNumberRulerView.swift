@@ -39,13 +39,22 @@ enum LineNumberGeometry {
         )
     }
 
+    static let trailingGap: CGFloat = 8
+    static let minimumThickness: CGFloat = 44
+
+    /// Ruler width that fits the digits of the largest line number; never below the minimum.
+    static func thickness(forLineCount count: Int, digitWidth: CGFloat) -> CGFloat {
+        let digits = max(2, String(max(1, count)).count)
+        return max(minimumThickness, ceil(CGFloat(digits) * digitWidth) + 8 + trailingGap)
+    }
+
     static func labelOrigin(
         rulerWidth: CGFloat,
         labelSize: NSSize,
         lineRect: NSRect
     ) -> NSPoint {
         NSPoint(
-            x: floor((rulerWidth - labelSize.width) / 2),
+            x: floor(rulerWidth - labelSize.width - trailingGap),
             y: floor(lineRect.midY - labelSize.height / 2)
         )
     }
@@ -75,6 +84,7 @@ final class LineNumberRulerView: NSRulerView {
     private var dragAnchorLine: LineNumberVisibleLine?
     private var visibleLineMapCacheKey: LineNumberVisibleMapCacheKey?
     private var layoutGeneration: UInt = 0
+    private lazy var digitWidth: CGFloat = ("0" as NSString).size(withAttributes: [.font: font]).width
 
     init(scrollView: NSScrollView, textView: NSTextView, orientation: NSRulerView.Orientation = .verticalRuler) {
         super.init(scrollView: scrollView, orientation: orientation)
@@ -83,6 +93,16 @@ final class LineNumberRulerView: NSRulerView {
         wantsLayer = true
         layerContentsRedrawPolicy = .duringViewResize
         layer?.drawsAsynchronously = false
+    }
+
+    /// Returns true when the width changed. Never call from draw: the caller must re-run layout.
+    @discardableResult
+    func updateThickness(lineCount: Int) -> Bool {
+        guard orientation == .verticalRuler else { return false }
+        let value = LineNumberGeometry.thickness(forLineCount: lineCount, digitWidth: digitWidth)
+        guard abs(ruleThickness - value) > 0.5 else { return false }
+        ruleThickness = value
+        return true
     }
 
     required init(coder: NSCoder) {
@@ -421,7 +441,7 @@ final class LineNumberRulerView: NSRulerView {
     ) {
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: isActive ? NSColor.labelColor : NSColor.tertiaryLabelColor
+            .foregroundColor: isActive ? NSColor.labelColor : NSColor.lacMutedText
         ]
         let value = "\(lineNumber)" as NSString
         let size = value.size(withAttributes: attributes)

@@ -1,19 +1,56 @@
 import SwiftUI
 
+enum AISettingsPage: String, CaseIterable, Identifiable {
+    case features, connections, checks, jina
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .features: L10n.tr("AI 功能")
+        case .connections: L10n.tr("连接")
+        case .checks: L10n.tr("自定义检查")
+        case .jina: "Jina"
+        }
+    }
+}
+
 struct AISettingsView: View {
     @ObservedObject var preferences: AppPreferences
     let isActive: Bool
     @State private var keyRevision = UUID()
+    @State private var page: AISettingsPage = .features
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            AIFeatureSettingsView(preferences: preferences, isActive: isActive, keyRevision: keyRevision)
-            AICustomChecksSettingsView(preferences: preferences)
-            JinaSettingsView(preferences: preferences, isActive: isActive)
-            ForEach(AIRole.allCases) { role in
-                AIProfileSettingsView(preferences: preferences, role: role, isActive: isActive) { keyRevision = UUID() }
+            Picker(L10n.tr("AI 设置分区"), selection: $page) {
+                ForEach(AISettingsPage.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented).labelsHidden().accessibilityIdentifier("settings.ai.page")
+            switch page {
+            case .features:
+                AIFeatureSettingsView(preferences: preferences, isActive: isActive, keyRevision: keyRevision)
+            case .connections:
+                ForEach(AIRole.allCases) { role in
+                    AIProfileSettingsView(preferences: preferences, role: role, isActive: isActive) { keyRevision = UUID() }
+                }
+            case .checks:
+                AICustomChecksSettingsView(preferences: preferences)
+            case .jina:
+                JinaSettingsView(preferences: preferences, isActive: isActive)
             }
         }
+    }
+}
+
+/// Тонкий разделитель между строками внутри PreferenceGroup.
+struct SettingsRowDivider: View {
+    var body: some View { Divider().padding(.horizontal, 16).opacity(0.5) }
+}
+
+enum AIKeyDraftNotice {
+    static func message(forClearedDraft draft: String) -> StatusMessage? {
+        draft.isEmpty ? nil : StatusMessage(kind: .info, text: L10n.tr("密钥与服务地址绑定，地址已更改，未保存的密钥输入已清除。"))
     }
 }
 
@@ -24,8 +61,9 @@ private struct AIProfileSettingsView: View {
     let keyChanged: () -> Void
     @State private var keyDraft = ""
     @State private var hasSavedKey = false
-    @State private var keyError: String?
-    @State private var modelError: String?
+    @State private var keyStatus: StatusMessage?
+    @State private var modelStatus: StatusMessage?
+    @State private var confirmDeleteKey = false
     @State private var models: [String] = []
     @State private var modelTask: Task<Void, Never>?
     @State private var requestID = UUID()
@@ -67,59 +105,83 @@ private struct AIProfileSettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(title).font(.system(size: 14, weight: .semibold))
-                Spacer()
-                Toggle(L10n.tr("启用"), isOn: profile.isEnabled).toggleStyle(.switch)
+        PreferenceGroup(title: title) {
+            PreferenceRow(title: L10n.tr("启用"), detail: profile.wrappedValue.isEnabled ? "" : L10n.tr("未启用，开启后可配置服务地址和密钥。")) {
+                Toggle(L10n.tr("启用"), isOn: profile.isEnabled).labelsHidden().toggleStyle(.switch)
+                    .accessibilityLabel(title)
             }
-            LabeledContent(L10n.tr("服务地址")) {
-                TextField("https://example.com/v1", text: profile.baseURL)
-                    .textFieldStyle(.roundedBorder)
-            }
-            LabeledContent(L10n.tr("接口格式")) {
-                Picker(L10n.tr("接口格式"), selection: profile.api) {
-                    ForEach(protocols, id: \.self) { api in Text(protocolName(api)).tag(api) }
-                }.labelsHidden()
-            }
-            LabeledContent(L10n.tr("模型名称")) {
-                TextField(L10n.tr("手动输入模型名称"), text: profile.modelID)
-                    .textFieldStyle(.roundedBorder)
-            }
-            HStack {
-                Button(L10n.tr("获取模型列表"), action: fetchModels)
-                    .disabled(modelTask != nil)
-                if modelTask != nil { ProgressView().controlSize(.small) }
-                if !models.isEmpty {
-                    Menu(L10n.tr("选择模型")) {
-                        ForEach(models, id: \.self) { model in
-                            Button(model) { profile.wrappedValue.modelID = model }
+            if profile.wrappedValue.isEnabled {
+                SettingsRowDivider()
+                PreferenceRow(title: L10n.tr("服务地址"), detail: "") {
+                    TextField("https://example.com/v1", text: profile.baseURL)
+                        .textFieldStyle(.roundedBorder).frame(width: 260)
+                        .accessibilityLabel(L10n.tr("服务地址"))
+                }
+                SettingsRowDivider()
+                PreferenceRow(title: L10n.tr("接口格式"), detail: "") {
+                    Picker(L10n.tr("接口格式"), selection: profile.api) {
+                        ForEach(protocols, id: \.self) { api in Text(protocolName(api)).tag(api) }
+                    }.labelsHidden().frame(width: 200)
+                }
+                SettingsRowDivider()
+                PreferenceRow(title: L10n.tr("模型名称"), detail: "") {
+                    TextField(L10n.tr("手动输入模型名称"), text: profile.modelID)
+                        .textFieldStyle(.roundedBorder).frame(width: 200)
+                        .accessibilityLabel(L10n.tr("模型名称"))
+                }
+                SettingsRowDivider()
+                PreferenceRow(title: L10n.tr("选择模型"), detail: "") {
+                    HStack {
+                        if modelTask != nil { ProgressView().controlSize(.small) }
+                        if !models.isEmpty {
+                            Menu(L10n.tr("选择模型")) {
+                                ForEach(models, id: \.self) { model in
+                                    Button(model) { profile.wrappedValue.modelID = model }
+                                }
+                            }
                         }
+                        Button(L10n.tr("获取模型列表"), action: fetchModels)
+                            .disabled(modelTask != nil)
                     }
                 }
-            }
-            if let modelError { message(modelError) }
-            LabeledContent(L10n.tr("API 密钥")) {
-                SecureField(L10n.tr("输入新密钥"), text: $keyDraft)
-                    .textFieldStyle(.roundedBorder)
-            }
-            HStack {
-                Button(L10n.tr("保存密钥"), action: saveKey).disabled(keyDraft.isEmpty)
-                Button(L10n.tr("删除密钥"), action: deleteKey).disabled(!hasSavedKey)
-                if keyError == nil {
-                    Text(keyDraft.isEmpty ? (hasSavedKey ? L10n.tr("已保存密钥") : L10n.tr("未保存密钥")) : L10n.tr("密钥更改尚未保存"))
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                if let modelStatus {
+                    StatusMessageView(kind: modelStatus.kind, text: modelStatus.text)
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                }
+                SettingsRowDivider()
+                PreferenceRow(title: L10n.tr("API 密钥"), detail: keyStatus == nil
+                              ? (keyDraft.isEmpty ? (hasSavedKey ? L10n.tr("已保存密钥") : L10n.tr("未保存密钥")) : L10n.tr("密钥更改尚未保存"))
+                              : "") {
+                    SecureField(L10n.tr("输入新密钥"), text: $keyDraft)
+                        .textFieldStyle(.roundedBorder).frame(width: 220)
+                        .accessibilityLabel(L10n.tr("API 密钥"))
+                }
+                HStack {
+                    Button(L10n.tr("保存密钥"), action: saveKey).disabled(keyDraft.isEmpty)
+                    Button(L10n.tr("删除密钥"), role: .destructive) { confirmDeleteKey = true }.disabled(!hasSavedKey)
+                }.padding(.horizontal, 16).padding(.vertical, 8)
+                if let keyStatus {
+                    StatusMessageView(kind: keyStatus.kind, text: keyStatus.text)
+                        .padding(.horizontal, 16).padding(.vertical, 8)
                 }
             }
-            if let keyError { message(keyError) }
         }
-        .padding(14)
-        .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(LacEditorDesign.outline))
         .onAppear(perform: refreshKey)
+        .confirmationDialog(L10n.tr("删除已保存的密钥？"), isPresented: $confirmDeleteKey, titleVisibility: .visible) {
+            Button(L10n.tr("删除密钥"), role: .destructive) { deleteKey() }
+            Button(L10n.tr("取消"), role: .cancel) {}
+        } message: {
+            Text(L10n.tr("密钥将从系统钥匙串中移除。"))
+        }
         .onChange(of: profile.wrappedValue.baseURL) { _, _ in
+            let notice = AIKeyDraftNotice.message(forClearedDraft: keyDraft)
             keyDraft = ""
             refreshKey()
+            if let notice, keyStatus == nil { keyStatus = notice }
+        }
+        .onChange(of: keyDraft) { _, draft in if !draft.isEmpty { keyStatus = nil } }
+        .onChange(of: profile.wrappedValue.isEnabled) { _, enabled in
+            if !enabled { invalidateModels(); keyDraft = "" }
         }
         .onChange(of: profile.wrappedValue) { _, _ in invalidateModels() }
         .onChange(of: isActive) { _, active in
@@ -128,18 +190,13 @@ private struct AIProfileSettingsView: View {
         .onDisappear { invalidateModels(); keyDraft = "" }
     }
 
-    private func message(_ text: String) -> some View {
-        Text(text).font(.system(size: 11)).foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
     private func refreshKey() {
         do {
             hasSavedKey = try keychain.load(for: role, baseURL: profile.wrappedValue.baseURL) != nil
-            keyError = nil
+            keyStatus = nil
         } catch {
             hasSavedKey = false
-            keyError = error.localizedDescription
+            keyStatus = StatusMessage(kind: .error, text: error.localizedDescription)
         }
     }
 
@@ -150,8 +207,8 @@ private struct AIProfileSettingsView: View {
             keyChanged()
             keyDraft = ""
             hasSavedKey = true
-            keyError = nil
-        } catch { keyError = error.localizedDescription }
+            keyStatus = StatusMessage(kind: .success, text: L10n.tr("密钥已保存"))
+        } catch { keyStatus = StatusMessage(kind: .error, text: error.localizedDescription) }
     }
 
     private func deleteKey() {
@@ -161,8 +218,8 @@ private struct AIProfileSettingsView: View {
             keyChanged()
             keyDraft = ""
             hasSavedKey = false
-            keyError = nil
-        } catch { keyError = error.localizedDescription }
+            keyStatus = StatusMessage(kind: .success, text: L10n.tr("密钥已删除"))
+        } catch { keyStatus = StatusMessage(kind: .error, text: error.localizedDescription) }
     }
 
     private func invalidateModels() {
@@ -170,7 +227,7 @@ private struct AIProfileSettingsView: View {
         modelTask?.cancel()
         modelTask = nil
         models = []
-        modelError = nil
+        modelStatus = nil
     }
 
     private func fetchModels() {
@@ -178,7 +235,7 @@ private struct AIProfileSettingsView: View {
         let id = UUID()
         requestID = id
         models = []
-        modelError = nil
+        modelStatus = nil
         do {
             let key = try keychain.load(for: role, baseURL: selectedProfile.baseURL)
             modelTask = Task { @MainActor in
@@ -186,12 +243,15 @@ private struct AIProfileSettingsView: View {
                     let result = try await AIClient().listModels(profile: selectedProfile, key: key)
                     guard !Task.isCancelled, requestID == id, profile.wrappedValue == selectedProfile else { return }
                     models = result
+                    modelStatus = result.isEmpty
+                        ? StatusMessage(kind: .info, text: L10n.tr("服务器没有返回模型"))
+                        : StatusMessage(kind: .success, text: L10n.tr("找到 %d 个模型", result.count))
                 } catch {
                     guard !Task.isCancelled, requestID == id else { return }
-                    modelError = error.localizedDescription
+                    modelStatus = StatusMessage(kind: .error, text: error.localizedDescription)
                 }
                 if requestID == id { modelTask = nil }
             }
-        } catch { modelError = error.localizedDescription }
+        } catch { modelStatus = StatusMessage(kind: .error, text: error.localizedDescription) }
     }
 }

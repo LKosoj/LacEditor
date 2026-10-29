@@ -16,6 +16,8 @@ struct SidebarLibraryView: View {
     @FocusState private var focusedHeader: String?
     @StateObject private var dragState = SidebarDragState()
     @StateObject private var selection = SidebarSelection()
+    @StateObject private var treeNavigation = FolderListNavigation()
+    @StateObject private var searchNavigation = FolderListNavigation()
 
     private var filter: SidebarLibraryFilter { SidebarLibraryFilter(query: query) }
     private var favorites: [URL] { filter.files(library.favoriteURLs) }
@@ -36,24 +38,46 @@ struct SidebarLibraryView: View {
         }
     }
 
+    /// Порядок совпадает с порядком секций в `body`: избранное, группы, недавние.
+    private var navigationOrder: [SidebarSelection.Focus] {
+        var result: [SidebarSelection.Focus] = []
+        let all = filter.isActive
+        if all || library.favoriteSectionExpanded {
+            result += favorites.map { .init(location: .favorites, path: $0.path) }
+        }
+        if all || library.groupsSectionExpanded {
+            for group in groups where all || group.isExpanded {
+                result += group.urls.map { .init(location: .group(group.id), path: $0.path) }
+            }
+        }
+        if all || library.recentSectionExpanded {
+            result += recent.map { .init(location: .recent, path: $0.path) }
+        }
+        return result
+    }
+
     var body: some View {
-        ScrollViewReader { proxy in
+        let treeRows = FolderWorkspaceVisibleRow.rows(in: folderWorkspace)
+        let searchRows = FolderSearchRow.rows(folderSearch)
+        return ScrollViewReader { proxy in
         ScrollView(.vertical) {
             LazyVStack(alignment: .leading, spacing: 0) {
             FolderWorkspaceView(store: folderWorkspace)
             if !pinnedFolders.isEmpty {
-                Text(L10n.tr("固定文件夹")).font(.system(size: 12, weight: .semibold)).padding(.top, 12)
+                Text(L10n.tr("固定文件夹")).sidebarHeadingStyle().padding(.top, 16)
+                    .accessibilityAddTraits(.isHeader)
                 ForEach(pinnedFolders, id: \.self) { folderRow($0) }
             }
             if !recentFolders.isEmpty {
-                Text(L10n.tr("最近使用的文件夹")).font(.system(size: 12, weight: .semibold)).padding(.top, 12)
+                Text(L10n.tr("最近使用的文件夹")).sidebarHeadingStyle().padding(.top, 16)
+                    .accessibilityAddTraits(.isHeader)
                 ForEach(recentFolders, id: \.self) { folderRow($0) }
             }
-            ForEach(FolderWorkspaceVisibleRow.rows(in: folderWorkspace)) { row in
-                FolderWorkspaceRowView(store: folderWorkspace, row: row)
+            ForEach(treeRows) { row in
+                FolderWorkspaceRowView(store: folderWorkspace, row: row, rows: treeRows, navigation: treeNavigation)
                     .padding(.top, 2)
             }
-            if folderWorkspace.rootURL != nil || folderSearch.quickOpenRequest != nil || !folderSearch.quickOpenItems.isEmpty || folderSearch.isWorking {
+            if folderWorkspace.rootURL != nil || (folderSearch.isWorking && folderSearch.quickOpenRequest == nil) {
                 Button {
                     folderSearchExpanded.toggle()
                 } label: {
@@ -65,16 +89,16 @@ struct SidebarLibraryView: View {
                 .accessibilityValue(L10n.tr(folderSearchExpanded ? "已展开" : "已收起"))
                 if folderSearchExpanded {
                     FolderSearchView(controller: folderSearch).padding(.top, 6)
-                    ForEach(FolderSearchRow.rows(folderSearch)) { row in
-                        FolderSearchRowView(controller: folderSearch, row: row).padding(.top, 4)
+                    ForEach(searchRows) { row in
+                        FolderSearchRowView(controller: folderSearch, row: row, navigation: searchNavigation).padding(.top, 4)
                     }
                 }
             }
             if filter.isActive, favorites.isEmpty, groups.isEmpty, recent.isEmpty, pinnedFolders.isEmpty, recentFolders.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.tr("没有匹配的文件")).font(.system(size: 13, weight: .medium))
+                    Text(L10n.tr("没有匹配的文件")).font(.body.weight(.medium))
                     Text(L10n.tr("试试文件名、扩展名或分组名称。"))
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .font(.subheadline).foregroundStyle(.secondary)
                 }.padding(.horizontal, 8).padding(.vertical, 12).padding(.top, 16)
             } else {
             sidebarSection(
@@ -84,8 +108,8 @@ struct SidebarLibraryView: View {
             ) {
                 if favorites.isEmpty {
                     Text(filter.isActive ? L10n.tr("没有匹配的收藏") : L10n.tr("可从文件右键菜单添加收藏"))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 10)
                         .frame(height: 32)
@@ -101,15 +125,15 @@ struct SidebarLibraryView: View {
             ) {
                 if groups.isEmpty {
                     if filter.isActive {
-                        Text(L10n.tr("没有匹配的分组")).font(.system(size: 11)).foregroundStyle(.tertiary)
+                        Text(L10n.tr("没有匹配的分组")).font(.subheadline).foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10).frame(height: 32)
                     } else {
                     Button(L10n.tr("新建分组")) {
                         windowManager.requestCreateSidebarGroup()
                     }
                     .buttonStyle(.plain)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.leading, 30)
                     .frame(height: 26)
@@ -131,8 +155,8 @@ struct SidebarLibraryView: View {
                 if recent.isEmpty {
                     VStack(spacing: 7) {
                         Text(filter.isActive ? L10n.tr("没有匹配的最近文件") : L10n.tr("暂无最近文件"))
-                            .font(.system(size: 11))
-                            .foregroundStyle(.tertiary)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                         if !filter.isActive { Button(L10n.tr("打开文件…")) {
                             appState.openFiles()
                         }
@@ -156,8 +180,19 @@ struct SidebarLibraryView: View {
         .scrollContentBackground(.hidden)
         .environmentObject(dragState)
         .environmentObject(selection)
-        .onReceive(folderSearch.$quickOpenRequest) { request in
-            if request != nil { folderSearchExpanded = true }
+        .onChange(of: treeRows.map(\.id), initial: true) { _, _ in
+            treeNavigation.setOrder(treeRows.compactMap { row -> AnyHashable? in
+                guard case .entry = row.content else { return nil }
+                return AnyHashable(row.id)
+            })
+        }
+        .onChange(of: searchRows.map(\.id), initial: true) { _, _ in
+            searchNavigation.setOrder(FolderSearchRowView.selectableIDs(searchRows))
+        }
+        .onChange(of: navigationOrder, initial: true) { _, order in selection.setNavigationOrder(order) }
+        .onChange(of: selection.navigationOrder) { _, order in
+            // фокус не должен оставаться на строке свёрнутой секции
+            if let focused = selection.focused, !order.contains(focused) { selection.focused = nil }
         }
         .onChange(of: visibleSelectionURLs) { _, urls in
             if let location = selection.location { selection.reconcile(in: location, urls: urls) }
@@ -191,7 +226,7 @@ struct SidebarLibraryView: View {
     private func folderRow(_ url: URL) -> some View {
         Button { appState.openFolder(url) } label: {
             Label(url.lastPathComponent, systemImage: library.isPinnedFolder(url) ? "pin" : "folder")
-                .font(.system(size: 12)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                .font(.callout).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.plain).padding(.vertical, 4).help(url.path)
         .contextMenu {
@@ -232,12 +267,12 @@ struct SidebarLibraryView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Text(title)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.subheadline.weight(.semibold))
                             .tracking(0.5)
                         if count > 0 {
                             Text("\(count)")
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(.tertiary)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
                                 .monospacedDigit()
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 1)
@@ -247,8 +282,7 @@ struct SidebarLibraryView: View {
                             .font(.system(size: 8, weight: .semibold))
                             .rotationEffect(.degrees(isExpanded ? 90 : 0))
                             .animation(reduceMotion ? nil : LacEditorDesign.sidebarDisclosureAnimation, value: isExpanded)
-                            .opacity(isHovering ? 1 : 0)
-                            .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: isHovering)
+                            .accessibilityHidden(true)
                             .frame(width: 9)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -257,6 +291,7 @@ struct SidebarLibraryView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("sidebar.section.\(section.rawValue)")
+                .accessibilityAddTraits(.isHeader)
                 .disabled(filter.isActive)
                 .focused($focusedHeader, equals: title)
                 .editorFocusRing(focusedHeader == title)
@@ -266,13 +301,14 @@ struct SidebarLibraryView: View {
                         windowManager.requestCreateSidebarGroup()
                     } label: {
                         Image(systemName: "plus")
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.subheadline.weight(.medium))
                             .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .focused($focusedHeader, equals: title + ".add")
                     .editorFocusRing(focusedHeader == title + ".add", radius: 4)
-                    .opacity(isHovering ? 1 : 0)
+                    .opacity(isHovering ? 1 : 0.85)
                     .stableHelp(L10n.tr("新建分组"))
                     .accessibilityLabel(L10n.tr("新建分组"))
                 }
@@ -280,14 +316,15 @@ struct SidebarLibraryView: View {
                     Button {
                         windowManager.requestClearRecentFiles()
                     } label: {
-                        Image(systemName: "trash")
+                        Image(systemName: "xmark.circle")
                             .font(.system(size: 10))
-                            .frame(width: 20, height: 20)
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .focused($focusedHeader, equals: title + ".clear")
                     .editorFocusRing(focusedHeader == title + ".clear", radius: 4)
-                    .opacity(isHovering ? 1 : 0)
+                    .opacity(isHovering ? 1 : 0.85)
                     .stableHelp(L10n.tr("清除最近文件"))
                     .accessibilityLabel(L10n.tr("清除最近文件"))
                 }
@@ -303,6 +340,8 @@ struct SidebarLibraryView: View {
                 content()
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(count > 0 ? L10n.tr("%@，%lld 项", title, count) : title)
     }
 
     @ViewBuilder
@@ -347,19 +386,19 @@ private struct SidebarGroupView: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 16, height: 16)
                     Text(group.name)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.body.weight(.medium))
                         .lineLimit(1)
                     Image(systemName: "chevron.right")
                         .font(.system(size: 8, weight: .semibold))
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                         .animation(reduceMotion ? nil : LacEditorDesign.sidebarDisclosureAnimation, value: isExpanded)
-                        .opacity(isHovering || isFocused ? 1 : 0)
+                        .accessibilityHidden(true)
                         .frame(width: 9)
                     Spacer()
                     if !group.paths.isEmpty {
                         Text("\(group.paths.count)")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tertiary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                             .monospacedDigit()
                     }
                 }
@@ -414,6 +453,8 @@ private struct SidebarGroupView: View {
                 }
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(group.name)
     }
 }
 enum SidebarFileLocation: Equatable {
@@ -440,11 +481,55 @@ final class SidebarSelection: ObservableObject {
     }
 
     @Published var focused: Focus?
+    /// Видимые файловые строки в порядке показа (избранное -> группы -> недавние), без свёрнутых секций.
+    @Published private(set) var navigationOrder: [Focus] = []
     private var anchor: String?
+    private var typeSelectState = SidebarTypeSelect()
+    /// Строка, куда фокус перенесён клавиатурой, но ещё не создана ленивым списком.
+    /// Только она получает фокус при появлении: обычная прокрутка не забирает фокус у редактора.
+    var focusRequest: Focus?
+
+    func setNavigationOrder(_ order: [Focus]) {
+        if order != navigationOrder { navigationOrder = order }
+    }
+
+    /// Стрелка Вверх/Вниз через границы секций. Shift расширяет диапазон только внутри секции:
+    /// на другой секции `select` сбрасывает выделение, так что это обычное перемещение.
+    @discardableResult
+    func moveFocus(from current: Focus, offset: Int, extend: Bool) -> Bool {
+        guard let target = SidebarKeyboardNavigation.moved(from: current, offset: offset, in: navigationOrder) else { return false }
+        selectNavigationTarget(target, shift: extend && target.location == current.location)
+        return true
+    }
+
+    func canTypeSelect(_ characters: String, hasModifiers: Bool) -> Bool {
+        typeSelectState.accepts(characters, hasModifiers: hasModifiers)
+    }
+
+    /// Type-select: переходит к следующей строке, имя которой начинается с набранного.
+    func typeSelect(_ characters: String, from current: Focus, now: Date = Date()) -> Bool {
+        typeSelectState.append(characters, now: now)
+        let names = navigationOrder.map { ($0.path as NSString).lastPathComponent }
+        guard let hit = SidebarTypeSelect.match(prefix: typeSelectState.buffer, names: names,
+                                                current: navigationOrder.firstIndex(of: current)) else { return false }
+        // Переход в другую секцию не должен сбрасывать набираемый префикс.
+        let state = typeSelectState
+        selectNavigationTarget(navigationOrder[hit], shift: false)
+        typeSelectState = state
+        return true
+    }
+
+    private func selectNavigationTarget(_ target: Focus, shift: Bool) {
+        // Строка, уже стоящая в фокусе, его не теряет: запрос для неё повис бы до следующего появления.
+        let request = target == focused ? nil : target
+        let urls = navigationOrder.filter { $0.location == target.location }.map { URL(fileURLWithPath: $0.path) }
+        select(URL(fileURLWithPath: target.path), in: target.location, urls: urls, command: false, shift: shift)
+        focusRequest = request
+    }
 
     func select(_ url: URL, in location: SidebarFileLocation, urls: [URL], command: Bool, shift: Bool) {
         let path = url.path
-        if self.location != location { paths = []; anchor = nil }
+        if self.location != location { paths = []; anchor = nil; typeSelectState.reset() }
         self.location = location
         if shift, let anchor, let start = urls.firstIndex(where: { $0.path == anchor }),
            let end = urls.firstIndex(where: { $0.path == path }) {
@@ -527,19 +612,21 @@ private struct SidebarFileRow: View {
         .animation(reduceMotion ? nil : LacEditorDesign.hoverAnimation, value: isHovering)
         .stableHelp(url.path)
         .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityValue(isOpen ? L10n.tr("已打开") : "")
+        .accessibilityValue(!exists ? L10n.tr("文件已移动或删除") : (isOpen ? L10n.tr("已打开") : ""))
         return decorated
         .onChange(of: selection.focused) { _, focused in
             if focused == rowFocus { isFocused = true }
         }
         .onChange(of: isFocused) { _, focused in
-            if focused { selection.focused = rowFocus }
+            if focused { selection.focused = rowFocus; selection.focusRequest = nil }
         }
         .onChange(of: urls) { _, newURLs in selection.reconcile(in: location, urls: newURLs) }
+        .onAppear { if selection.focusRequest == rowFocus { isFocused = true } }
         .onKeyPress(.upArrow) { moveFocus(-1) }
         .onKeyPress(.downArrow) { moveFocus(1) }
         .onKeyPress(.return) { openSelectedFile() }
         .onKeyPress("a") { selectAllFiles() }
+        .onKeyPress(phases: .down) { press in typeSelect(press) }
         .modifier(SidebarFileMetadataModifier(url: url, windowIsActive: activeState != .inactive,
                                               fileExists: $fileExists, fileIdentity: $fileIdentity))
         .modifier(SidebarFileContextMenuModifier(isSelected: selected, menu: contextMenu) {
@@ -568,11 +655,17 @@ private struct SidebarFileRow: View {
     }
 
     private func moveFocus(_ offset: Int) -> KeyPress.Result {
-        guard let index = urls.firstIndex(of: url) else { return .ignored }
-        let next = max(0, min(urls.count - 1, index + offset))
-        selection.select(urls[next], in: location, urls: urls, command: false,
-                         shift: NSApp.currentEvent?.modifierFlags.contains(.shift) == true)
-        return .handled
+        let current = SidebarSelection.Focus(location: location, path: url.path)
+        return selection.moveFocus(from: current, offset: offset,
+                                   extend: NSApp.currentEvent?.modifierFlags.contains(.shift) == true) ? .handled : .ignored
+    }
+
+    /// Только печатные символы без Cmd/Ctrl/Opt; `.handled` лишь при найденном совпадении.
+    private func typeSelect(_ press: KeyPress) -> KeyPress.Result {
+        let blocked: EventModifiers = [.command, .control, .option]
+        guard selection.canTypeSelect(press.characters, hasModifiers: !press.modifiers.isDisjoint(with: blocked)) else { return .ignored }
+        let current = SidebarSelection.Focus(location: location, path: url.path)
+        return selection.typeSelect(press.characters, from: current) ? .handled : .ignored
     }
 
     private var selectedURLs: [URL] {
@@ -691,7 +784,7 @@ private struct SidebarFileRow: View {
             Button(role: .destructive) {
                 appState.removeRecentSidebarFile(url)
             } label: {
-                Label(L10n.tr("从最近文件中删除"), systemImage: "trash")
+                Label(L10n.tr("从最近文件中删除"), systemImage: "minus.circle")
             }
         }
         }
@@ -709,7 +802,7 @@ private struct SidebarFileRowLabel: View {
     var body: some View {
         let language = EditorLanguage.infer(from: url)
         let tint = LacEditorDesign.fileTint(for: language)
-        let foreground = exists ? (activeState == .inactive ? Color.secondary : tint) : Color.orange
+        let foreground = exists ? (activeState == .inactive ? Color.secondary : tint) : Color(nsColor: .systemOrange)
         let rowBackground = isSelected
             ? (activeState == .inactive ? Color.primary.opacity(0.07) : LacEditorDesign.selectionFill)
             : (isHovering ? LacEditorDesign.hoverFill : Color.clear)
@@ -721,10 +814,11 @@ private struct SidebarFileRowLabel: View {
                 .background(tint.opacity(activeState == .inactive ? 0.035 : 0.08), in: RoundedRectangle(cornerRadius: 6))
             VStack(alignment: .leading, spacing: 3) {
                 Text(url.lastPathComponent)
-                    .font(.system(size: 13, weight: isOpen ? .semibold : .regular))
+                    .font(.body.weight(isOpen ? .semibold : .regular))
+                    .foregroundStyle(exists ? Color.primary : Color.secondary)
                     .lineLimit(1)
                 Text(exists ? url.deletingLastPathComponent().lastPathComponent : L10n.tr("文件已移动或删除"))
-                    .font(.system(size: 10))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -736,7 +830,6 @@ private struct SidebarFileRowLabel: View {
                     .accessibilityHidden(true)
             }
         }
-        .opacity(exists ? 1 : 0.65)
         .padding(.horizontal, 8)
         .frame(height: 46)
         .contentShape(Rectangle())
@@ -786,5 +879,13 @@ private struct SidebarFileMetadataModifier: ViewModifier {
             fileExists = metadata.0
             fileIdentity = metadata.1
         }
+    }
+}
+
+extension View {
+    /// Заголовок группы в боковой панели: тот же шрифт, цвет и отступ, что у заголовков секций.
+    func sidebarHeadingStyle() -> some View {
+        font(.subheadline.weight(.semibold)).tracking(0.5)
+            .foregroundStyle(.secondary).padding(.horizontal, 8)
     }
 }

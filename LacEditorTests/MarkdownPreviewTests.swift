@@ -640,6 +640,62 @@ final class MarkdownPreviewTests: XCTestCase {
         fixture.coordinator.render(markdown: source, revision: 1, darkMode: false, immediately: true)
         try await fixture.waitUntil("document.querySelector('article img')?.naturalWidth === 3")
     }
+    func testSourcePositionsOnlyWhenRequested() {
+        let source = "# T\n\ntext\n\n| a |\n|---|\n| b |\n\n```\ncode\n```"
+        let with = MarkdownRenderer.renderPage(source, darkMode: false, includeSourcePositions: true).body
+        XCTAssertTrue(with.contains("data-sourcepos=\"1:1-1:3\""))
+        XCTAssertTrue(with.contains("class=\"table-scroll\""))
+        XCTAssertTrue(with.contains("<table data-sourcepos=\""))
+        XCTAssertTrue(with.contains("<pre tabindex=\"0\""))
+        let without = MarkdownRenderer.renderPage(source, darkMode: false).body
+        XCTAssertFalse(without.contains("data-sourcepos"))
+        XCTAssertTrue(without.contains("<table>"))
+        XCTAssertTrue(without.contains("<pre tabindex=\"0\""))
+        let export = MarkdownRenderer.renderPage(source, darkMode: false, forExport: true, includeSourcePositions: true).body
+        XCTAssertFalse(export.contains("data-sourcepos"))
+        XCTAssertFalse(MarkdownRenderer.render(source, darkMode: false).contains("data-sourcepos"))
+    }
+
+    func testRenderActorDefaultEmitsSourcePositions() async {
+        let coordinator = DocumentTaskCoordinator()
+        let generation = coordinator.begin(.preview)
+        let page = await MarkdownRenderActor().render("a\n\nb", darkMode: false, coordinator: coordinator, generation: generation)
+        XCTAssertTrue(page?.body.contains("data-sourcepos") == true)
+    }
+
+    func testRelayAttachesOnlyWhileActive() {
+        let fixture = PreviewFixture()
+        defer { fixture.dispose() }
+        fixture.coordinator.attachScrollRelay()
+        XCTAssertTrue(fixture.document.previewScrollRelay.isListening)
+        fixture.coordinator.setActive(false)
+        XCTAssertFalse(fixture.document.previewScrollRelay.isListening)
+        fixture.coordinator.setActive(true)
+        XCTAssertTrue(fixture.document.previewScrollRelay.isListening)
+    }
+
+    func testScrollToEditorLineInterpolatesBetweenBlocks() async throws {
+        let text = (1...80).map { "Paragraph \($0)" }.joined(separator: "\n\n")
+        let fixture = PreviewFixture()
+        defer { fixture.dispose() }
+        fixture.coordinator.attachScrollRelay()
+        fixture.coordinator.render(markdown: text, revision: 1, darkMode: false, immediately: true)
+        try await fixture.waitForRevision(1)
+        // Абзац k стоит на строке 2k - 1: строка 79 — абзац 40.
+        fixture.coordinator.scrollToEditorPosition(.init(line: 79, atBottom: false))
+        try await fixture.waitUntil("scrollY > 0")
+        let top: Double = try await fixture.value("document.querySelectorAll('article p')[39].getBoundingClientRect().top")
+        XCTAssertEqual(top, 0, accuracy: 4)
+        fixture.coordinator.scrollToEditorPosition(.init(line: 80, atBottom: false))
+        try await fixture.waitUntil("document.querySelectorAll('article p')[39].getBoundingClientRect().top < -1")
+        let below: Double = try await fixture.value("document.querySelectorAll('article p')[40].getBoundingClientRect().top")
+        XCTAssertGreaterThan(below, 0)
+        fixture.coordinator.scrollToEditorPosition(.init(line: 1, atBottom: false))
+        try await fixture.waitUntil("scrollY === 0")
+        fixture.coordinator.scrollToEditorPosition(.init(line: 1, atBottom: true))
+        try await fixture.waitUntil("Math.abs(scrollY - (document.documentElement.scrollHeight - innerHeight)) < 1")
+    }
+
     func testRenderActorSerializesAndSkipsCancelledWaitingWork() async {
         let gate = RenderGate()
         let started = expectation(description: "first render started")

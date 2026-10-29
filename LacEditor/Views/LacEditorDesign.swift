@@ -117,11 +117,8 @@ extension View {
 enum LacEditorDesign {
     static let sidebarWidth: CGFloat = 250
     static let sidebarRowHeight: CGFloat = 34
-    static let tabBarHeight: CGFloat = 34
-    static let tabHeight: CGFloat = 28
     static let statusBarHeight: CGFloat = 24
     static let compactCornerRadius: CGFloat = 6
-    static let edgeFadeWidth: CGFloat = 24
 
     static let structuralAnimation = Animation.easeOut(duration: 0.18)
     static let chromeAnimation = Animation.easeInOut(duration: 0.16)
@@ -130,11 +127,7 @@ enum LacEditorDesign {
     // the visible state without a spring's momentum or a delayed collapse.
     static let sidebarDisclosureAnimation = Animation.timingCurve(0.25, 0.1, 0.25, 1, duration: 0.20)
 
-    static let accent = Color(nsColor: NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? NSColor(red: 0.63, green: 0.65, blue: 0.95, alpha: 1)
-            : NSColor(red: 0.36, green: 0.38, blue: 0.73, alpha: 1)
-    })
+    static let accent = Color(nsColor: .controlAccentColor)
     static let hoverFill = Color.primary.opacity(0.045)
     static let selectionFill = accent.opacity(0.12)
     static let canvas = adaptiveColor(light: (0.953, 0.957, 0.969), dark: (0.12, 0.125, 0.14))
@@ -167,10 +160,31 @@ enum LacEditorDesign {
 /// Shared by settings and utility windows; the editor remains a flat canvas.
 struct PreferenceGroup<Content: View>: View {
     let title: String
+    /// Идентификатор для прокрутки и подсветки из поиска настроек; nil — группа не участвует (например, заголовок меняется при вводе).
+    let searchID: String?
     @ViewBuilder var content: () -> Content
+    @Environment(\.settingsHighlightedTitle) private var highlighted
+
+    init(title: String, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        self.searchID = title
+        self.content = content
+    }
+
+    init(title: String, searchID: String?, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        self.searchID = searchID
+        self.content = content
+    }
+
     var body: some View {
+        if let searchID { box.id(searchID) } else { box }
+    }
+
+    private var box: some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary).padding(.leading, 3)
+            Text(title).font(.subheadline.weight(.semibold))
+                .foregroundStyle(searchID != nil && highlighted == searchID ? LacEditorDesign.accent : Color.secondary).padding(.leading, 3)
             VStack(spacing: 0) { content() }
                 .background(LacEditorDesign.surface, in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(LacEditorDesign.outline, lineWidth: 0.5))
@@ -178,21 +192,34 @@ struct PreferenceGroup<Content: View>: View {
     }
 }
 
+private struct SettingsHighlightedTitleKey: EnvironmentKey { static let defaultValue: String? = nil }
+
+extension EnvironmentValues {
+    /// Локализованный заголовок строки настроек, которую нужно кратко подсветить после перехода из поиска.
+    var settingsHighlightedTitle: String? {
+        get { self[SettingsHighlightedTitleKey.self] }
+        set { self[SettingsHighlightedTitleKey.self] = newValue }
+    }
+}
+
 struct PreferenceRow<Control: View>: View {
     let title: String
     let detail: String
     @ViewBuilder var control: () -> Control
+    @Environment(\.settingsHighlightedTitle) private var highlighted
     var body: some View {
         HStack(spacing: 20) {
             VStack(alignment: .leading, spacing: 5) {
-                Text(title).font(.system(size: 13, weight: .medium))
+                Text(title).font(.body.weight(.medium))
                 if !detail.isEmpty {
-                    Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text(detail).font(.subheadline).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
             control().controlSize(.regular).fixedSize(horizontal: true, vertical: false)
         }.padding(16).frame(minHeight: 64)
+            .background(highlighted == title ? LacEditorDesign.selectionFill : Color.clear)
+            .id(title)
     }
 }
 
@@ -206,8 +233,8 @@ struct UtilityHeading: View {
                 .foregroundStyle(LacEditorDesign.accent).frame(width: 40, height: 40)
                 .background(LacEditorDesign.selectionFill, in: RoundedRectangle(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.system(size: 19, weight: .semibold))
-                Text(subtitle).font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(title).font(.title2.weight(.semibold))
+                Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
         }
@@ -394,5 +421,57 @@ struct NativeScrollViewConfigurator: NSViewRepresentable {
             scrollView.verticalScroller?.alphaValue = opacity
             scrollView.horizontalScroller?.alphaValue = opacity
         }
+    }
+}
+
+/// Kind of an inline status line; callers pick it explicitly instead of
+/// inferring it from the text.
+enum StatusKind: Equatable {
+    case error, success, info
+
+    var symbol: String {
+        switch self {
+        case .error: "exclamationmark.triangle.fill"
+        case .success: "checkmark.circle.fill"
+        case .info: "info.circle"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .error: .red
+        case .success: .green
+        case .info: .secondary
+        }
+    }
+
+    /// VoiceOver prefix so the kind is not conveyed by colour alone.
+    var accessibilityPrefix: String {
+        switch self {
+        case .error: L10n.tr("错误")
+        case .success: L10n.tr("成功")
+        case .info: ""
+        }
+    }
+}
+
+struct StatusMessage: Equatable {
+    var kind: StatusKind
+    var text: String
+}
+
+struct StatusMessageView: View {
+    let kind: StatusKind
+    let text: String
+
+    var body: some View {
+        Label {
+            Text(text).font(.subheadline).foregroundStyle(kind == .info ? .secondary : kind.color)
+                .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+        } icon: {
+            Image(systemName: kind.symbol).font(.subheadline).foregroundStyle(kind.color)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(kind.accessibilityPrefix.isEmpty ? text : "\(kind.accessibilityPrefix): \(text)")
     }
 }

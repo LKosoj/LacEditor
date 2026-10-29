@@ -4,21 +4,46 @@ import Foundation
 enum FindReplaceMode: String, CaseIterable, Identifiable {
     case find = "查找"
     case replace = "替换"
+    case goToLine = "跳转行"   // внутренний идентификатор, пользователю не показывается
 
     var id: String { rawValue }
 }
 
 @MainActor
 final class FindReplaceState: ObservableObject {
+    enum MessageKind { case info, success, error }
+
     @Published var mode: FindReplaceMode = .find
     @Published var query = ""
     @Published var replacement = ""
     @Published var interpretsEscapes = true
     @Published var isCaseSensitive = false
-    @Published var message: String?
+    @Published var usesRegex = false
+    @Published var matchesWholeWord = false
+    // Любое обычное присваивание сбрасывает вид сообщения; вид задаёт только show(_:kind:).
+    @Published var message: String? { didSet { messageKind = .info } }
+    @Published private(set) var messageKind: MessageKind = .info
     @Published var isWorking = false
     @Published var activeDocumentID: UUID?
     @Published var focusRequestID = UUID()
+    @Published var isBarVisible = false
+    @Published var goToLineText = ""
+    @Published private(set) var matches: [NSRange]?
+    private(set) var matchesDocumentID: UUID?
+
+    var searchOptions: TextSearchService.Options {
+        .init(caseSensitive: isCaseSensitive, usesRegex: usesRegex, wholeWord: matchesWholeWord)
+    }
+
+    func show(_ text: String?, kind: MessageKind) {
+        message = text
+        messageKind = kind
+    }
+
+    func setMatches(_ value: [NSRange]?, documentID: UUID?) {
+        matches = value
+        matchesDocumentID = documentID
+    }
 }
 
 enum TextSearchService {
@@ -26,7 +51,18 @@ enum TextSearchService {
         let revision: UInt
         let query: String
         let caseSensitive: Bool
+        var usesRegex = false
+        var wholeWord = false
     }
+
+    struct Options: Hashable, Sendable {
+        var caseSensitive = false
+        var usesRegex = false
+        var wholeWord = false
+        var isPlain: Bool { !usesRegex && !wholeWord }
+    }
+
+    enum SearchError: Error { case invalidPattern }
 
     static func interpreted(_ value: String, enabled: Bool) -> String {
         guard enabled else { return value }
@@ -185,6 +221,187 @@ enum TextSearchService {
             range: NSRange(location: 0, length: nsText.length)
         )
         return (output, count)
+    }
+
+    /// Целое слово задаётся lookaround, а не \b: у запроса вроде "@foo" или "C++" края не словесные.
+    static func regularExpression(query: String, options: Options) throws -> NSRegularExpression {
+        var pattern = options.usesRegex ? query : NSRegularExpression.escapedPattern(for: query)
+        if options.wholeWord { pattern = "(?<![\\p{L}\\p{N}_])(?:\(pattern))(?![\\p{L}\\p{N}_])" }
+        var flags: NSRegularExpression.Options = [.anchorsMatchLines]
+        if !options.caseSensitive { flags.insert(.caseInsensitive) }
+        do { return try NSRegularExpression(pattern: pattern, options: flags) }
+        catch { throw SearchError.invalidPattern }
+    }
+
+    static func allRanges(
+        in text: String,
+        query: String,
+        options: Options,
+        isCancelled: () -> Bool = { false }
+    ) throws -> [NSRange] {
+        guard !query.isEmpty else { return [] }
+        if options.isPlain {
+            return allRanges(in: text, query: query, caseSensitive: options.caseSensitive, isCancelled: isCancelled)
+        }
+        let regex = try regularExpression(query: query, options: options)
+        var result: [NSRange] = []
+        var cancelled = false
+        // reportProgress вызывает блок и внутри долгого совпадения, поэтому отмена прерывает и тяжёлый откат.
+        regex.enumerateMatches(
+            in: text,
+            options: [.reportProgress],
+            range: NSRange(location: 0, length: (text as NSString).length)
+        ) { match, _, stop in
+            if isCancelled() { cancelled = true; stop.pointee = true; return }
+            guard let range = match?.range, range.length > 0 else { return }
+            result.append(range)
+        }
+        return cancelled ? [] : result
+    }
+
+    /// Шаблон замены в режиме регулярного выражения: $1, \$, \\ как в ICU; \n \r \t становятся управляющими символами.
+    static func regexTemplate(_ value: String) -> String {
+        var out = ""
+        var pending = false
+        for ch in value {
+            if pending {
+                switch ch {
+                case "n": out.append("\n")
+                case "r": out.append("\r")
+                case "t": out.append("\t")
+                default:
+                    out.append("\\")
+                    out.append(ch)
+                }
+                pending = false
+            } else if ch == "\\" {
+                pending = true
+            } else {
+                out.append(ch)
+            }
+        }
+        if pending { out.append("\\\\") }
+        return out
+    }
+
+    private static func template(for replacement: String, options: Options, interpretsEscapes: Bool) -> String {
+        options.usesRegex
+            ? regexTemplate(replacement)
+            : NSRegularExpression.escapedTemplate(for: interpreted(replacement, enabled: interpretsEscapes))
+    }
+
+    static func replaceAll(
+        in text: String,
+        query: String,
+        replacement: String,
+        options: Options,
+        interpretsEscapes: Bool,
+        isCancelled: () -> Bool = { false }
+    ) throws -> (text: String, count: Int) {
+        guard !query.isEmpty else { return (text, 0) }
+        if options.isPlain {
+            return replacingAll(
+                in: text,
+                query: query,
+                replacement: interpreted(replacement, enabled: interpretsEscapes),
+                caseSensitive: options.caseSensitive,
+                isCancelled: isCancelled
+            )
+        }
+        let regex = try regularExpression(query: query, options: options)
+        let tpl = template(for: replacement, options: options, interpretsEscapes: interpretsEscapes)
+        let ns = text as NSString
+        var output = ""
+        var cursor = 0
+        var count = 0
+        var cancelled = false
+        regex.enumerateMatches(
+            in: text,
+            options: [.reportProgress],
+            range: NSRange(location: 0, length: ns.length)
+        ) { match, _, stop in
+            if isCancelled() { cancelled = true; stop.pointee = true; return }
+            // Пустые совпадения пропускаются, как в allRanges: иначе «Заменить все» меняло бы то, что поиск не нашёл.
+            guard let match, match.range.length > 0 else { return }
+            output += ns.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
+            output += regex.replacementString(for: match, in: text, offset: 0, template: tpl)
+            cursor = NSMaxRange(match.range)
+            count += 1
+        }
+        if cancelled { return (text, 0) }
+        output += ns.substring(from: cursor)
+        return (output, count)
+    }
+
+    /// Текст замены, если `selection` — ровно одно совпадение; иначе nil. Нужен для «Заменить».
+    static func replacement(
+        forSelection selection: NSRange,
+        in text: String,
+        query: String,
+        replacement: String,
+        options: Options,
+        interpretsEscapes: Bool
+    ) throws -> String? {
+        let ns = text as NSString
+        guard !query.isEmpty, selection.location != NSNotFound, NSMaxRange(selection) <= ns.length else { return nil }
+        if options.isPlain {
+            return selectionMatches(in: text, query: query, selection: selection, caseSensitive: options.caseSensitive)
+                ? interpreted(replacement, enabled: interpretsEscapes) : nil
+        }
+        let regex = try regularExpression(query: query, options: options)
+        // Ищем до конца текста, а не только в выделении: жадные шаблоны оцениваются так же, как при поиске.
+        let tail = NSRange(location: selection.location, length: ns.length - selection.location)
+        guard let match = regex.firstMatch(
+            in: text,
+            options: [.anchored, .withTransparentBounds, .withoutAnchoringBounds],
+            range: tail
+        ), match.range == selection, selection.length > 0 else { return nil }
+        return regex.replacementString(
+            for: match,
+            in: text,
+            offset: 0,
+            template: template(for: replacement, options: options, interpretsEscapes: interpretsEscapes)
+        )
+    }
+
+    /// Обратное к `interpreted(_, enabled: true)`: \, LF, CR, TAB и NUL переживают круг.
+    static func escapedForInterpretation(_ value: String) -> String {
+        var out = ""
+        // По скалярам: CRLF в Character — один символ, и сравнение с "\r" и "\n" по отдельности его бы пропустило.
+        for scalar in value.unicodeScalars {
+            switch scalar {
+            case "\\": out.append("\\\\")
+            case "\n": out.append("\\n")
+            case "\r": out.append("\\r")
+            case "\t": out.append("\\t")
+            case "\0": out.append("\\0")
+            default: out.unicodeScalars.append(scalar)
+            }
+        }
+        return out
+    }
+
+    /// Номер (с 1) совпадения, равного `selection`; matches отсортированы.
+    static func currentIndex(in matches: [NSRange], selection: NSRange) -> Int? {
+        var low = 0
+        var high = matches.count
+        while low < high {
+            let mid = (low + high) / 2
+            if matches[mid].location < selection.location { low = mid + 1 } else { high = mid }
+        }
+        guard low < matches.count, matches[low] == selection else { return nil }
+        return low + 1
+    }
+
+    /// Первый индекс, чьё совпадение заканчивается правее `location`.
+    static func firstIndex(in matches: [NSRange], endingAfter location: Int) -> Int {
+        var low = 0
+        var high = matches.count
+        while low < high {
+            let mid = (low + high) / 2
+            if NSMaxRange(matches[mid]) <= location { low = mid + 1 } else { high = mid }
+        }
+        return low
     }
 
     private static func compareOptions(caseSensitive: Bool) -> NSString.CompareOptions {

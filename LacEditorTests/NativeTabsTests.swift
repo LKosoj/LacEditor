@@ -139,23 +139,6 @@ final class NativeTabsTests: XCTestCase {
         XCTAssertEqual(state.selectedDocument?.text, "content")
     }
 
-    func testOpeningDocumentCannotBeTransferred() throws {
-        let suiteName = "LacEditorIOTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let document = EditorDocument(text: "existing")
-        document.ioState = .opening
-        let state = AppState(initialDocument: document, recentFiles: RecentFilesStore(defaults: defaults), preferences: AppPreferences(defaults: defaults))
-        let manager = WindowManager(
-            preferences: AppPreferences(defaults: defaults),
-            recentFiles: RecentFilesStore(defaults: defaults)
-        )
-        XCTAssertFalse(manager.beginTabDrag(document, from: state))
-        XCTAssertNil(manager.draggedDocumentID)
-        XCTAssertNil(state.takeDocumentForTransfer(document))
-        XCTAssertTrue(state.selectedDocument === document)
-    }
-
     func testReloadKeepsPendingLiveEdit() async throws {
         let suiteName = "LacEditorIOTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

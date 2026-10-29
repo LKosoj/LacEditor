@@ -71,3 +71,32 @@ enum AIFeature: String, CaseIterable, Identifiable, Codable {
         }
     }
 }
+
+enum AIFeatureGroup: CaseIterable, Identifiable {
+    case writing, analysis, media
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .writing: L10n.tr("文本编辑")
+        case .analysis: L10n.tr("分析与检查")
+        case .media: L10n.tr("图片、语音与图表")
+        }
+    }
+}
+
+extension AIFeature {
+    var group: AIFeatureGroup {
+        switch self {
+        case .clarity, .rephrase, .shorten, .expand, .completion, .toneRewrite, .translation, .table,
+             .summary, .metadata, .actionItems: .writing
+        case .terminology, .toneReview, .structure, .contradictions, .sources, .provenance,
+             .decisions, .extractDecisions, .audienceReview, .contextReview, .compareVersions,
+             .customCheck, .explain: .analysis
+        case .illustration, .imageDescription, .recognizeDocument, .voiceDraft, .mermaid: .media
+        }
+    }
+
+    static func features(in group: AIFeatureGroup) -> [AIFeature] { allCases.filter { $0.group == group } }
+}

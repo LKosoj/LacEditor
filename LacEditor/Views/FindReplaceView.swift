@@ -1,219 +1,218 @@
 import AppKit
 import SwiftUI
 
-enum FindReplaceWindowIdentity {
-    static let identifier = NSUserInterfaceItemIdentifier("LacEditor.FindReplaceWindow")
-}
-
-struct FindReplaceView: View {
+/// Observes FindReplaceState itself: AppState does not republish its nested state object.
+struct FindBarHost: View {
     @EnvironmentObject private var appState: AppState
-    @ObservedObject private var state: FindReplaceState
-    @FocusState private var focusedField: Field?
-    private let close: () -> Void
-    @State private var showsEscapeHelp = false
-    @State private var escapeHelpTask: Task<Void, Never>?
-    private enum Field { case query, replacement }
-
-    init(state: FindReplaceState, close: @escaping () -> Void) {
-        _state = ObservedObject(wrappedValue: state)
-        self.close = close
-    }
+    @ObservedObject var state: FindReplaceState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            UtilityHeading(title: L10n.tr("查找与替换"),
-                           subtitle: appState.selectedDocument.map { L10n.tr("当前文档：%@", String(describing: $0.displayName)) } ?? L10n.tr("在当前文档中查找"),
-                           symbol: "text.magnifyingglass")
-            VStack(spacing: 16) {
-                Grid(alignment: .trailing, horizontalSpacing: 14, verticalSpacing: 12) {
-                    GridRow {
-                        Text(L10n.tr("查找")).font(.system(size: 12, weight: .medium))
-                        TextField(L10n.tr("输入要查找的内容"), text: $state.query)
-                            .textFieldStyle(.roundedBorder).controlSize(.large)
-                            .focused($focusedField, equals: .query)
-                            .onKeyPress(keys: [.return], phases: .down) { press in
-                                guard !actionsDisabled else { return .handled }
-                                if press.modifiers.contains(.shift) { appState.findPrevious() }
-                                else { appState.findNext() }
-                                return .handled
-                            }
-                    }
-                    GridRow {
-                        Text(L10n.tr("替换为")).font(.system(size: 12, weight: .medium))
-                        TextField(L10n.tr("输入替换内容，留空表示删除"), text: $state.replacement)
-                            .textFieldStyle(.roundedBorder).controlSize(.large)
-                            .focused($focusedField, equals: .replacement)
-                    }
-                }
-                HStack(spacing: 4) {
-                    Toggle(L10n.tr("解释转义字符"), isOn: $state.interpretsEscapes)
-                    escapeInfo
-                    Spacer()
-                    Toggle(L10n.tr("区分大小写"), isOn: $state.isCaseSensitive)
-                }
-                .font(.system(size: 12)).toggleStyle(.checkbox).zIndex(1)
+        if state.isBarVisible, let document = appState.selectedDocument {
+            VStack(spacing: 0) {
+                FindBarView(state: state, document: document)
+                Divider()
             }
-            .padding(18)
-            .background(LacEditorDesign.surface, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(LacEditorDesign.outline, lineWidth: 0.5))
-            .zIndex(1)
-
-            HStack(spacing: 8) {
-                if state.isWorking {
-                    ProgressView().controlSize(.small)
-                    Text(state.message ?? L10n.tr("正在查找…"))
-                    Button(L10n.tr("取消任务")) { appState.cancelFindReplaceTask() }.buttonStyle(.borderless)
-                } else {
-                    if state.message?.hasPrefix(L10n.tr("已替换")) == true {
-                        Image(systemName: "checkmark.circle").accessibilityHidden(true)
-                    }
-                    Text(state.message ?? L10n.tr("输入关键词，按回车查找下一处"))
-                        .lineLimit(1).help(state.message ?? "")
-                        .accessibilityIdentifier("find.result.message")
-                }
-                Spacer(minLength: 0)
-                if !state.isWorking { Text(L10n.tr("⇧↩ 上一个")).foregroundStyle(.tertiary) }
-            }
-            .font(.system(size: 11)).foregroundStyle(.secondary).frame(height: 20)
-
-            HStack(spacing: 10) {
-                Button(L10n.tr("关闭"), action: close).keyboardShortcut(.cancelAction)
-                Spacer(minLength: 10)
-                Button { appState.findPrevious() } label: { Label(L10n.tr("上一个"), systemImage: "chevron.up") }
-                    .disabled(actionsDisabled).help(L10n.tr("查找上一处（⇧⌘G）"))
-                Button { appState.findNext() } label: { Label(L10n.tr("下一个"), systemImage: "chevron.down") }
-                    .keyboardShortcut(.defaultAction).disabled(actionsDisabled).help(L10n.tr("查找下一处（⌘G）"))
-                Button(L10n.tr("替换")) { appState.replaceCurrentMatch() }.disabled(actionsDisabled)
-                Button(L10n.tr("全部替换")) { appState.replaceAllMatches() }
-                    .buttonStyle(.borderedProminent).disabled(actionsDisabled)
-            }.controlSize(.regular)
+            .id(document.id)
         }
-        .padding(24)
-        .frame(minWidth: 620, minHeight: 350)
-        .background(LacEditorDesign.canvas)
+    }
+}
+
+struct FindBarView: View {
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject var state: FindReplaceState
+    @ObservedObject var document: EditorDocument
+    @FocusState private var focusedField: Field?
+    private enum Field { case query, replacement, line }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            if state.mode == .goToLine {
+                goToLineRow
+            } else {
+                findRow
+                if state.mode == .replace { replaceRow }
+            }
+        }
+        .font(.callout)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
+        .background(LacEditorDesign.surface)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(L10n.tr("查找栏"))
         .onAppear { focusRequestedField() }
         .onChange(of: state.focusRequestID) { focusRequestedField() }
-        .onDisappear {
-            escapeHelpTask?.cancel()
-            showsEscapeHelp = false
-        }
-        .onChange(of: state.query) { appState.cancelFindReplaceTask() }
+        .onChange(of: state.mode) { focusRequestedField() }
+        .onChange(of: state.query) { queryOptionsChanged() }
+        .onChange(of: state.isCaseSensitive) { queryOptionsChanged() }
+        .onChange(of: state.usesRegex) { queryOptionsChanged() }
+        .onChange(of: state.matchesWholeWord) { queryOptionsChanged() }
+        .onChange(of: state.interpretsEscapes) { queryOptionsChanged() }
         .onChange(of: state.replacement) { appState.cancelFindReplaceTask() }
-        .onChange(of: state.isCaseSensitive) { appState.cancelFindReplaceTask() }
-        .onChange(of: state.interpretsEscapes) { appState.cancelFindReplaceTask() }
     }
 
-    private var escapeInfo: some View {
-        Image(systemName: "info.circle")
-            .font(.system(size: 12)).foregroundStyle(.secondary)
-            .frame(width: 24, height: 24).contentShape(Rectangle())
-            .onHover { inside in
-                escapeHelpTask?.cancel()
-                if inside {
-                    escapeHelpTask = Task { @MainActor in
-                        do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
-                        showsEscapeHelp = true
-                    }
-                } else { showsEscapeHelp = false }
+    private var findRow: some View {
+        HStack(spacing: 6) {
+            Button {
+                state.mode = state.mode == .replace ? .find : .replace
+            } label: {
+                Image(systemName: state.mode == .replace ? "chevron.down" : "chevron.right")
+                    .frame(width: 16, height: 16)
+                    .contentShape(Rectangle())
             }
-            .accessibilityLabel(L10n.tr("转义字符说明")).accessibilityHint(escapeHelp)
-            .overlay(alignment: .topLeading) {
-                if showsEscapeHelp {
-                    Text(escapeHelp).font(.system(size: 12)).padding(12)
-                        .frame(width: 310, alignment: .leading)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(LacEditorDesign.outline, lineWidth: 0.5))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .offset(y: 28).allowsHitTesting(false)
+            .help(L10n.tr("替换"))
+            .accessibilityLabel(L10n.tr("替换"))
+            .accessibilityAddTraits(state.mode == .replace ? .isSelected : [])
+            .accessibilityIdentifier("find.toggleReplace")
+            TextField(L10n.tr("输入要查找的内容"), text: $state.query)
+                .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 160)
+                .focused($focusedField, equals: .query)
+                .onKeyPress(keys: [.return], phases: .down) { press in handleReturn(press) }
+                .onKeyPress(keys: [.escape], phases: .down) { _ in handleEscape() }
+                .accessibilityIdentifier("find.query")
+                .accessibilityLabel(L10n.tr("查找"))
+            optionToggle("Aa", isOn: $state.isCaseSensitive, label: L10n.tr("区分大小写"))
+            optionToggle(".*", isOn: $state.usesRegex, label: L10n.tr("正则表达式"))
+            optionToggle("W", isOn: $state.matchesWholeWord, label: L10n.tr("全字匹配"))
+            optionToggle("\\n", isOn: $state.interpretsEscapes, label: L10n.tr("解释转义字符"), help: escapeHelp)
+                .disabled(state.usesRegex)
+            resultLabel
+            Spacer(minLength: 0)
+            Button { appState.findPrevious(keepFocusInBar: true) } label: { Image(systemName: "chevron.up") }
+                .disabled(actionsDisabled)
+                .help(L10n.tr("查找上一处（⇧⌘G）"))
+                .accessibilityLabel(L10n.tr("上一个"))
+            Button { appState.findNext(keepFocusInBar: true) } label: { Image(systemName: "chevron.down") }
+                .disabled(actionsDisabled)
+                .help(L10n.tr("查找下一处（⌘G）"))
+                .accessibilityLabel(L10n.tr("下一个"))
+            closeButton
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+    }
+
+    private var replaceRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "arrow.turn.down.right").foregroundStyle(.secondary).frame(width: 16).accessibilityHidden(true)
+            TextField(L10n.tr("输入替换内容，留空表示删除"), text: $state.replacement)
+                .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 160)
+                .focused($focusedField, equals: .replacement)
+                .onKeyPress(keys: [.return], phases: .down) { press in handleReturn(press) }
+                .onKeyPress(keys: [.escape], phases: .down) { _ in handleEscape() }
+                .help(state.usesRegex ? L10n.tr("替换模板：$1 表示第 1 个捕获组") : "")
+                .accessibilityLabel(L10n.tr("替换为"))
+            Button(L10n.tr("替换")) { appState.replaceCurrentMatch(keepFocusInBar: true) }
+                .disabled(actionsDisabled)
+            Button(L10n.tr("全部替换")) { appState.replaceAllMatches() }
+                .buttonStyle(.borderedProminent)
+                .disabled(actionsDisabled)
+            Spacer(minLength: 0)
+        }
+        .controlSize(.small)
+    }
+
+    private var goToLineRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "arrow.right.to.line").foregroundStyle(.secondary).accessibilityHidden(true)
+            TextField(L10n.tr("行号[:列号]"), text: $state.goToLineText)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 160)
+                .focused($focusedField, equals: .line)
+                .onKeyPress(keys: [.return], phases: .down) { _ in
+                    appState.goToLine(state.goToLineText)
+                    return .handled
+                }
+                .onKeyPress(keys: [.escape], phases: .down) { _ in handleEscape() }
+                .accessibilityIdentifier("find.goToLine")
+                .accessibilityLabel(L10n.tr("跳转到行…"))
+            Button(L10n.tr("跳转")) { appState.goToLine(state.goToLineText) }
+                .controlSize(.small)
+            if let message = state.message {
+                Text(message)
+                    .foregroundStyle(state.messageKind == .error ? Color.red : Color.secondary)
+                    .lineLimit(1).help(message)
+                    .accessibilityIdentifier("find.result.message")
+            }
+            Spacer(minLength: 0)
+            closeButton
+        }
+    }
+
+    private var closeButton: some View {
+        Button { appState.dismissFindReplace(returnFocus: true) } label: { Image(systemName: "xmark") }
+            .buttonStyle(.borderless)
+            .help(L10n.tr("关闭"))
+            .accessibilityLabel(L10n.tr("关闭"))
+    }
+
+    private func optionToggle(_ title: String, isOn: Binding<Bool>, label: String, help: String? = nil) -> some View {
+        Toggle(isOn: isOn) { Text(title).font(.subheadline.monospaced()) }
+            .toggleStyle(.button)
+            .controlSize(.small)
+            .help(help ?? label)
+            .accessibilityLabel(label)
+    }
+
+    @ViewBuilder private var resultLabel: some View {
+        Group {
+            if state.isWorking {
+                ProgressView().controlSize(.small)
+                Button(L10n.tr("取消任务")) { appState.cancelFindReplaceTask() }.buttonStyle(.borderless)
+            } else if let message = state.message {
+                HStack(spacing: 4) {
+                    if state.messageKind == .success { Image(systemName: "checkmark.circle").accessibilityHidden(true) }
+                    Text(message).foregroundStyle(state.messageKind == .error ? Color.red : Color.secondary)
+                }
+                .lineLimit(1).help(message)
+                .accessibilityIdentifier("find.result.message")
+            } else if let matches = state.matches, state.matchesDocumentID == document.id {
+                if matches.isEmpty {
+                    Text(L10n.tr("未找到匹配内容")).foregroundStyle(.red)
+                } else if let index = TextSearchService.currentIndex(in: matches, selection: document.selectionRange) {
+                    Text(L10n.tr("第 %@ 个，共 %@ 个", String(index), String(matches.count))).foregroundStyle(.secondary)
+                } else {
+                    Text(L10n.tr("共 %@ 个匹配", String(matches.count))).foregroundStyle(.secondary)
                 }
             }
+        }
+        .font(.subheadline)
+        .monospacedDigit()
+        .lineLimit(1)
     }
+
     private var actionsDisabled: Bool { state.query.isEmpty || state.isWorking }
+
     private var escapeHelp: String {
         L10n.tr(#"可用转义字符：\n 换行，\r 回车，\t 制表符，\s 空格，\0 空字符，\\ 反斜杠。查找与替换内容均适用。"#)
     }
+
+    private func handleReturn(_ press: KeyPress) -> KeyPress.Result {
+        guard !actionsDisabled else { return .handled }
+        if press.modifiers.contains(.shift) { appState.findPrevious(keepFocusInBar: true) }
+        else { appState.findNext(keepFocusInBar: true) }
+        return .handled
+    }
+
+    private func handleEscape() -> KeyPress.Result {
+        appState.dismissFindReplace(returnFocus: true)
+        return .handled
+    }
+
+    private func queryOptionsChanged() {
+        appState.cancelFindReplaceTask()
+        appState.scheduleFindRefresh()
+    }
+
     private func focusRequestedField() {
-        DispatchQueue.main.async { focusedField = state.mode == .replace ? .replacement : .query }
-    }
-}
-
-@MainActor
-final class FindReplaceWindowController: NSWindowController, NSWindowDelegate {
-    private weak var state: FindReplaceState?
-    private weak var appState: AppState?
-    private var hasPositionedWindow = false
-
-    init(appState: AppState) {
-        let findWindow = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 620, height: 350),
-            styleMask: [.titled, .closable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        super.init(window: findWindow)
-        state = appState.findReplace
-        self.appState = appState
-
-        findWindow.identifier = FindReplaceWindowIdentity.identifier
-        findWindow.title = L10n.tr("查找与替换")
-        findWindow.isReleasedWhenClosed = false
-        findWindow.tabbingMode = .disallowed
-        findWindow.contentMinSize = NSSize(width: 620, height: 350)
-        findWindow.animationBehavior = .documentWindow
-        findWindow.collectionBehavior.insert(.fullScreenAuxiliary)
-        findWindow.delegate = self
-
-        let content = FindReplaceView(state: appState.findReplace, close: { [weak self] in
-            self?.window?.performClose(nil)
-        })
-        findWindow.contentViewController = NSHostingController(
-            rootView: UtilityWindowRoot(appState: appState) { content }
-        )
-    }
-
-    required init?(coder: NSCoder) {
-        nil
-    }
-
-    func present(mode: FindReplaceMode, relativeTo parentWindow: NSWindow) {
-        guard let findWindow = window else { return }
-
-        state?.mode = mode
-        if !hasPositionedWindow {
-            position(over: parentWindow)
-            hasPositionedWindow = true
+        DispatchQueue.main.async {
+            switch state.mode {
+            case .goToLine: focusedField = .line
+            case .replace: focusedField = state.query.isEmpty ? .query : .replacement
+            case .find: focusedField = .query
+            }
         }
-        showWindow(nil)
-        findWindow.makeKeyAndOrderFront(nil)
-        state?.focusRequestID = UUID()
-    }
-
-    func dismiss() {
-        appState?.cancelFindReplaceTask()
-        state?.isWorking = false
-        window?.orderOut(nil)
-    }
-
-    func windowWillClose(_ notification: Notification) {
-        appState?.cancelFindReplaceTask()
-    }
-
-    private func position(over parentWindow: NSWindow) {
-        guard let panel = window else { return }
-        var origin = NSPoint(
-            x: parentWindow.frame.midX - panel.frame.width / 2,
-            y: parentWindow.frame.midY - panel.frame.height / 2
-        )
-        if let visibleFrame = parentWindow.screen?.visibleFrame {
-            origin.x = min(
-                max(origin.x, visibleFrame.minX),
-                visibleFrame.maxX - panel.frame.width
-            )
-            origin.y = min(
-                max(origin.y, visibleFrame.minY),
-                visibleFrame.maxY - panel.frame.height
-            )
-        }
-        panel.setFrameOrigin(origin)
     }
 }

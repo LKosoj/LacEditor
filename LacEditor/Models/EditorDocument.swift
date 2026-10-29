@@ -202,7 +202,8 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     @Published var selectionRange = NSRange(location: 0, length: 0) {
         didSet { if selectionRange != oldValue && (selectionRange.length != 0 || oldValue.length != 0) { scheduleMetricsRefresh() } }
     }
-    @Published var statusMessage: String?
+    @Published var statusMessage: String? { didSet { statusMessageIsError = false } }
+    @Published private(set) var statusMessageIsError = false
     @Published var textCodecSuggestionTitle: String?
     @Published var markdownHeadings: [MarkdownHeading] = []
     @Published var isMarkdownOutlineCurrent = false
@@ -221,6 +222,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     private(set) var fileRevisionSnapshot: FileRevisionSnapshot?
     let taskCoordinator = DocumentTaskCoordinator()
     let provenance = DocumentProvenance()
+    let previewScrollRelay = MarkdownPreviewScrollRelay()
     var aiMetadata: String?
     @Published var pendingAIContextSelection: (range: NSRange, revision: UInt)? = nil
     private var savedText: String?
@@ -284,6 +286,12 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
 
     var encodingName: String {
         FileService.encodingName(for: fileEncoding)
+    }
+
+    /// didSet обычного присваивания сначала сбрасывает признак, затем он ставится заново.
+    func setStatusError(_ text: String) {
+        statusMessage = text
+        statusMessageIsError = true
     }
 
     func updateFileEncoding(_ encoding: String.Encoding) {
@@ -604,4 +612,19 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         metricsSuspended = false
         scheduleMetricsRefresh()
     }
+}
+
+/// Однонаправленная связь «редактор → предпросмотр» для прокрутки. Только главный поток.
+final class MarkdownPreviewScrollRelay {
+    struct Position: Equatable {
+        let line: Int        // верхняя видимая логическая строка, с 1
+        let atBottom: Bool   // редактор прокручен до конца
+    }
+    /// Ставит предпросмотр, пока он активен и показан.
+    var positionHandler: ((Position) -> Void)?
+    /// Предпросмотр, поставивший обработчик: снимать его может только он сам.
+    weak var positionHandlerOwner: AnyObject?
+    /// Ставит редактор; нужен для первого выравнивания нового предпросмотра.
+    var positionProvider: (() -> Position?)?
+    var isListening: Bool { positionHandler != nil }
 }

@@ -1545,17 +1545,17 @@ final class MarkdownWidthTests: XCTestCase {
         window.setContentSize(NSSize(width: 240, height: 400))
         let narrowed = await waitFor { (view.textContainer?.containerSize.width ?? 1000) < 240 }
         XCTAssertTrue(narrowed)
-        XCTAssertEqual(view.textContainerInset.width, 0, accuracy: 0.5)
+        XCTAssertEqual(view.textContainerInset.width, 16, accuracy: 0.5)
         options.wrap = false
         let unwrapped = await waitFor { scroll.hasHorizontalScroller && view.textContainer?.containerSize.width == CGFloat.greatestFiniteMagnitude }
         XCTAssertTrue(unwrapped)
-        XCTAssertEqual(view.textContainerInset.width, 0)
+        XCTAssertEqual(view.textContainerInset.width, 16, accuracy: 0.5)
         window.setContentSize(NSSize(width: 800, height: 400))
         options.width = nil
         options.wrap = true
         let reset = await waitFor { !scroll.hasHorizontalScroller && (view.textContainer?.containerSize.width ?? 0) > 600 }
         XCTAssertTrue(reset)
-        XCTAssertEqual(view.textContainerInset.width, 0)
+        XCTAssertEqual(view.textContainerInset.width, 16, accuracy: 0.5)
         XCTAssertEqual(view.string, source)
     }
 
@@ -1633,7 +1633,8 @@ final class MarkdownWidthTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let preferences = AppPreferences(defaults: defaults)
-        XCTAssertNil(preferences.markdownMaximumWidth)
+        XCTAssertEqual(preferences.markdownMaximumWidth, 760)
+        XCTAssertNil(preferences.markdownTypography)
         preferences.markdownMaximumWidth = 450
         XCTAssertEqual(preferences.markdownTypography?.maximumWidth, 450)
         XCTAssertEqual(preferences.markdownTypography?.usesCustomFontMetrics, false)
@@ -1645,6 +1646,69 @@ final class MarkdownWidthTests: XCTestCase {
         preferences.markdownMaximumWidth = nil
         XCTAssertNil(AppPreferences(defaults: defaults).markdownMaximumWidth)
         XCTAssertNil(preferences.markdownTypography)
+    }
+
+    func testDefaultMarkdownWidthIs760AndDoesNotCreateTypography() throws {
+        let suite = "LacEditorTests.MarkdownWidthDefault.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        XCTAssertEqual(preferences.markdownMaximumWidth, AppPreferences.defaultMarkdownMaximumWidth)
+        XCTAssertNil(defaults.object(forKey: "markdownMaximumWidth"))
+        XCTAssertNil(preferences.markdownTypography)
+    }
+
+    func testStoredPositiveWidthIsKept() throws {
+        let suite = "LacEditorTests.MarkdownWidthStored.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(500, forKey: "markdownMaximumWidth")
+        let preferences = AppPreferences(defaults: defaults)
+        XCTAssertEqual(preferences.markdownMaximumWidth, 500)
+        XCTAssertEqual(preferences.markdownTypography?.maximumWidth, 500)
+        XCTAssertEqual(preferences.markdownTypography?.usesCustomFontMetrics, false)
+    }
+
+    func testExplicitUnlimitedWidthPersistsAcrossRelaunch() throws {
+        let suite = "LacEditorTests.MarkdownWidthUnlimited.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.markdownMaximumWidth = nil
+        XCTAssertEqual((defaults.object(forKey: "markdownMaximumWidth") as? NSNumber)?.doubleValue, 0)
+        XCTAssertNil(AppPreferences(defaults: defaults).markdownMaximumWidth)
+        XCTAssertNil(preferences.markdownTypography)
+    }
+
+    func testInvalidStoredWidthFallsBackToDefault() throws {
+        let suite = "LacEditorTests.MarkdownWidthInvalid.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(-5, forKey: "markdownMaximumWidth")
+        XCTAssertEqual(AppPreferences(defaults: defaults).markdownMaximumWidth, 760)
+    }
+
+    func testUnlimitedWidthKeepsMinimumHorizontalInset() async throws {
+        _ = NSApplication.shared
+        let document = EditorDocument(text: "# 中😀\n\nwords words", language: .markdown)
+        let sessions = EditorSessionStore(limit: 1), options = Options()
+        options.width = nil
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 400), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { sessions.coordinator(for: document).updateActivity(false); document.cancelMetricsRefresh(); window.close() }
+        window.contentViewController = NSHostingController(rootView: Host(document: document, sessions: sessions, options: options))
+        window.makeKeyAndOrderFront(nil)
+        let coordinator = sessions.coordinator(for: document)
+        let ready = await waitFor { (coordinator.textView?.textContainer?.containerSize.width ?? 0) > 600 }
+        XCTAssertTrue(ready)
+        let view = try XCTUnwrap(coordinator.textView)
+        XCTAssertEqual(view.textContainerInset.width, 16, accuracy: 0.5)
+        options.wrap = false
+        let unwrapped = await waitFor { view.textContainer?.containerSize.width == CGFloat.greatestFiniteMagnitude }
+        XCTAssertTrue(unwrapped)
+        XCTAssertEqual(view.textContainerInset.width, 16, accuracy: 0.5)
+        XCTAssertEqual(view.textContainerInset.height, 8)
+        XCTAssertFalse(document.isDirty)
     }
 
     func testTOCPreferencePersistsAndDoesNotEnableCustomFonts() throws {

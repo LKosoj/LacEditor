@@ -2,11 +2,12 @@ import AppKit
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case editor = "编辑器", appearance = "外观", files = "文件与恢复", associations = "文件关联", performance = "性能", export = "导出", ai = "人工智能", about = "关于"
+    case editor = "编辑器", images = "图片设置", appearance = "外观", files = "文件与恢复", associations = "文件关联", performance = "性能", export = "导出", ai = "人工智能", about = "关于"
     var id: String { rawValue }
     var symbol: String {
         switch self {
         case .editor: "text.cursor"
+        case .images: "photo"
         case .appearance: "circle.lefthalf.filled"
         case .files: "clock.arrow.circlepath"
         case .associations: "doc.badge.gearshape"
@@ -19,6 +20,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .editor: L10n.tr("让文字的呈现和输入方式更合你的习惯。")
+        case .images: L10n.tr("配置图片上传、复制位置和文档级图片规则。")
         case .appearance: L10n.tr("选择舒适的外观，让界面保持安静。")
         case .files: L10n.tr("离开之后，下次继续。")
         case .associations: L10n.tr("选择哪些文本格式默认使用 LacEditor 打开。")
@@ -30,6 +32,112 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     }
 }
 
+extension SettingsSection {
+    /// L10n keys of the row titles on each page. Maintained by hand next to the pages;
+    /// the test checks every key exists in all three catalogs.
+    var searchKeys: [String] {
+        switch self {
+        case .editor:
+            ["文字排版", "文字字体", "代码字体", "Markdown 最大宽度", "字体大小", "额外行距", "连字", "标题小型大写字母", "标题转为大写", "居中标题",
+             "Markdown 文本对齐", "从右向左书写", "划掉已完成的任务", "自动编号标题", "列表标记", "竖排 Markdown", "Markdown 段落间距",
+             "输入与显示", "缩进方式", "Tab 宽度", "自动配对括号与引号", "自动配对 Markdown 符号", "智能引号", "智能破折号", "系统文本替换",
+             "markdown.strictMode", "行内公式", "使用旧版行内公式规则", "启用 Physics 数学扩展", "公式自动编号", "大纲最大标题级别",
+             "统计显示单位", "阅读速度", "自动换行", "显示行号"]
+        case .images:
+            ["图片上传", "上传方式", "插入时上传本地图片", "插入时上传网络图片", "允许文档指定上传", "允许文档指定图片文件夹", "全局图片文件夹",
+             "上传地址", "PicList 密钥", "程序路径", "程序参数", "测试图片上传"]
+        case .appearance:
+            ["界面主题", "外观", "语言", "界面语言", "窗口界面", "显示状态栏", "Markdown 浅色外观颜色", "Markdown 深色外观颜色"]
+        case .files:
+            ["离开与继续", "启动文件夹", "本地恢复", "异常关闭保护"]
+        case .associations:
+            ["当前应用位置", "文件格式", "设为默认"]
+        case .performance:
+            ["自动性能管理", "标准模式", "大文件模式", "加强保护"]
+        case .export:
+            ["HTML 导出附加内容", "markdown.exportPreserveWhitespace", "附加到 head", "附加到 body", "允许文档 YAML 覆盖 HTML 导出设置",
+             "PDF 页面设置", "纸张", "纸张宽度（点）", "纸张高度（点）", "顶级标题和脚注前分页", "自定义页边距", "上边距（点）", "下边距（点）",
+             "左边距（点）", "右边距（点）", "PDF 页眉", "PDF 页脚", "允许文档 YAML 覆盖页眉和页脚",
+             "图像导出设置", "图像宽度（点）", "图像质量", "自定义图像字体大小", "图像字体大小（点）",
+             "重置导出设置", "删除不支持的导出项目", "添加 Pandoc 导出项目", "添加自定义命令", "添加 PDF 引擎导出项目"]
+        case .ai:
+            ["AI 功能", "文本模型", "判断模型", "图像模型", "文字识别模型", "语音转写模型", "API 密钥", "服务地址", "模型名称", "自定义检查",
+             "Jina 搜索", "Jina 网页读取", "后台 AI 功能", "系统拼写检查", "系统语法检查", "接口格式", "完整接口地址",
+             "检查名称", "为功能选择模型", "添加检查"]
+        case .about:
+            []
+        }
+    }
+}
+
+enum SettingsSearch {
+    /// Sections whose title or any row title contains `query` (case/diacritic-insensitive,
+    /// compared as localized text). Empty query keeps all sections.
+    static func sections(matching query: String,
+                         localize: (String) -> String = { L10n.tr($0) }) -> [SettingsSection] {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return SettingsSection.allCases }
+        return SettingsSection.allCases.filter { section in
+            ([section.rawValue] + section.searchKeys).contains {
+                localize($0).range(of: needle, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+            }
+        }
+    }
+}
+
+extension SettingsSearch {
+    /// Localized title of the first row on the section page that matches `query`; nil when the query is empty
+    /// or only the section title matched.
+    static func firstMatchingTitle(in section: SettingsSection, query: String,
+                                   localize: (String) -> String = { L10n.tr($0) }) -> String? {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return nil }
+        return section.searchKeys.map(localize).first {
+            $0.range(of: needle, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+        }
+    }
+}
+
+enum SettingsNumberInput {
+    /// Parses by the given locale; nil when not a number, not finite or outside `range`.
+    static func parse(_ text: String, range: ClosedRange<Double>, locale: Locale = .current) -> Double? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let value = formatter(locale).number(from: trimmed)?.doubleValue,
+              value.isFinite, range.contains(value) else { return nil }
+        return value
+    }
+
+    static func string(_ value: Double, locale: Locale = .current) -> String {
+        formatter(locale).string(from: NSNumber(value: value)) ?? String(value)
+    }
+
+    private static func formatter(_ locale: Locale) -> NumberFormatter {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.locale = locale
+        formatter.maximumFractionDigits = 2
+        formatter.usesGroupingSeparator = false
+        return formatter
+    }
+}
+
+enum PicListEndpointInput {
+    /// nil when the address is unusable (unparsable or not http(s) with a host). An empty string is allowed.
+    static func parse(_ text: String) -> (endpoint: String, key: String?)? {
+        guard let parsed = PicListKeychainStore.endpointWithoutKey(text) else { return nil }
+        if !parsed.endpoint.isEmpty {
+            guard let url = URL(string: parsed.endpoint), ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil else { return nil }
+        }
+        return parsed
+    }
+}
+
+private struct SettingsScrollRequest: Equatable {
+    let section: SettingsSection
+    let title: String
+    let token = UUID()
+}
+
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -37,6 +145,11 @@ struct SettingsView: View {
     @State private var selection: SettingsSection
     @State private var visited: Set<SettingsSection>
     @State private var listStyleDepth = 1
+    @State private var query = ""
+    @State private var scrollRequest: SettingsScrollRequest?
+    @State private var highlightedTitle: String?
+
+    private static let fontFamilies = NSFontManager.shared.availableFontFamilies.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
 
     init(initialSection: SettingsSection = .editor) {
         _selection = State(initialValue: initialSection)
@@ -81,23 +194,43 @@ struct SettingsView: View {
         .background(LacEditorDesign.canvas)
         .tint(LacEditorDesign.accent)
         .foregroundStyle(.primary)
+        .environment(\.settingsHighlightedTitle, highlightedTitle)
+    }
+
+    private func select(_ section: SettingsSection) {
+        visited.insert(section)
+        selection = section
+        scrollRequest = SettingsSearch.firstMatchingTitle(in: section, query: query).map { SettingsScrollRequest(section: section, title: $0) }
+        highlightedTitle = nil
     }
 
     private var navigation: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(L10n.tr("设置")).font(.system(size: 22, weight: .semibold))
-                .padding(.horizontal, 12).padding(.top, 24).padding(.bottom, 20)
-            ForEach(SettingsSection.allCases) { section in
-                SettingsNavigationRow(section: section, selected: selection == section) {
-                    visited.insert(section)
-                    selection = section
+            Text(L10n.tr("设置")).font(.title.weight(.semibold))
+                .padding(.horizontal, 12).padding(.top, 24).padding(.bottom, 12)
+            TextField(L10n.tr("搜索设置"), text: $query)
+                .textFieldStyle(.roundedBorder).controlSize(.small)
+                .padding(.horizontal, 12).padding(.bottom, 10)
+                .accessibilityIdentifier("settings.search")
+                .onSubmit {
+                    if let first = SettingsSearch.sections(matching: query).first { select(first) }
+                }
+            let matches = SettingsSearch.sections(matching: query)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(matches) { section in
+                        SettingsNavigationRow(section: section, selected: selection == section) { select(section) }
+                    }
+                    if matches.isEmpty {
+                        Text(L10n.tr("没有匹配的设置")).font(.subheadline).foregroundStyle(.secondary).padding(.horizontal, 12)
+                    }
                 }
             }
-            Spacer()
+            Spacer(minLength: 0)
             VStack(alignment: .leading, spacing: 5) {
-                Text(AppEnvironment.displayName).font(.system(size: 11, weight: .medium))
+                Text(AppEnvironment.displayName).font(.subheadline.weight(.medium))
                 Text(AppEnvironment.isExperiment ? L10n.tr("界面实验 · %@", String(describing: AppEnvironment.experimentIteration)) : L10n.tr("本地编辑，专注文字"))
-                    .font(.system(size: 10)).foregroundStyle(.tertiary)
+                    .font(.caption).foregroundStyle(.secondary)
             }.padding(12)
         }
         .padding(.horizontal, 12).padding(.bottom, 12)
@@ -106,25 +239,39 @@ struct SettingsView: View {
     }
 
     private func page(_ section: SettingsSection) -> some View {
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 24) {
-                VStack(alignment: .leading, spacing: 7) {
-                    Text(L10n.tr(section.rawValue)).font(.system(size: 22, weight: .semibold))
-                    Text(section.subtitle).font(.system(size: 12)).foregroundStyle(.secondary)
-                }.padding(.bottom, 3)
-                pageContents(section)
-                Spacer(minLength: 0)
+        ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text(L10n.tr(section.rawValue)).font(.title.weight(.semibold))
+                        Text(section.subtitle).font(.callout).foregroundStyle(.secondary)
+                    }.padding(.bottom, 3)
+                    pageContents(section)
+                    Spacer(minLength: 0)
+                }
+                .padding(28)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .background(NativeScrollViewConfigurator())
             }
-            .padding(28)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .background(NativeScrollViewConfigurator())
+            .scrollContentBackground(.hidden)
+            .task(id: scrollRequest) {
+                defer { if Task.isCancelled || scrollRequest == nil { highlightedTitle = nil } }
+                guard let request = scrollRequest, request.section == section else { return }
+                try? await Task.sleep(for: .milliseconds(80))
+                guard !Task.isCancelled else { return }
+                proxy.scrollTo(request.title, anchor: .top)
+                highlightedTitle = request.title
+                try? await Task.sleep(for: .milliseconds(1600))
+                guard !Task.isCancelled, highlightedTitle == request.title else { return }
+                if reduceMotion { highlightedTitle = nil } else { withAnimation(.easeOut(duration: 0.3)) { highlightedTitle = nil } }
+            }
         }
-        .scrollContentBackground(.hidden)
     }
 
     @ViewBuilder private func pageContents(_ section: SettingsSection) -> some View {
         switch section {
         case .editor: editorSettings
+        case .images: MarkdownImageUploadSettingsView(preferences: appState.preferences, isActive: selection == .images)
         case .appearance: appearanceSettings
         case .files: fileSettings
         case .associations: FileAssociationSettingsView()
@@ -148,17 +295,20 @@ struct SettingsView: View {
                                              set: { appState.preferences.editorCodeFontFamily = $0 }))
                 }
                 rowDivider
-                PreferenceRow(title: L10n.tr("Markdown 最大宽度"), detail: L10n.tr("自动换行时居中显示，默认跟随窗口宽度。")) {
+                PreferenceRow(title: L10n.tr("Markdown 最大宽度"), detail: L10n.tr("自动换行时居中显示，默认限制为 %d 点。", Int(AppPreferences.defaultMarkdownMaximumWidth))) {
                     HStack {
                         Toggle(L10n.tr("限制 Markdown 宽度"), isOn: Binding(
                             get: { appState.preferences.markdownMaximumWidth != nil },
-                            set: { appState.preferences.markdownMaximumWidth = $0 ? 760 : nil }
+                            set: { appState.preferences.markdownMaximumWidth = $0 ? AppPreferences.defaultMarkdownMaximumWidth : nil }
                         )).labelsHidden().toggleStyle(.switch)
                         if appState.preferences.markdownMaximumWidth != nil {
-                            TextField(L10n.tr("宽度（点）"), value: Binding(
-                                get: { appState.preferences.markdownMaximumWidth ?? 760 },
-                                set: { appState.preferences.markdownMaximumWidth = $0 }
-                            ), format: .number).frame(width: 80)
+                            VStack(alignment: .trailing, spacing: 4) {
+                                TextField(L10n.tr("宽度（点）"), value: Binding(
+                                    get: { appState.preferences.markdownMaximumWidth ?? AppPreferences.defaultMarkdownMaximumWidth },
+                                    set: { appState.preferences.markdownMaximumWidth = $0 }
+                                ), format: .number).frame(width: 80)
+                                Text(L10n.tr("须大于 0")).font(.caption).foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -329,10 +479,13 @@ struct SettingsView: View {
                             set: { appState.preferences.markdownParagraphSpacing = $0 ? 12 : nil }
                         )).labelsHidden().toggleStyle(.switch)
                         if appState.preferences.markdownParagraphSpacing != nil {
-                            TextField(L10n.tr("间距（点）"), value: Binding(
-                                get: { appState.preferences.markdownParagraphSpacing ?? 0 },
-                                set: { appState.preferences.markdownParagraphSpacing = $0 }
-                            ), format: .number).frame(width: 80)
+                            VStack(alignment: .trailing, spacing: 4) {
+                                TextField(L10n.tr("间距（点）"), value: Binding(
+                                    get: { appState.preferences.markdownParagraphSpacing ?? 0 },
+                                    set: { appState.preferences.markdownParagraphSpacing = $0 }
+                                ), format: .number).frame(width: 80)
+                                Text(L10n.tr("不能为负数")).font(.caption).foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -410,8 +563,11 @@ struct SettingsView: View {
                 }
                 rowDivider
                 PreferenceRow(title: L10n.tr("阅读速度"), detail: L10n.tr("用于估计阅读时间，单位为词每分钟。")) {
-                    TextField(L10n.tr("阅读速度"), value: Binding(get: { appState.preferences.readingWordsPerMinute }, set: { appState.preferences.readingWordsPerMinute = $0 }), format: .number)
-                        .labelsHidden().frame(width: 156)
+                    VStack(alignment: .trailing, spacing: 4) {
+                        TextField(L10n.tr("阅读速度"), value: Binding(get: { appState.preferences.readingWordsPerMinute }, set: { appState.preferences.readingWordsPerMinute = $0 }), format: .number)
+                            .labelsHidden().frame(width: 156)
+                        Text(L10n.tr("须为大于 0 的整数")).font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 rowDivider
                 PreferenceRow(title: L10n.tr("自动换行"), detail: L10n.tr("长行在编辑区域内折行。")) {
@@ -422,7 +578,6 @@ struct SettingsView: View {
                     Toggle(L10n.tr("显示行号"), isOn: $appState.isLineNumbersVisible).labelsHidden().toggleStyle(.switch)
                 }
             }
-            MarkdownImageUploadSettingsView(preferences: appState.preferences, isActive: selection == .editor)
         }
     }
 
@@ -430,14 +585,14 @@ struct SettingsView: View {
         VStack(spacing: 20) {
             PreferenceGroup(title: L10n.tr("界面主题")) {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text(L10n.tr("外观")).font(.system(size: 13, weight: .medium))
+                    Text(L10n.tr("外观")).font(.body.weight(.medium))
                     HStack(spacing: 12) {
                         ForEach(AppTheme.allCases) { theme in
                             ThemeChoice(theme: theme, selected: appState.theme == theme) { appState.theme = theme }
                         }
                     }
                     Text(L10n.tr("跟随系统时，界面会随 macOS 的浅色与深色设置切换。"))
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .font(.subheadline).foregroundStyle(.secondary)
                 }.padding(16)
             }
             markdownColorSettings(darkMode: false)
@@ -461,7 +616,7 @@ struct SettingsView: View {
                 }
             }
             Label(L10n.tr("动态效果与透明度遵循 macOS 辅助功能设置。"), systemImage: "accessibility")
-                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .font(.subheadline).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -470,7 +625,7 @@ struct SettingsView: View {
         PreferenceGroup(title: L10n.tr(darkMode ? "Markdown 深色外观颜色" : "Markdown 浅色外观颜色")) {
             ForEach(MarkdownColorOverrides.Field.allCases) { field in
                 HStack(spacing: 12) {
-                    Text(L10n.tr(field.label)).font(.system(size: 13, weight: .medium))
+                    Text(L10n.tr(field.label)).font(.body.weight(.medium))
                     Spacer()
                     ColorPicker(L10n.tr(field.label), selection: Binding(
                         get: { Color(nsColor: appState.preferences.markdownColors(darkMode: darkMode)[field]?.nsColor ?? defaultMarkdownColor(field, darkMode: darkMode)) },
@@ -512,12 +667,12 @@ struct SettingsView: View {
         VStack(spacing: 20) {
             PreferenceGroup(title: L10n.tr("离开与继续")) {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text(L10n.tr("退出应用时")).font(.system(size: 13, weight: .medium))
+                    Text(L10n.tr("退出应用时")).font(.body.weight(.medium))
                     Picker(L10n.tr("退出应用时"), selection: $appState.workspaceExitBehavior) {
                         ForEach(WorkspaceExitBehavior.allCases) { Text($0.displayName).tag($0) }
                     }.labelsHidden().frame(maxWidth: 310)
                     Text(L10n.tr("保留工作区会在本机记录窗口、标签和未保存内容，下次启动继续恢复。不会因此覆盖磁盘中的原文件。"))
-                        .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }.padding(16)
                 rowDivider
                 PreferenceRow(title: L10n.tr("启动文件夹"), detail: L10n.tr("留空时启动不打开默认文件夹。")) {
@@ -525,7 +680,7 @@ struct SettingsView: View {
                         TextField(L10n.tr("未设置"), text: Binding(
                             get: { appState.preferences.startupFolderPath },
                             set: { appState.preferences.startupFolderPath = $0 }
-                        )).frame(width: 180)
+                        )).frame(width: 180).accessibilityLabel(L10n.tr("启动文件夹"))
                         Button(L10n.tr("选择…")) {
                             let panel = NSOpenPanel()
                             panel.canChooseFiles = false
@@ -538,12 +693,12 @@ struct SettingsView: View {
             }
             PreferenceGroup(title: L10n.tr("本地恢复")) {
                 PreferenceRow(title: L10n.tr("异常关闭保护"), detail: L10n.tr("未保存内容保留在本机恢复目录。恢复副本与主动保存文件是两回事。")) {
-                    Label(L10n.tr("本地保留"), systemImage: "internaldrive").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Label(L10n.tr("本地保留"), systemImage: "internaldrive").font(.subheadline).foregroundStyle(.secondary)
                 }
             }
             if AppEnvironment.isExperiment {
                 Label(L10n.tr("实验版的工作区、收藏和设置与正式版分别存放。"), systemImage: "square.stack.3d.up")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(.secondary)
             }
         }
     }
@@ -552,19 +707,19 @@ struct SettingsView: View {
         VStack(spacing: 20) {
             PreferenceGroup(title: L10n.tr("自动性能管理")) {
                 PreferenceRow(title: L10n.tr("标准模式"), detail: L10n.tr("日常文档保持完整编辑、预览和高亮能力。")) {
-                    Text(L10n.tr("默认")).font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text(L10n.tr("默认")).font(.subheadline).foregroundStyle(.secondary)
                 }
                 rowDivider
                 PreferenceRow(title: L10n.tr("大文件模式"), detail: L10n.tr("超过 20 MB 或 250,000 行时自动启用，暂停换行、预览、折叠和实时字数统计。")) {
-                    Image(systemName: "gauge.with.dots.needle.33percent").foregroundStyle(LacEditorDesign.accent)
+                    Image(systemName: "gauge.with.dots.needle.33percent").foregroundStyle(LacEditorDesign.accent).accessibilityHidden(true)
                 }
                 rowDivider
                 PreferenceRow(title: L10n.tr("加强保护"), detail: L10n.tr("超过 50 MB 时额外暂停语法高亮，仍可继续打开与编辑。")) {
-                    Text("50 MB+").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text(L10n.tr("50 MB 以上")).font(.subheadline).foregroundStyle(.secondary)
                 }
             }
             Text(L10n.tr("这些阈值由应用自动管理。可从当前文档的「大文件模式」菜单临时恢复功能，不会改写全局设置。"))
-                .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -573,9 +728,9 @@ struct SettingsView: View {
             HStack(spacing: 18) {
                 Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 72, height: 72)
                 VStack(alignment: .leading, spacing: 7) {
-                    Text(AppEnvironment.displayName).font(.system(size: 20, weight: .semibold))
-                    Text(versionDescription).font(.system(size: 12)).foregroundStyle(.secondary)
-                    Text(L10n.tr("macOS 26 及以上 · Apple Silicon")).font(.system(size: 11)).foregroundStyle(.tertiary)
+                    Text(AppEnvironment.displayName).font(.title2.weight(.semibold))
+                    Text(versionDescription).font(.callout).foregroundStyle(.secondary)
+                    Text(L10n.tr("macOS 26 及以上 · Apple Silicon")).font(.subheadline).foregroundStyle(.secondary)
                 }
             }
             PreferenceGroup(title: L10n.tr("关于这款编辑器")) {
@@ -584,14 +739,14 @@ struct SettingsView: View {
                     Text(L10n.tr("界面基于 SwiftUI 与 AppKit；编辑使用 TextKit，语法解析使用 Tree-sitter，Markdown 使用 cmark-gfm。"))
                         .foregroundStyle(.secondary)
                     Link(L10n.tr("查看项目与开源说明 ↗"), destination: URL(string: "https://github.com/LKosoj/LacEditor")!)
-                }.font(.system(size: 12)).padding(16)
+                }.font(.callout).padding(16)
             }
         }
     }
 
     private var rowDivider: some View { Divider().padding(.horizontal, 16).opacity(0.5) }
     private func fontFamilyPicker(_ family: Binding<String?>) -> some View {
-        let families = NSFontManager.shared.availableFontFamilies.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        let families = Self.fontFamilies
         return Picker(L10n.tr("字体"), selection: Binding(get: { family.wrappedValue ?? "" }, set: { family.wrappedValue = $0.isEmpty ? nil : $0 })) {
             Text(L10n.tr("系统默认")).tag("")
             if let current = family.wrappedValue, !families.contains(current) {
@@ -627,7 +782,7 @@ private struct SettingsNavigationRow: View {
                 Image(systemName: section.symbol).font(.system(size: 14)).frame(width: 20)
                     .foregroundStyle(selected ? LacEditorDesign.accent : .secondary)
                 Text(L10n.tr(section.rawValue))
-                    .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                    .font(.body.weight(selected ? .semibold : .regular))
                     .lineLimit(1)
                 Spacer()
             }.padding(.horizontal, 12).frame(height: 38).contentShape(Rectangle())
@@ -664,7 +819,7 @@ private struct ThemeChoice: View {
                 HStack(spacing: 4) {
                     if selected { Image(systemName: "checkmark.circle.fill").foregroundStyle(LacEditorDesign.accent) }
                     Text(L10n.tr(theme.rawValue))
-                }.font(.system(size: 11, weight: selected ? .medium : .regular))
+                }.font(.subheadline.weight(selected ? .medium : .regular))
             }.frame(maxWidth: .infinity).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel(L10n.tr(theme.rawValue))
             .focused($focused).editorFocusRing(focused)
@@ -678,8 +833,11 @@ private struct MarkdownImageUploadSettingsView: View {
     let isActive: Bool
     @State private var validationTask: Task<Void, Never>?
     @State private var validationID: UUID?
-    @State private var validationMessage: String?
+    @State private var validationStatus: StatusMessage?
     @State private var picListKey = ""
+    @State private var picListDraft = ""
+    @State private var picListEndpointError = false
+    @FocusState private var picListEndpointFocused: Bool
 
     var body: some View {
         PreferenceGroup(title: L10n.tr("图片上传")) {
@@ -714,6 +872,7 @@ private struct MarkdownImageUploadSettingsView: View {
             PreferenceRow(title: L10n.tr("全局图片文件夹"), detail: L10n.tr("留空时不复制；全局自动上传优先。")) {
                 HStack {
                     TextField(L10n.tr("未设置"), text: $preferences.markdownImageUploadConfiguration.copyFolder).frame(width: 180)
+                        .accessibilityLabel(L10n.tr("全局图片文件夹"))
                     Button(L10n.tr("选择…")) {
                         let panel = NSOpenPanel()
                         panel.canChooseFiles = false
@@ -727,46 +886,60 @@ private struct MarkdownImageUploadSettingsView: View {
                 Divider().padding(.horizontal, 16).opacity(0.5)
                 PreferenceRow(title: L10n.tr("上传地址"), detail: L10n.tr("填写已运行的 PicGo 上传地址。")) {
                     TextField("https://…/upload", text: $preferences.markdownImageUploadConfiguration.endpoint).frame(width: 220)
+                        .accessibilityLabel(L10n.tr("上传地址"))
                 }
             } else if preferences.markdownImageUploadConfiguration.method == "piclist" {
                 Divider().padding(.horizontal, 16).opacity(0.5)
                 PreferenceRow(title: L10n.tr("上传地址"), detail: L10n.tr("填写已运行的 PicList 上传地址，不含密钥。")) {
-                    TextField("https://…/upload", text: Binding(get: { preferences.markdownImageUploadConfiguration.endpoint }, set: setPicListEndpoint)).frame(width: 220)
+                    VStack(alignment: .trailing, spacing: 4) {
+                        TextField("https://…/upload", text: $picListDraft).frame(width: 220)
+                            .focused($picListEndpointFocused)
+                            .accessibilityLabel(L10n.tr("上传地址"))
+                            .onSubmit { commitPicListEndpoint() }
+                            .onChange(of: picListEndpointFocused) { _, focused in if !focused { commitPicListEndpoint() } }
+                        if picListEndpointError {
+                            StatusMessageView(kind: .error, text: L10n.tr("图片或上传设置无效"))
+                                .frame(width: 220, alignment: .leading)
+                        }
+                    }
                 }
                 Divider().padding(.horizontal, 16).opacity(0.5)
                 PreferenceRow(title: L10n.tr("PicList 密钥"), detail: L10n.tr("远程服务的密钥保存在系统钥匙串中。")) {
                     HStack {
                         SecureField(L10n.tr("可选密钥"), text: $picListKey).frame(width: 160)
-                        Button(L10n.tr("保存密钥")) { savePicListKey() }
+                        Button(L10n.tr("保存密钥")) { commitPicListEndpoint(); if !picListEndpointError { savePicListKey() } }.disabled(picListEndpointError)
                     }
                 }
             } else if preferences.markdownImageUploadConfiguration.method == "ipic" {
                 Text(L10n.tr("iPic 必须已安装并配置。取消不会停止 iPic 中已开始的上传。"))
-                    .font(.system(size: 11)).foregroundStyle(.secondary).padding(16)
+                    .font(.subheadline).foregroundStyle(.secondary).padding(16)
             } else if preferences.markdownImageUploadConfiguration.method == "upic" {
                 Divider().padding(.horizontal, 16).opacity(0.5)
                 PreferenceRow(title: L10n.tr("程序路径"), detail: L10n.tr("填写 uPic 可执行文件路径。")) {
                     TextField("/Applications/uPic.app/Contents/MacOS/uPic", text: $preferences.markdownImageUploadConfiguration.executable).frame(width: 220)
+                        .accessibilityLabel(L10n.tr("程序路径"))
                 }
             } else if preferences.markdownImageUploadConfiguration.method == "picsee" {
                 Divider().padding(.horizontal, 16).opacity(0.5)
                 PreferenceRow(title: L10n.tr("程序路径"), detail: L10n.tr("填写 Picsee 可执行文件路径。")) {
                     TextField("/Applications/Picsee.app/Contents/MacOS/Picsee", text: $preferences.markdownImageUploadConfiguration.executable).frame(width: 220)
+                        .accessibilityLabel(L10n.tr("程序路径"))
                 }
             } else if preferences.markdownImageUploadConfiguration.method == "command" {
                 Divider().padding(.horizontal, 16).opacity(0.5)
                 PreferenceRow(title: L10n.tr("程序路径"), detail: L10n.tr("程序以当前用户权限运行。")) {
                     TextField("/path/to/program", text: $preferences.markdownImageUploadConfiguration.executable).frame(width: 220)
+                        .accessibilityLabel(L10n.tr("程序路径"))
                 }
                 Divider().padding(.horizontal, 16).opacity(0.5)
                 PreferenceRow(title: L10n.tr("程序参数"), detail: L10n.tr("每行一个参数；图片路径会追加在最后。")) {
                     TextEditor(text: $preferences.markdownImageUploadConfiguration.arguments).frame(width: 220, height: 80)
+                        .accessibilityLabel(L10n.tr("程序参数"))
                 }
             }
             Divider().padding(.horizontal, 16).opacity(0.5)
             PreferenceRow(title: L10n.tr("测试图片上传"), detail: L10n.tr("发送一张测试图片并显示返回地址。")) {
                 HStack {
-                    if let validationMessage { Text(validationMessage).font(.caption).textSelection(.enabled) }
                     if validationTask != nil {
                         Button(L10n.tr("取消")) { cancelValidation() }
                     } else {
@@ -775,32 +948,45 @@ private struct MarkdownImageUploadSettingsView: View {
                     }
                 }
             }
+            if let validationStatus {
+                StatusMessageView(kind: validationStatus.kind, text: validationStatus.text)
+                    .padding(.horizontal, 16).padding(.bottom, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .onAppear { normalizePicListEndpoint(); loadPicListKey() }
-        .onChange(of: preferences.markdownImageUploadConfiguration.endpoint) { _, _ in loadPicListKey() }
+        .onChange(of: preferences.markdownImageUploadConfiguration.endpoint) { _, endpoint in
+            if !picListEndpointFocused { picListDraft = endpoint }
+            loadPicListKey()
+        }
         .onChange(of: preferences.markdownImageUploadConfiguration.method) { _, _ in normalizePicListEndpoint(); loadPicListKey() }
         .onChange(of: preferences.markdownImageUploadConfiguration) { _, _ in cancelValidation() }
         .onChange(of: isActive) { _, active in if !active { cancelValidation() } }
-        .onDisappear { cancelValidation() }
+        .onDisappear {
+            cancelValidation()
+            if preferences.markdownImageUploadConfiguration.method == "piclist", PicListEndpointInput.parse(picListDraft) != nil { commitPicListEndpoint() }
+        }
     }
 
     private func normalizePicListEndpoint() {
-        guard preferences.markdownImageUploadConfiguration.method == "piclist" else { return }
         let endpoint = preferences.markdownImageUploadConfiguration.endpoint
-        guard PicListKeychainStore.endpointWithoutKey(endpoint) != nil else {
-            preferences.markdownImageUploadConfiguration.endpoint = ""
-            validationMessage = L10n.tr("图片或上传设置无效")
-            return
-        }
-        setPicListEndpoint(endpoint)
+        picListDraft = endpoint
+        picListEndpointError = false
+        guard preferences.markdownImageUploadConfiguration.method == "piclist" else { return }
+        if PicListEndpointInput.parse(endpoint) == nil { picListEndpointError = true; return }
+        commitPicListEndpoint()
     }
 
-    private func setPicListEndpoint(_ text: String) {
-        guard let parsed = PicListKeychainStore.endpointWithoutKey(text) else {
-            validationMessage = L10n.tr("图片或上传设置无效")
+    private func commitPicListEndpoint() {
+        guard let parsed = PicListEndpointInput.parse(picListDraft), parsed.key == nil || !parsed.endpoint.isEmpty else {
+            picListEndpointError = true
             return
         }
-        preferences.markdownImageUploadConfiguration.endpoint = parsed.endpoint
+        picListEndpointError = false
+        if parsed.endpoint != preferences.markdownImageUploadConfiguration.endpoint {
+            preferences.markdownImageUploadConfiguration.endpoint = parsed.endpoint
+        }
+        picListDraft = parsed.endpoint
         if let key = parsed.key {
             picListKey = key
             savePicListKey()
@@ -815,22 +1001,26 @@ private struct MarkdownImageUploadSettingsView: View {
     private func savePicListKey() {
         do {
             try PicListKeychainStore().save(picListKey, endpoint: preferences.markdownImageUploadConfiguration.endpoint)
-            validationMessage = L10n.tr("密钥已保存")
-        } catch { validationMessage = error.localizedDescription }
+            validationStatus = StatusMessage(kind: .success, text: L10n.tr("密钥已保存"))
+        } catch { validationStatus = StatusMessage(kind: .error, text: error.localizedDescription) }
     }
 
     private func cancelValidation() {
         validationID = nil
         validationTask?.cancel()
         validationTask = nil
-        validationMessage = nil
+        validationStatus = nil
     }
 
     private func validateUploader() {
+        if preferences.markdownImageUploadConfiguration.method == "piclist" {
+            commitPicListEndpoint()
+            guard !picListEndpointError else { return }
+        }
         cancelValidation()
         let config = preferences.markdownImageUploadConfiguration, id = UUID()
         validationID = id
-        validationMessage = L10n.tr("正在测试…")
+        validationStatus = StatusMessage(kind: .info, text: L10n.tr("正在测试…"))
         validationTask = Task.detached {
             let result: Result<[URL], Error>
             do {
@@ -862,8 +1052,10 @@ private struct MarkdownImageUploadSettingsView: View {
                 guard validationID == id else { return }
                 validationTask = nil
                 switch result {
-                case let .success(urls): validationMessage = urls.first?.absoluteString ?? L10n.tr("上传结果不完整或地址无效")
-                case let .failure(error): validationMessage = L10n.tr("图片上传失败：%@", error.localizedDescription)
+                case let .success(urls):
+                    if let first = urls.first { validationStatus = StatusMessage(kind: .success, text: first.absoluteString) }
+                    else { validationStatus = StatusMessage(kind: .error, text: L10n.tr("上传结果不完整或地址无效")) }
+                case let .failure(error): validationStatus = StatusMessage(kind: .error, text: L10n.tr("图片上传失败：%@", error.localizedDescription))
                 }
             }
         }
@@ -872,79 +1064,138 @@ private struct MarkdownImageUploadSettingsView: View {
 
 private struct MarkdownExportSettingsView: View {
     @ObservedObject var preferences: AppPreferences
+    @State private var profileToDelete: String?
+    @State private var confirmReset = false
+    @State private var confirmRemoveUnsupported = false
+    @Environment(\.settingsHighlightedTitle) private var highlighted
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Toggle(L10n.tr("markdown.exportPreserveWhitespace"), isOn: $preferences.markdownExportWhitespace)
-            Text(L10n.tr("markdown.exportPreserveWhitespace.detail")).foregroundStyle(.secondary)
-            Divider()
-            Text(L10n.tr("HTML 导出附加内容")).font(.headline)
-            Text(L10n.tr("附加脚本可能在打开导出文件的应用中运行。"))
-                .foregroundStyle(.secondary)
-            Text(L10n.tr("附加到 head"))
-            TextEditor(text: $preferences.markdownHTMLExportOptions.appendHead).frame(minHeight: 60)
-            Text(L10n.tr("附加到 body"))
-            TextEditor(text: $preferences.markdownHTMLExportOptions.appendBody).frame(minHeight: 60)
-            Toggle(L10n.tr("允许文档 YAML 覆盖 HTML 导出设置"), isOn: $preferences.markdownHTMLExportOptions.allowDocumentOverrides)
-            Divider()
-            Text(L10n.tr("PDF 页面设置")).font(.headline)
-            Picker(L10n.tr("纸张"), selection: $preferences.markdownNativeExportOptions.paper) {
-                Text(L10n.tr("系统默认")).tag("system")
-                Text("A4").tag("a4")
-                Text("A5").tag("a5")
-                Text("Letter").tag("letter")
-                Text(L10n.tr("自定义")).tag("custom")
+            PreferenceGroup(title: L10n.tr("HTML 导出附加内容")) {
+                PreferenceRow(title: L10n.tr("markdown.exportPreserveWhitespace"), detail: L10n.tr("markdown.exportPreserveWhitespace.detail")) {
+                    Toggle(L10n.tr("markdown.exportPreserveWhitespace"), isOn: $preferences.markdownExportWhitespace)
+                        .labelsHidden().toggleStyle(.switch)
+                }
+                exportDivider
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.tr("附加脚本可能在打开导出文件的应用中运行。"))
+                        .font(.subheadline).foregroundStyle(.secondary)
+                    Text(L10n.tr("附加到 head")).font(.body.weight(.medium)).id(L10n.tr("附加到 head"))
+                    TextEditor(text: $preferences.markdownHTMLExportOptions.appendHead).frame(minHeight: 60)
+                        .accessibilityLabel(L10n.tr("附加到 head"))
+                    Text(L10n.tr("附加到 body")).font(.body.weight(.medium)).id(L10n.tr("附加到 body"))
+                    TextEditor(text: $preferences.markdownHTMLExportOptions.appendBody).frame(minHeight: 60)
+                        .accessibilityLabel(L10n.tr("附加到 body"))
+                }.padding(16)
+                exportDivider
+                Toggle(L10n.tr("允许文档 YAML 覆盖 HTML 导出设置"), isOn: $preferences.markdownHTMLExportOptions.allowDocumentOverrides)
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .id(L10n.tr("允许文档 YAML 覆盖 HTML 导出设置"))
             }
-            if preferences.markdownNativeExportOptions.paper == "custom" {
-                TextField(L10n.tr("纸张宽度（点）"), value: $preferences.markdownNativeExportOptions.paperWidth, format: .number)
-                TextField(L10n.tr("纸张高度（点）"), value: $preferences.markdownNativeExportOptions.paperHeight, format: .number)
+            PreferenceGroup(title: L10n.tr("PDF 页面设置")) {
+                exportRow(L10n.tr("纸张")) {
+                    Picker(L10n.tr("纸张"), selection: $preferences.markdownNativeExportOptions.paper) {
+                        Text(L10n.tr("系统默认")).tag("system")
+                        Text("A4").tag("a4")
+                        Text("A5").tag("a5")
+                        Text("Letter").tag("letter")
+                        Text(L10n.tr("自定义")).tag("custom")
+                    }.labelsHidden()
+                }
+                if preferences.markdownNativeExportOptions.paper == "custom" {
+                    exportDivider
+                    exportNumberRow(L10n.tr("纸张宽度（点）"), $preferences.markdownNativeExportOptions.paperWidth, range: 72...14400)
+                    exportDivider
+                    exportNumberRow(L10n.tr("纸张高度（点）"), $preferences.markdownNativeExportOptions.paperHeight, range: 72...14400)
+                }
+                exportDivider
+                Toggle(L10n.tr("顶级标题和脚注前分页"), isOn: Binding(
+                    get: { preferences.markdownNativeExportOptions.pageBreakTopHeadings ?? false },
+                    set: { preferences.markdownNativeExportOptions.pageBreakTopHeadings = $0 }
+                )).padding(.horizontal, 16).padding(.vertical, 10).id(L10n.tr("顶级标题和脚注前分页"))
+                exportDivider
+                Toggle(L10n.tr("自定义页边距"), isOn: $preferences.markdownNativeExportOptions.customMargins)
+                    .padding(.horizontal, 16).padding(.vertical, 10).id(L10n.tr("自定义页边距"))
+                if preferences.markdownNativeExportOptions.customMargins {
+                    exportDivider
+                    exportNumberRow(L10n.tr("上边距（点）"), $preferences.markdownNativeExportOptions.marginTop, range: 0...720)
+                    exportDivider
+                    exportNumberRow(L10n.tr("下边距（点）"), $preferences.markdownNativeExportOptions.marginBottom, range: 0...720)
+                    exportDivider
+                    exportNumberRow(L10n.tr("左边距（点）"), $preferences.markdownNativeExportOptions.marginLeft, range: 0...720)
+                    exportDivider
+                    exportNumberRow(L10n.tr("右边距（点）"), $preferences.markdownNativeExportOptions.marginRight, range: 0...720)
+                }
+                exportDivider
+                exportRow(L10n.tr("PDF 页眉")) {
+                    TextField("", text: $preferences.markdownPDFHeaderFooterOptions.header)
+                        .frame(width: 220).accessibilityLabel(L10n.tr("PDF 页眉"))
+                }
+                exportDivider
+                exportRow(L10n.tr("PDF 页脚")) {
+                    TextField("", text: $preferences.markdownPDFHeaderFooterOptions.footer)
+                        .frame(width: 220).accessibilityLabel(L10n.tr("PDF 页脚"))
+                }
+                exportDivider
+                Toggle(L10n.tr("允许文档 YAML 覆盖页眉和页脚"), isOn: $preferences.markdownPDFHeaderFooterOptions.allowDocumentOverrides)
+                    .padding(.horizontal, 16).padding(.vertical, 10).id(L10n.tr("允许文档 YAML 覆盖页眉和页脚"))
             }
-            Toggle(L10n.tr("顶级标题和脚注前分页"), isOn: Binding(
-                get: { preferences.markdownNativeExportOptions.pageBreakTopHeadings ?? false },
-                set: { preferences.markdownNativeExportOptions.pageBreakTopHeadings = $0 }
-            ))
-            Toggle(L10n.tr("自定义页边距"), isOn: $preferences.markdownNativeExportOptions.customMargins)
-            if preferences.markdownNativeExportOptions.customMargins {
-                TextField(L10n.tr("上边距（点）"), value: $preferences.markdownNativeExportOptions.marginTop, format: .number)
-                TextField(L10n.tr("下边距（点）"), value: $preferences.markdownNativeExportOptions.marginBottom, format: .number)
-                TextField(L10n.tr("左边距（点）"), value: $preferences.markdownNativeExportOptions.marginLeft, format: .number)
-                TextField(L10n.tr("右边距（点）"), value: $preferences.markdownNativeExportOptions.marginRight, format: .number)
-            }
-            TextField(L10n.tr("PDF 页眉"), text: $preferences.markdownPDFHeaderFooterOptions.header)
-            TextField(L10n.tr("PDF 页脚"), text: $preferences.markdownPDFHeaderFooterOptions.footer)
-            Toggle(L10n.tr("允许文档 YAML 覆盖页眉和页脚"), isOn: $preferences.markdownPDFHeaderFooterOptions.allowDocumentOverrides)
-            Text(L10n.tr("图像导出设置")).font(.headline)
-            TextField(L10n.tr("图像宽度（点）"), value: $preferences.markdownNativeExportOptions.imageWidth, format: .number)
-            Picker(L10n.tr("图像质量"), selection: Binding(
-                get: { preferences.markdownNativeExportOptions.imageQuality ?? "auto" },
-                set: { preferences.markdownNativeExportOptions.imageQuality = $0 == "auto" ? nil : $0 }
-            )) {
-                Text(L10n.tr("自动")).tag("auto")
-                Text(L10n.tr("中等")).tag("medium")
-                Text(L10n.tr("高")).tag("high")
-                Text(L10n.tr("最佳")).tag("best")
-            }
-            Toggle(L10n.tr("自定义图像字体大小"), isOn: $preferences.markdownNativeExportOptions.customImageFontSize)
-            if preferences.markdownNativeExportOptions.customImageFontSize {
-                TextField(L10n.tr("图像字体大小（点）"), value: $preferences.markdownNativeExportOptions.imageFontSize, format: .number)
+            PreferenceGroup(title: L10n.tr("图像导出设置")) {
+                exportNumberRow(L10n.tr("图像宽度（点）"), $preferences.markdownNativeExportOptions.imageWidth)
+                exportDivider
+                exportRow(L10n.tr("图像质量")) {
+                    Picker(L10n.tr("图像质量"), selection: Binding(
+                        get: { preferences.markdownNativeExportOptions.imageQuality ?? "auto" },
+                        set: { preferences.markdownNativeExportOptions.imageQuality = $0 == "auto" ? nil : $0 }
+                    )) {
+                        Text(L10n.tr("自动")).tag("auto")
+                        Text(L10n.tr("中等")).tag("medium")
+                        Text(L10n.tr("高")).tag("high")
+                        Text(L10n.tr("最佳")).tag("best")
+                    }.labelsHidden()
+                }
+                exportDivider
+                Toggle(L10n.tr("自定义图像字体大小"), isOn: $preferences.markdownNativeExportOptions.customImageFontSize)
+                    .padding(.horizontal, 16).padding(.vertical, 10).id(L10n.tr("自定义图像字体大小"))
+                if preferences.markdownNativeExportOptions.customImageFontSize {
+                    exportDivider
+                    exportNumberRow(L10n.tr("图像字体大小（点）"), $preferences.markdownNativeExportOptions.imageFontSize)
+                }
             }
             Divider()
             if preferences.invalidMarkdownExportConfiguration {
                 Text(L10n.tr("导出设置无法读取；原始设置未被覆盖。"))
-                Button(L10n.tr("重置导出设置")) { preferences.resetMarkdownExportConfiguration() }
+                Button(L10n.tr("重置导出设置")) { confirmReset = true }
+                    .confirmationDialog(L10n.tr("重置导出设置？"), isPresented: $confirmReset, titleVisibility: .visible) {
+                        Button(L10n.tr("重置导出设置"), role: .destructive) { preferences.resetMarkdownExportConfiguration() }
+                        Button(L10n.tr("取消"), role: .cancel) {}
+                    } message: {
+                        Text(L10n.tr("导出项目将恢复为默认列表，自定义项目和无法读取的原始设置会被替换。"))
+                    }
             } else {
                 if preferences.unsupportedMarkdownExportEntryCount > 0 {
                     Text(L10n.tr("保留了不支持的导出项目：%d", preferences.unsupportedMarkdownExportEntryCount))
-                    Button(L10n.tr("删除不支持的导出项目")) { preferences.removeUnsupportedMarkdownExportEntries() }
+                    Button(L10n.tr("删除不支持的导出项目")) { confirmRemoveUnsupported = true }
+                        .confirmationDialog(L10n.tr("删除不支持的导出项目？"), isPresented: $confirmRemoveUnsupported, titleVisibility: .visible) {
+                            Button(L10n.tr("删除不支持的导出项目"), role: .destructive) { preferences.removeUnsupportedMarkdownExportEntries() }
+                            Button(L10n.tr("取消"), role: .cancel) {}
+                        } message: {
+                            Text(L10n.tr("这些项目当前版本无法使用，删除后无法恢复。"))
+                        }
                 }
                 ForEach($preferences.markdownExportConfiguration.profiles) { $profile in
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Toggle("", isOn: $profile.enabled).labelsHidden()
-                            TextField(L10n.tr("名称"), text: $profile.name)
-                            Button("↑") { move(profile.id, by: -1) }
-                            Button("↓") { move(profile.id, by: 1) }
-                            Button(L10n.tr("删除")) { preferences.markdownExportConfiguration.profiles.removeAll { $0.id == profile.id } }
+                                .accessibilityLabel(profile.name.isEmpty ? L10n.tr("启用导出项目") : L10n.tr("启用导出项目：%@", profile.name))
+                            TextField(L10n.tr("名称"), text: $profile.name).accessibilityLabel(L10n.tr("名称"))
+                            Button { move(profile.id, by: -1) } label: { Image(systemName: "chevron.up") }
+                                .buttonStyle(.borderless).help(L10n.tr("上移")).accessibilityLabel(L10n.tr("上移"))
+                                .disabled(profile.id == preferences.markdownExportConfiguration.profiles.first?.id)
+                            Button { move(profile.id, by: 1) } label: { Image(systemName: "chevron.down") }
+                                .buttonStyle(.borderless).help(L10n.tr("下移")).accessibilityLabel(L10n.tr("下移"))
+                                .disabled(profile.id == preferences.markdownExportConfiguration.profiles.last?.id)
+                            Button(L10n.tr("删除"), role: .destructive) { profileToDelete = profile.id }
                         }
                         MarkdownExportExtensionsField(extensions: $profile.extensions)
                         if profile.kind == "command" {
@@ -954,6 +1205,7 @@ private struct MarkdownExportSettingsView: View {
                                 .foregroundStyle(.secondary)
                             TextEditor(text: Binding(get: { profile.command ?? "" }, set: { profile.command = $0 }))
                                 .frame(minHeight: 70)
+                                .accessibilityLabel(L10n.tr("自定义命令"))
                             Picker(L10n.tr("命令输出"), selection: Binding(
                                 get: { profile.commandDestination ?? "file" }, set: { profile.commandDestination = $0 }
                             )) {
@@ -976,13 +1228,13 @@ private struct MarkdownExportSettingsView: View {
                             }
                             TextField(L10n.tr("PDF 引擎路径"), text: Binding(
                                 get: { profile.pdfEngine ?? "" }, set: { profile.pdfEngine = $0 }
-                            ))
+                            )).accessibilityLabel(L10n.tr("PDF 引擎路径"))
                             fileRow(L10n.tr("模板"), path: $profile.templatePath)
-                            TextField(L10n.tr("额外参数"), text: $profile.arguments)
+                            TextField(L10n.tr("额外参数"), text: $profile.arguments).accessibilityLabel(L10n.tr("额外参数"))
                         } else {
-                            TextField(L10n.tr("Pandoc 输出格式"), text: $profile.writer)
-                            TextField(L10n.tr("原始类型"), text: $profile.rawType)
-                            TextField(L10n.tr("额外参数"), text: $profile.arguments)
+                            TextField(L10n.tr("Pandoc 输出格式"), text: $profile.writer).accessibilityLabel(L10n.tr("Pandoc 输出格式"))
+                            TextField(L10n.tr("原始类型"), text: $profile.rawType).accessibilityLabel(L10n.tr("原始类型"))
+                            TextField(L10n.tr("额外参数"), text: $profile.arguments).accessibilityLabel(L10n.tr("额外参数"))
                             Text(L10n.tr("筛选器和其他程序以当前用户权限运行，可以读取和修改文件。"))
                                 .foregroundStyle(.secondary)
                             fileRow(L10n.tr("模板"), path: $profile.templatePath)
@@ -1019,6 +1271,39 @@ private struct MarkdownExportSettingsView: View {
                 }
             }
         }
+        .confirmationDialog(
+            L10n.tr("删除此导出项目？"),
+            isPresented: Binding(get: { profileToDelete != nil }, set: { if !$0 { profileToDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button(L10n.tr("删除"), role: .destructive) {
+                if let id = profileToDelete { preferences.markdownExportConfiguration.profiles.removeAll { $0.id == id } }
+                profileToDelete = nil
+            }
+            Button(L10n.tr("取消"), role: .cancel) { profileToDelete = nil }
+        } message: {
+            let name = preferences.markdownExportConfiguration.profiles.first { $0.id == profileToDelete }?.name ?? ""
+            Text(L10n.tr("「%@」将被删除。", name))
+        }
+    }
+
+    private var exportDivider: some View { Divider().padding(.horizontal, 16).opacity(0.5) }
+
+    private func exportRow<Control: View>(_ title: String, @ViewBuilder control: () -> Control) -> some View {
+        LabeledContent(title, content: control).padding(.horizontal, 16).padding(.vertical, 10)
+            .background(highlighted == title ? LacEditorDesign.selectionFill : Color.clear)
+            .id(title)
+    }
+
+    private func exportNumberRow(_ title: String, _ value: Binding<Double>, range: ClosedRange<Double>? = nil) -> some View {
+        exportRow(title) {
+            if let range {
+                RangedNumberField(title: title, value: value, range: range)
+            } else {
+                TextField("", value: value, format: .number)
+                    .frame(width: 90).multilineTextAlignment(.trailing).accessibilityLabel(title)
+            }
+        }
     }
 
     private func move(_ id: String, by offset: Int) {
@@ -1042,6 +1327,7 @@ private struct MarkdownExportSettingsView: View {
             }
             if path.wrappedValue != nil { Button(L10n.tr("清除")) { path.wrappedValue = nil } }
         }
+        .accessibilityElement(children: .contain).accessibilityLabel(title)
     }
 }
 
@@ -1062,9 +1348,49 @@ struct MarkdownExportExtensionsField: View {
 
     var body: some View {
         TextField(L10n.tr("扩展名，以空格分隔"), text: $text)
+            .accessibilityLabel(L10n.tr("扩展名，以空格分隔"))
             .onChange(of: text) { _, value in extensions = parse(value) }
             .onChange(of: extensions) { _, value in
                 if parse(text) != value { text = value.joined(separator: " ") }
             }
+    }
+}
+
+private struct RangedNumberField: View {
+    let title: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    @State private var text = ""
+    @State private var invalid = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            TextField("", text: $text)
+                .focused($focused)
+                .frame(width: 90).multilineTextAlignment(.trailing).accessibilityLabel(title)
+                .onSubmit { commit() }
+            if invalid {
+                StatusMessageView(kind: .error, text: L10n.tr("请输入 %@ 到 %@ 之间的数字",
+                    String(describing: SettingsNumberInput.string(range.lowerBound)), String(describing: SettingsNumberInput.string(range.upperBound))))
+                    .frame(width: 220, alignment: .trailing)
+            }
+        }
+        .onAppear { text = SettingsNumberInput.string(value) }
+        .onChange(of: value) { _, new in
+            if !focused { text = SettingsNumberInput.string(new); invalid = false }
+        }
+        .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
+    }
+
+    private func commit() {
+        if text == SettingsNumberInput.string(value) { invalid = false; return }
+        if let parsed = SettingsNumberInput.parse(text, range: range) {
+            value = parsed
+            invalid = false
+            text = SettingsNumberInput.string(parsed)
+        } else {
+            invalid = true
+        }
     }
 }

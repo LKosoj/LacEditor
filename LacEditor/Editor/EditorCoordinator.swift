@@ -267,6 +267,10 @@ extension EditorTextView {
         private var pendingOffscreenEditAnchor: Int?
         private var pendingOffscreenSelectionRange: NSRange?
         private var observerTokens: [NSObjectProtocol] = []
+        private var findHighlightMatches: [NSRange] = []
+        private var appliedFindRanges: [NSRange] = []
+        private var appliedFindVisibleRange: NSRange?
+        private var findMatchesChanged = false
         private let lineIndex: LogicalLineIndex
 
         init(document: EditorDocument) {
@@ -568,6 +572,7 @@ extension EditorTextView {
             selectionVisibilityWorkItem?.cancel()
             typewriterWorkItem?.cancel()
             textCodecSuggestionWorkItem?.cancel()
+            clearFindHighlights()
             observerTokens.forEach(NotificationCenter.default.removeObserver)
         }
 
@@ -1000,11 +1005,14 @@ extension EditorTextView {
                     DispatchQueue.main.async { [weak self] in
                         self?.applyVisibleLigatures()
                         self?.markdownPresentation?.viewportChanged()
+                        self?.applyFindHighlights()
                     }
                     return
                 }
                 guard originChanged else { return }
+                schedulePreviewScrollSync()
                 applyVisibleLigatures()
+                applyFindHighlights()
                 refreshRulerForViewportChange()
                 Task { @MainActor [weak self] in
                     self?.markdownPresentation?.viewportChanged()
@@ -1044,7 +1052,20 @@ extension EditorTextView {
                 clearFoldIfNeeded(toReveal: range)
                 textView.setSelectedRange(range)
                 textView.scrollRangeToVisible(range)
-                textView.window?.makeFirstResponder(textView)
+                if request.focusesEditor { textView.window?.makeFirstResponder(textView) }
+                applyFindHighlights()
+            })
+            observerTokens.append(NotificationCenter.default.addObserver(
+                forName: EditorCommandNotification.findHighlights,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let self,
+                      let request = notification.object as? FindHighlightRequest,
+                      request.documentID == document.id else { return }
+                findHighlightMatches = request.matches
+                findMatchesChanged = true
+                applyFindHighlights()
             })
             observerTokens.append(NotificationCenter.default.addObserver(
                 forName: EditorCommandNotification.toggleFold,
@@ -1082,6 +1103,7 @@ extension EditorTextView {
                       let request = notification.object as? EditorTextUpdateRequest,
                       request.documentID == document.id,
                       let textView else { return }
+                clearFindHighlights()
                 apply(request, to: textView)
             })
             observerTokens.append(NotificationCenter.default.addObserver(
@@ -1128,6 +1150,7 @@ extension EditorTextView {
                       let request = notification.object as? EditorRangeReplacementRequest,
                       request.documentID == document.id,
                       let textView else { return }
+                clearFindHighlights()
                 apply(request, to: textView)
             })
         }
@@ -1884,7 +1907,40 @@ extension EditorTextView {
             child.font = font
         }
 
+        private var previewSyncScheduled = false
+        private var lastSentPreviewPosition: MarkdownPreviewScrollRelay.Position?
+
+        private func schedulePreviewScrollSync() {
+            let relay = document.previewScrollRelay
+            guard relay.isListening, currentLanguage == .markdown, !previewSyncScheduled else { return }
+            previewSyncScheduled = true
+            // Склеиваем серию событий прокрутки в одно сообщение предпросмотру.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                guard let self else { return }
+                previewSyncScheduled = false
+                guard isActive, let position = currentPreviewPosition(), position != lastSentPreviewPosition else { return }
+                lastSentPreviewPosition = position
+                relay.positionHandler?(position)
+            }
+        }
+
+        /// Верхняя видимая логическая строка. Берёт только раскладку видимой области,
+        /// как applyVisibleLigatures; ensureLayout не вызывается.
+        private func currentPreviewPosition() -> MarkdownPreviewScrollRelay.Position? {
+            guard isActive, currentLanguage == .markdown, !markdownVerticalWriting, let textView,
+                  let layoutManager = textView.layoutManager, let container = textView.textContainer,
+                  let storage = textView.textStorage else { return nil }
+            let visible = textView.visibleRect
+            if visible.minY <= 0.5 { return .init(line: 1, atBottom: false) }
+            let atBottom = visible.maxY >= textView.bounds.maxY - 1
+            let rect = visible.offsetBy(dx: -textView.textContainerOrigin.x, dy: -textView.textContainerOrigin.y)
+            let glyphs = layoutManager.glyphRange(forBoundingRect: rect, in: container)
+            let characters = layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+            return .init(line: lineIndex.lineNumber(at: min(characters.location, storage.length)), atBottom: atBottom)
+        }
+
         func attachLiveTextProvider() {
+            document.previewScrollRelay.positionProvider = { [weak self] in self?.currentPreviewPosition() }
             document.attachLiveTextProvider(
                 id: liveTextProviderID,
                 provider: { [weak self] in
@@ -2692,6 +2748,7 @@ extension EditorTextView {
             newRuler.lineNumberProvider = { [weak self] location in self?.lineNumber(at: location) ?? 1 }
             if vertical { scroll.horizontalRulerView = newRuler } else { scroll.verticalRulerView = newRuler }
             ruler = newRuler
+            _ = newRuler.updateThickness(lineCount: lineNumber(at: view.textStorage?.length ?? 0))
             scroll.hasHorizontalRuler = vertical && (lineNumbersVisible == true)
             scroll.hasVerticalRuler = !vertical && (lineNumbersVisible == true)
             scroll.rulersVisible = lineNumbersVisible == true
@@ -2775,8 +2832,10 @@ extension EditorTextView {
             lastLayoutWidth = availableWidth
             lastRulerWidth = rulerWidth
             let documentWidth = max(1, availableWidth - rulerWidth)
-            let textWidth = wordWrap ? min(documentWidth, maximumTextWidth ?? documentWidth) : documentWidth
-            textView.textContainerInset.width = max(0, (documentWidth - textWidth) / 2)
+            let minimumInset = EditorTextView.minimumHorizontalInset
+            let paddedWidth = max(1, documentWidth - 2 * minimumInset)
+            let textWidth = wordWrap ? min(paddedWidth, maximumTextWidth ?? paddedWidth) : documentWidth
+            textView.textContainerInset.width = wordWrap ? max(minimumInset, (documentWidth - textWidth) / 2) : minimumInset
             let usableTextWidth = max(1, textWidth)
 
             // The text container is managed explicitly so its line fragments
@@ -3002,6 +3061,7 @@ extension EditorTextView {
                 }
                 markdownPresentation?.restoreDelimiterHighlight = { [weak self] in
                     guard let self, let layoutManager = self.textView?.layoutManager else { return }
+                    self.restoreFindHighlights()
                     for range in self.delimiterHighlightRanges {
                         layoutManager.addTemporaryAttribute(
                             .backgroundColor, value: NSColor.lacDelimiterMatchBackground,
@@ -3023,6 +3083,7 @@ extension EditorTextView {
                     self.finishPendingMagnification()
                     self.markdownPresentation?.compositionFinished(revision: self.contentRevision)
                     self.applyVisibleLigatures()
+                    self.applyFindHighlights()
                     if self.clearsDisabledSyntaxOnScroll { self.scheduleHighlight(delay: 0) }
                     self.applyWritingModes()
                     if self.pendingTypewriterAfterComposition {
@@ -3309,7 +3370,9 @@ extension EditorTextView {
             guard let textView, !textView.hasMarkedText() else { return }
             textView.focusModeEnabled = writingFocus
             let extent = markdownVerticalWriting ? (scrollView?.contentView.bounds.width ?? 0) : (scrollView?.contentView.bounds.height ?? 0)
-            let inset = writingTypewriter ? max(writingBaseInset, extent / 2) : writingBaseInset
+            // The vertical layout keeps its previous geometry; the comfortable top margin is horizontal-only.
+            let baseInset = markdownVerticalWriting ? 0 : writingBaseInset
+            let inset = writingTypewriter ? max(baseInset, extent / 2) : baseInset
             let desired = NSSize(width: textView.textContainerInset.width, height: inset)
             guard abs(textView.textContainerInset.width - desired.width) > 0.5 || abs(textView.textContainerInset.height - desired.height) > 0.5 else { return }
             textView.textContainerInset = desired
@@ -3422,6 +3485,7 @@ extension EditorTextView {
         }
 
         func textDidChange(_ notification: Notification) {
+            clearFindHighlights()
             cancelMarkdownLinkNavigation()
             cachedMarkdownNavigation = nil
             guard !isApplyingExternalUpdate, let textView else { return }
@@ -3653,6 +3717,9 @@ extension EditorTextView {
             tableAccessibilityVirtualTarget = nil
             if tableCellEditor != nil && !applyingTableCell { finishTableCell() }
             clearFold()
+            // Снимать подсветку совпадений до правки: временные атрибуты сдвигаются вместе с текстом,
+            // и после неё сохранённые диапазоны уже не совпадают с окрашенными.
+            clearFindHighlights()
             let replacement = replacementString ?? ""
             guard let nsText = textView.textStorage?.mutableString else { return false }
             if !isApplyingAutomatedEdit, let view = textView as? LacTextView, view.editSource == .typed, !view.hasMarkedText() {
@@ -4096,6 +4163,70 @@ extension EditorTextView {
             let clearedRanges = delimiterHighlightRanges
             delimiterHighlightRanges.removeAll(keepingCapacity: true)
             markdownPresentation?.restoreBackground(in: clearedRanges)
+            restoreFindHighlights(intersecting: clearedRanges)
+        }
+
+        /// Сброс фона скобок или Markdown не должен стирать жёлтую подсветку совпадений под ним.
+        private func restoreFindHighlights(intersecting ranges: [NSRange]? = nil) {
+            guard let layoutManager = textView?.layoutManager else { return }
+            for range in appliedFindRanges where ranges?.contains(where: { NSIntersectionRange($0, range).length > 0 }) ?? true {
+                layoutManager.addTemporaryAttribute(
+                    .backgroundColor, value: NSColor.lacFindMatchBackground, forCharacterRange: range
+                )
+            }
+        }
+
+        /// Подсветка всех совпадений поиска в видимой области: временные атрибуты, текст и undo не меняются.
+        private func applyFindHighlights() {
+            guard let textView, let layoutManager = textView.layoutManager else { return }
+            let currentVisible = visibleHighlightRange()
+            // Прокрутка внутри того же тайла с теми же совпадениями ничего не перерисовывает.
+            if !findMatchesChanged, !appliedFindRanges.isEmpty || appliedFindVisibleRange != nil,
+               currentVisible == appliedFindVisibleRange { return }
+            clearAppliedFindHighlights(in: layoutManager)
+            findMatchesChanged = false
+            guard !findHighlightMatches.isEmpty, !textView.hasMarkedText(),
+                  !markdownImageProjectionEnabled,   // координаты проекции отличаются от исходника
+                  !document.hasPendingLiveEdits,
+                  let visible = currentVisible else { return }
+            let length = textView.textStorage?.length ?? 0
+            var index = TextSearchService.firstIndex(in: findHighlightMatches, endingAfter: visible.location)
+            var applied: [NSRange] = []
+            while index < findHighlightMatches.count, findHighlightMatches[index].location < NSMaxRange(visible) {
+                let range = findHighlightMatches[index]
+                if NSMaxRange(range) <= length {
+                    layoutManager.addTemporaryAttribute(
+                        .backgroundColor, value: NSColor.lacFindMatchBackground, forCharacterRange: range
+                    )
+                    applied.append(range)
+                }
+                index += 1
+            }
+            appliedFindRanges = applied
+            appliedFindVisibleRange = visible
+        }
+
+        private func clearAppliedFindHighlights(in layoutManager: NSLayoutManager) {
+            guard !appliedFindRanges.isEmpty || appliedFindVisibleRange != nil else { return }
+            let cleared = appliedFindRanges
+            appliedFindRanges.removeAll(keepingCapacity: true)
+            appliedFindVisibleRange = nil
+            let length = textView?.textStorage?.length ?? 0
+            for range in cleared where NSMaxRange(range) <= length {
+                layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: range)
+            }
+            markdownPresentation?.restoreBackground(in: cleared)
+            for range in delimiterHighlightRanges {
+                layoutManager.addTemporaryAttribute(
+                    .backgroundColor, value: NSColor.lacDelimiterMatchBackground, forCharacterRange: range
+                )
+            }
+        }
+
+        private func clearFindHighlights() {
+            findHighlightMatches = []
+            findMatchesChanged = false
+            if let layoutManager = textView?.layoutManager { clearAppliedFindHighlights(in: layoutManager) }
         }
 
         private func cancelDelimiterMatch(
@@ -4455,6 +4586,9 @@ extension EditorTextView {
             invalidateLineMap: Bool = true
         ) {
             guard let ruler else { return }
+            if ruler.updateThickness(lineCount: lineNumber(at: textView?.textStorage?.length ?? 0)) {
+                updateLayout(wordWrap: wordWrap, force: true)
+            }
             ruler.requestRedraw(invalidateLineMap: invalidateLineMap)
             if displayImmediately {
                 ruler.displaySelectionImmediately()
@@ -4622,5 +4756,13 @@ extension EditorTextView {
             ruler?.invalidateHashMarks()
             ruler?.needsDisplay = true
         }
+    }
+}
+
+
+extension NSColor {
+    static let lacFindMatchBackground = NSColor(name: nil) { appearance in
+        let alpha: CGFloat = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? 0.32 : 0.45
+        return NSColor.systemYellow.withAlphaComponent(alpha)
     }
 }

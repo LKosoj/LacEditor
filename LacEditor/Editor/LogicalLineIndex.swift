@@ -176,6 +176,24 @@ final class LogicalLineIndex {
         return (line, columnText.count + 1)
     }
 
+    var lineCount: Int { lineStarts.count }
+
+    /// UTF-16 позиция для строки и столбца с 1; столбцы считаются в Character, как в `position(at:in:)`,
+    /// и ограничиваются концом строки без терминатора (CRLF — один терминатор). nil, если строки нет.
+    func location(line: Int, column: Int, in text: NSString) -> Int? {
+        guard line >= 1, line <= lineStarts.count else { return nil }
+        let start = lineStarts[line - 1]
+        var end = line < lineStarts.count ? lineStarts[line] : text.length
+        if line < lineStarts.count, end > start {
+            end -= 1
+            if end > start, text.character(at: end) == 0x0A, text.character(at: end - 1) == 0x0D { end -= 1 }
+        }
+        guard end > start, column > 1 else { return start }
+        let content = text.substring(with: NSRange(location: start, length: end - start))
+        let index = content.index(content.startIndex, offsetBy: min(column - 1, content.count))
+        return start + content.utf16.distance(from: content.startIndex, to: index)
+    }
+
     private func upperBound(for location: Int) -> Int {
         var lower = 0
         var upper = lineStarts.count

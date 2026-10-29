@@ -38,6 +38,40 @@ final class FolderSearchControllerTests: XCTestCase {
         XCTAssertEqual(controller.message, .stale)
     }
 
+    func testSubmitWithoutMatchesKeepsQuickOpenRequest() async throws {
+        let root = try directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        var opened: URL?
+        let controller = FolderSearchController(snapshots: { nil }, open: { _ in nil },
+            reveal: { _, _ in false }, openFile: { opened = $0 })
+        controller.setRoot(root)
+        controller.requestQuickOpen()
+        controller.query = "нет-такого"
+        await controller.submit()?.value
+        XCTAssertNil(opened)
+        XCTAssertTrue(controller.hasSearched)
+        XCTAssertNotNil(controller.quickOpenRequest)
+    }
+
+    func testCancelQuickOpenClearsRequestAndResultsButKeepsRoot() async throws {
+        let root = try directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data([0xff]).write(to: root.appendingPathComponent("ReleaseNotes.md"))
+        let controller = FolderSearchController(snapshots: { nil }, open: { _ in nil },
+            reveal: { _, _ in false }, openFile: { _ in })
+        controller.cancelQuickOpen()
+        XCTAssertNil(controller.quickOpenRequest)
+        controller.setRoot(root)
+        controller.requestQuickOpen()
+        controller.query = "rlnt"
+        await controller.start()?.value
+        XCTAssertFalse(controller.quickOpenItems.isEmpty)
+        controller.cancelQuickOpen()
+        XCTAssertNil(controller.quickOpenRequest)
+        XCTAssertTrue(controller.quickOpenItems.isEmpty)
+        XCTAssertEqual(controller.root?.path, root.standardizedFileURL.path)
+    }
+
     func testQuickOpenUsesFileSearchWithoutReadingLiveSnapshots() async throws {
         let root = try directory()
         defer { try? FileManager.default.removeItem(at: root) }

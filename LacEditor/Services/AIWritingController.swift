@@ -18,10 +18,17 @@ final class AIWritingController: ObservableObject {
     }
     @Published private(set) var isWorking = false
     @Published private(set) var report = ""
-    @Published private(set) var suggestions: [AIWritingSuggestion] = []
+    @Published private(set) var suggestions: [AIWritingSuggestion] = [] {
+        didSet {
+            let ids = Set(suggestions.map(\.id))
+            diffCache = diffCache.filter { ids.contains($0.key) }
+        }
+    }
     @Published private(set) var references: [AIWritingReference] = []
     @Published private(set) var image: Data?
-    @Published private(set) var message = ""
+    @Published private(set) var message = "" { didSet { messageKind = .error; messageAction = nil } }
+    @Published private(set) var messageKind: StatusKind = .error
+    @Published private(set) var messageAction: AIMessageAction?
     @Published private(set) var generatedAt: Date?
     @Published private(set) var resultRevision: UInt?
 
@@ -49,6 +56,7 @@ final class AIWritingController: ObservableObject {
     private var isBackground = false
     private var reportIsBackground = false
     private var activeFeatures: Set<AIFeature> = []
+    private var diffCache: [UUID: (original: AttributedString, replacement: AttributedString)] = [:]
 
     init(appState: AppState, loadKey: @escaping (AIRole, String) throws -> String? = { try AIKeychainStore().load(for: $0, baseURL: $1) }, generate: @escaping (AIFeature, String, String, AIModelProfile, String?, JinaConfiguration?, String?, String?) async throws -> AIWritingResult = { feature, input, option, profile, key, jina, searchKey, readerKey in
         try await AIWritingService.generate(feature: feature, input: input, option: option, profile: profile, key: key, jinaConfiguration: jina ?? JinaConfiguration(), jinaSearchKey: searchKey, jinaReaderKey: readerKey)
@@ -73,6 +81,20 @@ final class AIWritingController: ObservableObject {
         translationLanguage.targetName(customName: customTranslationLanguage)
     }
 
+    private func post(_ text: String, kind: StatusKind = .error, action: AIMessageAction? = nil) {
+        message = text; messageKind = kind; messageAction = action
+    }
+    private func fail(_ error: Error) { post(error.localizedDescription, action: AIMessageAction.forError(error)) }
+
+    /// Подсветка слов для карточки подсказки; только отображение, текст не меняется.
+    func wordDiff(for suggestion: AIWritingSuggestion) -> (original: AttributedString, replacement: AttributedString) {
+        if let cached = diffCache[suggestion.id] { return cached }
+        let runs = AIWordDiff.runs(original: suggestion.original, replacement: suggestion.replacement)
+        let value = (original: AIWordDiff.attributed(runs.original), replacement: AIWordDiff.attributed(runs.replacement))
+        diffCache[suggestion.id] = value
+        return value
+    }
+
     private func translationTargetChanged() {
         guard feature == .translation else { return }
         cancel()
@@ -91,7 +113,7 @@ final class AIWritingController: ObservableObject {
         requestedFeature = feature
         if [.translation, .toneRewrite, .audienceReview].contains(feature),
            option.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            message = L10n.tr("请输入目标语言、语气或读者")
+            post(L10n.tr("请输入目标语言、语气或读者"), kind: .info)
             return
         }
         start(feature, option: option, background: false)
@@ -112,11 +134,11 @@ final class AIWritingController: ObservableObject {
         let profile = appState.preferences.aiProfile(for: feature)
         let jina = feature == .sources ? appState.preferences.jinaConfiguration : nil
         let needsKey = feature != .sources || jina?.readerEnabled == true
-        guard !needsKey || profile.isEnabled else { message = L10n.tr("AI 功能已关闭"); return }
+        guard !needsKey || profile.isEnabled else { post(L10n.tr("AI 功能已关闭"), action: .openSettings); return }
         let extraction = EditorTextExtractionRequest(documentID: document.id, allowsTokenAtCaret: false, allowsWholeDocument: !feature.isReplacement && feature != .illustration)
         NotificationCenter.default.post(name: EditorCommandNotification.extractTextSelection, object: extraction)
         guard let snapshot = extraction.result else {
-            if !background { message = L10n.tr("请先选择需要处理的文本") }
+            if !background { post(L10n.tr("请先选择需要处理的文本"), kind: .info) }
             return
         }
         let key: String?
@@ -130,13 +152,13 @@ final class AIWritingController: ObservableObject {
             credentials[feature] = Credentials(profile: profile, key: key, required: needsKey)
             for currentFeature in features where currentFeature != feature {
                 let currentProfile = appState.preferences.aiProfile(for: currentFeature)
-                guard currentProfile.isEnabled else { message = L10n.tr("AI 功能已关闭"); return }
+                guard currentProfile.isEnabled else { post(L10n.tr("AI 功能已关闭"), action: .openSettings); return }
                 let currentKey = try loadKey(currentFeature.role, currentProfile.baseURL)
                 credentials[currentFeature] = Credentials(profile: currentProfile, key: currentKey, required: true)
             }
             searchKey = try jina.flatMap { $0.searchEnabled ? try store.load(for: JinaServiceKind.search, baseURL: $0.searchEndpoint) : nil }
             readerKey = try jina.flatMap { $0.readerEnabled ? try store.load(for: JinaServiceKind.reader, baseURL: $0.readerEndpoint) : nil }
-        } catch { message = error.localizedDescription; return }
+        } catch { fail(error); return }
         cancel()
         self.snapshot = snapshot
         self.feature = feature
@@ -183,7 +205,7 @@ final class AIWritingController: ObservableObject {
                 }
             } catch {
                 guard let self, !Task.isCancelled, self.isCurrent(current, snapshot: snapshot, feature: feature, profile: profile) && document.taskCoordinator.isCurrent(taskGeneration, for: .aiWriting) else { return }
-                self.message = error.localizedDescription
+                self.fail(error)
             }
         }
         if let task { document.taskCoordinator.attachTask(task, kind: .aiWriting, generation: taskGeneration) }
@@ -241,6 +263,38 @@ final class AIWritingController: ObservableObject {
         if !request.wasHandled { message = request.failureMessage ?? L10n.tr("编辑内容已变化，请重新执行转换") }
     }
 
+    /// Одна замена объемлющего диапазона и одна группа отмены: после первой правки версия редактора меняется, поэтому по очереди через accept() нельзя.
+    func acceptAll() {
+        guard let snapshot, let appState,
+              appState.selectedDocumentID == snapshot.documentID,
+              appState.preferences.aiFeatures.contains(feature),
+              activeCredentialsAreCurrent() else { return }
+        let text = snapshot.text as NSString
+        let items = suggestions.filter { $0.original != $0.replacement }.sorted { $0.range.location < $1.range.location }
+        guard let first = items.first else { post(L10n.tr("转换结果与原文相同"), kind: .info); return }
+        var cursor = first.range.location
+        var composed = ""
+        for item in items {
+            guard item.range.location != NSNotFound, item.range.location >= cursor,
+                  item.range.length >= 0, NSMaxRange(item.range) <= text.length,
+                  text.substring(with: item.range) == item.original else {
+                post(L10n.tr("建议的位置互相重叠，请逐条接受"))
+                return
+            }
+            composed += text.substring(with: NSRange(location: cursor, length: item.range.location - cursor)) + item.replacement
+            cursor = NSMaxRange(item.range)
+        }
+        let span = NSRange(location: first.range.location, length: cursor - first.range.location)
+        let request = EditorRangeReplacementRequest(documentID: snapshot.documentID, range: NSRange(location: snapshot.range.location + span.location, length: span.length), originalText: text.substring(with: span), replacementText: composed, expectedEditorRevision: snapshot.editorRevision, actionName: feature.title)
+        request.isAIGenerated = true
+        request.groupsUndo = true
+        NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
+        if request.wasHandled { suggestions = [] }
+        else { message = request.failureMessage ?? L10n.tr("编辑内容已变化，请重新执行转换") }
+    }
+
+    func rejectAll() { suggestions = [] }
+
     func reject(_ suggestion: AIWritingSuggestion) { suggestions.removeAll { $0.id == suggestion.id } }
 
     func reveal(_ suggestion: AIWritingSuggestion) {
@@ -294,14 +348,14 @@ final class AIWritingController: ObservableObject {
               appState.selectedDocumentID == documentID,
               appState.preferences.aiFeatures.contains(.illustration),
               appState.preferences.aiProfile(for: .illustration) == profile, activeCredentialsAreCurrent() else { return }
-        do { try image.write(to: url, options: .atomic) } catch { message = error.localizedDescription }
+        do { try image.write(to: url, options: .atomic) } catch { fail(error) }
     }
 
     func describeImage() {
         guard let appState, appState.preferences.aiFeatures.contains(.imageDescription),
               let document = appState.selectedDocument, document.ioState == .idle else { return }
         let profile = appState.preferences.aiProfile(for: .imageDescription)
-        guard profile.isEnabled else { message = L10n.tr("AI 功能已关闭"); return }
+        guard profile.isEnabled else { post(L10n.tr("AI 功能已关闭"), action: .openSettings); return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.image]
         guard panel.runModal() == .OK, let url = panel.url,
@@ -326,10 +380,10 @@ final class AIWritingController: ObservableObject {
                     self.report = text; self.generatedAt = Date(); self.resultRevision = document.textRevision; self.isWorking = false
                 } catch {
                     guard let self, !Task.isCancelled, self.generation == current else { return }
-                    self.message = error.localizedDescription; self.isWorking = false
+                    self.fail(error); self.isWorking = false
                 }
             }
-        } catch { message = error.localizedDescription }
+        } catch { fail(error) }
     }
 
     func cancel() {
@@ -444,5 +498,91 @@ final class AIWritingController: ObservableObject {
         if ((!report.isEmpty || snapshot != nil || image != nil) && !appState.preferences.aiFeatures.contains(feature)) || !activeFeatures.isSubset(of: appState.preferences.aiFeatures) || (activeProfile != nil && !activeCredentialsAreCurrent()) || (activeJinaConfiguration != nil && activeJinaConfiguration != appState.preferences.jinaConfiguration) || (reportIsBackground && !appState.preferences.aiBackgroundEnabled) {
             cancel(); debounce?.cancel(); snapshot = nil; suggestions = []; references = []; report = ""; image = nil
         }
+    }
+}
+
+/// Подсветка различий по словам: токены делятся по Character, чтобы не разрывать составные символы.
+enum AIWordDiff {
+    struct Run: Equatable {
+        enum Kind { case same, removed, added }
+        var kind: Kind
+        var text: String
+    }
+
+    private enum TokenClass { case space, word, other }
+
+    private static func isCJK(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x3400...0x4DBF, 0x4E00...0x9FFF, 0x3040...0x30FF, 0xAC00...0xD7AF: return true
+        default: return false
+        }
+    }
+
+    private static func tokenClass(_ character: Character) -> TokenClass {
+        if character.isWhitespace { return .space }
+        if character.unicodeScalars.contains(where: isCJK) { return .other }
+        if character.isLetter || character.isNumber { return .word }
+        return .other
+    }
+
+    /// Пробелы подряд и слова подряд — один токен; китайский символ, пунктуация и emoji — отдельные токены.
+    static func tokens(_ text: String) -> [String] {
+        var result: [String] = []
+        var current = ""
+        var currentClass: TokenClass?
+        for character in text {
+            let kind = tokenClass(character)
+            if let currentClass, currentClass == kind, kind != .other {
+                current.append(character)
+            } else {
+                if !current.isEmpty { result.append(current) }
+                current = String(character)
+                currentClass = kind
+            }
+        }
+        if !current.isEmpty { result.append(current) }
+        return result
+    }
+
+    static func runs(original: String, replacement: String) -> (original: [Run], replacement: [Run]) {
+        let old = tokens(original), new = tokens(replacement)
+        let difference = new.difference(from: old)
+        var removed = Set<Int>(), added = Set<Int>()
+        for change in difference {
+            switch change {
+            case .remove(let offset, _, _): removed.insert(offset)
+            case .insert(let offset, _, _): added.insert(offset)
+            }
+        }
+        func build(_ tokens: [String], marked: Set<Int>, kind: Run.Kind) -> [Run] {
+            var runs: [Run] = []
+            for (index, token) in tokens.enumerated() {
+                let tokenKind: Run.Kind = marked.contains(index) ? kind : .same
+                if let last = runs.last, last.kind == tokenKind { runs[runs.count - 1].text += token }
+                else { runs.append(Run(kind: tokenKind, text: token)) }
+            }
+            return runs
+        }
+        return (build(old, marked: removed, kind: .removed), build(new, marked: added, kind: .added))
+    }
+
+    /// Цвет не единственный признак: удалённое зачёркнуто, вставленное подчёркнуто и жирное. Текст остаётся прежним.
+    static func attributed(_ runs: [Run]) -> AttributedString {
+        var result = AttributedString()
+        for run in runs {
+            var part = AttributedString(run.text)
+            switch run.kind {
+            case .same: break
+            case .removed:
+                part.strikethroughStyle = Text.LineStyle.single
+                part.backgroundColor = Color.red.opacity(0.15)
+            case .added:
+                part.underlineStyle = Text.LineStyle.single
+                part.inlinePresentationIntent = .stronglyEmphasized
+                part.backgroundColor = Color.green.opacity(0.15)
+            }
+            result.append(part)
+        }
+        return result
     }
 }

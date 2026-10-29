@@ -29,7 +29,7 @@ struct StatusBarView: View {
                     }.buttonStyle(.plain).lineLimit(1).help(L10n.tr("预览解码结果"))
                 }
                 if let message = document.statusMessage {
-                    Text(message).foregroundStyle(message.hasPrefix(L10n.tr("JSON 无效")) ? .red : .secondary)
+                    Text(message).foregroundStyle(document.statusMessageIsError ? .red : .secondary)
                         .lineLimit(1).help(message).layoutPriority(2)
                 }
                 Spacer(minLength: 0)
@@ -54,13 +54,20 @@ struct StatusBarView: View {
                     .fixedSize()
                     .help(L10n.tr("查看文档统计"))
                 }
-                statusItem(geometry.size.width >= 360
-                           ? L10n.tr("行 %@，列 %@", String(describing: document.cursorLine), String(describing: document.cursorColumn))
-                           : "\(document.cursorLine):\(document.cursorColumn)")
-                    .help(L10n.tr("行 %@，列 %@", String(describing: document.cursorLine), String(describing: document.cursorColumn)))
-                    .layoutPriority(3)
+                Button { appState.presentFindReplace(mode: .goToLine) } label: {
+                    statusItem(geometry.size.width >= 360
+                               ? L10n.tr("行 %@，列 %@", String(describing: document.cursorLine), String(describing: document.cursorColumn))
+                               : "\(document.cursorLine):\(document.cursorColumn)")
+                        .padding(.horizontal, 4)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(QuietActionButtonStyle())
+                .padding(.horizontal, -4)
+                .help(L10n.tr("行 %@，列 %@（点击跳转到行，⌘L）", String(describing: document.cursorLine), String(describing: document.cursorColumn)))
+                .accessibilityIdentifier("status.cursor")
+                .layoutPriority(3)
             }
-            .font(.system(size: 11)).foregroundStyle(.secondary)
+            .font(.subheadline).foregroundStyle(.secondary)
             .monospacedDigit()
             .padding(.horizontal, 10)
             .frame(width: geometry.size.width, height: LacEditorDesign.statusBarHeight)
@@ -127,7 +134,7 @@ struct StatusBarView: View {
             Text(L10n.tr("这些设置仅对当前标签有效"))
         } label: {
             Label(L10n.tr("大文件模式"), systemImage: "gauge.with.dots.needle.33percent")
-                .font(.system(size: 11))
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
@@ -155,7 +162,7 @@ struct StatusBarView: View {
                     .foregroundStyle(color)
             }
             Text(text)
-                .font(.system(size: 11))
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }

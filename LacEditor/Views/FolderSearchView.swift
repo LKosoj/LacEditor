@@ -1,14 +1,14 @@
 import SwiftUI
 
 struct FolderSearchView: View {
+    @EnvironmentObject private var appState: AppState
     @ObservedObject var controller: FolderSearchController
-    @FocusState private var queryFocused: Bool
-
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if controller.root != nil || controller.quickOpenRequest != nil || !controller.quickOpenItems.isEmpty || controller.isWorking {
+            if controller.root != nil || (controller.isWorking && controller.quickOpenRequest == nil) {
                 if let root = controller.root {
                     Text(L10n.tr("搜索范围：%@", root.path)).font(.caption).textSelection(.enabled)
+                        .lineLimit(1).truncationMode(.middle).help(root.path)
                 } else { Text(L10n.tr("文件夹位置")).font(.caption) }
                 Picker(L10n.tr("文件夹搜索"), selection: $controller.mode) {
                     Text(L10n.tr("按名称打开")).tag(FolderSearchController.Mode.files)
@@ -17,46 +17,37 @@ struct FolderSearchView: View {
                 }.pickerStyle(.segmented).disabled(controller.root == nil)
                 HStack {
                     TextField(L10n.tr("搜索文件夹"), text: $controller.query)
-                        .focused($queryFocused)
                         .onSubmit { controller.submit() }
                     Button(L10n.tr("搜索")) { controller.start() }
-                        .disabled(controller.query.isEmpty && controller.quickOpenRequest == nil)
+                        .disabled(controller.query.isEmpty)
                 }
-                if controller.isWorking { ProgressView().controlSize(.small) }
+                if controller.isWorking && controller.quickOpenRequest == nil { ProgressView().controlSize(.small) }
                 if controller.message == .stale { Text(L10n.tr("结果已过期，请重新搜索")).foregroundStyle(.secondary) }
-                if controller.message == .failed { Text(L10n.tr("搜索失败")).foregroundStyle(.secondary) }
-                if controller.hasSearched && controller.files.isEmpty && controller.matches.isEmpty && controller.quickOpenItems.isEmpty {
+                if controller.message == .failed {
+                    Text(L10n.tr("搜索失败")).foregroundStyle(.secondary)
+                    Button(L10n.tr("选择其他文件夹…")) { appState.openFolder() }.controlSize(.small)
+                }
+                if controller.quickOpenRequest == nil && controller.hasSearched && controller.files.isEmpty && controller.matches.isEmpty && controller.quickOpenItems.isEmpty {
                     Text(L10n.tr("没有匹配结果")).foregroundStyle(.secondary)
                 }
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear { if controller.quickOpenRequest != nil { queryFocused = true } }
-        .onChange(of: controller.quickOpenRequest) { _, request in
-            if request != nil { queryFocused = true }
-        }
-        .task(id: controller.quickOpenRequest.map { [$0.uuidString, controller.query] }) {
-            guard controller.quickOpenRequest != nil else { return }
-            do { try await Task.sleep(for: .milliseconds(150)) }
-            catch { return }
-            guard !Task.isCancelled else { return }
-            await controller.start()?.value
-        }
     }
-
 }
 
 struct FolderSearchRow: Identifiable {
     enum Content {
-        case file(FolderSearchService.File), match(FolderSearchService.Match), problem(FolderSearchService.Problem), quick(FolderSearchController.QuickOpenItem)
+        case file(FolderSearchService.File), match(FolderSearchService.Match), problem(FolderSearchService.Problem)
     }
     let id: String
     let content: Content
 
     @MainActor
     static func rows(_ controller: FolderSearchController) -> [Self] {
+        // результаты быстрого открытия показывает только плавающая панель, не боковая
         let files: [Self] = controller.quickOpenItems.isEmpty
             ? controller.files.enumerated().map { .init(id: "file-\($0.offset)", content: .file($0.element)) }
-            : controller.quickOpenItems.enumerated().map { .init(id: "quick-\($0.offset)", content: .quick($0.element)) }
+            : []
         let matches: [Self] = controller.matches.enumerated().map { .init(id: "match-\($0.offset)", content: .match($0.element)) }
         let problems: [Self] = controller.problems.enumerated().map { .init(id: "problem-\($0.offset)", content: .problem($0.element)) }
         return files + matches + problems
@@ -66,32 +57,45 @@ struct FolderSearchRow: Identifiable {
 struct FolderSearchRowView: View {
     @ObservedObject var controller: FolderSearchController
     let row: FolderSearchRow
+    let navigation: FolderListNavigation
 
     var body: some View {
+        let id = AnyHashable(row.id)
         Group {
             switch row.content {
-            case let .quick(item):
-                Button { controller.select(item) } label: {
-                    switch item {
-                    case let .folder(url): Label(url.path, systemImage: "folder")
-                    case let .file(file): Label(file.relativePath, systemImage: "doc.text")
-                    }
-                }.buttonStyle(.plain)
             case let .file(file):
-                Button(file.relativePath) { controller.select(file) }.buttonStyle(.plain)
+                Button { navigation.focused = id; controller.select(file) } label: {
+                    Text(file.relativePath).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .modifier(FolderListRowNavigation(id: id, navigation: navigation) {
+                    controller.select(file); return .handled
+                })
             case let .match(match):
-                Button { controller.select(match) } label: {
+                Button { navigation.focused = id; controller.select(match) } label: {
                     VStack(alignment: .leading) {
                         Text(match.file.relativePath).font(.caption)
                         Text(match.context).lineLimit(3)
                     }.frame(maxWidth: .infinity, alignment: .leading)
-                }.buttonStyle(.plain)
+                }
+                .modifier(FolderListRowNavigation(id: id, navigation: navigation) {
+                    controller.select(match); return .handled
+                })
             case let .problem(problem):
                 Text("\(problem.url.path): \(reason(problem.reason))")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Строки, которые можно выбрать с клавиатуры (проблемы — только текст).
+    static func selectableIDs(_ rows: [FolderSearchRow]) -> [AnyHashable] {
+        rows.compactMap { row -> AnyHashable? in
+            switch row.content {
+            case .file, .match: return AnyHashable(row.id)
+            case .problem: return nil
+            }
+        }
     }
 
     private func reason(_ reason: FolderSearchService.ProblemReason) -> String {

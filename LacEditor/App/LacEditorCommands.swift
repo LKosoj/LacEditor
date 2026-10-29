@@ -52,7 +52,6 @@ struct LacEditorCommands: Commands {
                 .disabled(appState == nil)
             Button(L10n.tr("快速打开…")) {
                 guard let appState else { return }
-                if !appState.isSidebarEffectivelyVisible { appState.toggleSidebar() }
                 appState.folderSearch.requestQuickOpen()
             }
             .keyboardShortcut("o", modifiers: [.command, .shift])
@@ -151,6 +150,14 @@ struct LacEditorCommands: Commands {
         }
 
         CommandGroup(after: .pasteboard) {
+            Group {
+                Button(L10n.tr("复制 Markdown")) { appState?.markdownClipboard(.copyMarkdown) }
+                Button(L10n.tr("复制 HTML 代码")) { appState?.markdownClipboard(.copyHTML) }
+                Button(L10n.tr("粘贴为源文本")) { appState?.markdownClipboard(.pasteSource) }
+                Button(L10n.tr("复制代码块内容")) { appState?.markdownClipboard(.copyCodeBlock) }
+            }
+            .disabled(appState?.selectedDocument?.language != .markdown || appState?.selectedDocument?.ioState != .idle)
+            Divider()
             Button {
                 appState?.presentFindReplace(mode: .find)
             } label: {
@@ -178,6 +185,20 @@ struct LacEditorCommands: Commands {
                 Label(L10n.tr("查找上一个"), systemImage: "chevron.up")
             }
                 .keyboardShortcut("g", modifiers: [.command, .shift])
+                .disabled(appState == nil)
+            Button {
+                appState?.useSelectionForFind()
+            } label: {
+                Label(L10n.tr("将所选内容用作查找内容"), systemImage: "text.cursor")
+            }
+                .keyboardShortcut("e", modifiers: .command)
+                .disabled(appState == nil)
+            Button {
+                appState?.presentFindReplace(mode: .goToLine)
+            } label: {
+                Label(L10n.tr("跳转到行…"), systemImage: "arrow.right.to.line")
+            }
+                .keyboardShortcut("l", modifiers: .command)
                 .disabled(appState == nil)
             Divider()
             Menu {
@@ -232,6 +253,12 @@ struct LacEditorCommands: Commands {
         // AppKit button beside the traffic lights instead.
         CommandGroup(replacing: .sidebar) {}
 
+        CommandGroup(replacing: .help) {
+            Button(L10n.tr("LacEditor 帮助")) {
+                if let url = URL(string: "https://github.com/LKosoj/LacEditor") { NSWorkspace.shared.open(url) }
+            }
+        }
+
         CommandMenu(L10n.tr("AI 写作助手")) {
             Button(L10n.tr("显示或隐藏 AI 助手")) {
                 if appState?.isDistractionFree == true { appState?.toggleDistractionFree() }
@@ -239,20 +266,24 @@ struct LacEditorCommands: Commands {
             }
             .disabled(appState == nil)
             Divider()
-            ForEach(AIFeature.allCases) { feature in
-                Button(feature.title) {
-                    if appState?.isDistractionFree == true { appState?.toggleDistractionFree() }
-                    appState?.isAIWritingVisible = true
-                    if feature.isDocumentTool || feature == .translation || feature == .toneRewrite || feature == .audienceReview {
-                        appState?.aiWriting.prepare(feature)
-                    } else if feature == .imageDescription {
-                        appState?.isAIWritingVisible = true
-                        appState?.aiWriting.describeImage()
-                    } else {
-                        appState?.aiWriting.run(feature)
+            ForEach(AIFeatureGroup.allCases) { group in
+                Menu(group.title) {
+                    ForEach(AIFeature.features(in: group)) { feature in
+                        Button(feature.title) {
+                            if appState?.isDistractionFree == true { appState?.toggleDistractionFree() }
+                            appState?.isAIWritingVisible = true
+                            if feature.isDocumentTool || feature == .translation || feature == .toneRewrite || feature == .audienceReview {
+                                appState?.aiWriting.prepare(feature)
+                            } else if feature == .imageDescription {
+                                appState?.isAIWritingVisible = true
+                                appState?.aiWriting.describeImage()
+                            } else {
+                                appState?.aiWriting.run(feature)
+                            }
+                        }
+                        .disabled(appState?.selectedDocument == nil || appState?.preferences.aiFeatures.contains(feature) != true)
                     }
                 }
-                .disabled(appState?.selectedDocument == nil || appState?.preferences.aiFeatures.contains(feature) != true)
             }
         }
 
@@ -362,6 +393,16 @@ struct LacEditorCommands: Commands {
                 )
             }
             .disabled(appState == nil)
+            Button {
+                guard let documentID = appState?.selectedDocumentID else { return }
+                NotificationCenter.default.post(
+                    name: EditorCommandNotification.toggleFold,
+                    object: documentID
+                )
+            } label: {
+                Label(L10n.tr("折叠/展开当前区块"), systemImage: "chevron.up.chevron.down")
+            }
+            .disabled(appState == nil)
             Divider()
             Button {
                 appState?.increaseFontSize()
@@ -411,10 +452,6 @@ struct LacEditorCommands: Commands {
 
         CommandMenu(L10n.tr("Markdown 格式")) {
             Group {
-                Button(L10n.tr("复制 Markdown")) { appState?.markdownClipboard(.copyMarkdown) }
-                Button(L10n.tr("复制 HTML 代码")) { appState?.markdownClipboard(.copyHTML) }
-                Button(L10n.tr("粘贴为源文本")) { appState?.markdownClipboard(.pasteSource) }
-                Button(L10n.tr("复制代码块内容")) { appState?.markdownClipboard(.copyCodeBlock) }
                 Button(L10n.tr("设置代码块语言")) { appState?.markdownClipboard(.setCodeLanguage) }
                 Divider()
                 Button(L10n.tr("加粗")) { appState?.formatMarkdown(.bold) }
@@ -422,24 +459,33 @@ struct LacEditorCommands: Commands {
                 Button(L10n.tr("斜体")) { appState?.formatMarkdown(.italic) }
                     .keyboardShortcut("i", modifiers: .command)
                 Button(L10n.tr("删除线")) { appState?.formatMarkdown(.strikethrough) }
+                    .keyboardShortcut("x", modifiers: [.command, .shift])
                 Button(L10n.tr("行内代码")) { appState?.formatMarkdown(.inlineCode) }
+                    .keyboardShortcut("k", modifiers: [.command, .shift])
                 Button(L10n.tr("行内公式")) { appState?.formatMarkdown(.inlineMath) }
                 Button(L10n.tr("链接…")) { appState?.presentMarkdownLink() }
+                    .keyboardShortcut("k", modifiers: .command)
                 Button(L10n.tr("图片…")) { _ = appState?.presentMarkdownImage() }
-                Button(L10n.tr("设置图片资源根路径…")) { appState?.presentMarkdownResourceRoot() }
-                Button(L10n.tr("复制选中图片到…")) { appState?.copyMarkdownImages(selectedOnly: true, remoteOnly: false) }
-                Button(L10n.tr("复制全部图片到…")) { appState?.copyMarkdownImages(selectedOnly: false, remoteOnly: false) }
-                Button(L10n.tr("下载全部网络图片到…")) { appState?.copyMarkdownImages(selectedOnly: false, remoteOnly: true) }
-                Button(L10n.tr("移动或重命名图片…")) { appState?.moveOrDeleteMarkdownImage(deleteOriginal: false) }
-                Button(L10n.tr("移动全部图片到…")) { appState?.moveAllMarkdownImages() }
-                Button(L10n.tr("删除图片及原文件…")) { appState?.moveOrDeleteMarkdownImage(deleteOriginal: true) }
-                Button(L10n.tr("上传选中图片")) { appState?.uploadMarkdownImages(selectedOnly: true) }
-                Button(L10n.tr("上传全部本地图片")) { appState?.uploadMarkdownImages(selectedOnly: false) }
+                Menu(L10n.tr("图片管理")) {
+                    Button(L10n.tr("设置图片资源根路径…")) { appState?.presentMarkdownResourceRoot() }
+                    Divider()
+                    Button(L10n.tr("复制选中图片到…")) { appState?.copyMarkdownImages(selectedOnly: true, remoteOnly: false) }
+                    Button(L10n.tr("复制全部图片到…")) { appState?.copyMarkdownImages(selectedOnly: false, remoteOnly: false) }
+                    Button(L10n.tr("下载全部网络图片到…")) { appState?.copyMarkdownImages(selectedOnly: false, remoteOnly: true) }
+                    Divider()
+                    Button(L10n.tr("移动或重命名图片…")) { appState?.moveOrDeleteMarkdownImage(deleteOriginal: false) }
+                    Button(L10n.tr("移动全部图片到…")) { appState?.moveAllMarkdownImages() }
+                    Button(L10n.tr("删除图片及原文件…")) { appState?.moveOrDeleteMarkdownImage(deleteOriginal: true) }
+                    Divider()
+                    Button(L10n.tr("上传选中图片")) { appState?.uploadMarkdownImages(selectedOnly: true) }
+                    Button(L10n.tr("上传全部本地图片")) { appState?.uploadMarkdownImages(selectedOnly: false) }
+                }
                 Divider()
                 ForEach(1...6, id: \.self) { level in
                     Button(L10n.tr("标题 %@ 级", String(level))) {
                         appState?.formatMarkdown(.heading(level))
                     }
+                    .keyboardShortcut(KeyEquivalent(Character(String(level))), modifiers: [.command, .option])
                 }
                 Button(L10n.tr("引用")) { appState?.formatMarkdown(.quote) }
                 Divider()
@@ -522,17 +568,6 @@ struct LacEditorCommands: Commands {
                 // selectTab(at:) validates the index when the command runs.
                 .disabled(appState == nil)
             }
-            Divider()
-            Button {
-                guard let documentID = appState?.selectedDocumentID else { return }
-                NotificationCenter.default.post(
-                    name: EditorCommandNotification.toggleFold,
-                    object: documentID
-                )
-            } label: {
-                Label(L10n.tr("折叠/展开当前区块"), systemImage: "chevron.up.chevron.down")
-            }
-            .disabled(appState == nil)
         }
     }
 
@@ -546,11 +581,11 @@ struct LacEditorCommands: Commands {
         feature: DocumentManagedFeature,
         enabled: Bool
     ) -> some View {
-        Button {
-            appState?.toggleLargeFileFeature(feature)
-        } label: {
-            Label(title, systemImage: enabled ? "checkmark" : "minus")
-        }
+        // Две позиции: enabled уже учитывает исходный профиль и ручные исключения.
+        Toggle(title, isOn: Binding(
+            get: { enabled },
+            set: { _ in appState?.toggleLargeFileFeature(feature) }
+        ))
     }
 
     private func transformationButton(

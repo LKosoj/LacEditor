@@ -466,7 +466,7 @@ final class CustomMarkdownExportTests: XCTestCase {
     }
 
     @MainActor
-    func testTransferringDocumentCancelsItsRunningCommand() async throws {
+    func testClosingDocumentCancelsItsRunningCommand() async throws {
         _ = NSApplication.shared
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -488,7 +488,10 @@ final class CustomMarkdownExportTests: XCTestCase {
         }
         let pidText = try String(contentsOf: marker, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
         let pid = try XCTUnwrap(Int32(pidText))
-        XCTAssertNotNil(state.takeDocumentForTransfer(document))
+        document.markSaved()
+        state.close(document)
+        for _ in 0..<100 where state.documents.contains(where: { $0 === document }) { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertFalse(state.documents.contains { $0 === document })
         for _ in 0..<250 {
             if kill(pid, 0) == -1 { break }
             try await Task.sleep(for: .milliseconds(20))
@@ -521,12 +524,15 @@ final class CustomMarkdownExportTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(20))
         }
         XCTAssertTrue(FileManager.default.fileExists(atPath: marker.path))
-        _ = state.takeDocumentForTransfer(try XCTUnwrap(document))
+        try XCTUnwrap(document).markSaved()
+        state.close(try XCTUnwrap(document))
+        for _ in 0..<100 where state.documents.contains(where: { $0.id == id }) { try await Task.sleep(for: .milliseconds(20)) }
         document = nil
         XCTAssertNil(releasedDocument)
         // Reusing the ID makes the retained export lock observable through the real command path.
         let replacement = EditorDocument(id: id, text: "second", language: .markdown)
-        state.receiveTransferredDocument(replacement)
+        state.documents = [replacement]
+        state.selectedDocumentID = replacement.id
         profile.command = "/bin/cat \"${inputPath}\" > \"${outputPath}\""
         for _ in 0..<250 {
             if FileManager.default.fileExists(atPath: destination.path) { break }

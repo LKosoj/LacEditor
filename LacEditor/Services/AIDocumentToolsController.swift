@@ -3,6 +3,20 @@ import Combine
 import Foundation
 import UniformTypeIdentifiers
 
+enum AIMessageAction: Equatable {
+    case openSettings, retry
+    /// Тип ошибки решает, что предложить; по тексту не определяем.
+    static func forError(_ error: Error) -> AIMessageAction? {
+        guard let error = error as? AIError else { return nil }
+        switch error {
+        case .disabled, .invalidConfiguration, .keychain: return .openSettings
+        case .http(let status): return status == 401 || status == 403 ? .openSettings : .retry
+        case .network, .invalidResponse: return .retry
+        case .refused: return nil
+        }
+    }
+}
+
 @MainActor
 final class AIDocumentToolsController: ObservableObject {
     @Published var option = ""
@@ -14,7 +28,9 @@ final class AIDocumentToolsController: ObservableObject {
     @Published private(set) var report = ""
     @Published private(set) var differences = ""
     @Published private(set) var references: [AIContextReference] = []
-    @Published private(set) var message = ""
+    @Published private(set) var message = "" { didSet { messageKind = .error; messageAction = nil } }
+    @Published private(set) var messageKind: StatusKind = .error
+    @Published private(set) var messageAction: AIMessageAction?
     @Published private(set) var isWorking = false
     let recorder: AIVoiceRecorder
     private weak var appState: AppState?
@@ -32,6 +48,7 @@ final class AIDocumentToolsController: ObservableObject {
     private var activeCheck: AICustomCheck?
     private var activeOption = ""
     private var activeInputs: [AIContextInput] = []
+    private var activeFileURL: URL?
     private var observer: NSObjectProtocol?
     private var recorderObserver: AnyCancellable?
     private let generate: (AIFeature, String, String, [AIContextSnapshot], AICustomCheck?, AIModelProfile, String?) async throws -> String
@@ -49,12 +66,33 @@ final class AIDocumentToolsController: ObservableObject {
         observer = NotificationCenter.default.addObserver(forName: EditorCommandNotification.documentContentDidChange, object: nil, queue: .main) { [weak self] note in
             MainActor.assumeIsolated {
                 guard let self, let id = note.object as? UUID else { return }
-                if self.selection?.documentID == id || self.sources.contains(where: { $0.document?.id == id }) || (self.activeFeature == .contextReview && self.inputs.contains(.document(id))) || (self.activeFeature == .compareVersions && (self.before == .document(id) || self.after == .document(id))) { self.clearResult() }
+                if self.selection?.documentID == id || self.sources.contains(where: { $0.document?.id == id }) || self.activeInputs.contains(.document(id)) { self.clearResult() }
             }
         }
         recorderObserver = self.recorder.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
     }
     deinit { task?.cancel(); recordingTask?.cancel(); if let observer { NotificationCenter.default.removeObserver(observer) } }
+
+    private func post(_ text: String, kind: StatusKind = .error, action: AIMessageAction? = nil) {
+        message = text; messageKind = kind; messageAction = action
+    }
+    private func fail(_ error: Error) { post(error.localizedDescription, action: AIMessageAction.forError(error)) }
+
+    static func usesOption(_ feature: AIFeature) -> Bool { [.contextReview, .compareVersions, .customCheck, .mermaid, .explain].contains(feature) }
+    /// Показанный результат получен для прежних входов: его можно читать и копировать, но не вставлять.
+    var isResultStale: Bool {
+        guard let feature = activeFeature, !report.isEmpty || !differences.isEmpty else { return false }
+        if Self.usesOption(feature), option != activeOption { return true }
+        switch feature {
+        case .contextReview: return inputs != activeInputs
+        case .compareVersions:
+            guard let before, let after else { return true }
+            return [before, after] != activeInputs
+        case .customCheck: return checkID != activeCheck?.id
+        case .recognizeDocument, .voiceDraft: return fileURL != activeFileURL
+        default: return false
+        }
+    }
 
     func isEnabled(_ feature: AIFeature) -> Bool { appState?.preferences.aiFeatures.contains(feature) == true }
     var documents: [EditorDocument] { appState?.windowManager?.documentsForAI ?? appState?.documents ?? [] }
@@ -64,18 +102,18 @@ final class AIDocumentToolsController: ObservableObject {
     }
     func addFiles() {
         let panel = NSOpenPanel(); panel.allowsMultipleSelection = true; panel.canChooseDirectories = false
-        if panel.runModal() == .OK { for url in panel.urls where !inputs.contains(.file(url)) { inputs.append(.file(url)) }; clearResult() }
+        if panel.runModal() == .OK { for url in panel.urls where !inputs.contains(.file(url)) { inputs.append(.file(url)) } }
     }
     func chooseFile(feature: AIFeature) {
         let panel = NSOpenPanel(); panel.canChooseDirectories = false
         panel.allowedContentTypes = feature == .recognizeDocument ? [.image, .pdf] : [.audio]
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        clearResult(); recorder.discard(); fileURL = url
+        recorder.discard(); fileURL = url
     }
     func chooseComparisonFile(before isBefore: Bool) {
         let panel = NSOpenPanel(); panel.canChooseDirectories = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        if isBefore { before = .file(url) } else { after = .file(url) }; clearResult()
+        if isBefore { before = .file(url) } else { after = .file(url) }
     }
     func startRecording() {
         guard let appState, let document = appState.selectedDocument,
@@ -95,7 +133,7 @@ final class AIDocumentToolsController: ObservableObject {
             } catch {
                 if self.recordingGeneration == current {
                     self.recordingDocumentID = nil
-                    if !Task.isCancelled { self.message = error.localizedDescription }
+                    if !Task.isCancelled { self.fail(error) }
                 }
             }
         }
@@ -116,22 +154,22 @@ final class AIDocumentToolsController: ObservableObject {
     func run(_ feature: AIFeature) {
         guard let appState, let document = appState.selectedDocument, document.ioState == .idle, appState.preferences.aiFeatures.contains(feature) else { return }
         let check = feature == .customCheck ? checks.first(where: { $0.id == checkID }) : nil
-        if feature == .customCheck && check == nil { message = L10n.tr("请选择已启用的检查。"); return }
+        if feature == .customCheck && check == nil { post(L10n.tr("请选择已启用的检查。"), kind: .info); return }
         let profile = appState.preferences.aiProfile(for: feature, customCheck: check)
-        guard profile.isEnabled else { message = L10n.tr("AI 功能已关闭"); return }
+        guard profile.isEnabled else { post(L10n.tr("AI 功能已关闭"), action: .openSettings); return }
         let extraction = EditorTextExtractionRequest(documentID: document.id, allowsTokenAtCaret: false, allowsWholeDocument: feature == .contextReview || feature == .customCheck || feature == .compareVersions, allowsInsertionPoint: feature == .recognizeDocument || feature == .voiceDraft)
         NotificationCenter.default.post(name: EditorCommandNotification.extractTextSelection, object: extraction)
-        guard let selection = extraction.result else { message = L10n.tr("请先选择需要处理的文本"); return }
+        guard let selection = extraction.result else { post(L10n.tr("请先选择需要处理的文本"), kind: .info); return }
         let selectedInputs: [AIContextInput]
-        if feature == .contextReview { guard !inputs.isEmpty else { message = L10n.tr("请至少添加一个来源。"); return }; selectedInputs = inputs }
-        else if feature == .compareVersions { guard let before, let after else { message = L10n.tr("请选择两个版本。"); return }; selectedInputs = [before, after] }
+        if feature == .contextReview { guard !inputs.isEmpty else { post(L10n.tr("请至少添加一个来源。"), kind: .info); return }; selectedInputs = inputs }
+        else if feature == .compareVersions { guard let before, let after else { post(L10n.tr("请选择两个版本。"), kind: .info); return }; selectedInputs = [before, after] }
         else { selectedInputs = [] }
         let mediaURL = feature == .recognizeDocument || feature == .voiceDraft ? fileURL : nil
-        if (feature == .recognizeDocument || feature == .voiceDraft) && (mediaURL == nil || recorder.isRecording) { message = L10n.tr("请选择文件或完成录音。"); return }
+        if (feature == .recognizeDocument || feature == .voiceDraft) && (mediaURL == nil || recorder.isRecording) { post(L10n.tr("请选择文件或完成录音。"), kind: .info); return }
         do {
             let key = try loadKey(feature.role, profile.baseURL)
             let revision = try mediaURL.map { try FileRevisionSnapshot.capture($0) }
-            clearResult(); self.selection = selection; activeFeature = feature; activeProfile = profile; activeKey = key; activeCheck = check; activeOption = self.option; activeInputs = selectedInputs; fileRevision = revision; isWorking = true
+            clearResult(); self.selection = selection; activeFeature = feature; activeProfile = profile; activeKey = key; activeCheck = check; activeOption = self.option; activeInputs = selectedInputs; activeFileURL = mediaURL; fileRevision = revision; isWorking = true
             let current = generation
             let taskGeneration = document.taskCoordinator.begin(.aiDocumentTools)
             let option = option, generate = generate, recognize = recognize, transcribe = transcribe
@@ -170,16 +208,16 @@ final class AIDocumentToolsController: ObservableObject {
                     } else { self.report = result }
                 } catch {
                     guard let self, self.validate(current, document: document, taskGeneration: taskGeneration) else { return }
-                    self.message = error.localizedDescription
+                    self.fail(error)
                 }
             }
             if let task { document.taskCoordinator.attachTask(task, kind: .aiDocumentTools, generation: taskGeneration) }
-        } catch { message = error.localizedDescription }
+        } catch { fail(error) }
     }
     private func discardStale(_ current: Int) {
         guard generation == current else { return }
         clearResult()
-        message = L10n.tr("所选来源已不可用或已更改。")
+        post(L10n.tr("所选来源已不可用或已更改。"), kind: .info)
     }
     private func validate(_ current: Int, document: EditorDocument, taskGeneration: UInt) -> Bool {
         guard !Task.isCancelled, isCurrent(current), document.taskCoordinator.isCurrent(taskGeneration, for: .aiDocumentTools) else {
@@ -193,21 +231,16 @@ final class AIDocumentToolsController: ObservableObject {
               appState.selectedDocumentID == selection.documentID, appState.selectedDocument?.ioState == .idle,
               appState.preferences.aiFeatures.contains(feature), appState.preferences.aiProfile(for: feature, customCheck: activeCheck) == profile,
               AIContextService.isCurrent(sources, appState: appState) else { return false }
-        guard option == activeOption else { return false }
-        if feature == .contextReview && inputs != activeInputs { return false }
-        if feature == .compareVersions {
-            guard let before, let after, [before, after] == activeInputs else { return false }
-        }
         do { guard try loadKey(feature.role, profile.baseURL) == activeKey else { return false } } catch { return false }
-        if let check = activeCheck, (checkID != check.id || !appState.preferences.aiCustomChecks.contains(check)) { return false }
-        if let revision = fileRevision { guard let fileURL, (try? FileRevisionSnapshot.capture(fileURL)) == revision else { return false } }
+        if let check = activeCheck, !appState.preferences.aiCustomChecks.contains(check) { return false }
+        if let revision = fileRevision { guard let activeFileURL, (try? FileRevisionSnapshot.capture(activeFileURL)) == revision else { return false } }
         let insertionPoint = feature == .recognizeDocument || feature == .voiceDraft
         let extraction = EditorTextExtractionRequest(documentID: selection.documentID, allowsTokenAtCaret: false, allowsWholeDocument: !insertionPoint, allowsInsertionPoint: insertionPoint)
         NotificationCenter.default.post(name: EditorCommandNotification.extractTextSelection, object: extraction)
         return extraction.result?.editorRevision == selection.editorRevision && extraction.result?.range == selection.range
     }
     func insert() {
-        guard let selection, let feature = activeFeature, [.recognizeDocument, .voiceDraft, .mermaid].contains(feature), !report.isEmpty else { return }
+        guard let selection, let feature = activeFeature, [.recognizeDocument, .voiceDraft, .mermaid].contains(feature), !report.isEmpty, !isResultStale else { return }
         guard isCurrent(generation) else { discardStale(generation); return }
         let replacement = feature == .mermaid ? "\n\n```mermaid\n\(report)\n```" : "\n\n" + report
         let request = EditorRangeReplacementRequest(documentID: selection.documentID, range: NSRange(location: NSMaxRange(selection.range), length: 0), originalText: "", replacementText: replacement, expectedEditorRevision: selection.editorRevision, actionName: feature.title)
@@ -238,8 +271,10 @@ final class AIDocumentToolsController: ObservableObject {
             appState.openFile(url)
         }
     }
+    /// Остановка по кнопке: только прекращает запрос, входы остаются.
+    func stop() { cancel(); if report.isEmpty { differences = "" } }
     func cancel() { generation += 1; task?.cancel(); task = nil; if recordingDocumentID != nil { discardRecording() }; isWorking = false }
-    func clearResult() { cancel(); selection = nil; sources = []; fileRevision = nil; activeFeature = nil; activeProfile = nil; activeKey = nil; activeCheck = nil; activeOption = ""; activeInputs = []; report = ""; differences = ""; references = []; message = "" }
+    func clearResult() { cancel(); selection = nil; sources = []; fileRevision = nil; activeFeature = nil; activeProfile = nil; activeKey = nil; activeCheck = nil; activeOption = ""; activeInputs = []; activeFileURL = nil; report = ""; differences = ""; references = []; message = "" }
     func invalidate(documentID: UUID) { if recordingDocumentID == documentID || selection?.documentID == documentID || sources.contains(where: { $0.document?.id == documentID }) { clearResult() } }
     func selectedDocumentChanged() { clearResult() }
     func settingsChanged() {

@@ -94,7 +94,7 @@ final class ProgressiveRestorationTests: XCTestCase {
     }
 
     @MainActor
-    func testPendingNilURLCanTransferAndCancelWithoutWritingEmptyRecovery() async throws {
+    func testPendingNilURLCancelsWithoutWritingEmptyRecovery() async throws {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -112,44 +112,38 @@ final class ProgressiveRestorationTests: XCTestCase {
         let document = try XCTUnwrap(manager.takeRecoveredDocuments().first)
         let source = AppState(initialDocument: document, recentFiles: manager.recentFiles,
             preferences: manager.preferences, recoveryStore: recovery)
-        let destination = AppState(recentFiles: manager.recentFiles,
-            preferences: manager.preferences, recoveryStore: recovery)
         source.windowManager = manager
-        destination.windowManager = manager
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 700),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
-        destination.hostWindow = window
+        source.hostWindow = window
         window.orderFront(nil)
         defer { window.delegate = nil; window.close() }
-        XCTAssertTrue(source.canTransferDocument(document))
-        XCTAssertTrue(source.takeDocumentForTransfer(document) === document)
-        destination.receiveTransferredDocument(document)
-        XCTAssertTrue(destination.isOpeningPlaceholder(document))
-        XCTAssertFalse(destination.saveAs(document))
+        XCTAssertTrue(source.isOpeningPlaceholder(document))
+        XCTAssertFalse(source.saveAs(document))
         recovery.flushForTesting()
         let session = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: recoveryURL,
             includingPropertiesForKeys: nil).first { $0.lastPathComponent.hasPrefix("Session-") })
         let content = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: session,
             includingPropertiesForKeys: nil).first { $0.pathExtension == "utf8" })
         XCTAssertEqual(try String(contentsOf: content, encoding: .utf8), "unsaved")
-        destination.cancelOpening(document)
+        source.cancelOpening(document)
         let cancelSheet = try XCTUnwrap(window.attachedSheet)
         window.endSheet(cancelSheet, returnCode: .alertSecondButtonReturn)
         try await Task.sleep(for: .milliseconds(100))
         recovery.flushForTesting()
-        XCTAssertTrue(destination.documents.contains { $0 === document })
+        XCTAssertTrue(source.documents.contains { $0 === document })
         XCTAssertTrue(manager.isRestorationPlaceholder(document))
         XCTAssertEqual(try String(contentsOf: content, encoding: .utf8), "unsaved")
 
-        destination.cancelOpening(document)
+        source.cancelOpening(document)
         let discardSheet = try XCTUnwrap(window.attachedSheet)
         window.endSheet(discardSheet, returnCode: .alertFirstButtonReturn)
         for _ in 0..<100 where manager.isRestorationPlaceholder(document) {
             try await Task.sleep(for: .milliseconds(20))
         }
         recovery.flushForTesting()
-        XCTAssertFalse(destination.documents.contains { $0 === document })
+        XCTAssertFalse(source.documents.contains { $0 === document })
         XCTAssertFalse(manager.isRestorationPlaceholder(document))
         XCTAssertTrue(try DocumentRecoveryStore(rootURL: recoveryURL).startSession().isEmpty)
     }
@@ -224,7 +218,6 @@ final class ProgressiveRestorationTests: XCTestCase {
         for _ in 0..<100 where document.ioState == .opening { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertTrue(state.hasFailedOpeningPlaceholder)
         XCTAssertTrue(state.isOpeningPlaceholder(document))
-        XCTAssertFalse(state.canTransferDocument(document))
         XCTAssertFalse(state.save(document))
         XCTAssertFalse(state.saveAs(document))
         XCTAssertEqual(document.text, "")

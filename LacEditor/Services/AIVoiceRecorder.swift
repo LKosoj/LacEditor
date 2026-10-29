@@ -5,6 +5,7 @@ import Foundation
 @MainActor
 final class AIVoiceRecorder: ObservableObject {
     @Published private(set) var isRecording = false
+    @Published private(set) var startedAt: Date?
     private var recorder: AVAudioRecorder?
     private(set) var recordingURL: URL?
     private let requestPermission: () async -> Bool
@@ -24,6 +25,7 @@ final class AIVoiceRecorder: ObservableObject {
         self.recorder = recorder
         recordingURL = url
         isRecording = true
+        startedAt = Date()
     }
 
     func stop() -> URL? {
@@ -31,11 +33,12 @@ final class AIVoiceRecorder: ObservableObject {
         recorder?.stop()
         recorder = nil
         isRecording = false
+        startedAt = nil
         return recordingURL
     }
 
     func discard() {
-        recorder?.stop(); recorder = nil; isRecording = false
+        recorder?.stop(); recorder = nil; isRecording = false; startedAt = nil
         if let recordingURL { try? FileManager.default.removeItem(at: recordingURL) }
         recordingURL = nil
     }

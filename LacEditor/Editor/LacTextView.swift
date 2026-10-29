@@ -113,21 +113,9 @@ extension NSColor {
     }
 
     static let lacCurrentLineBackground = NSColor(name: nil) { appearance in
-        let match = appearance.bestMatch(from: [.darkAqua, .aqua])
-        if match == .darkAqua {
-            return NSColor(
-                calibratedRed: 0.48,
-                green: 0.53,
-                blue: 0.88,
-                alpha: 0.14
-            )
-        }
-        return NSColor(
-            calibratedRed: 0.31,
-            green: 0.34,
-            blue: 0.66,
-            alpha: 0.07
-        )
+        let alpha: CGFloat = appearance.bestMatch(from: [.darkAqua, .aqua])
+            == .darkAqua ? 0.14 : 0.07
+        return NSColor.controlAccentColor.withAlphaComponent(alpha)
     }
 
     static let lacDelimiterMatchBackground = NSColor(name: nil) { appearance in

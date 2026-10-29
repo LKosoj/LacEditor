@@ -252,7 +252,7 @@ final class AIDocumentToolsTests: XCTestCase {
     }
 
     @MainActor
-    func testChangedOptionDiscardsPendingResponseWithoutView() async throws {
+    func testChangedOptionKeepsResultAndMarksStale() async throws {
         let suite = "LacEditor-DocumentTools-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -278,11 +278,12 @@ final class AIDocumentToolsTests: XCTestCase {
         reply?.resume(returning: "old answer")
         for _ in 0..<1000 where controller.isWorking { await Task.yield() }
         XCTAssertFalse(controller.isWorking)
-        XCTAssertTrue(controller.report.isEmpty)
+        XCTAssertEqual(controller.report, "old answer")
+        XCTAssertTrue(controller.isResultStale)
     }
 
     @MainActor
-    func testChangedComparisonChoiceDiscardsPendingResponseWithoutView() async throws {
+    func testChangedComparisonChoiceKeepsResultAndMarksStale() async throws {
         let suite = "LacEditor-DocumentTools-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -310,8 +311,9 @@ final class AIDocumentToolsTests: XCTestCase {
         reply?.resume(returning: "old explanation")
         for _ in 0..<1000 where controller.isWorking { await Task.yield() }
         XCTAssertFalse(controller.isWorking)
-        XCTAssertTrue(controller.report.isEmpty)
-        XCTAssertTrue(controller.differences.isEmpty)
+        XCTAssertEqual(controller.report, "old explanation")
+        XCTAssertFalse(controller.differences.isEmpty)
+        XCTAssertTrue(controller.isResultStale)
     }
 
     @MainActor

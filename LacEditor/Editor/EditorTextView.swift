@@ -8,6 +8,8 @@ let editorPerformanceLog = OSLog(
 )
 
 struct EditorTextView: NSViewRepresentable {
+    static let minimumHorizontalInset: CGFloat = 16
+
     @Environment(\.isEnabled) private var isEnabled
     @ObservedObject var document: EditorDocument
     let sessionStore: EditorSessionStore
@@ -139,7 +141,7 @@ struct EditorTextView: NSViewRepresentable {
         textView.usesFindPanel = true
         textView.usesFindBar = true
         textView.isIncrementalSearchingEnabled = true
-        textView.textContainerInset = NSSize(width: 0, height: topInset)
+        textView.textContainerInset = NSSize(width: Self.minimumHorizontalInset, height: topInset)
         // Leave a one-pixel safety edge so AppKit's insertion caret is not
         // clipped when it sits at the first column.
         textContainer.lineFragmentPadding = 1
@@ -196,6 +198,7 @@ struct EditorTextView: NSViewRepresentable {
         context.coordinator.configureAIAssistance(preferences: aiPreferences)
         context.coordinator.foldLayoutManager = layoutManager
         context.coordinator.ruler = ruler
+        _ = ruler.updateThickness(lineCount: context.coordinator.lineNumber(at: textView.textStorage?.length ?? 0))
         context.coordinator.attachLiveTextProvider()
         textView.selectionTrackingHandler = { [weak coordinator = context.coordinator] in
             coordinator?.selectionDidChangeDuringTracking()

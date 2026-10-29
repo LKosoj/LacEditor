@@ -787,9 +787,9 @@ enum SyntaxHighlighter {
         case .literal, .function, .typeName, .attribute, .property, .variable:
             color = Palette.symbol
         case .punctuation:
-            color = NSColor.tertiaryLabelColor
+            color = NSColor.lacMutedText
         case .comment:
-            color = NSColor.secondaryLabelColor
+            color = NSColor.lacCommentText
         case .heading, .strong:
             color = kind == .heading ? Palette.keyword : Palette.symbol
         case .emphasis:
@@ -1057,4 +1057,20 @@ enum SyntaxHighlighter {
         pattern: #"\s([A-Za-z_:][-A-Za-z0-9_:.]*)(?=\s*(?:=|/?>))"#
     )
 
+}
+
+// Здесь, а не в LacTextView.swift: SyntaxHighlighter.swift компилируется отдельными вызовами swiftc в Scripts.
+extension NSColor {
+    /// Muted text that still meets 4.5:1 on `lacEditorBackground` (system secondaryLabel is ~3.9:1 in light).
+    static let lacMutedText = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(calibratedWhite: 0.62, alpha: 1)
+            : NSColor(calibratedWhite: 0.40, alpha: 1)
+    }
+
+    static let lacCommentText = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(calibratedRed: 0.60, green: 0.66, blue: 0.62, alpha: 1)
+            : NSColor(calibratedRed: 0.33, green: 0.40, blue: 0.36, alpha: 1)
+    }
 }

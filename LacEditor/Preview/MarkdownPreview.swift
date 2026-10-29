@@ -10,7 +10,7 @@ actor MarkdownRenderActor {
     private let renderer: @Sendable (String, Bool, URL?, MarkdownSyntaxOptions) -> MarkdownRenderedPage
 
     init(renderer: @escaping @Sendable (String, Bool, URL?, MarkdownSyntaxOptions) -> MarkdownRenderedPage = {
-        MarkdownRenderer.renderPage($0, darkMode: $1, renderEmoji: true, resolveLocalImages: true, documentURL: $2, prepareRemoteImages: true, syntax: $3, includeHeadingNumbers: true, includeListStyles: true)
+        MarkdownRenderer.renderPage($0, darkMode: $1, renderEmoji: true, resolveLocalImages: true, documentURL: $2, prepareRemoteImages: true, syntax: $3, includeHeadingNumbers: true, includeListStyles: true, includeSourcePositions: true)
     }) {
         self.renderer = renderer
     }
@@ -42,6 +42,42 @@ final class MarkdownWebView: WKWebView {
     var mathGeometryChanged: (() -> Void)?
     var magnificationDidChange: ((CGFloat) -> Void)?
     private var pageDarkMode: Bool?
+    var retryLoad: (() -> Void)?
+    private lazy var statusOverlay: MarkdownPreviewStatusOverlay = {
+        let overlay = MarkdownPreviewStatusOverlay()
+        overlay.frame = bounds
+        overlay.autoresizingMask = [.width, .height]
+        overlay.retry = { [weak self] in self?.retryLoad?() }
+        addSubview(overlay)
+        return overlay
+    }()
+    private var loadingWork: DispatchWorkItem?
+    var isShowingLoadError: Bool { statusOverlay.isErrorVisible }
+    var isShowingLoadingIndicator: Bool { statusOverlay.isSpinnerVisible }
+
+    func showLoadError(_ detail: String) {
+        setLoading(false)
+        statusOverlay.showError(detail)
+    }
+
+    func hideLoadError() { statusOverlay.hideError() }
+
+    /// Индикатор появляется, только если страница не готова дольше 0,3 с.
+    func setLoading(_ loading: Bool) {
+        if loading {
+            guard loadingWork == nil, !statusOverlay.isSpinnerVisible, !statusOverlay.isErrorVisible else { return }
+            let work = DispatchWorkItem { [weak self] in
+                self?.loadingWork = nil
+                self?.statusOverlay.setSpinner(true)
+            }
+            loadingWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+        } else {
+            loadingWork?.cancel()
+            loadingWork = nil
+            statusOverlay.setSpinner(false)
+        }
+    }
 
     func configurePageAppearance(darkMode: Bool) {
         guard pageDarkMode != darkMode else { return }
@@ -76,6 +112,92 @@ final class MarkdownWebView: WKWebView {
     }
 }
 
+/// Сообщение об ошибке загрузки и индикатор загрузки поверх предпросмотра; без них события мыши проходят к странице.
+private final class MarkdownPreviewStatusOverlay: NSView {
+    var retry: (() -> Void)?
+    private(set) var isErrorVisible = false
+    private(set) var isSpinnerVisible = false
+    private let backdrop = NSVisualEffectView()
+    private let messageStack = NSStackView()
+    private let detailLabel = NSTextField(wrappingLabelWithString: "")
+    private let spinner = NSProgressIndicator()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        backdrop.material = .contentBackground
+        backdrop.blendingMode = .withinWindow
+        backdrop.state = .active
+        backdrop.translatesAutoresizingMaskIntoConstraints = false
+        backdrop.isHidden = true
+        addSubview(backdrop)
+
+        let title = NSTextField(labelWithString: L10n.tr("无法显示预览"))
+        title.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
+        detailLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        detailLabel.textColor = .secondaryLabelColor
+        detailLabel.isSelectable = true
+        detailLabel.alignment = .center
+        detailLabel.maximumNumberOfLines = 3
+        let button = NSButton(title: L10n.tr("重试"), target: self, action: #selector(retryTapped))
+        button.bezelStyle = .rounded
+        button.keyEquivalent = ""
+        messageStack.orientation = .vertical
+        messageStack.spacing = 8
+        messageStack.alignment = .centerX
+        messageStack.translatesAutoresizingMaskIntoConstraints = false
+        messageStack.isHidden = true
+        for view in [title, detailLabel, button] { messageStack.addArrangedSubview(view) }
+        addSubview(messageStack)
+
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isIndeterminate = true
+        spinner.isDisplayedWhenStopped = false
+        spinner.setAccessibilityLabel(L10n.tr("正在加载预览"))
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(spinner)
+
+        NSLayoutConstraint.activate([
+            backdrop.leadingAnchor.constraint(equalTo: leadingAnchor),
+            backdrop.trailingAnchor.constraint(equalTo: trailingAnchor),
+            backdrop.topAnchor.constraint(equalTo: topAnchor),
+            backdrop.bottomAnchor.constraint(equalTo: bottomAnchor),
+            messageStack.centerXAnchor.constraint(equalTo: centerXAnchor),
+            messageStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            messageStack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 24),
+            spinner.centerXAnchor.constraint(equalTo: centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { nil }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { isErrorVisible ? super.hitTest(point) : nil }
+
+    func showError(_ detail: String) {
+        setSpinner(false)
+        detailLabel.stringValue = detail
+        isErrorVisible = true
+        backdrop.isHidden = false
+        messageStack.isHidden = false
+    }
+
+    func hideError() {
+        isErrorVisible = false
+        backdrop.isHidden = true
+        messageStack.isHidden = true
+    }
+
+    func setSpinner(_ visible: Bool) {
+        guard isSpinnerVisible != visible else { return }
+        isSpinnerVisible = visible
+        if visible { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
+    }
+
+    @objc private func retryTapped() { retry?() }
+}
+
 struct MarkdownPreview: NSViewRepresentable {
     let markdown: String
     let revision: UInt
@@ -103,10 +225,13 @@ struct MarkdownPreview: NSViewRepresentable {
         view.configurePageAppearance(darkMode: darkMode)
         view.setAccessibilityLabel(L10n.tr("Markdown 预览"))
         context.coordinator.webView = view
+        // setActive ниже выходит рано, если состояние не изменилось, поэтому связь с редактором подключается явно.
+        context.coordinator.attachScrollRelay()
         view.reloadRenderedContent = { [weak view, weak coordinator = context.coordinator] in
             guard let view, let coordinator else { return }
             coordinator.reloadLastRenderedHTML(in: view)
         }
+        view.retryLoad = { [weak coordinator = context.coordinator] in coordinator?.retryLoadingPage() }
         context.coordinator.setActive(isActive)
         context.coordinator.setMathOptions(mathOptions)
         if isActive {
@@ -143,11 +268,14 @@ struct MarkdownPreview: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
+        coordinator.detachScrollRelay()
         coordinator.stop()
         nsView.stopLoading()
         nsView.navigationDelegate = nil
         nsView.configuration.userContentController.removeScriptMessageHandler(forName: "lacLink", contentWorld: .defaultClient)
         (nsView as? MarkdownWebView)?.reloadRenderedContent = nil
+        (nsView as? MarkdownWebView)?.retryLoad = nil
+        (nsView as? MarkdownWebView)?.setLoading(false)
         (nsView as? MarkdownWebView)?.magnificationDidChange = nil
     }
 
@@ -162,7 +290,20 @@ struct MarkdownPreview: NSViewRepresentable {
                 }
             }
         }
-        weak var document: EditorDocument?
+        weak var document: EditorDocument? {
+            didSet {
+                guard oldValue !== document else { return }
+                if let relay = oldValue?.previewScrollRelay, relay.positionHandlerOwner === self {
+                    relay.positionHandler = nil
+                }
+                needsInitialEditorSync = true
+                pendingEditorPosition = nil
+                attachScrollRelay()
+            }
+        }
+        private var pendingEditorPosition: MarkdownPreviewScrollRelay.Position?
+        private var editorSyncInFlight = false
+        private var needsInitialEditorSync = true
         private let imageSession: URLSession
         private var debounce: DispatchWorkItem?
         private var renderTask: Task<Void, Never>?
@@ -249,7 +390,47 @@ struct MarkdownPreview: NSViewRepresentable {
         func setActive(_ active: Bool) {
             guard isActive != active else { return }
             isActive = active
-            if !active { stop() }
+            if active {
+                needsInitialEditorSync = true
+                attachScrollRelay()
+            } else {
+                detachScrollRelay()
+                pendingEditorPosition = nil
+                stop()
+                (webView as? MarkdownWebView)?.setLoading(false)
+                (webView as? MarkdownWebView)?.hideLoadError()
+            }
+        }
+
+        func attachScrollRelay() {
+            guard isActive, let relay = document?.previewScrollRelay else { return }
+            relay.positionHandler = { [weak self] position in self?.scrollToEditorPosition(position) }
+            relay.positionHandlerOwner = self
+        }
+
+        func detachScrollRelay() {
+            guard let relay = document?.previewScrollRelay, relay.positionHandlerOwner === self else { return }
+            relay.positionHandler = nil
+        }
+
+        func scrollToEditorPosition(_ position: MarkdownPreviewScrollRelay.Position) {
+            pendingEditorPosition = position
+            flushEditorSync()
+        }
+
+        private func flushEditorSync() {
+            // Пока страница обновляется (visibleRevision == nil), позиция ждёт: её применит конец patchPage.
+            guard isActive, pageIsReady, visibleRevision != nil, !editorSyncInFlight,
+                  let webView, let position = pendingEditorPosition else { return }
+            pendingEditorPosition = nil
+            editorSyncInFlight = true
+            webView.callAsyncJavaScript(Self.scrollToLineScript,
+                arguments: ["line": position.line, "atBottom": position.atBottom],
+                in: nil, in: .defaultClient) { [weak self] _ in
+                guard let self else { return }
+                self.editorSyncInFlight = false
+                self.flushEditorSync()
+            }
         }
 
         func stop() {
@@ -308,6 +489,7 @@ struct MarkdownPreview: NSViewRepresentable {
                 else if latestNavigation == nil, let webView { loadPage(in: webView) }
                 return
             }
+            if page == nil, latestNavigation == nil { (webView as? MarkdownWebView)?.setLoading(true) }
             let work = DispatchWorkItem { [weak self] in
                 guard let self, self.isActive, requestedGeneration == self.generation else { return }
                 self.beginRender(markdown: markdown, revision: revision, darkMode: darkMode, syntax: syntax,
@@ -329,11 +511,16 @@ struct MarkdownPreview: NSViewRepresentable {
             let taskGeneration = coordinator.begin(.preview)
             self.taskGeneration = taskGeneration
             let task = Task.detached(priority: .userInitiated) { [weak self, weak document] in
-                guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .preview) else { return }
+                // Индикатор первого показа снимается, если результат не будет применён и новый render его не перехватил.
+                @MainActor func clearLoading() {
+                    guard let self, self.generation == requestedGeneration, self.latestNavigation == nil else { return }
+                    (self.webView as? MarkdownWebView)?.setLoading(false)
+                }
+                guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .preview) else { await clearLoading(); return }
                 guard var page = await MarkdownRenderActor.shared.render(
                     markdown, darkMode: darkMode, documentURL: sourceURL, syntax: syntax, coordinator: coordinator, generation: taskGeneration
-                ) else { return }
-                guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .preview) else { return }
+                ) else { await clearLoading(); return }
+                guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .preview) else { await clearLoading(); return }
                 @MainActor func apply(_ page: MarkdownRenderedPage, finished: Bool) -> Bool {
                     guard !Task.isCancelled, let self, let document, self.document === document, document.url == sourceURL, self.isActive,
                           self.generation == requestedGeneration,
@@ -358,12 +545,12 @@ struct MarkdownPreview: NSViewRepresentable {
                     var placeholder = page
                     try? placeholder.hideRemoteImages()
                     try? placeholder.prepareLocalMedia(load: false)
-                    guard await apply(placeholder, finished: false) else { return }
+                    guard await apply(placeholder, finished: false) else { await clearLoading(); return }
                     try? await page.resolveRemoteImages(session: imageSession)
                     try? page.prepareLocalMedia(load: true)
                 }
-                guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .preview) else { return }
-                _ = await apply(page, finished: true)
+                guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .preview) else { await clearLoading(); return }
+                if await !apply(page, finished: true) { await clearLoading() }
             }
             renderTask = task
             coordinator.attachTask(task, kind: .preview, generation: taskGeneration)
@@ -389,6 +576,7 @@ struct MarkdownPreview: NSViewRepresentable {
             loadingHeadingIDs = page.headingIDs
             webView.stopLoading()
             latestNavigation = webView.loadHTMLString(page.html, baseURL: nil)
+            (webView as? MarkdownWebView)?.setLoading(true)
         }
 
         private func patchPage(includingBody: Bool, restoringScroll: Bool = false) {
@@ -447,6 +635,12 @@ struct MarkdownPreview: NSViewRepresentable {
                         if let ratio = ratios["window"], ratio.isFinite { self.pendingScrollRatio = min(1, max(0, ratio)) }
                         if let ratio = ratios["article"], ratio.isFinite { self.pendingArticleScrollRatio = min(1, max(-1, ratio)) }
                     }
+                    // Позиция редактора применяется после собственного восстановления прокрутки страницы.
+                    if self.needsInitialEditorSync, let position = self.document?.previewScrollRelay.positionProvider?() {
+                        self.needsInitialEditorSync = false
+                        self.pendingEditorPosition = position
+                    }
+                    self.flushEditorSync()
                 case .failure:
                     // A web-process/navigation failure can invalidate the DOM.
                     // Recover with the latest completed page, never old HTML.
@@ -677,6 +871,58 @@ struct MarkdownPreview: NSViewRepresentable {
             service.start()
         }
 
+        // Прокрутка всегда мгновенная (behavior: 'instant'), поэтому «уменьшение движения» учитывается само.
+        private static let scrollToLineScript = """
+            const root = document.documentElement;
+            const article = document.querySelector('article');
+            if (!article) return null;
+            const maximum = Math.max(0, root.scrollHeight - window.innerHeight);
+            let target = 0;
+            if (atBottom) {
+                target = maximum;
+            } else if (line > 1) {
+                let cache = globalThis.lacSourceLines;
+                const anchor = article.firstElementChild;
+                if (!cache || cache.anchor !== anchor || (anchor && !anchor.isConnected)) {
+                    const items = [];
+                    let last = 0;
+                    for (const el of article.querySelectorAll('[data-sourcepos]')) {
+                        if (el.closest('.footnotes')) continue;
+                        const m = /^(\\d+):\\d+-(\\d+):\\d+$/.exec(el.getAttribute('data-sourcepos'));
+                        if (!m) continue;
+                        const start = Number(m[1]), end = Number(m[2]);
+                        if (start < last) continue;
+                        last = start;
+                        items.push({el, start, end});
+                    }
+                    cache = globalThis.lacSourceLines = {anchor, items};
+                }
+                const items = cache.items;
+                let low = 0, high = items.length;
+                while (low < high) {
+                    const mid = (low + high) >> 1;
+                    if (items[mid].start <= line) low = mid + 1; else high = mid;
+                }
+                const previous = items[low - 1], next = items[low];
+                const y = window.scrollY;
+                if (previous) {
+                    const rect = previous.el.getBoundingClientRect();
+                    const top = rect.top + y;
+                    if (line <= previous.end) {
+                        target = top + (line - previous.start) / (previous.end - previous.start + 1) * rect.height;
+                    } else if (next) {
+                        const bottom = top + rect.height;
+                        const nextTop = next.el.getBoundingClientRect().top + y;
+                        target = bottom + (line - previous.end) / (next.start - previous.end) * (nextTop - bottom);
+                    } else {
+                        target = top + rect.height;
+                    }
+                }
+            }
+            window.scrollTo({top: Math.max(0, Math.min(maximum, target)), left: window.scrollX, behavior: 'instant'});
+            return null;
+            """
+
         private static let updateScript = """
             const root = document.documentElement;
             if (Number(root.dataset.generation || -1) > generation) return null;
@@ -743,6 +989,8 @@ struct MarkdownPreview: NSViewRepresentable {
                 self.latestNavigation = nil
                 guard self.isActive else { return }
                 self.pageIsReady = true
+                (webView as? MarkdownWebView)?.hideLoadError()
+                (webView as? MarkdownWebView)?.setLoading(false)
                 self.visibleHeadingIDs = self.loadingHeadingIDs
                 self.visibleRevision = self.loadingRevision
                 self.visibleDocumentURL = self.loadingDocumentURL
@@ -760,6 +1008,29 @@ struct MarkdownPreview: NSViewRepresentable {
             guard navigation === latestNavigation else { return }
             latestNavigation = nil
             pageIsReady = false
+            presentLoadFailure(error)
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            guard navigation === latestNavigation else { return }
+            latestNavigation = nil
+            pageIsReady = false
+            presentLoadFailure(error)
+        }
+
+        func presentLoadFailure(_ error: Error) {
+            guard let view = webView as? MarkdownWebView else { return }
+            view.setLoading(false)
+            let nsError = error as NSError
+            guard isActive, !(nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled) else { return }
+            view.showLoadError(error.localizedDescription)
+        }
+
+        func retryLoadingPage() {
+            guard isActive, let webView, page != nil else { return }
+            (webView as? MarkdownWebView)?.hideLoadError()
+            usesReloadFallback = false
+            loadPage(in: webView)
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {

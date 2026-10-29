@@ -86,10 +86,6 @@ private final class FolderSearchOpenWaiter {
 
 @MainActor
 final class WindowManager: ObservableObject {
-    static let tabPasteboardType = NSPasteboard.PasteboardType(
-        "com.laceditor.editor-tab"
-    )
-
     let recentFiles: RecentFilesStore
     let sidebarLibrary: SidebarLibraryStore
     let preferences: AppPreferences
@@ -97,26 +93,12 @@ final class WindowManager: ObservableObject {
     let workspaceStore: WorkspaceSessionStore?
     let experimentSamples: ExperimentSampleLibrary?
     @Published private(set) var activeState: AppState?
-    @Published private(set) var draggedDocumentID: UUID?
     /// Changes whenever the retained primary window is reopened. Sidebar
     /// scroll views use this identity to discard stale content offsets from a
     /// window that was closed after its last tab was removed.
     @Published private(set) var primaryReopenGeneration = 0
     private(set) var terminationApproved = false
     private(set) var startupError: Error?
-
-    private final class ActiveTabDrag {
-        let documentID: UUID
-        weak var sourceState: AppState?
-        weak var targetState: AppState?
-        var targetDocumentID: UUID?
-        var wasAccepted = false
-
-        init(documentID: UUID, sourceState: AppState) {
-            self.documentID = documentID
-            self.sourceState = sourceState
-        }
-    }
 
     private var exportingDocumentIDs: Set<UUID> = []
     private var folderMoveDocumentIDs: Set<UUID> = []
@@ -127,8 +109,6 @@ final class WindowManager: ObservableObject {
     // Retain the initial editor state and its native window across closing the
     // last window. App, document, and Dock launches share this single owner.
     private var primaryWindowID: UUID?
-    private var transferringDocumentIDs: Set<UUID> = []
-    private var activeTabDrag: ActiveTabDrag?
     private var isConfirmingRecentFilesClear = false
     private var activeStateCancellable: AnyCancellable?
     private var recentFilesCancellable: AnyCancellable?
@@ -433,7 +413,7 @@ final class WindowManager: ObservableObject {
         guard let primaryWindowID,
               let state = states[primaryWindowID] else { return }
         guard let window = state.hostWindow else {
-            showNativeWindow(windowID: primaryWindowID, state: state, near: nil)
+            showNativeWindow(windowID: primaryWindowID, state: state)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
@@ -464,8 +444,7 @@ final class WindowManager: ObservableObject {
 
     @discardableResult
     func openNewWindow(
-        with document: EditorDocument? = nil,
-        near screenPoint: NSPoint? = nil
+        with document: EditorDocument? = nil
     ) -> AppState {
         let windowID = UUID()
         let state = AppState(
@@ -477,11 +456,11 @@ final class WindowManager: ObservableObject {
         state.windowManager = self
         states[windowID] = state
 
-        showNativeWindow(windowID: windowID, state: state, near: screenPoint)
+        showNativeWindow(windowID: windowID, state: state)
         return state
     }
 
-    private func showNativeWindow(windowID: UUID, state: AppState, near screenPoint: NSPoint?) {
+    private func showNativeWindow(windowID: UUID, state: AppState) {
         let rootView = EditorWindowRoot(
             appState: state,
             windowManager: self,
@@ -500,11 +479,7 @@ final class WindowManager: ObservableObject {
         configureEditorWindowChrome(window)
         window.setContentSize(NSSize(width: 1180, height: 780))
         window.minSize = NSSize(width: 900, height: 560)
-        if let screenPoint {
-            position(window, near: screenPoint)
-        } else {
-            window.center()
-        }
+        window.center()
         window.isReleasedWhenClosed = false
         window.isRestorable = false
 
@@ -1135,107 +1110,6 @@ final class WindowManager: ObservableObject {
         }
     }
 
-    @discardableResult
-    func beginTabDrag(_ document: EditorDocument, from state: AppState) -> Bool {
-        guard state.canTransferDocument(document),
-              state.documents.contains(where: { $0.id == document.id }) else {
-            return false
-        }
-        activeTabDrag = ActiveTabDrag(
-            documentID: document.id,
-            sourceState: state
-        )
-        draggedDocumentID = document.id
-        state.selectedDocumentID = document.id
-        return true
-    }
-
-    func setTabDragTarget(
-        in targetState: AppState,
-        before targetDocumentID: UUID?
-    ) {
-        guard let drag = activeTabDrag else { return }
-        drag.targetState = targetState
-        drag.targetDocumentID = targetDocumentID
-    }
-
-    func clearTabDragTarget(
-        in targetState: AppState,
-        before targetDocumentID: UUID?
-    ) {
-        guard let drag = activeTabDrag,
-              drag.targetState === targetState,
-              drag.targetDocumentID == targetDocumentID else {
-            return
-        }
-        drag.targetState = nil
-        drag.targetDocumentID = nil
-    }
-
-    @discardableResult
-    func acceptTabDrag(
-        into targetState: AppState,
-        before targetDocumentID: UUID?
-    ) -> Bool {
-        guard let drag = activeTabDrag,
-              let sourceState = drag.sourceState,
-              let document = sourceState.documents.first(where: { $0.id == drag.documentID }),
-              sourceState.canTransferDocument(document) else {
-            return false
-        }
-
-        let accepted = moveDraggedDocument(
-            drag.documentID,
-            from: sourceState,
-            to: targetState,
-            before: targetDocumentID
-        )
-        drag.wasAccepted = accepted
-        return accepted
-    }
-
-    func finishTabDrag(at screenPoint: NSPoint) {
-        guard let drag = activeTabDrag else {
-            draggedDocumentID = nil
-            return
-        }
-        activeTabDrag = nil
-        draggedDocumentID = nil
-        guard let sourceState = drag.sourceState else { return }
-        if !drag.wasAccepted, let targetState = drag.targetState,
-           moveDraggedDocument(
-               drag.documentID,
-               from: sourceState,
-               to: targetState,
-               before: drag.targetDocumentID
-           ) {
-            return
-        }
-        guard !drag.wasAccepted,
-              let document = sourceState.documents.first(where: {
-                  $0.id == drag.documentID
-              }) else {
-            return
-        }
-
-        if let targetState = editorState(at: screenPoint) {
-            guard targetState !== sourceState else { return }
-            _ = transferDocument(
-                document.id,
-                from: sourceState,
-                to: targetState,
-                before: nil
-            )
-        } else {
-            detach(document, from: sourceState, near: screenPoint)
-        }
-    }
-
-    func cancelTabDrag() {
-        activeTabDrag = nil
-        draggedDocumentID = nil
-    }
-
     private func renameFile(_ url: URL, to newName: String) {
         guard !folderMovePaths.contains(where: { Self.pathsOverlap($0, url) || Self.pathsOverlap($0, url.resolvingSymlinksInPath()) }) else {
             let alert = NSAlert()
@@ -1258,24 +1132,6 @@ final class WindowManager: ObservableObject {
             } else {
                 alert.runModal()
             }
-        }
-    }
-
-    func detach(
-        _ document: EditorDocument,
-        from state: AppState,
-        near screenPoint: NSPoint? = nil
-    ) {
-        guard transferringDocumentIDs.insert(document.id).inserted else { return }
-
-        DispatchQueue.main.async { [weak self, weak state] in
-            guard let self else { return }
-            defer { transferringDocumentIDs.remove(document.id) }
-            guard let state,
-                  let transferred = state.takeDocumentForTransfer(document) else {
-                return
-            }
-            openNewWindow(with: transferred, near: screenPoint)
         }
     }
 
@@ -1509,80 +1365,6 @@ final class WindowManager: ObservableObject {
             return
         }
         recoveryStore.finishCleanly { completion(true) }
-    }
-
-    private func transferDocument(
-        _ documentID: UUID,
-        from sourceState: AppState,
-        to targetState: AppState,
-        before targetDocumentID: UUID?
-    ) -> Bool {
-        guard sourceState !== targetState,
-              let document = sourceState.documents.first(where: {
-                  $0.id == documentID
-              }),
-              let transferred = sourceState.takeDocumentForTransfer(document)
-        else {
-            return false
-        }
-        targetState.receiveTransferredDocument(
-            transferred,
-            before: targetDocumentID
-        )
-        targetState.hostWindow?.makeKeyAndOrderFront(nil)
-        return true
-    }
-
-    private func moveDraggedDocument(
-        _ documentID: UUID,
-        from sourceState: AppState,
-        to targetState: AppState,
-        before targetDocumentID: UUID?
-    ) -> Bool {
-        if sourceState === targetState {
-            sourceState.moveDocument(
-                documentID,
-                before: targetDocumentID
-            )
-            return true
-        }
-        return transferDocument(
-            documentID,
-            from: sourceState,
-            to: targetState,
-            before: targetDocumentID
-        )
-    }
-
-    private func editorState(at screenPoint: NSPoint) -> AppState? {
-        for window in NSApp.orderedWindows
-        where window.isVisible && window.frame.contains(screenPoint) {
-            if let state = states.values.first(where: {
-                $0.hostWindow === window
-            }) {
-                return state
-            }
-        }
-        return nil
-    }
-
-    private func position(_ window: NSWindow, near screenPoint: NSPoint) {
-        guard let screen = NSScreen.screens.first(where: {
-            $0.frame.contains(screenPoint)
-        }) ?? NSScreen.main else {
-            window.center()
-            return
-        }
-        let visible = screen.visibleFrame
-        let size = window.frame.size
-        let desired = NSPoint(
-            x: screenPoint.x - min(150, size.width * 0.2),
-            y: screenPoint.y - size.height + 28
-        )
-        window.setFrameOrigin(NSPoint(
-            x: min(max(desired.x, visible.minX), visible.maxX - size.width),
-            y: min(max(desired.y, visible.minY), visible.maxY - size.height)
-        ))
     }
 
     private func restoreInitialSession(

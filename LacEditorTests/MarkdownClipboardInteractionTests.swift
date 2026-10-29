@@ -607,14 +607,6 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         XCTAssertTrue(notice.handled)
         XCTAssertEqual(source.statusMessage, "source status\n/tmp/image.png")
         XCTAssertEqual(other.statusMessage, "other status")
-        guard let transferred = sourceState.takeDocumentForTransfer(source) else { XCTFail("document transfer failed"); return }
-        otherState.receiveTransferredDocument(transferred)
-        let afterTransfer = ClipboardSavedImagesNotice(documentID: source.id, message: "/tmp/image.png")
-        NotificationCenter.default.post(name: EditorCommandNotification.clipboardSavedImages, object: afterTransfer)
-        XCTAssertTrue(afterTransfer.handled)
-        XCTAssertTrue(otherState.selectedDocument === source)
-        XCTAssertEqual(source.statusMessage, "source status\n/tmp/image.png")
-        XCTAssertEqual(other.statusMessage, "other status")
     }
 
     func testSavedImageNoticeSurvivesSourceDocumentRelease() async throws {

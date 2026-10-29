@@ -250,7 +250,7 @@ struct MarkdownRenderedPage: Sendable {
       body {
         margin: 0; padding: 24px clamp(20px, 4vw, 28px) 64px;
         background: var(--page); color: var(--text);
-        font: 15px/1.7 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+        font: 15px/1.7 -apple-system, BlinkMacSystemFont, system-ui, "PingFang SC", "Hiragino Sans", "Apple SD Gothic Neo", sans-serif;
         -webkit-font-smoothing: antialiased;
       }
       article { max-width: var(--lac-content-width, 760px); min-width: 0; margin: 0 auto; }
@@ -273,7 +273,7 @@ struct MarkdownRenderedPage: Sendable {
       li > ul, li > ol { margin: .3em 0 .4em; }
       li > p { margin: .45em 0; }
       blockquote {
-        margin: 1.15em 0; padding: .65em 1em; color: var(--secondary);
+        margin: 1.15em 0; padding: .65em 1em; color: var(--text);
         border-left: 3px solid var(--accent); background: var(--quote);
         border-radius: 0 5px 5px 0;
       }
@@ -281,8 +281,8 @@ struct MarkdownRenderedPage: Sendable {
       blockquote > :last-child { margin-bottom: 0; }
       blockquote blockquote { margin: .6em 0; }
       hr { border: 0; border-top: 1px solid var(--border); margin: 1.8em 0; }
-      a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
-      a:not(:hover) { text-decoration-color: transparent; }
+      a { color: var(--accent); text-decoration-line: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+      a:hover, a:focus-visible { text-decoration-color: currentColor; text-decoration-thickness: 2px; }
       :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
       code, kbd { font: .88em/1.65 ui-monospace, SFMono-Regular, Menlo, monospace; font-family: var(--lac-code-font, ui-monospace, SFMono-Regular, Menlo, monospace); background: var(--code); padding: .15em .35em; border-radius: 4px; }
       pre {
@@ -298,11 +298,14 @@ struct MarkdownRenderedPage: Sendable {
       table { width: 100%; border-collapse: collapse; font-size: .93em; }
       th, td { border: 1px solid var(--border); padding: .55em .8em; text-align: left; min-width: 5em; }
       th { font-weight: 600; background: var(--code); }
+      td { font-variant-numeric: tabular-nums; }
+      tbody tr:nth-child(even) { background: var(--quote); }
       img { max-width: 100%; height: auto; }
       [data-lac-centered-image] { display: block; text-align: center; }
       input[type="checkbox"] { margin: 0 .45em 0 0; accent-color: var(--accent); vertical-align: middle; }
       del { color: var(--secondary); }
       ::selection { background: #9296db55; }
+      :root[data-theme="dark"] ::selection { background: #a1a6f270; }
       @media (prefers-contrast: more) {
         :root { --secondary: #4a4a55; --border: #92929c; }
         :root[data-theme="dark"] { --secondary: #d2d2dc; --border: #878792; }
@@ -310,6 +313,13 @@ struct MarkdownRenderedPage: Sendable {
       }
       @media (prefers-reduced-transparency: reduce) { body { background: var(--page); } }
       @media print {
+        :root, :root[data-theme="dark"] {
+          color-scheme: light;
+          --page: #fff; --text: #303038; --secondary: #6d6d78;
+          --border: #e2e2e8; --code: #f0f0f4; --accent: #5c61ba; --quote: #f4f4f8;
+        }
+        pre, table, img, blockquote, .mermaid-diagram, tr { break-inside: avoid; }
+        h1, h2, h3, h4, h5, h6 { break-after: avoid; }
         body { padding: 0; }
         article { max-width: var(--lac-print-width, none); }
         img, .mermaid-diagram svg { max-height: var(--lac-print-height, none); object-fit: contain; }
@@ -341,7 +351,10 @@ enum MarkdownRenderer {
     static func renderPage(_ markdown: String, darkMode: Bool, includeHTMLMedia: Bool = false, renderEmoji: Bool = false,
                            resolveLocalImages: Bool = false, documentURL: URL? = nil, prepareRemoteImages: Bool = false,
                            syntax: MarkdownSyntaxOptions = .init(), forExport: Bool = false, includeHeadingNumbers: Bool = false, includeListStyles: Bool = false,
-                           staticWidgetFallback: Bool = false, preserveRawHTMLBlocks: Bool = false) -> MarkdownRenderedPage {
+                           staticWidgetFallback: Bool = false, preserveRawHTMLBlocks: Bool = false,
+                           includeSourcePositions: Bool = false) -> MarkdownRenderedPage {
+        // Позиции исходника нужны только предпросмотру; в экспорт, PDF и копирование они не попадают.
+        let sourcePositions = includeSourcePositions && !forExport
         let remoteImageMarkers = RemoteImageMarkers()
         let localMediaMarkers = LocalMediaMarkers()
         let listDepths = ListDepths()
@@ -350,11 +363,15 @@ enum MarkdownRenderer {
                                   resolveLocalImages: resolveLocalImages, documentURL: documentURL, prepareRemoteImages: prepareRemoteImages,
                                   remoteImageMarkers: remoteImageMarkers, localMediaMarkers: localMediaMarkers, syntax: syntax, forExport: forExport, includeHeadingNumbers: includeHeadingNumbers,
                                   listDepths: listDepths, includeListStyles: includeListStyles, staticWidgetFallback: staticWidgetFallback,
-                                  preserveRawHTMLBlocks: preserveRawHTMLBlocks, rawHTMLBlocks: rawHTMLBlocks)
+                                  preserveRawHTMLBlocks: preserveRawHTMLBlocks, rawHTMLBlocks: rawHTMLBlocks, includeSourcePositions: sourcePositions)
+        let tableWrapper = "<div class=\"table-scroll\" role=\"region\" aria-label=\"\(L10n.tr("表格，可横向滚动"))\" tabindex=\"0\">"
+        let preAttributes = "tabindex=\"0\" aria-label=\"\(L10n.tr("代码块，可横向滚动"))\""
         let body = rendered.body
-            .replacingOccurrences(of: "<table>", with: "<div class=\"table-scroll\" role=\"region\" aria-label=\"\(L10n.tr("表格，可横向滚动"))\" tabindex=\"0\"><table>")
+            .replacingOccurrences(of: "<table>", with: tableWrapper + "<table>")
+            .replacingOccurrences(of: "<table data-sourcepos=\"", with: tableWrapper + "<table data-sourcepos=\"")
             .replacingOccurrences(of: "</table>", with: "</table></div>")
-            .replacingOccurrences(of: "<pre>", with: "<pre tabindex=\"0\" aria-label=\"\(L10n.tr("代码块，可横向滚动"))\">")
+            .replacingOccurrences(of: "<pre>", with: "<pre \(preAttributes)>")
+            .replacingOccurrences(of: "<pre data-sourcepos=\"", with: "<pre \(preAttributes) data-sourcepos=\"")
         var page = MarkdownRenderedPage(body: body, darkMode: darkMode, headingIDs: rendered.headingIDs, formulas: rendered.formulas, diagrams: rendered.diagrams, omittedHTML: rendered.omittedHTML, preserveWhitespace: forExport ? syntax.preserveExportWhitespace : (syntax.preserveEditingWhitespace ?? false))
         page.remoteImageMarkers = remoteImageMarkers.values
         page.localMediaMarkers = localMediaMarkers.values
@@ -367,7 +384,7 @@ enum MarkdownRenderer {
     private static func renderBody(_ markdown: String, includeHTMLMedia: Bool, renderEmoji: Bool,
                                    resolveLocalImages: Bool, documentURL: URL?, prepareRemoteImages: Bool, remoteImageMarkers: RemoteImageMarkers, localMediaMarkers: LocalMediaMarkers, syntax: MarkdownSyntaxOptions,
                                    forExport: Bool, includeHeadingNumbers: Bool, listDepths: ListDepths, includeListStyles: Bool, staticWidgetFallback: Bool,
-                                   preserveRawHTMLBlocks: Bool, rawHTMLBlocks: RawHTMLBlocks) -> (body: String, headingIDs: Set<String>, formulas: [MarkdownRenderedMath], diagrams: [MarkdownRenderedDiagram], omittedHTML: Bool) {
+                                   preserveRawHTMLBlocks: Bool, rawHTMLBlocks: RawHTMLBlocks, includeSourcePositions: Bool) -> (body: String, headingIDs: Set<String>, formulas: [MarkdownRenderedMath], diagrams: [MarkdownRenderedDiagram], omittedHTML: Bool) {
         let hardBreaks = forExport ? (syntax.preserveExportSoftBreaks ?? true) : syntax.preserveEditingSoftBreaks
         let options = ((syntax.smartPunctuation ?? true) ? CMARK_OPT_SMART : 0) | CMARK_OPT_TABLE_SPANS | (hardBreaks ? CMARK_OPT_HARDBREAKS : CMARK_OPT_NOBREAKS) | CMARK_OPT_FOOTNOTES
         let preserveWhitespace = forExport ? syntax.preserveExportWhitespace : (syntax.preserveEditingWhitespace ?? false)
@@ -1322,7 +1339,7 @@ enum MarkdownRenderer {
                     }
                 }
             }
-            guard let rendered = cmark_render_html(document, options, cmark_parser_get_syntax_extensions(parser)) else {
+            guard let rendered = cmark_render_html(document, includeSourcePositions ? options | CMARK_OPT_SOURCEPOS : options, cmark_parser_get_syntax_extensions(parser)) else {
                 return ("", headingIDs, formulas, diagrams, omittedHTML)
             }
             defer { free(rendered) }

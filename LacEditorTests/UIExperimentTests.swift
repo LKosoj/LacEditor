@@ -655,12 +655,9 @@ final class UIExperimentTests: XCTestCase {
         XCTAssertTrue(settingsWindow.isVisible && settingsWindow.canBecomeKey)
         settingsWindow.performClose(nil)
 
-        let find = FindReplaceWindowController(appState: fixture.state)
         let codec = TextTransformationWindowController(appState: fixture.state)
         defer {
-            find.window?.contentViewController = nil
-            find.window?.delegate = nil
-            find.window?.close()
+            fixture.state.dismissFindReplace()
             codec.dispose()
         }
         fixture.state.findReplace.query = "LacEditor"
@@ -672,19 +669,18 @@ final class UIExperimentTests: XCTestCase {
             operation: .urlDecode, detectedKind: .url))
         for theme: AppTheme in [.light, .dark] {
             fixture.preferences.theme = theme
-            find.present(mode: .replace, relativeTo: parent)
-            let findWindow = try XCTUnwrap(find.window)
-            findWindow.setContentSize(findWindow.contentMinSize)
+            // Поиск теперь панель внутри окна редактора, а не отдельное окно.
+            fixture.state.presentFindReplace(mode: .replace)
             try await Task.sleep(for: .milliseconds(250))
-            XCTAssertTrue(findWindow.isVisible && findWindow.canBecomeKey)
+            XCTAssertTrue(fixture.state.findReplace.isBarVisible)
+            XCTAssertEqual(fixture.state.findReplace.mode, .replace)
             XCTAssertTrue(parent.isVisible)
             XCTAssertNil(NSApp.modalWindow)
-            XCTAssertEqual(findWindow.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]),
+            XCTAssertEqual(parent.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]),
                            theme == .light ? .aqua : .darkAqua)
-            XCTAssertLessThanOrEqual(findWindow.contentView!.fittingSize.height,
-                                     findWindow.contentMinSize.height + 1)
-            try await captureFixture(findWindow, name: "find-\(theme.rawValue)")
-            find.dismiss()
+            try await captureFixture(parent, name: "find-\(theme.rawValue)")
+            fixture.state.dismissFindReplace()
+            XCTAssertFalse(fixture.state.findReplace.isBarVisible)
             codec.present(relativeTo: parent)
             let codecWindow = try XCTUnwrap(codec.window)
             codecWindow.setContentSize(codecWindow.contentMinSize)
@@ -709,6 +705,98 @@ final class UIExperimentTests: XCTestCase {
         (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants(in: $0, of: type) }
     }
 
+    private func collectReveals(_ body: () -> Void) -> [EditorSelectionRequest] {
+        var requests: [EditorSelectionRequest] = []
+        let token = NotificationCenter.default.addObserver(
+            forName: EditorCommandNotification.revealSelection, object: nil, queue: nil
+        ) { note in
+            if let request = note.object as? EditorSelectionRequest { requests.append(request) }
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+        body()
+        return requests
+    }
+
+    func testFindBarPresentAndDismissToggleVisibilityAndResults() throws {
+        let fixture = try UI2Fixture()
+        defer { fixture.dispose() }
+        let find = fixture.state.findReplace
+        fixture.state.presentFindReplace(mode: .replace)
+        XCTAssertTrue(find.isBarVisible)
+        XCTAssertEqual(find.mode, .replace)
+        find.setMatches([NSRange(location: 0, length: 1)], documentID: fixture.document.id)
+        fixture.state.dismissFindReplace()
+        XCTAssertFalse(find.isBarVisible)
+        XCTAssertNil(find.matches)
+    }
+
+    func testGoToLineRevealsClosesBarAndRejectsBadInput() throws {
+        let fixture = try UI2Fixture(text: "ab\ncdef\n")
+        defer { fixture.dispose() }
+        let find = fixture.state.findReplace
+        fixture.state.presentFindReplace(mode: .goToLine)
+        let bad = collectReveals {
+            for input in ["99", "x", "0", "1:0", "1:2:3"] {
+                XCTAssertFalse(fixture.state.goToLine(input), input)
+                XCTAssertEqual(find.messageKind, .error, input)
+                XCTAssertTrue(find.isBarVisible)
+            }
+        }
+        XCTAssertTrue(bad.isEmpty)
+        let good = collectReveals { XCTAssertTrue(fixture.state.goToLine("2:3")) }
+        XCTAssertEqual(good.count, 1)
+        XCTAssertEqual(good.first?.range, NSRange(location: 5, length: 0))
+        XCTAssertEqual(good.first?.focusesEditor, true)
+        XCTAssertFalse(find.isBarVisible)
+        XCTAssertNil(find.message)
+    }
+
+    func testUseSelectionForFindEscapesByMode() throws {
+        let fixture = try UI2Fixture(text: "a\\b\n")
+        defer { fixture.dispose() }
+        let find = fixture.state.findReplace
+        fixture.document.selectionRange = NSRange(location: 0, length: 3)
+        fixture.state.useSelectionForFind()
+        XCTAssertEqual(find.query, "a\\\\b")
+        find.usesRegex = true
+        fixture.state.useSelectionForFind()
+        XCTAssertEqual(find.query, NSRegularExpression.escapedPattern(for: "a\\b"))
+        find.query = "keep"
+        fixture.document.selectionRange = NSRange(location: 1, length: 0)
+        fixture.state.useSelectionForFind()
+        XCTAssertEqual(find.query, "keep")
+        XCTAssertFalse(find.isBarVisible)
+    }
+
+    func testFindNextFocusFlagAndInvalidRegex() async throws {
+        let fixture = try UI2Fixture(text: "one two one\n")
+        defer { fixture.dispose() }
+        let find = fixture.state.findReplace
+        find.query = "one"
+        var requests: [EditorSelectionRequest] = []
+        let token = NotificationCenter.default.addObserver(
+            forName: EditorCommandNotification.revealSelection, object: nil, queue: .main
+        ) { note in
+            if let request = note.object as? EditorSelectionRequest { requests.append(request) }
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+        fixture.state.findNext(keepFocusInBar: true)
+        for _ in 0..<100 where requests.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(requests.first?.focusesEditor, false)
+        requests.removeAll()
+        fixture.state.findNext()
+        for _ in 0..<100 where requests.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(requests.first?.focusesEditor, true)
+        requests.removeAll()
+        find.usesRegex = true
+        find.query = "("
+        fixture.state.findNext()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(requests.isEmpty)
+        XCTAssertEqual(find.messageKind, .error)
+        XCTAssertFalse(find.isWorking)
+    }
+
     func testStatusBarKeepsItsHeightWhenNarrowBusyOrShowingLongErrors() async throws {
         _ = NSApplication.shared
         let fixture = try UI2Fixture()
@@ -724,7 +812,7 @@ final class UIExperimentTests: XCTestCase {
         window.orderFront(nil)
         defer { window.contentViewController = nil; window.close() }
         fixture.document.performanceProfile = .large
-        fixture.document.statusMessage = L10n.tr("JSON 无效") + L10n.tr("：第 %@ 行，第 %@ 列。%@", "128", "24", "Missing closing bracket")
+        fixture.document.setStatusError(L10n.tr("JSON 无效") + L10n.tr("：第 %@ 行，第 %@ 列。%@", "128", "24", "Missing closing bracket"))
         for width: CGFloat in [360, 620, 900] {
             window.setContentSize(NSSize(width: width, height: 24))
             fixture.document.ioState = .saving

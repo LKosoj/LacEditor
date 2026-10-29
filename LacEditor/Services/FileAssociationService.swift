@@ -76,6 +76,7 @@ final class FileAssociationService: ObservableObject {
     @Published private(set) var rows: [Row] = []
     @Published private(set) var changingID: String?
     @Published private(set) var message: String?
+    @Published private(set) var messageKind: StatusKind = .info
     let identity: ApplicationIdentity
     private let formats: [FileAssociationFormat]
     private let client: Client
@@ -108,17 +109,21 @@ final class FileAssociationService: ObservableObject {
               let format = formats.first(where: { $0.id == id }), format.isText else { return }
         changingID = id
         message = nil
+        messageKind = .info
         defer { changingID = nil }
         do {
             try await client.setDefault(identity.url, format.type)
             refresh()
             if rows.first(where: { $0.id == id })?.isCurrentApplication == true {
+                messageKind = .success
                 message = L10n.tr("已将 %@ 的默认打开应用设为 LacEditor。", String(describing: format.title))
             } else {
+                messageKind = .info
                 message = L10n.tr("系统尚未应用更改，请确认系统提示后点击「刷新状态」。")
             }
         } catch {
             refresh()
+            messageKind = .error
             message = L10n.tr("未更改默认应用：%@", String(describing: error.localizedDescription))
         }
     }

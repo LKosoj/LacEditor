@@ -242,7 +242,7 @@ private final class ToolTipPanel: NSPanel {
 
         let displayText = shortcut.map { "\(text)    \($0)" } ?? text
         let label = NSTextField(wrappingLabelWithString: displayText)
-        label.font = .systemFont(ofSize: 12)
+        label.font = NSFont.preferredFont(forTextStyle: .callout)
         label.textColor = .labelColor
         label.maximumNumberOfLines = 0
         label.preferredMaxLayoutWidth = 320

@@ -385,7 +385,7 @@ final class StabilityTests: XCTestCase {
             labelSize: NSSize(width: 12, height: 14),
             lineRect: NSRect(x: 0, y: 112, width: 44, height: 24)
         )
-        XCTAssertEqual(origin.x, 16, accuracy: 0.001)
+        XCTAssertEqual(origin.x, 24, accuracy: 0.001)
         XCTAssertEqual(origin.y, 117, accuracy: 0.001)
         let horizontal = LineNumberGeometry.horizontalLabelOrigin(rulerHeight: 44, labelSize: NSSize(width: 12, height: 14),
                                                                   lineRect: NSRect(x: 112, y: 0, width: 24, height: 44))

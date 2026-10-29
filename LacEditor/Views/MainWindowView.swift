@@ -33,15 +33,7 @@ struct MainWindowView: View {
     @ViewBuilder
     private var editorWorkspace: some View {
         VStack(spacing: 0) {
-            // Keep tabs in the content hierarchy so the editor split reserves
-            // their height instead of drawing its divider behind an accessory.
-            if showsTabBar {
-                TabBarView()
-                    .environmentObject(appState)
-                    .environmentObject(windowManager)
-                    .frame(height: LacEditorDesign.tabBarHeight)
-                Divider()
-            }
+            FindBarHost(state: appState.findReplace)
 
             if let selectedDocument = appState.selectedDocument {
                 HSplitView {
@@ -56,7 +48,7 @@ struct MainWindowView: View {
                         globalDefault: appState.isWordWrapEnabled
                     ),
                     showsLineNumbers: appState.isLineNumbersVisible && !appState.isDistractionFree,
-                    editorTopInset: showsTabBar ? 4 : 0,
+                    editorTopInset: 12,
                     darkMode: colorScheme == .dark
                 )
                 .id(selectedDocument.id)
@@ -65,7 +57,7 @@ struct MainWindowView: View {
                     if !appState.isDistractionFree && !selectedDocument.isPreviewEffectivelyEnabled { EditorStartHints(document: selectedDocument) }
                 }
                 if appState.isAIWritingVisible && !appState.isDistractionFree {
-                    AIWritingView(controller: appState.aiWriting)
+                    AIWritingView(controller: appState.aiWriting, openSettings: { SettingsWindowController.shared.present(windowManager: windowManager) })
                         .frame(minWidth: 280, idealWidth: 340, maxWidth: 520)
                 }
                 }
@@ -87,22 +79,41 @@ struct MainWindowView: View {
                     .allowsHitTesting(false)
             }
         }
+        .overlay(alignment: .top) { QuickOpenOverlay(controller: appState.folderSearch) }
+        .background(
+            // Cmd-= — привычный псевдоним Cmd-+ (на US-раскладке плюс — это Shift-=); пункт меню остаётся один.
+            Button("") { appState.increaseFontSize() }
+                .keyboardShortcut("=", modifiers: .command)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+        )
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted, perform: openDroppedFiles)
+        // The content is hosted by its own NSHostingController, which does not inherit these objects.
+        .environmentObject(appState)
+        .environmentObject(windowManager)
     }
 
     private func openDroppedFiles(_ providers: [NSItemProvider]) -> Bool {
-        for provider in providers {
+        // Порядок не зависит от очерёдности loadItem: сначала первая папка, затем файлы в порядке броска.
+        let urls = DropURLCollector(count: providers.count)
+        let group = DispatchGroup()
+        for (index, provider) in providers.enumerated() {
+            group.enter()
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
                 let url = (item as? Data).flatMap { URL(dataRepresentation: $0, relativeTo: nil) } ?? item as? URL
-                guard let url, !url.hasDirectoryPath else { return }
-                DispatchQueue.main.async { appState.openFile(url) }
+                urls.set(url, at: index)
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) {
+            MainActor.assumeIsolated {
+                let dropped = urls.values.compactMap { $0 }
+                if let folder = dropped.first(where: DroppedURLKind.isDirectory) { appState.openFolder(folder) }
+                for url in dropped where !DroppedURLKind.isDirectory(url) { appState.openFile(url) }
             }
         }
         return !providers.isEmpty
-    }
-
-    private var showsTabBar: Bool {
-        false // Native NSWindow tabs reserve their own titlebar space.
     }
 
 }
@@ -118,23 +129,30 @@ struct EditorStartHints: View {
         if document.isDisposableBlank, document.text.isEmpty, document.ioState == .idle {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text(L10n.tr("从一行文字开始")).font(.system(size: 22, weight: .semibold))
+                    Text(L10n.tr("从一行文字开始")).font(.title.weight(.semibold))
                         .foregroundStyle(.secondary)
                     Text(L10n.tr("直接输入，或打开一份文件。"))
-                        .font(.system(size: 12)).foregroundStyle(.tertiary)
+                        .font(.callout).foregroundStyle(.secondary)
                 }.allowsHitTesting(false)
                 VStack(spacing: 4) {
                     startAction(L10n.tr("打开文件"), symbol: "doc.badge.plus", detail: "⌘O") { appState.openFiles() }
+                    startAction(L10n.tr("打开文件夹…"), symbol: "folder", detail: "") { appState.openFolder() }
                     if windowManager.experimentSamples != nil {
                         startAction(L10n.tr("打开体验文档"), symbol: "text.book.closed", detail: L10n.tr("Markdown · 代码 · 长文本")) {
                             windowManager.openExperimentWelcome(in: appState)
                         }
                     }
                 }
+                VStack(alignment: .leading, spacing: 8) {
+                    RecentHintsList(store: appState.recentFiles) { url in
+                        startAction(url.lastPathComponent, symbol: "doc.text", detail: "") { appState.openFile(url) }
+                            .help(url.path)
+                    }
+                }
                 Text(L10n.tr("文件可以直接拖到窗口中"))
-                    .font(.system(size: 11)).foregroundStyle(.tertiary).allowsHitTesting(false)
+                    .font(.subheadline).foregroundStyle(.secondary).allowsHitTesting(false)
             }
-            .frame(width: 310)
+            .frame(minWidth: 240, idealWidth: 310, maxWidth: 360)
             .padding(20)
             .accessibilityElement(children: .contain)
         }
@@ -144,11 +162,56 @@ struct EditorStartHints: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: symbol).foregroundStyle(LacEditorDesign.accent).frame(width: 20)
-                Text(title).font(.system(size: 13, weight: .medium))
+                Text(title).font(.body.weight(.medium)).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 8)
-                Text(detail).font(.system(size: 10)).foregroundStyle(.tertiary)
+                Text(detail).font(.caption).foregroundStyle(.secondary)
             }.padding(.horizontal, 10).frame(height: 42).contentShape(Rectangle())
         }.buttonStyle(QuietActionButtonStyle())
+    }
+}
+
+final class DropURLCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [URL?]
+
+    init(count: Int) { items = Array(repeating: nil, count: count) }
+
+    func set(_ url: URL?, at index: Int) {
+        lock.lock(); defer { lock.unlock() }
+        items[index] = url
+    }
+
+    var values: [URL?] {
+        lock.lock(); defer { lock.unlock() }
+        return items
+    }
+}
+
+/// Наблюдает хранилище недавних файлов отдельно, чтобы подсказка обновлялась при его изменении.
+private struct RecentHintsList<Row: View>: View {
+    @ObservedObject var store: RecentFilesStore
+    let row: (URL) -> Row
+
+    var body: some View {
+        let urls = RecentHints.urls(store.urls)
+        if !urls.isEmpty {
+            Text(L10n.tr("最近文件")).font(.subheadline).foregroundStyle(.secondary).allowsHitTesting(false)
+            VStack(spacing: 4) {
+                ForEach(urls, id: \.self) { url in row(url) }
+            }
+        }
+    }
+}
+
+enum DroppedURLKind {
+    static func isDirectory(_ url: URL) -> Bool {
+        (try? url.resolvingSymlinksInPath().resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+    }
+}
+
+enum RecentHints {
+    static func urls(_ all: [URL], limit: Int = 3, exists: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) }) -> [URL] {
+        Array(all.filter(exists).prefix(limit))
     }
 }
 
@@ -360,7 +423,7 @@ private struct DocumentEditorPane: View {
                     ProgressView()
                         .controlSize(.small)
                     Text(L10n.tr("正在打开“%@”", String(describing: document.displayName)))
-                        .font(.system(size: 12))
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                     Button(L10n.tr("取消")) {
                         appState.cancelOpening(document)

@@ -66,6 +66,13 @@ final class FolderSearchController: ObservableObject {
 
     func close() { invalidate(); quickOpenRequest = nil; root = nil }
 
+    /// Esc / клик вне панели: снимает запрос и результаты быстрого вызова, корень не трогает.
+    func cancelQuickOpen() {
+        guard quickOpenRequest != nil else { return }
+        invalidate()
+        quickOpenRequest = nil
+    }
+
     func requestQuickOpen() {
         guard root != nil || !folderLocations().isEmpty else { return }
         mode = .files
@@ -80,8 +87,8 @@ final class FolderSearchController: ObservableObject {
             select(first)
             return nil
         }
+        // панель остаётся открытой до выбора результата: при пустом результате она покажет «нет совпадений»
         let folders = folderLocations()
-        quickOpenRequest = nil
         guard let search = start(quickLocations: folders) else { return nil }
         let expectedGeneration = generation
         return Task { [weak self] in
