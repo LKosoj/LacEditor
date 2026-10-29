@@ -110,6 +110,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     }
 
     private(set) var foldedRange: NSRange?
+    private(set) var automaticMediaFoldedRanges: [NSRange] = []
     private struct MarkdownMarker {
         let range: NSRange
         let owner: NSRange
@@ -273,7 +274,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         guard index > 0 else { return nil }
         let line = tableLines[index - 1]
         guard NSLocationInRange(location, line.range),
-              !(foldedRange.map { NSIntersectionRange($0, line.range).length > 0 } ?? false),
+              !intersectsFoldedRange(line.range),
               textContainers.first?.textView?.hasMarkedText() != true else { return nil }
         return line
     }
@@ -698,7 +699,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         guard index > 0 else { return nil }
         let range = markdownPageBreaks[index - 1]
         guard NSLocationInRange(location, range),
-              !(foldedRange.map { NSIntersectionRange($0, range).length > 0 } ?? false),
+              !intersectsFoldedRange(range),
               !(markdownRevealedRange.map { touches(range, $0) } ?? false) else { return nil }
         return range
     }
@@ -1029,7 +1030,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
 
     private func imageIsVisible(_ range: NSRange) -> Bool {
         guard textContainers.first?.textView?.hasMarkedText() != true else { return false }
-        if let foldedRange, NSIntersectionRange(foldedRange, range).length > 0 { return false }
+        if intersectsFoldedRange(range) { return false }
         return !(markdownRevealedRange.map { touches(range, $0) } ?? false)
     }
 
@@ -1332,7 +1333,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     private func checkboxRect(_ checkbox: MarkdownTaskCheckbox, in container: NSTextContainer) -> NSRect? {
         guard let view = container.textView, !view.hasMarkedText(),
               checkbox.markerRange.length == 3, NSMaxRange(checkbox.markerRange) <= (textStorage?.length ?? 0),
-              !(foldedRange.map { NSIntersectionRange($0, checkbox.markerRange).length > 0 } ?? false),
+              !intersectsFoldedRange(checkbox.markerRange),
               view.selectedRange().length == 0 || NSIntersectionRange(view.selectedRange(), checkbox.markerRange).length == 0 else { return nil }
         let glyphs = glyphRange(forCharacterRange: checkbox.markerRange, actualCharacterRange: nil)
         guard glyphs.length > 0 else { return nil }
@@ -1458,7 +1459,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             guard NSIntersectionRange(alert.range, visible).length > 0 else { continue }
             guard case let .alert(label) = alert.kind, let marker = alert.markerRanges.first,
                   isMarkdownMarkerHidden(at: marker.location),
-                  !(foldedRange.map { NSIntersectionRange($0, marker).length > 0 } ?? false),
+                  !intersectsFoldedRange(marker),
                   marker.location < (textStorage?.length ?? 0) else { continue }
             let glyph = glyphIndexForCharacter(at: marker.location)
             let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
@@ -1690,7 +1691,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         let marker = markdownListMarkers[index - 1]
         guard NSLocationInRange(location, marker.range),
               !(markdownRevealedRange.map { touches(marker.line, $0) } ?? false),
-              !(foldedRange.map { NSIntersectionRange($0, marker.range).length > 0 } ?? false) else { return nil }
+              !intersectsFoldedRange(marker.range) else { return nil }
         return marker
     }
 
@@ -1867,15 +1868,51 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         }
     }
 
+    func setAutomaticMediaFoldedRanges(_ ranges: [NSRange]) {
+        let safeRanges = ranges.compactMap(clampedRange).sorted { $0.location < $1.location }
+        guard automaticMediaFoldedRanges != safeRanges else { return }
+        let previous = automaticMediaFoldedRanges
+        automaticMediaFoldedRanges = safeRanges
+        for range in previous { invalidateFoldGlyphs(in: range) }
+        for range in safeRanges { invalidateFoldGlyphs(in: range) }
+    }
+
+    func removeAutomaticMediaFold(containing location: Int) -> Bool {
+        guard let index = automaticMediaFoldedRanges.firstIndex(where: {
+            location >= $0.location && location <= NSMaxRange($0)
+        }) else { return false }
+        let range = automaticMediaFoldedRanges.remove(at: index)
+        invalidateFoldGlyphs(in: range)
+        return true
+    }
+
+    func toggleAutomaticMediaFold(_ range: NSRange) {
+        if let index = automaticMediaFoldedRanges.firstIndex(of: range) {
+            let previous = automaticMediaFoldedRanges.remove(at: index)
+            invalidateFoldGlyphs(in: previous)
+        } else if let safe = clampedRange(range) {
+            automaticMediaFoldedRanges.append(safe)
+            automaticMediaFoldedRanges.sort { $0.location < $1.location }
+            invalidateFoldGlyphs(in: safe)
+        }
+    }
+
+    func intersectsFoldedRange(_ range: NSRange) -> Bool {
+        if let foldedRange, NSIntersectionRange(foldedRange, range).length > 0 { return true }
+        return automaticMediaFoldedRanges.contains { NSIntersectionRange($0, range).length > 0 }
+    }
+
     func isCharacterFolded(_ characterIndex: Int) -> Bool {
-        guard let foldedRange else { return false }
-        return NSLocationInRange(characterIndex, foldedRange)
+        if let foldedRange, NSLocationInRange(characterIndex, foldedRange) { return true }
+        return automaticMediaFoldedRanges.contains { NSLocationInRange(characterIndex, $0) }
     }
 
     func isCharacterRangeFullyFolded(_ characterRange: NSRange) -> Bool {
-        guard let foldedRange, characterRange.length > 0 else { return false }
-        return NSIntersectionRange(foldedRange, characterRange).length
-            == characterRange.length
+        guard characterRange.length > 0 else { return false }
+        if let foldedRange, NSIntersectionRange(foldedRange, characterRange).length == characterRange.length { return true }
+        return automaticMediaFoldedRanges.contains {
+            NSIntersectionRange($0, characterRange).length == characterRange.length
+        }
     }
 
     func layoutManager(
@@ -1886,7 +1923,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         font: NSFont,
         forGlyphRange glyphRange: NSRange
     ) -> Int {
-        guard foldedRange != nil || !markdownMarkers.isEmpty || !markdownTextReplacements.isEmpty || !markdownListMarkers.isEmpty || !markdownImages.isEmpty || !markdownBlockImages.isEmpty || !markdownInlineImages.isEmpty || !markdownMedia.isEmpty || !markdownTOCRanges.isEmpty || !markdownPageBreaks.isEmpty || !tableLines.isEmpty else { return 0 }
+        guard foldedRange != nil || !automaticMediaFoldedRanges.isEmpty || !markdownMarkers.isEmpty || !markdownTextReplacements.isEmpty || !markdownListMarkers.isEmpty || !markdownImages.isEmpty || !markdownBlockImages.isEmpty || !markdownInlineImages.isEmpty || !markdownMedia.isEmpty || !markdownTOCRanges.isEmpty || !markdownPageBreaks.isEmpty || !tableLines.isEmpty else { return 0 }
 
         // A data-URI image can occupy many glyph-generation batches. Once a
         // batch is wholly inside an installed block image, every glyph is

@@ -20,6 +20,7 @@ struct LineNumberVisibleMapCacheKey: Equatable {
     let textLength: Int
     let layoutGeneration: UInt
     let foldedRange: NSRange?
+    let automaticMediaFoldedRanges: [NSRange]
 }
 
 enum LineNumberGeometry {
@@ -253,7 +254,8 @@ final class LineNumberRulerView: NSRulerView {
             textContainerWidth: textContainer.containerSize.width,
             textLength: text.length,
             layoutGeneration: layoutGeneration,
-            foldedRange: (layoutManager as? FoldLayoutManager)?.foldedRange
+            foldedRange: (layoutManager as? FoldLayoutManager)?.foldedRange,
+            automaticMediaFoldedRanges: (layoutManager as? FoldLayoutManager)?.automaticMediaFoldedRanges ?? []
         )
         if visibleLineMapCacheKey == cacheKey {
             return

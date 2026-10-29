@@ -4,6 +4,15 @@ import ImageIO
 import SwiftUI
 import UniformTypeIdentifiers
 
+struct AIImageEditRequest {
+    let documentID: UUID
+    let revision: UInt
+    let range: NSRange
+    let originalMarkdown: String
+    let address: String
+    let documentURL: URL?
+}
+
 @MainActor
 final class AIWritingController: ObservableObject {
     let documentTools: AIDocumentToolsController
@@ -26,6 +35,7 @@ final class AIWritingController: ObservableObject {
     }
     @Published private(set) var references: [AIWritingReference] = []
     @Published private(set) var image: Data?
+    @Published private(set) var imageEditSource: Data?
     @Published private(set) var message = "" { didSet { messageKind = .error; messageAction = nil } }
     @Published private(set) var messageKind: StatusKind = .error
     @Published private(set) var messageAction: AIMessageAction?
@@ -57,13 +67,18 @@ final class AIWritingController: ObservableObject {
     private var reportIsBackground = false
     private var activeFeatures: Set<AIFeature> = []
     private var diffCache: [UUID: (original: AttributedString, replacement: AttributedString)] = [:]
+    private var imageEditRequest: AIImageEditRequest?
+    private let editImage: (Data, String, AIModelProfile, String?) async throws -> Data
 
     init(appState: AppState, loadKey: @escaping (AIRole, String) throws -> String? = { try AIKeychainStore().load(for: $0, baseURL: $1) }, generate: @escaping (AIFeature, String, String, AIModelProfile, String?, JinaConfiguration?, String?, String?) async throws -> AIWritingResult = { feature, input, option, profile, key, jina, searchKey, readerKey in
         try await AIWritingService.generate(feature: feature, input: input, option: option, profile: profile, key: key, jinaConfiguration: jina ?? JinaConfiguration(), jinaSearchKey: searchKey, jinaReaderKey: readerKey)
+    }, editImage: @escaping (Data, String, AIModelProfile, String?) async throws -> Data = {
+        try await AIClient().editImage(data: $0, prompt: $1, profile: $2, key: $3)
     }) {
         self.appState = appState
         documentTools = AIDocumentToolsController(appState: appState)
         self.generate = generate
+        self.editImage = editImage
         self.loadKey = loadKey
         settingsObserver = appState.preferences.objectWillChange.sink { [weak self] in
             DispatchQueue.main.async { [weak self] in self?.settingsChanged() }
@@ -106,6 +121,126 @@ final class AIWritingController: ObservableObject {
         guard let appState, appState.preferences.aiFeatures.contains(feature) else { return }
         requestedFeature = feature
         appState.isAIWritingVisible = true
+    }
+
+    func prepareImageEdit(_ request: AIImageEditRequest) {
+        guard let appState, appState.selectedDocumentID == request.documentID,
+              appState.preferences.aiFeatures.contains(.imageEdit),
+              let document = appState.selectedDocument, document.ioState == .idle else { return }
+        cancel()
+        requestedFeature = .imageEdit; feature = .imageEdit
+        imageEditRequest = request; imageEditSource = nil; image = nil; report = ""; suggestions = []; references = []; message = ""
+        generatedAt = nil; resultRevision = nil; isWorking = true; reportIsBackground = false
+        appState.isAIWritingVisible = true
+        let current = generation
+        task = Task { [weak self, weak document] in
+            defer { if let self, self.generation == current { self.isWorking = false } }
+            do {
+                let data = try await Self.loadImage(for: request, document: document)
+                guard let self, !Task.isCancelled, self.generation == current,
+                      self.currentImageEditRequest() != nil else { return }
+                self.imageEditSource = data
+            } catch {
+                guard let self, !Task.isCancelled, self.generation == current else { return }
+                self.fail(error)
+            }
+        }
+    }
+
+    private static func loadImage(for request: AIImageEditRequest, document: EditorDocument?) async throws -> Data {
+        if let url = URL(string: request.address), ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
+            return try await MarkdownImageUploadService.download(url).data
+        }
+        let text = document?.synchronizedText() ?? request.originalMarkdown
+        return try await Task.detached {
+            let paths = try? MarkdownResourcePaths(text: text, document: request.documentURL)
+            return try MarkdownImageUploadService.payload(address: request.address, document: request.documentURL, paths: paths).data
+        }.value
+    }
+
+    func runImageEdit(prompt: String) {
+        guard let source = imageEditSource, let request = currentImageEditRequest(), let appState else { return }
+        let profile = appState.preferences.aiProfile(for: .imageEdit)
+        guard profile.isEnabled else { post(L10n.tr("AI 功能已关闭"), action: .openSettings); return }
+        let key: String?
+        do { key = try loadKey(.image, profile.baseURL) } catch { fail(error); return }
+        cancel(); imageEditRequest = request; imageEditSource = source; feature = .imageEdit; requestedFeature = .imageEdit
+        activeProfile = profile; activeKey = key; activeNeedsKey = true; activeFeatures = [.imageEdit]
+        image = nil; message = ""; isWorking = true; reportIsBackground = false
+        let current = generation, editImage = self.editImage
+        task = Task { [weak self] in
+            defer { if let self, self.generation == current { self.isWorking = false } }
+            do {
+                let result = try await editImage(source, prompt, profile, key)
+                guard let self, !Task.isCancelled, self.generation == current,
+                      self.currentImageEditRequest() != nil,
+                      self.appState?.preferences.aiProfile(for: .imageEdit) == profile,
+                      self.keyIsCurrent(key, profile: profile, role: .image, required: true) else { return }
+                self.image = result; self.generatedAt = Date(); self.resultRevision = request.revision
+            } catch {
+                guard let self, !Task.isCancelled, self.generation == current else { return }
+                self.fail(error)
+            }
+        }
+    }
+
+    private func currentImageEditRequest() -> AIImageEditRequest? {
+        guard let request = imageEditRequest, let appState,
+              appState.selectedDocumentID == request.documentID,
+              appState.preferences.aiFeatures.contains(.imageEdit),
+              let document = appState.selectedDocument, document.ioState == .idle else { return nil }
+        let snapshot = document.synchronizedSnapshot(), text = snapshot.text as NSString
+        guard snapshot.revision == request.revision, request.range.location <= text.length,
+              request.range.length <= text.length - request.range.location,
+              text.substring(with: request.range) == request.originalMarkdown else { return nil }
+        return request
+    }
+
+    func applyImageEdit() {
+        guard let result = image, let request = currentImageEditRequest(),
+              let input = MarkdownImageEditingService.initial(in: request.originalMarkdown as NSString, selection: NSRange(location: 0, length: (request.originalMarkdown as NSString).length)) else { return }
+        do {
+            let address: String
+            if request.address.lowercased().hasPrefix("data:image/") {
+                guard let source = CGImageSourceCreateWithData(result as CFData, nil),
+                      let identifier = CGImageSourceGetType(source) as String?,
+                      let mime = UTType(identifier)?.preferredMIMEType else { throw AIError.invalidResponse }
+                address = "data:\(mime);base64,\(result.base64EncodedString())"
+            } else {
+                guard let appState, let window = appState.hostWindow,
+                      let source = CGImageSourceCreateWithData(result as CFData, nil),
+                      let identifier = CGImageSourceGetType(source) as String?, let type = UTType(identifier),
+                      let ext = type.preferredFilenameExtension else { throw AIError.invalidResponse }
+                let panel = NSSavePanel()
+                panel.allowedContentTypes = [type]
+                panel.nameFieldStringValue = "edited-image." + ext
+                guard panel.runModal() == .OK, let destination = panel.url,
+                      window == appState.hostWindow, currentImageEditRequest() != nil else { return }
+                try result.write(to: destination, options: .withoutOverwriting)
+                guard let value = MarkdownImageEditingService.address(for: destination, document: request.documentURL) else { throw AIError.invalidConfiguration }
+                address = value
+            }
+            let changed = MarkdownImageInput(alt: input.alt, address: address, title: input.title)
+            guard let edit = MarkdownImageEditingService.edit(in: request.originalMarkdown as NSString, selection: NSRange(location: 0, length: (request.originalMarkdown as NSString).length), input: changed) else { throw AIError.invalidResponse }
+            let replacement = (request.originalMarkdown as NSString).replacingCharacters(in: edit.range, with: edit.replacement)
+            let apply = EditorRangeReplacementRequest(documentID: request.documentID, range: request.range,
+                originalText: request.originalMarkdown, replacementText: replacement,
+                expectedEditorRevision: request.revision, actionName: AIFeature.imageEdit.title)
+            apply.isAIGenerated = true
+            NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: apply)
+            if apply.wasHandled { imageEditRequest = nil; imageEditSource = nil; image = nil }
+            else { post(apply.failureMessage ?? L10n.tr("编辑内容已变化，请重新执行转换")) }
+        } catch { fail(error) }
+    }
+
+    func saveEditedImage() {
+        guard let image, feature == .imageEdit, currentImageEditRequest() != nil,
+              let source = CGImageSourceCreateWithData(image as CFData, nil),
+              let identifier = CGImageSourceGetType(source) as String?, let type = UTType(identifier),
+              let ext = type.preferredFilenameExtension else { return }
+        let panel = NSSavePanel(); panel.allowedContentTypes = [type]; panel.nameFieldStringValue = "edited-image." + ext
+        guard panel.runModal() == .OK, let url = panel.url, currentImageEditRequest() != nil else { return }
+        do { try image.write(to: url, options: .atomic) } catch { fail(error) }
     }
 
     func run(_ feature: AIFeature, option: String = "") {
@@ -401,8 +536,8 @@ final class AIWritingController: ObservableObject {
 
     func invalidate(documentID: UUID) {
         documentTools.invalidate(documentID: documentID)
-        if snapshot?.documentID == documentID || appState?.selectedDocumentID == documentID {
-            cancel(); snapshot = nil; suggestions = []; references = []; report = ""; image = nil
+        if snapshot?.documentID == documentID || imageEditRequest?.documentID == documentID || appState?.selectedDocumentID == documentID {
+            cancel(); snapshot = nil; suggestions = []; references = []; report = ""; image = nil; imageEditSource = nil; imageEditRequest = nil
         }
         debounce?.cancel(); debounce = nil
         cancelMetadata()
@@ -411,7 +546,7 @@ final class AIWritingController: ObservableObject {
 
     func selectedDocumentChanged() {
         documentTools.selectedDocumentChanged()
-        cancel(); cancelMetadata(); debounce?.cancel(); snapshot = nil; suggestions = []; references = []; report = ""; image = nil
+        cancel(); cancelMetadata(); debounce?.cancel(); snapshot = nil; suggestions = []; references = []; report = ""; image = nil; imageEditSource = nil; imageEditRequest = nil
         generatedAt = nil; resultRevision = nil
     }
 
@@ -495,8 +630,8 @@ final class AIWritingController: ObservableObject {
         guard let appState else { return }
         objectWillChange.send()
         if metadataProfile != nil && (!appState.preferences.aiBackgroundEnabled || !appState.preferences.aiFeatures.contains(.metadata) || metadataProfile != appState.preferences.aiProfile(for: .metadata)) { cancelMetadata() }
-        if ((!report.isEmpty || snapshot != nil || image != nil) && !appState.preferences.aiFeatures.contains(feature)) || !activeFeatures.isSubset(of: appState.preferences.aiFeatures) || (activeProfile != nil && !activeCredentialsAreCurrent()) || (activeJinaConfiguration != nil && activeJinaConfiguration != appState.preferences.jinaConfiguration) || (reportIsBackground && !appState.preferences.aiBackgroundEnabled) {
-            cancel(); debounce?.cancel(); snapshot = nil; suggestions = []; references = []; report = ""; image = nil
+        if ((!report.isEmpty || snapshot != nil || image != nil || imageEditRequest != nil) && !appState.preferences.aiFeatures.contains(feature)) || !activeFeatures.isSubset(of: appState.preferences.aiFeatures) || (activeProfile != nil && !activeCredentialsAreCurrent()) || (activeJinaConfiguration != nil && activeJinaConfiguration != appState.preferences.jinaConfiguration) || (reportIsBackground && !appState.preferences.aiBackgroundEnabled) {
+            cancel(); debounce?.cancel(); snapshot = nil; suggestions = []; references = []; report = ""; image = nil; imageEditSource = nil; imageEditRequest = nil
         }
     }
 }

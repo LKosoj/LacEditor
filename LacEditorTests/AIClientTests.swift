@@ -121,7 +121,7 @@ final class AIClientTests: XCTestCase {
         do {
             _ = try await client.listModels(profile: profile(.responses), key: "secret")
             XCTFail("Expected HTTP failure")
-        } catch AIError.http(let status) { XCTAssertEqual(status, 401) }
+        } catch AIError.http(let status, _) { XCTAssertEqual(status, 401) }
     }
     func testImageURLIsDownloadedWithoutCredentials() async throws {
         let client = makeClient()
@@ -198,6 +198,38 @@ final class AIClientTests: XCTestCase {
         }
         let description = try await makeClient().generateImageDescription(data: png, instructions: "describe", profile: profile(.responses), key: nil)
         XCTAssertEqual(description, "A dot")
+    }
+
+    func testTextRequestsOmitEmbeddedMediaData() async throws {
+        let client = makeClient()
+        let input = "Before ![image](data:image/png;base64,AAAA) after data:audio/mpeg;base64,BBBB."
+        AIURLProtocol.handler = { request in
+            let body = try self.body(request)
+            XCTAssertEqual(body["input"] as? String, "Before ![image]([media omitted]) after [media omitted].")
+            return (200, Data(#"{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"result"}]}]}"#.utf8))
+        }
+        let result = try await client.generateText(input: input, instructions: "write", profile: profile(.responses), key: nil)
+        XCTAssertEqual(result, "result")
+    }
+
+    func testImageEditSendsSelectedImageAsMultipartData() async throws {
+        let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a1sAAAAASUVORK5CYII=")!
+        AIURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/gateway/v1/images/edits")
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertTrue(request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data; boundary=") == true)
+            let body = try XCTUnwrap(request.httpBody)
+            let text = String(decoding: body, as: UTF8.self)
+            XCTAssertTrue(text.contains("name=\"model\""))
+            XCTAssertTrue(text.contains("test-model"))
+            XCTAssertTrue(text.contains("name=\"prompt\""))
+            XCTAssertTrue(text.contains("make it blue"))
+            XCTAssertTrue(text.contains("name=\"image\"; filename=\"image.png\""))
+            XCTAssertNotNil(body.range(of: png))
+            return (200, Data("{\"data\":[{\"b64_json\":\"(png.base64EncodedString())\"}]}".utf8))
+        }
+        let result = try await makeClient().editImage(data: png, prompt: "make it blue", profile: profile(.images), key: nil)
+        XCTAssertEqual(result, png)
     }
 
 }

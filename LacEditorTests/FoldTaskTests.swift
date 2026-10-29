@@ -22,6 +22,34 @@ final class FoldTaskTests: XCTestCase {
         }
     }
 
+    func testLongEmbeddedMediaPayloadCanBeFoldedWithoutHidingMarkdown() {
+        let payload = String(repeating: "QUJD", count: 100)
+        let source = "before ![image](data:image/png;base64,\(payload)) after\n<audio src=\"data:audio/mpeg;base64,\(payload)\"></audio>"
+        let text = source as NSString
+        let first = text.range(of: payload)
+        let second = text.range(of: payload, range: NSRange(location: NSMaxRange(first), length: text.length - NSMaxRange(first)))
+        let expected = [first, second]
+        XCTAssertEqual(FoldService.mediaPayloadRanges(in: source), expected)
+        XCTAssertEqual(FoldService.foldableRange(in: source, at: 0, language: .markdown), expected[0])
+        XCTAssertEqual(FoldService.foldableRange(in: source, at: expected[1].location + 20, language: .markdown), expected[1])
+
+        let short = "![image](data:image/png;base64,QUJD)"
+        XCTAssertNil(FoldService.foldableRange(in: short, at: 0, language: .markdown))
+        let unrelated = "[file](data:text/plain;base64,\(payload))"
+        XCTAssertNil(FoldService.foldableRange(in: unrelated, at: 0, language: .markdown))
+
+        let storage = NSTextStorage(string: source)
+        let layout = FoldLayoutManager()
+        storage.addLayoutManager(layout)
+        layout.setAutomaticMediaFoldedRanges(expected)
+        XCTAssertTrue(layout.isCharacterFolded(first.location + 1))
+        XCTAssertTrue(layout.isCharacterFolded(second.location + 1))
+        XCTAssertFalse(layout.isCharacterFolded(first.location - 1))
+        XCTAssertTrue(layout.removeAutomaticMediaFold(containing: first.location + 1))
+        XCTAssertFalse(layout.isCharacterFolded(first.location + 1))
+        XCTAssertTrue(layout.isCharacterFolded(second.location + 1))
+    }
+
     func testSelectionAndEditBeforeResultPreventFolding() async {
         _ = NSApplication.shared
         let source = "# heading\n" + String(repeating: "body\n", count: 10_000)

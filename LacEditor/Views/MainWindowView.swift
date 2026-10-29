@@ -459,7 +459,8 @@ private struct DocumentEditorPane: View {
             colorOverrides: document.language == .markdown ? appState.preferences.markdownColors(darkMode: darkMode) : .init(),
             markdownTOCMaxLevel: appState.preferences.markdownTOCMaxLevel,
             viewMagnification: appState.viewMagnification,
-            magnificationDidChange: appState.setViewMagnification
+            magnificationDidChange: appState.setViewMagnification,
+            requestAIImageEdit: { request in appState.aiWriting.prepareImageEdit(request) }
         )
         .disabled(appState.isOpeningPlaceholder(document))
     }

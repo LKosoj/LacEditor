@@ -31,7 +31,7 @@ struct AIWritingService {
             let prompt = option.isEmpty ? input : option
             return AIWritingResult(suggestions: [], report: "", image: try await client.generateImage(prompt: prompt, profile: profile, key: key))
         }
-        if feature == .imageDescription || feature == .provenance { throw AIError.invalidConfiguration }
+        if feature == .imageDescription || feature == .imageEdit || feature == .provenance { throw AIError.invalidConfiguration }
         if feature == .sources {
             let query = option.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? input : option
             let candidates = try await jinaClient.search(query: query, configuration: jinaConfiguration, key: jinaSearchKey)

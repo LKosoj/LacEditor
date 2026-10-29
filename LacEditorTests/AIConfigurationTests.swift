@@ -24,6 +24,29 @@ final class AIConfigurationTests: XCTestCase {
             XCTAssertThrowsError(try AIModelProfile.normalizedBaseURL(value))
         }
     }
+
+    func testHTTPErrorIncludesSanitizedServerMessage() throws {
+        let data = Data(#"{"error":{"message":"  Unsupported\nparameter: store  "}}"#.utf8)
+        let error = AIError.http(status: 400, data: data)
+        guard case .http(let status, let detail) = error else {
+            return XCTFail("Expected HTTP error")
+        }
+        XCTAssertEqual(status, 400)
+        XCTAssertEqual(detail, "Unsupported parameter: store")
+        XCTAssertEqual(error.localizedDescription, L10n.tr("AI 服务返回错误（HTTP %d）", 400) + "\nUnsupported parameter: store")
+    }
+
+    func testHTTPErrorDoesNotExposeUnknownJSONOrHTML() {
+        let unknownJSON = AIError.http(status: 400, data: Data(#"{"request":"document contents"}"#.utf8))
+        let html = AIError.http(status: 502, data: Data("<html>Proxy error</html>".utf8))
+        guard case .http(_, let jsonDetail) = unknownJSON,
+              case .http(_, let htmlDetail) = html else {
+            return XCTFail("Expected HTTP errors")
+        }
+        XCTAssertNil(jsonDetail)
+        XCTAssertNil(htmlDetail)
+    }
+
     @MainActor
     func testPreferencesPersistConfigurationInIsolatedDefaults() throws {
         let suite = "LacEditor-AI-test-\(UUID().uuidString)"

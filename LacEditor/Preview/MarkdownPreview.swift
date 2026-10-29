@@ -574,7 +574,8 @@ struct MarkdownPreview: NSViewRepresentable {
         }
 
         private func loadPage(in webView: WKWebView) {
-            self.page?.previewAccent = Self.systemAccentCSS(darkMode: self.page?.darkMode ?? false)
+            let darkMode = page?.darkMode ?? false
+            page?.previewAccent = Self.systemAccentCSS(darkMode: darkMode)
             guard let page else { return }
             cancelLegacyDiagrams()
             let previousMath = mathService
@@ -598,7 +599,8 @@ struct MarkdownPreview: NSViewRepresentable {
         }
 
         private func patchPage(includingBody: Bool, restoringScroll: Bool = false) {
-            self.page?.previewAccent = Self.systemAccentCSS(darkMode: self.page?.darkMode ?? false)
+            let darkMode = page?.darkMode ?? false
+            page?.previewAccent = Self.systemAccentCSS(darkMode: darkMode)
             guard let webView, let page, let renderedRevision, pageIsReady else { return }
             if includingBody {
                 visibleRevision = nil

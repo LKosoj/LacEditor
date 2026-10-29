@@ -35,8 +35,9 @@ struct AIWritingView: View {
                     if controller.translationLanguage == .custom {
                         TextField(L10n.tr("输入目标语言"), text: $controller.customTranslationLanguage).onSubmit { if canRun { runCurrent() } }
                     }
-                } else {
-                    TextField(L10n.tr("语言、语气或其他要求"), text: $option).onSubmit { if canRun { runCurrent() } }
+                } else if let prompt = controller.requestedFeature.optionPrompt {
+                    TextField(prompt, text: $option)
+                        .onSubmit { if canRun { runCurrent() } }
                 }
                 HStack {
                     Button(controller.isWorking ? L10n.tr("停止") : (controller.requestedFeature == .translation ? L10n.tr("翻译") : L10n.tr("运行"))) {
@@ -53,6 +54,10 @@ struct AIWritingView: View {
                 }
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
+                        if controller.requestedFeature == .imageEdit, let data = controller.imageEditSource, let source = NSImage(data: data) {
+                            Text(L10n.tr("原图")).font(.caption).foregroundStyle(.secondary)
+                            Image(nsImage: source).resizable().scaledToFit().accessibilityLabel(L10n.tr("原图"))
+                        }
                         if !controller.report.isEmpty {
                             if controller.feature == .metadata {
                                 TextEditor(text: $metadataText).frame(minHeight: 100)
@@ -96,10 +101,16 @@ struct AIWritingView: View {
                             }.padding(8).background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
                         }
                         if let data = controller.image, let image = NSImage(data: data) {
+                            if controller.feature == .imageEdit { Text(L10n.tr("编辑结果")).font(.caption).foregroundStyle(.secondary) }
                             Image(nsImage: image).resizable().scaledToFit().accessibilityLabel(L10n.tr("图片"))
                             HStack {
-                                Button(L10n.tr("保存图片")) { controller.saveImage() }
-                                Button(L10n.tr("插入图片")) { controller.insertImage() }
+                                if controller.feature == .imageEdit {
+                                    Button(L10n.tr("应用")) { controller.applyImageEdit() }.buttonStyle(.borderedProminent)
+                                    Button(L10n.tr("另存为…")) { controller.saveEditedImage() }
+                                } else {
+                                    Button(L10n.tr("保存图片")) { controller.saveImage() }
+                                    Button(L10n.tr("插入图片")) { controller.insertImage() }
+                                }
                             }
                         }
                         if let date = controller.generatedAt {
@@ -121,15 +132,20 @@ struct AIWritingView: View {
         .onChange(of: controller.enabledFeatures) { _, features in
             if !features.contains(controller.requestedFeature), let first = features.first { controller.requestedFeature = first }
         }
+        .onChange(of: controller.requestedFeature) { _, feature in if feature == .imageEdit { option = "" } }
+        .onChange(of: controller.imageEditSource) { _, source in if source != nil { option = "" } }
     }
 
     private var canRun: Bool {
         controller.enabledFeatures.contains(controller.requestedFeature) && !controller.isWorking &&
-            !(controller.requestedFeature == .translation && controller.translationTarget.isEmpty)
+            !(controller.requestedFeature == .translation && controller.translationTarget.isEmpty) &&
+            (controller.requestedFeature != .sources || !option.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) &&
+            (controller.requestedFeature != .imageEdit || (controller.imageEditSource != nil && !option.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
     }
 
     private func runCurrent() {
         if controller.requestedFeature == .imageDescription { controller.describeImage() }
+        else if controller.requestedFeature == .imageEdit { controller.runImageEdit(prompt: option) }
         else { controller.run(controller.requestedFeature, option: controller.requestedFeature == .translation ? controller.translationTarget : option) }
     }
 

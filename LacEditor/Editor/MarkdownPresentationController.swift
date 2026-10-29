@@ -226,6 +226,12 @@ final class MarkdownPresentationController {
         let generation: UInt
         let selection: [NSValue]
     }
+    struct ImageResource {
+        let image: MarkdownImage
+        let document: EditorDocument
+        let revision: UInt
+        let generation: UInt
+    }
     private var diagramCompleted: Set<NSRange> = []
     var emojiResolver: ([String], BlockOperation) -> [String: String]? = { names, operation in
         try? EmojiShortcodeResolver.resolve(names, isCancelled: { operation.isCancelled })
@@ -858,7 +864,7 @@ final class MarkdownPresentationController {
         let location = NSPoint(x: point.x - textView.textContainerOrigin.x, y: point.y - textView.textContainerOrigin.y)
         func contains(_ range: NSRange) -> Bool {
             guard NSMaxRange(range) <= (textView.textStorage?.length ?? 0),
-                  !(layout.foldedRange.map { NSIntersectionRange($0, range).length > 0 } ?? false) else { return false }
+                  !layout.intersectsFoldedRange(range) else { return false }
             let glyphs = layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
             return layout.boundingRect(forGlyphRange: glyphs, in: container).contains(location)
         }
@@ -2504,6 +2510,22 @@ final class MarkdownPresentationController {
               let resource = diagramResources[diagram.range], layout.canDisplayMarkdownMedia(diagram.range) else { return nil }
         return DiagramResource(range: diagram.range, image: resource.image, svg: resource.svg, document: document,
                                revision: revision, generation: generation, selection: view.selectedRanges)
+    }
+
+    func imageResource(at point: NSPoint) -> ImageResource? {
+        guard let view = textView, let container = view.textContainer, let layout, let document,
+              isActive, enabled, !hasMarkedText, currentRevision?() == revision,
+              let location = layout.markdownImageLocation(at: NSPoint(x: point.x - view.textContainerOrigin.x,
+                                                                       y: point.y - view.textContainerOrigin.y), in: container),
+              let image = presentation?.images.first(where: { $0.range.location == location }),
+              layout.canDisplayMarkdownMedia(image.range) else { return nil }
+        return ImageResource(image: image, document: document, revision: revision, generation: generation)
+    }
+
+    func isCurrentImageResource(_ resource: ImageResource) -> Bool {
+        isActive && enabled && !hasMarkedText && document === resource.document && revision == resource.revision
+            && generation == resource.generation && currentRevision?() == resource.revision
+            && presentation?.images.contains(resource.image) == true
     }
 
     func isCurrentDiagramResource(_ resource: DiagramResource) -> Bool {

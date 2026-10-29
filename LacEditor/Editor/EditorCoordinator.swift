@@ -112,6 +112,7 @@ extension EditorTextView {
         weak var scrollView: NSScrollView?
         weak var foldLayoutManager: FoldLayoutManager?
         var magnificationDidChange: ((CGFloat) -> Void)?
+        var requestAIImageEdit: ((AIImageEditRequest) -> Void)?
         private var pendingMagnification: CGFloat?
         private var applyingMagnification = false
         private var lastObservedMagnification: CGFloat = 1
@@ -225,6 +226,7 @@ extension EditorTextView {
         private var writingGrammarEnabled = false
         private var isApplyingAIGenerated = false
         private var pendingFoldSelection: NSRange?
+        private var automaticMediaFoldTask: Task<Void, Never>?
         private var highlightedRevision: UInt?
         private var appliedTreeChangeRevision: UInt?
         private var highlightedLanguage: EditorLanguage?
@@ -566,6 +568,7 @@ extension EditorTextView {
             delimiterMatchQueue.cancelAllOperations()
             document.taskCoordinator.cancel(.delimiterMatch)
             document.taskCoordinator.cancel(.folding)
+            automaticMediaFoldTask?.cancel()
             document.taskCoordinator.cancel(.aiCompletion)
             rulerRefreshWorkItem?.cancel()
             liveResizeLayoutWorkItem?.cancel()
@@ -1156,12 +1159,37 @@ extension EditorTextView {
         }
 
         private func diagramMenu(at point: NSPoint) -> [NSMenuItem] {
-            guard let controller = markdownPresentation, let resource = controller.diagramResource(at: point),
-                  controller.isCurrentDiagramResource(resource) else { return [] }
+            guard let controller = markdownPresentation else { return [] }
+            if let resource = controller.imageResource(at: point), controller.isCurrentImageResource(resource),
+               aiFeatures.contains(.imageEdit), requestAIImageEdit != nil {
+                let edit = NSMenuItem(title: L10n.tr("使用 AI 编辑图片"), action: #selector(editImageWithAI(_:)), keyEquivalent: "")
+                edit.target = self
+                edit.representedObject = resource
+                return [edit]
+            }
+            guard let resource = controller.diagramResource(at: point), controller.isCurrentDiagramResource(resource) else { return [] }
             let copy = NSMenuItem(title: L10n.tr("复制图表为图片"), action: #selector(copyDiagram(_:)), keyEquivalent: "")
             let save = NSMenuItem(title: L10n.tr("图表另存为…"), action: #selector(saveDiagram(_:)), keyEquivalent: "")
             for item in [copy, save] { item.target = self; item.representedObject = resource }
             return [copy, save]
+        }
+
+        @objc private func editImageWithAI(_ sender: NSMenuItem) {
+            guard let resource = sender.representedObject as? MarkdownPresentationController.ImageResource,
+                  markdownPresentation?.isCurrentImageResource(resource) == true,
+                  let textView, let storage = textView.textStorage, let requestAIImageEdit else { return }
+            let displayRange = resource.image.range
+            let sourceRange = markdownImageProjectionEnabled
+                ? markdownImageProjection.sourceRange(for: displayRange, in: storage.string)
+                : displayRange
+            let snapshot = document.synchronizedSnapshot()
+            let source = snapshot.text as NSString
+            guard snapshot.revision == resource.revision, sourceRange.location <= source.length,
+                  sourceRange.length <= source.length - sourceRange.location else { return }
+            let address = markdownImageProjection.source(for: resource.image.url) ?? resource.image.url
+            requestAIImageEdit(AIImageEditRequest(documentID: document.id, revision: snapshot.revision,
+                                                   range: sourceRange, originalMarkdown: source.substring(with: sourceRange),
+                                                   address: address, documentURL: document.url))
         }
 
         private func diagramBitmap(_ resource: MarkdownPresentationController.DiagramResource, type: NSBitmapImageRep.FileType) -> Data? {
@@ -3104,6 +3132,7 @@ extension EditorTextView {
             )
             updateTableCellWritingDirection()
             updateTableCellTaskStrike()
+            scheduleAutomaticMediaFolds()
         }
 
         private func updateSyntaxOptions() {
@@ -3467,6 +3496,7 @@ extension EditorTextView {
                 }
                 cancelPendingHighlight()
                 cancelFoldTask()
+                automaticMediaFoldTask?.cancel()
                 return
             }
             textView?.requestsFirstResponderWhenAttached = true
@@ -3475,6 +3505,7 @@ extension EditorTextView {
             scheduleHighlight(delay: 0)
             scheduleDelimiterMatch(delay: 0)
             scheduleTextCodecSuggestion(delay: 0.18)
+            scheduleAutomaticMediaFolds()
             DispatchQueue.main.async { [weak self] in
                 guard let self, isActive, let textView, let window = textView.window else {
                     return
@@ -3509,6 +3540,7 @@ extension EditorTextView {
             )
             document.statusMessage = nil
             clearFold()
+            scheduleAutomaticMediaFolds()
             refreshRuler()
             updateCursor()
             scheduleDelimiterMatch()
@@ -3969,6 +4001,7 @@ extension EditorTextView {
                 cancelDelimiterMatch(clearHighlight: true)
                 return
             }
+            if let selection = textView?.selectedRange() { clearFoldIfNeeded(toReveal: selection) }
             markdownPresentation?.selectionChanged()
             textView?.needsDisplay = true
             invalidateEntireRuler(
@@ -4000,6 +4033,7 @@ extension EditorTextView {
                 cancelDelimiterMatch(clearHighlight: true)
                 return
             }
+            if let selection = textView?.selectedRange() { clearFoldIfNeeded(toReveal: selection) }
             markdownPresentation?.selectionChanged()
             textView?.needsDisplay = true
             invalidateEntireRuler(
@@ -4682,12 +4716,17 @@ extension EditorTextView {
                   !textView.hasMarkedText(),
                   let foldLayoutManager else { return }
             cancelFoldTask()
+            let selection = textView.selectedRange()
+            if let media = FoldService.mediaPayloadRange(in: textView.string, at: selection.location) {
+                foldLayoutManager.toggleAutomaticMediaFold(media)
+                refreshFoldLayout()
+                return
+            }
             if foldLayoutManager.foldedRange != nil {
                 clearFold()
                 return
             }
             let snapshot = textView.string
-            let selection = textView.selectedRange()
             pendingFoldSelection = selection
             let revision = contentRevision
             let language = document.language
@@ -4738,6 +4777,10 @@ extension EditorTextView {
         }
 
         private func clearFoldIfNeeded(toReveal range: NSRange) {
+            if let layout = foldLayoutManager,
+               layout.removeAutomaticMediaFold(containing: range.location) {
+                refreshFoldLayout()
+            }
             guard let foldedRange = foldLayoutManager?.foldedRange,
                   NSIntersectionRange(foldedRange, range).length > 0 ||
                     (range.length == 0 && NSLocationInRange(range.location, foldedRange)) else { return }
@@ -4755,6 +4798,34 @@ extension EditorTextView {
             markdownPresentation?.foldGeometryChanged()
             ruler?.invalidateHashMarks()
             ruler?.needsDisplay = true
+        }
+
+        private func scheduleAutomaticMediaFolds() {
+            automaticMediaFoldTask?.cancel()
+            guard isActive, document.isFoldingEnabled, currentLanguage == .markdown,
+                  !document.isMarkdownFormatted, let textView else {
+                foldLayoutManager?.setAutomaticMediaFoldedRanges([])
+                return
+            }
+            let snapshot = textView.string
+            let revision = contentRevision
+            automaticMediaFoldTask = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(80))
+                guard !Task.isCancelled else { return }
+                let ranges = await Task.detached(priority: .utility) {
+                    FoldService.mediaPayloadRanges(in: snapshot, isCancelled: { Task.isCancelled })
+                }.value
+                guard !Task.isCancelled, let self, self.isActive,
+                      self.contentRevision == revision, self.currentLanguage == .markdown,
+                      !self.document.isMarkdownFormatted, self.document.isFoldingEnabled else { return }
+                let selection = self.textView?.selectedRange()
+                let visibleRanges = ranges.filter { range in
+                    guard let selection else { return true }
+                    return !(selection.location >= range.location && selection.location <= NSMaxRange(range))
+                }
+                self.foldLayoutManager?.setAutomaticMediaFoldedRanges(visibleRanges)
+                self.refreshFoldLayout()
+            }
         }
     }
 }

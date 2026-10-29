@@ -18,6 +18,12 @@ enum FoldService {
         let nsText = text as NSString
         guard cursor <= nsText.length else { return nil }
         let currentLine = nsText.lineRange(for: NSRange(location: cursor, length: 0))
+        let mediaRanges = mediaPayloadRanges(in: nsText, searchRange: currentLine)
+        if let media = mediaRanges.first(where: {
+            cursor >= $0.location && cursor <= NSMaxRange($0)
+        }) ?? mediaRanges.first {
+            return media
+        }
         let line = nsText.substring(with: currentLine)
         guard let match = line.range(of: #"^(#{1,6})\s+"#, options: .regularExpression) else { return nil }
         let level = line[match].prefix { $0 == "#" }.count
@@ -36,6 +42,57 @@ enum FoldService {
         let bodyStart = NSMaxRange(currentLine)
         guard end > bodyStart else { return nil }
         return NSRange(location: bodyStart, length: end - bodyStart)
+    }
+
+    static func mediaPayloadRanges(in text: String, isCancelled: () -> Bool = { false }) -> [NSRange] {
+        let source = text as NSString
+        return mediaPayloadRanges(in: source, searchRange: NSRange(location: 0, length: source.length), isCancelled: isCancelled)
+    }
+
+    static func mediaPayloadRange(in text: String, at cursor: Int) -> NSRange? {
+        let source = text as NSString
+        guard cursor >= 0, cursor <= source.length else { return nil }
+        let line = source.lineRange(for: NSRange(location: cursor, length: 0))
+        let ranges = mediaPayloadRanges(in: source, searchRange: line)
+        return ranges.first(where: { cursor >= $0.location && cursor <= NSMaxRange($0) }) ?? ranges.first
+    }
+
+    private static func mediaPayloadRanges(in text: NSString, searchRange: NSRange,
+                                           isCancelled: () -> Bool = { false }) -> [NSRange] {
+        let minimumPayloadLength = 256
+        var search = searchRange
+        var result: [NSRange] = []
+        while search.length > 0 {
+            if isCancelled() { return [] }
+            let marker = text.range(of: "data:", options: .caseInsensitive, range: search)
+            guard marker.location != NSNotFound else { break }
+            let headerStart = NSMaxRange(marker)
+            let remaining = NSRange(location: headerStart, length: NSMaxRange(searchRange) - headerStart)
+            let comma = text.range(of: ",", range: remaining)
+            if comma.location != NSNotFound, comma.location - headerStart <= 128 {
+                let header = text.substring(with: NSRange(location: headerStart, length: comma.location - headerStart)).lowercased()
+                let isMedia = header.hasPrefix("image/") || header.hasPrefix("audio/")
+                    || header.hasPrefix("video/") || header.hasPrefix("application/pdf")
+                if isMedia, header.split(separator: ";").dropFirst().contains("base64") {
+                    let payloadStart = NSMaxRange(comma)
+                    var payloadEnd = payloadStart
+                    while payloadEnd < NSMaxRange(searchRange), isBase64(text.character(at: payloadEnd)) {
+                        payloadEnd += 1
+                        if (payloadEnd - payloadStart).isMultiple(of: 16_384), isCancelled() { return [] }
+                    }
+                    let payload = NSRange(location: payloadStart, length: payloadEnd - payloadStart)
+                    if payload.length >= minimumPayloadLength { result.append(payload) }
+                }
+            }
+            let next = NSMaxRange(marker)
+            search = NSRange(location: next, length: NSMaxRange(searchRange) - next)
+        }
+        return result
+    }
+
+    private static func isBase64(_ value: unichar) -> Bool {
+        (65...90).contains(value) || (97...122).contains(value) || (48...57).contains(value)
+            || value == 43 || value == 47 || value == 61 || value == 45 || value == 95
     }
 
     private static func jsonRange(in text: String, at cursor: Int, isCancelled: () -> Bool) -> NSRange? {

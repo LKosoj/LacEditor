@@ -36,6 +36,7 @@ struct EditorTextView: NSViewRepresentable {
     var markdownTOCMaxLevel = 6
     var viewMagnification: CGFloat = 1
     var magnificationDidChange: ((CGFloat) -> Void)? = nil
+    var requestAIImageEdit: ((AIImageEditRequest) -> Void)? = nil
 
     static func applyWritingChecks(to textView: NSTextView, spellingEnabled: Bool, grammarEnabled: Bool) {
         guard !textView.hasMarkedText() else { return }
@@ -63,6 +64,7 @@ struct EditorTextView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         context.coordinator.updateMathOptions(.init(physics: aiPreferences?.mathPhysicsEnabled ?? true,
                                                     numbering: aiPreferences?.mathNumbering ?? .none))
+        context.coordinator.requestAIImageEdit = requestAIImageEdit
         if let cachedView = sessionStore.cachedView(for: document.id) {
             context.coordinator.configureWritingChecks(spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
             context.coordinator.configureAIAssistance(preferences: aiPreferences)
@@ -260,12 +262,14 @@ struct EditorTextView: NSViewRepresentable {
         coordinator.updateActivity(false)
         coordinator.textView?.paragraphStylesChangedHandler = nil
         coordinator.textView?.diagramMenuHandler = nil
+        coordinator.requestAIImageEdit = nil
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.updateMathOptions(.init(physics: aiPreferences?.mathPhysicsEnabled ?? true,
                                                     numbering: aiPreferences?.mathNumbering ?? .none))
         guard let textView = context.coordinator.textView else { return }
+        context.coordinator.requestAIImageEdit = requestAIImageEdit
         context.coordinator.magnificationDidChange = magnificationDidChange
         context.coordinator.updateViewMagnification(viewMagnification)
         textView.remoteImageTransferEnabled = remoteImageTransferEnabled

@@ -34,13 +34,13 @@ struct JinaClient {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let key, !key.isEmpty { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.httpBody = try JSONSerialization.data(withJSONObject: body.mapValues(AIRequestMediaSanitizer.sanitize))
         let data: Data
         do {
             let (result, response) = try await session.data(for: request, delegate: JinaRedirectDelegate())
             try Task.checkCancellation()
             guard let response = response as? HTTPURLResponse else { throw AIError.invalidResponse }
-            guard (200..<300).contains(response.statusCode) else { throw AIError.http(response.statusCode) }
+            guard (200..<300).contains(response.statusCode) else { throw AIError.http(status: response.statusCode, data: result) }
             data = result
         } catch is CancellationError { throw CancellationError() }
         catch let error as URLError where error.code == .cancelled { throw CancellationError() }

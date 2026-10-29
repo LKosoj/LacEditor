@@ -10,7 +10,7 @@ enum AIMessageAction: Equatable {
         guard let error = error as? AIError else { return nil }
         switch error {
         case .disabled, .invalidConfiguration, .keychain: return .openSettings
-        case .http(let status): return status == 401 || status == 403 ? .openSettings : .retry
+        case .http(let status, _): return status == 401 || status == 403 ? .openSettings : .retry
         case .network, .invalidResponse: return .retry
         case .refused: return nil
         }
