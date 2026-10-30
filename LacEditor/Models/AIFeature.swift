@@ -27,17 +27,10 @@ enum AIFeature: String, CaseIterable, Identifiable, Codable {
         case .compareVersions: L10n.tr("比较文本版本")
         case .customCheck: L10n.tr("自定义检查")
         case .recognizeDocument: L10n.tr("识别图片或 PDF")
-        case .voiceDraft: L10n.tr("语音草稿")
+        case .voiceDraft: L10n.tr("语音听写")
         case .mermaid: L10n.tr("生成 Mermaid 图表")
         case .ask: L10n.tr("向文档提问")
         case .agent: L10n.tr("AI 代理")
-        }
-    }
-
-    var isBackground: Bool {
-        switch self {
-        case .clarity, .consistency, .readerReview, .structure, .summary, .metadata, .completion: true
-        default: false
         }
     }
 
@@ -59,7 +52,7 @@ enum AIFeature: String, CaseIterable, Identifiable, Codable {
 
     var isDocumentTool: Bool {
         switch self {
-        case .contextReview, .compareVersions, .customCheck, .recognizeDocument, .voiceDraft, .mermaid, .ask, .agent: true
+        case .contextReview, .compareVersions, .customCheck, .recognizeDocument, .mermaid, .ask, .agent: true
         default: false
         }
     }
@@ -117,7 +110,7 @@ extension AIFeature {
         case .table: L10n.tr("需要：选中的文本")
         case .clarity, .structure, .summary, .metadata, .consistency, .tasksAndDecisions: L10n.tr("需要：选中的文本，没有选区时使用整篇文档")
         case .rewrite: L10n.tr("需要：选中的文本；选择「调整语气」时还需填写期望的语气")
-        case .completion: L10n.tr("需要：光标前的文字（需开启后台 AI 功能）")
+        case .completion: L10n.tr("需要：光标前的文字")
         case .readerReview: L10n.tr("需要：选中的文本或整篇文档；可填写目标读者，留空则按普通读者")
         case .sources: L10n.tr("需要：一条简短的网页搜索查询（需启用 Jina 搜索）")
         case .translation: L10n.tr("需要：选中的文本和目标语言")
@@ -128,7 +121,7 @@ extension AIFeature {
         case .compareVersions: L10n.tr("需要：两个要比较的文本版本")
         case .customCheck: L10n.tr("需要：一条自定义检查规则")
         case .recognizeDocument: L10n.tr("需要：图片或 PDF 文件")
-        case .voiceDraft: L10n.tr("需要：麦克风录音或音频文件")
+        case .voiceDraft: L10n.tr("需要：麦克风；点击工具栏的麦克风按钮开始录音，再次点击停止")
         case .mermaid: L10n.tr("需要：选中的文本，并说明要绘制的图表")
         case .ask: L10n.tr("需要：一个问题，以及当前文档（选区或全文）、当前窗口已打开的文档或所选文件")
         case .agent: L10n.tr("需要：一个任务。代理会自行读取当前窗口已打开的文档和工作文件夹中的文件，读取的内容会发送给 AI 服务器")
@@ -158,14 +151,12 @@ extension AIFeature {
         case .compareVersions: L10n.tr("结果：对两个版本差异的说明")
         case .customCheck: L10n.tr("结果：按该规则生成的检查报告")
         case .recognizeDocument: L10n.tr("结果：识别出的文字，可插入文档")
-        case .voiceDraft: L10n.tr("结果：转写出的文字，可插入文档")
+        case .voiceDraft: L10n.tr("结果：识别并整理后的文字，插入光标处")
         case .mermaid: L10n.tr("结果：Mermaid 图表代码，可插入文档")
         }
     }
 
     var detail: String { needs + "\n" + result }
-
-    var opensPanelFirst: Bool { self == .translation || self == .readerReview || isDocumentTool }
 }
 
 enum AIRewriteMode: String, CaseIterable, Identifiable {

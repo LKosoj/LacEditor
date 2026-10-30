@@ -251,7 +251,9 @@ final class WindowAndSessionTests: XCTestCase {
         let contentView = try XCTUnwrap(window.contentView)
         let split = try XCTUnwrap(findSplit(contentView))
         let sidebar = split.splitViewItems[0]
-        XCTAssertTrue(split.splitViewItems[1].topAlignedAccessoryViewControllers.isEmpty)
+        let accessories = split.splitViewItems[1].topAlignedAccessoryViewControllers
+        XCTAssertEqual(accessories.count, 1)
+        XCTAssertTrue(accessories.first?.isHidden == true)
         for size in [NSSize(width: 900, height: 560), NSSize(width: 1120, height: 720)] {
             window.setContentSize(size)
             try await Task.sleep(for: .milliseconds(100))
@@ -261,6 +263,10 @@ final class WindowAndSessionTests: XCTestCase {
                            "The split view must reach behind the titlebar")
             XCTAssertGreaterThan(split.splitViewItems[1].viewController.view.visibleRect.width, 200)
         }
+        state.presentFindReplace(mode: .find)
+        XCTAssertFalse(accessories.first?.isHidden ?? true)
+        state.dismissFindReplace()
+        XCTAssertTrue(accessories.first?.isHidden == true)
         sidebar.isCollapsed = true // Same entry point as AppKit's toolbar button.
         XCTAssertFalse(state.isSidebarVisible)
         state.newDocument()

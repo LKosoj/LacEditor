@@ -185,4 +185,49 @@ final class ReadingModeTests: XCTestCase {
         XCTAssertTrue(document.statusMessageIsError)
         XCTAssertEqual(document.statusMessage, L10n.tr("阅读模式下无法修改"))
     }
+
+    func testExitToSourceLeavesReadingAndShowsSource() throws {
+        for initial in [false, true] {
+            let document = EditorDocument(text: "# a", language: .markdown)
+            document.isMarkdownFormatted = initial
+            let (state, _) = try appState(document, suite: "LacEditorReading.\(UUID())")
+            state.toggleReadingMode()
+            XCTAssertTrue(document.isReadingMode)
+            state.exitReadingModeToSource()
+            XCTAssertFalse(document.isReadingMode)
+            XCTAssertFalse(document.isMarkdownFormatted)
+        }
+    }
+
+    func testExitToSourceDoesNothingOutsideReadingMode() throws {
+        let document = EditorDocument(text: "# a", language: .markdown)
+        document.isMarkdownFormatted = true
+        let (state, _) = try appState(document, suite: "LacEditorReading.\(UUID())")
+        state.exitReadingModeToSource()
+        XCTAssertFalse(document.isReadingMode)
+        XCTAssertTrue(document.isMarkdownFormatted)
+    }
+
+    func testExitToSourceRespectsBusyDocument() throws {
+        let document = EditorDocument(text: "# a", language: .markdown)
+        let (state, _) = try appState(document, suite: "LacEditorReading.\(UUID())")
+        state.toggleReadingMode()
+        document.ioState = .saving
+        state.exitReadingModeToSource()
+        XCTAssertTrue(document.isReadingMode)
+        XCTAssertTrue(document.isMarkdownFormatted)
+    }
+
+    func testReadingModeHidesInlineRevealInSource() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let text = try String(
+            contentsOf: root.appendingPathComponent("LacEditor/Editor/MarkdownPresentationController.swift"),
+            encoding: .utf8
+        )
+        for signature in ["private func inlineSelection() -> NSRange? {", "private func revealedRange() -> NSRange? {"] {
+            let start = try XCTUnwrap(text.range(of: signature))
+            XCTAssertTrue(text[start.upperBound...].prefix(120).contains("document?.isReadingMode != true"), signature)
+        }
+        XCTAssertTrue(text.contains("appliedReadingMode != document.isReadingMode"))
+    }
 }

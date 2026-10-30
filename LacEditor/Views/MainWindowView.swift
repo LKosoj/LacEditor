@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -33,8 +34,6 @@ struct MainWindowView: View {
     @ViewBuilder
     private var editorWorkspace: some View {
         VStack(spacing: 0) {
-            FindBarHost(state: appState.findReplace)
-
             if let selectedDocument = appState.selectedDocument {
                 HSplitView {
                 DocumentEditorPane(
@@ -281,6 +280,15 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         contentItem.minimumThickness = 420
         controller.addSplitViewItem(sidebarItem)
         controller.addSplitViewItem(contentItem)
+        let findBarAccessory = FindBarAccessoryController(
+            rootView: AnyView(
+                FindBarHost(state: appState.findReplace)
+                    .environmentObject(appState)
+                    .environmentObject(windowManager)
+            )
+        )
+        findBarAccessory.isHidden = !appState.findReplace.isBarVisible
+        contentItem.addTopAlignedAccessoryViewController(findBarAccessory)
         controller.splitView.dividerStyle = .thin
         controller.splitView.isVertical = true
         controller.view.wantsLayer = true
@@ -296,6 +304,8 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         context.coordinator.sidebarController = sidebarController
         context.coordinator.contentController = contentController
         context.coordinator.sidebarItem = sidebarItem
+        context.coordinator.findBarAccessory = findBarAccessory
+        context.coordinator.observeFindBarVisibility(appState: appState)
         context.coordinator.applyCollapseState(
             isVisible: appState.isSidebarEffectivelyVisible
         )
@@ -330,6 +340,8 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         var sidebarController: NSHostingController<AnyView>?
         var contentController: NSHostingController<AnyView>?
         weak var sidebarItem: NSSplitViewItem?
+        weak var findBarAccessory: NSSplitViewItemAccessoryViewController?
+        private var findBarObservation: AnyCancellable?
         private var collapseObservation: NSKeyValueObservation?
         private var splitResizeObservation: NSObjectProtocol?
         private var isApplyingCollapseState = false
@@ -358,6 +370,16 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
             }
         }
 
+        func observeFindBarVisibility(appState: AppState) {
+            // AppState does not republish FindReplaceState, so updateNSViewController
+            // is not called when the bar is shown or hidden.
+            findBarObservation = appState.findReplace.$isBarVisible
+                .removeDuplicates()
+                .sink { [weak self] isVisible in
+                    self?.findBarAccessory?.isHidden = !isVisible
+                }
+        }
+
         private func synchronizeCollapseState(item: NSSplitViewItem, appState: AppState?) {
             guard let appState, !isDismantling, !isApplyingCollapseState,
                   !appState.isDistractionFree else { return }
@@ -369,6 +391,7 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
 
         func stopObservingCollapseState() {
             isDismantling = true
+            findBarObservation = nil
             collapseObservation?.invalidate()
             collapseObservation = nil
             if let splitResizeObservation {
@@ -386,6 +409,26 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         }
     }
 
+}
+
+/// Hosts the find bar as a top accessory of the content split item: AppKit
+/// reserves its height in the safe area of the scrolling panes below.
+@MainActor
+private final class FindBarAccessoryController: NSSplitViewItemAccessoryViewController {
+    private let hostingView: NSHostingView<AnyView>
+
+    init(rootView: AnyView) {
+        hostingView = NSHostingView(rootView: rootView)
+        // Report only the ideal size, so the one-row and two-row (replace) bar
+        // change the accessory height without imposing a minimum width.
+        hostingView.sizingOptions = [.intrinsicContentSize]
+        hostingView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func loadView() { view = hostingView }
 }
 
 private struct DocumentEditorPane: View {

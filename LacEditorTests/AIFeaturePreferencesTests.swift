@@ -252,15 +252,12 @@ final class AIFeaturePreferencesTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let preferences = AppPreferences(defaults: defaults)
         XCTAssertTrue(preferences.aiFeatures.isEmpty)
-        XCTAssertFalse(preferences.aiBackgroundEnabled)
         XCTAssertFalse(preferences.systemSpellingEnabled)
         XCTAssertFalse(preferences.systemGrammarEnabled)
         preferences.aiFeatures = [.clarity, .translation]
-        preferences.aiBackgroundEnabled = true
         preferences.systemGrammarEnabled = true
         let restored = AppPreferences(defaults: defaults)
         XCTAssertEqual(restored.aiFeatures, [.clarity, .translation])
-        XCTAssertTrue(restored.aiBackgroundEnabled)
         XCTAssertTrue(restored.systemGrammarEnabled)
         XCTAssertFalse(restored.systemSpellingEnabled)
         XCTAssertFalse(restored.aiConfiguration.text.isEnabled)
@@ -364,6 +361,56 @@ final class AIFeaturePreferencesTests: XCTestCase {
         let again = AIFeatureMigration.migrate(features: result.features, models: result.models)
         XCTAssertFalse(again.changed)
         XCTAssertEqual(again.features, ["ask"])
+    }
+
+    @MainActor
+    func testBackgroundSwitchMigrationKeepsCompletionWhenBackgroundWasOn() throws {
+        let suite = "LacEditor-MigrateBackground-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(try JSONEncoder().encode(["completion", "clarity"]), forKey: "aiFeatures")
+        defaults.set(true, forKey: "aiBackgroundEnabled")
+        let preferences = AppPreferences(defaults: defaults)
+        XCTAssertEqual(preferences.aiFeatures, [.completion, .clarity])
+        XCTAssertNil(defaults.object(forKey: "aiBackgroundEnabled"))
+        XCTAssertTrue(defaults.bool(forKey: "aiBackgroundRemoved"))
+    }
+
+    @MainActor
+    func testBackgroundSwitchMigrationDropsCompletionWhenBackgroundWasOff() throws {
+        let suite = "LacEditor-MigrateBackground-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(try JSONEncoder().encode(["completion", "clarity"]), forKey: "aiFeatures")
+        defaults.set(false, forKey: "aiBackgroundEnabled")
+        let preferences = AppPreferences(defaults: defaults)
+        XCTAssertEqual(preferences.aiFeatures, [.clarity])
+        XCTAssertNil(defaults.object(forKey: "aiBackgroundEnabled"))
+        XCTAssertTrue(defaults.bool(forKey: "aiBackgroundRemoved"))
+        XCTAssertEqual(AppPreferences(defaults: defaults).aiFeatures, [.clarity])
+    }
+
+    @MainActor
+    func testBackgroundSwitchMigrationDropsCompletionWhenBackgroundKeyIsMissing() throws {
+        let suite = "LacEditor-MigrateBackground-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(try JSONEncoder().encode(["completion", "clarity"]), forKey: "aiFeatures")
+        let preferences = AppPreferences(defaults: defaults)
+        XCTAssertEqual(preferences.aiFeatures, [.clarity])
+        XCTAssertTrue(defaults.bool(forKey: "aiBackgroundRemoved"))
+    }
+
+    @MainActor
+    func testBackgroundSwitchMigrationRunsOnlyOnce() throws {
+        let suite = "LacEditor-MigrateBackground-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(try JSONEncoder().encode(["completion", "clarity"]), forKey: "aiFeatures")
+        let preferences = AppPreferences(defaults: defaults)
+        XCTAssertEqual(preferences.aiFeatures, [.clarity])
+        preferences.aiFeatures.insert(.completion)
+        XCTAssertEqual(AppPreferences(defaults: defaults).aiFeatures, [.clarity, .completion])
     }
 
     @MainActor

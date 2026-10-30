@@ -59,6 +59,7 @@ final class AIClientTests: XCTestCase {
         let client = makeClient()
         AIURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.absoluteString, "https://example.com/gateway/v1/models")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Title"), "KosLacEditor")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-key")
             return (200, Data(#"{"data":[{"id":"one"},{"id":"two"}]}"#.utf8))
         }
@@ -66,6 +67,7 @@ final class AIClientTests: XCTestCase {
         XCTAssertEqual(models, ["one", "two"])
         AIURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.path, "/gateway/v1/responses")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Title"), "KosLacEditor")
             let body = try self.body(request)
             XCTAssertEqual(body["model"] as? String, "test-model")
             XCTAssertEqual(body["input"] as? String, "hello")
@@ -82,6 +84,7 @@ final class AIClientTests: XCTestCase {
         AIURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.path, "/gateway/v1/chat/completions")
             XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Title"), "KosLacEditor")
             let messages = try XCTUnwrap(try self.body(request)["messages"] as? [[String: String]])
             XCTAssertEqual(messages.last?["content"], "hello")
             return (200, Data(#"{"choices":[{"finish_reason":"stop","message":{"content":"answer"}}]}"#.utf8))
@@ -90,6 +93,7 @@ final class AIClientTests: XCTestCase {
         XCTAssertEqual(text, "answer")
         AIURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.path, "/gateway/v1/decisions")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Title"), "KosLacEditor")
             let body = try self.body(request)
             let questions = try XCTUnwrap(body["questions"] as? [[String: String]])
             XCTAssertEqual(questions.first?["name"], "result")
@@ -129,9 +133,11 @@ final class AIClientTests: XCTestCase {
         AIURLProtocol.handler = { request in
             if request.url?.host == "images.example.com" {
                 XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+                XCTAssertNil(request.value(forHTTPHeaderField: "X-Title"))
                 return (200, Data(base64Encoded: png)!)
             }
             XCTAssertEqual(request.url?.path, "/gateway/v1/images/generations")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Title"), "KosLacEditor")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer key")
             return (200, Data(#"{"data":[{"url":"https://images.example.com/image.png"}]}"#.utf8))
         }
@@ -263,6 +269,7 @@ final class AIClientTests: XCTestCase {
         let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a1sAAAAASUVORK5CYII=")!
         AIURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.path, "/gateway/v1/images/edits")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Title"), "KosLacEditor")
             XCTAssertEqual(request.httpMethod, "POST")
             XCTAssertTrue(request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data; boundary=") == true)
             let body: Data

@@ -3,7 +3,7 @@ import XCTest
 
 final class AIDocumentToolsTests: XCTestCase {
     @MainActor
-    func testMermaidInsertionUsesUTF16AndRejectsChangedRevision() async throws {
+    func testMermaidInsertsAtCurrentCaretWithFreshRevisionOnlyInShownTab() async throws {
         let suite = "LacEditor-DocumentTools-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -14,7 +14,9 @@ final class AIDocumentToolsTests: XCTestCase {
         configuration.text.modelID = "test-model"
         preferences.aiConfiguration = configuration
         let document = EditorDocument(text: "prefix 😀乙")
-        let state = AppState(initialDocument: document, recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
+        let other = EditorDocument(text: "other")
+        let state = AppState(initialDocuments: [document, other], recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
+        state.selectedDocumentID = document.id
         let controller = AIDocumentToolsController(appState: state, generate: { _, _, _, _, _, _, _ in "graph TD\nA-->B" }, loadKey: { _, _ in nil })
         final class RevisionBox: @unchecked Sendable { var value: UInt = 3 }
         let revision = RevisionBox()
@@ -34,14 +36,24 @@ final class AIDocumentToolsTests: XCTestCase {
         controller.insert()
         XCTAssertEqual(replacement?.range, NSRange(location: 10, length: 0))
         XCTAssertEqual(replacement?.replacementText, "\n\n```mermaid\ngraph TD\nA-->B\n```")
+        XCTAssertEqual(replacement?.expectedEditorRevision, 3)
         replacement = nil
         revision.value += 1
         controller.insert()
+        XCTAssertEqual(replacement?.expectedEditorRevision, 4)
+        replacement = nil
+        state.selectedDocumentID = other.id
+        XCTAssertNotNil(controller.otherDocumentName)
+        controller.insert()
         XCTAssertNil(replacement)
+        state.selectedDocumentID = document.id
+        XCTAssertNil(controller.otherDocumentName)
+        controller.insert()
+        XCTAssertNotNil(replacement)
     }
 
     @MainActor
-    func testContextEditCancelsPendingResult() async throws {
+    func testContextEditDoesNotCancelPendingResult() async throws {
         let suite = "LacEditor-DocumentTools-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -57,7 +69,7 @@ final class AIDocumentToolsTests: XCTestCase {
         let state = AppState(initialDocuments: [target, source], recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
         let controller = AIDocumentToolsController(appState: state, generate: { _, _, _, _, _, _, _ in
             try? await Task.sleep(nanoseconds: 40_000_000)
-            return "stale"
+            return "{\"report\":\"result\",\"references\":[{\"sourceIndex\":0,\"quote\":\"source\"}]}"
         }, loadKey: { _, _ in nil })
         let center = NotificationCenter.default
         let extraction = center.addObserver(forName: EditorCommandNotification.extractTextSelection, object: nil, queue: .main) { notification in
@@ -69,8 +81,125 @@ final class AIDocumentToolsTests: XCTestCase {
         try await Task.sleep(nanoseconds: 10_000_000)
         center.post(name: EditorCommandNotification.documentContentDidChange, object: source.id)
         try await Task.sleep(nanoseconds: 70_000_000)
-        XCTAssertTrue(controller.report.isEmpty)
+        XCTAssertEqual(controller.report, "result")
         XCTAssertFalse(controller.isWorking)
+    }
+
+    @MainActor
+    private func makeTools(features: Set<AIFeature>, documents: [EditorDocument], defaults: UserDefaults,
+                           generate: @escaping (AIFeature, String, String, [AIContextSnapshot], AICustomCheck?, AIModelProfile, String?) async throws -> String) -> (AIDocumentToolsController, AppState) {
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.aiFeatures = features
+        var configuration = preferences.aiConfiguration
+        configuration.text.isEnabled = true
+        preferences.aiConfiguration = configuration
+        let state = AppState(initialDocuments: documents, recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
+        return (AIDocumentToolsController(appState: state, generate: generate, loadKey: { _, _ in nil }), state)
+    }
+
+    @MainActor
+    private func observeSelection(_ document: EditorDocument) -> NSObjectProtocol {
+        NotificationCenter.default.addObserver(forName: EditorCommandNotification.extractTextSelection, object: nil, queue: .main) { notification in
+            (notification.object as? EditorTextExtractionRequest)?.result = EditorTextSelectionSnapshot(documentID: document.id, range: NSRange(location: 0, length: 4), text: "text", editorRevision: 0, wasExplicitSelection: true)
+        }
+    }
+
+    @MainActor
+    func testEditKeepsFinishedResultAndCopyDoesNotClear() async throws {
+        let suite = "LacEditor-DocumentTools-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let document = EditorDocument(text: "text")
+        let (controller, state) = makeTools(features: [.mermaid], documents: [document], defaults: defaults) { _, _, _, _, _, _, _ in "graph TD" }
+        let observer = observeSelection(document)
+        defer { NotificationCenter.default.removeObserver(observer) }
+        controller.run(.mermaid)
+        for _ in 0..<1000 where controller.report.isEmpty { await Task.yield() }
+        document.text += " more"
+        NotificationCenter.default.post(name: EditorCommandNotification.documentContentDidChange, object: document.id)
+        controller.copy()
+        XCTAssertEqual(controller.report, "graph TD")
+        XCTAssertTrue(controller.hasResult)
+        controller.clearResult()
+        XCTAssertFalse(controller.hasResult)
+        withExtendedLifetime(state) {}
+    }
+
+    @MainActor
+    func testClearResultKeepsInputs() async throws {
+        let suite = "LacEditor-DocumentTools-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let document = EditorDocument(text: "text")
+        let (controller, state) = makeTools(features: [.mermaid], documents: [document], defaults: defaults) { _, _, _, _, _, _, _ in "graph TD" }
+        let observer = observeSelection(document)
+        defer { NotificationCenter.default.removeObserver(observer) }
+        controller.option = "keep me"
+        controller.run(.mermaid)
+        for _ in 0..<1000 where controller.report.isEmpty { await Task.yield() }
+        controller.clearResult()
+        XCTAssertEqual(controller.option, "keep me")
+        XCTAssertTrue(controller.report.isEmpty)
+        withExtendedLifetime(state) {}
+    }
+
+    @MainActor
+    func testTabSwitchKeepsToolResult() async throws {
+        let suite = "LacEditor-DocumentTools-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let first = EditorDocument(text: "text"), second = EditorDocument(text: "other")
+        let (controller, state) = makeTools(features: [.mermaid], documents: [first, second], defaults: defaults) { _, _, _, _, _, _, _ in "graph TD" }
+        var applied = false
+        let center = NotificationCenter.default
+        let selection = observeSelection(first)
+        let apply = center.addObserver(forName: EditorCommandNotification.applyRangeReplacement, object: nil, queue: .main) { notification in
+            applied = true
+            (notification.object as? EditorRangeReplacementRequest)?.wasHandled = true
+        }
+        defer { center.removeObserver(selection); center.removeObserver(apply) }
+        state.selectedDocumentID = first.id
+        controller.run(.mermaid)
+        for _ in 0..<1000 where controller.report.isEmpty { await Task.yield() }
+        state.selectedDocumentID = second.id
+        controller.selectedDocumentChanged()
+        XCTAssertEqual(controller.report, "graph TD")
+        XCTAssertEqual(controller.otherDocumentName, first.displayName)
+        controller.insert()
+        XCTAssertFalse(applied)
+        state.selectedDocumentID = first.id
+        controller.selectedDocumentChanged()
+        XCTAssertNil(controller.otherDocumentName)
+        controller.insert()
+        XCTAssertTrue(applied)
+    }
+
+    @MainActor
+    func testSettingsChangeKeepsResultAfterEdit() async throws {
+        let suite = "LacEditor-DocumentTools-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let document = EditorDocument(text: "text")
+        let (controller, state) = makeTools(features: [.mermaid], documents: [document], defaults: defaults) { _, _, _, _, _, _, _ in "graph TD" }
+        let observer = observeSelection(document)
+        defer { NotificationCenter.default.removeObserver(observer) }
+        controller.run(.mermaid)
+        for _ in 0..<1000 where controller.report.isEmpty { await Task.yield() }
+        document.text += " more"
+        state.preferences.aiFeatureModelIDs[AIFeature.summary.rawValue] = "other-model"
+        controller.settingsChanged()
+        XCTAssertEqual(controller.report, "graph TD")
+        withExtendedLifetime(state) {}
+    }
+
+    @MainActor
+    func testBlockSeparator() {
+        XCTAssertEqual(AIDocumentToolsController.blockSeparator(before: 0, in: "" as NSString), "")
+        XCTAssertEqual(AIDocumentToolsController.blockSeparator(before: 1, in: "a" as NSString), "\n\n")
+        XCTAssertEqual(AIDocumentToolsController.blockSeparator(before: 2, in: "a\n" as NSString), "\n")
+        XCTAssertEqual(AIDocumentToolsController.blockSeparator(before: 3, in: "a\n\n" as NSString), "")
+        XCTAssertEqual(AIDocumentToolsController.blockSeparator(before: 3, in: "a\r\n" as NSString), "\n")
+        XCTAssertEqual(AIDocumentToolsController.blockSeparator(before: 5, in: "a\r\n\r\n" as NSString), "")
     }
 
     @MainActor
@@ -98,63 +227,6 @@ final class AIDocumentToolsTests: XCTestCase {
         controller.settingsChanged()
         try await Task.sleep(nanoseconds: 70_000_000)
         XCTAssertTrue(controller.report.isEmpty)
-        XCTAssertFalse(controller.isWorking)
-    }
-
-    @MainActor
-    func testDisablingVoiceCancelsPendingMicrophonePermission() async throws {
-        let suite = "LacEditor-DocumentTools-\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let preferences = AppPreferences(defaults: defaults)
-        preferences.aiFeatures = [.voiceDraft]
-        let state = AppState(recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
-        let requested = expectation(description: "permission requested")
-        var reply: CheckedContinuation<Bool, Never>?
-        let recorder = AIVoiceRecorder(requestPermission: {
-            await withCheckedContinuation { continuation in
-                reply = continuation
-                requested.fulfill()
-            }
-        })
-        let controller = AIDocumentToolsController(appState: state, recorder: recorder)
-        controller.startRecording()
-        await fulfillment(of: [requested], timeout: 2)
-        preferences.aiFeatures = []
-        controller.settingsChanged()
-        reply?.resume(returning: true)
-        for _ in 0..<20 { await Task.yield() }
-        XCTAssertFalse(recorder.isRecording)
-        XCTAssertNil(recorder.recordingURL)
-        XCTAssertFalse(controller.isWorking)
-    }
-
-    @MainActor
-    func testSwitchingDocumentCancelsPendingMicrophonePermission() async throws {
-        let suite = "LacEditor-DocumentTools-\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let preferences = AppPreferences(defaults: defaults)
-        preferences.aiFeatures = [.voiceDraft]
-        let first = EditorDocument(), second = EditorDocument()
-        let state = AppState(initialDocuments: [first, second], recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
-        let requested = expectation(description: "permission requested")
-        var reply: CheckedContinuation<Bool, Never>?
-        let recorder = AIVoiceRecorder(requestPermission: {
-            await withCheckedContinuation { continuation in
-                reply = continuation
-                requested.fulfill()
-            }
-        })
-        let controller = AIDocumentToolsController(appState: state, recorder: recorder)
-        controller.startRecording()
-        await fulfillment(of: [requested], timeout: 2)
-        state.selectedDocumentID = second.id
-        controller.selectedDocumentChanged()
-        reply?.resume(returning: true)
-        for _ in 0..<20 { await Task.yield() }
-        XCTAssertFalse(recorder.isRecording)
-        XCTAssertNil(recorder.recordingURL)
         XCTAssertFalse(controller.isWorking)
     }
 
@@ -363,6 +435,32 @@ final class AIDocumentToolsTests: XCTestCase {
         XCTAssertEqual(state.selectedDocumentID, source.id)
         XCTAssertEqual(source.pendingAIContextSelection?.range, NSRange(location: 3, length: 2))
         XCTAssertEqual(source.pendingAIContextSelection?.revision, source.textRevision)
+    }
+
+    @MainActor
+    func testOpenReferenceAfterEditKeepsResult() async throws {
+        let suite = "LacEditor-DocumentTools-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let target = EditorDocument(text: "target")
+        let source = EditorDocument(text: "A😀中文")
+        let (controller, state) = makeTools(features: [.contextReview], documents: [target, source], defaults: defaults) { _, _, _, _, _, _, _ in
+            "{\"report\":\"review\",\"references\":[{\"sourceIndex\":0,\"quote\":\"中文\"}]}"
+        }
+        let observer = observeSelection(target)
+        defer { NotificationCenter.default.removeObserver(observer) }
+        state.selectedDocumentID = target.id
+        controller.inputs = [.document(source.id)]
+        controller.run(.contextReview)
+        for _ in 0..<1000 where controller.report.isEmpty { await Task.yield() }
+        let reference = try XCTUnwrap(controller.references.first)
+        source.text += "!"
+        controller.openReference(reference)
+        XCTAssertEqual(state.selectedDocumentID, target.id)
+        XCTAssertEqual(controller.messageKind, .info)
+        XCTAssertFalse(controller.message.isEmpty)
+        XCTAssertEqual(controller.report, "review")
+        XCTAssertEqual(controller.references.count, 1)
     }
 
     @MainActor

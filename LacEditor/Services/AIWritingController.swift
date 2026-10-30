@@ -36,8 +36,11 @@ final class AIWritingController: ObservableObject {
         didSet {
             let ids = Set(suggestions.map(\.id))
             diffCache = diffCache.filter { ids.contains($0.key) }
+            unavailableIDs.formIntersection(ids)
         }
     }
+    /// Правки, место которых при принятии не нашлось в живом тексте.
+    @Published private(set) var unavailableIDs: Set<UUID> = []
     @Published private(set) var references: [AIWritingReference] = []
     @Published private(set) var image: Data?
     @Published private(set) var imageEditSource: Data?
@@ -53,17 +56,7 @@ final class AIWritingController: ObservableObject {
     private weak var appState: AppState?
     private let generate: (AIFeature, String, String, AIModelProfile, String?, JinaConfiguration?, String?, String?, AIRewriteMode?) async throws -> AIWritingResult
     private let loadKey: (AIRole, String) throws -> String?
-    private struct Credentials {
-        let profile: AIModelProfile
-        let key: String?
-        let required: Bool
-    }
-    private var batchCredentials: [AIFeature: Credentials] = [:]
     private var task: Task<Void, Never>?
-    private var debounce: Task<Void, Never>?
-    private var metadataTask: Task<Void, Never>?
-    private var metadataGeneration = 0
-    private var metadataProfile: AIModelProfile?
     private var generation = 0
     private var snapshot: EditorTextSelectionSnapshot?
     private var settingsObserver: AnyCancellable?
@@ -71,8 +64,6 @@ final class AIWritingController: ObservableObject {
     private var activeKey: String?
     private var activeNeedsKey = false
     private var activeJinaConfiguration: JinaConfiguration?
-    private var isBackground = false
-    private var reportIsBackground = false
     private var activeFeatures: Set<AIFeature> = []
     private var diffCache: [UUID: (original: AttributedString, replacement: AttributedString)] = [:]
     private var imageEditRequest: AIImageEditRequest?
@@ -100,11 +91,11 @@ final class AIWritingController: ObservableObject {
         }
     }
 
-    deinit { task?.cancel(); debounce?.cancel(); metadataTask?.cancel() }
+    deinit { task?.cancel() }
 
     var enabledFeatures: [AIFeature] {
         guard let preferences = appState?.preferences else { return [] }
-        return AIFeature.allCases.filter { preferences.aiFeatures.contains($0) && $0 != .completion }
+        return AIFeature.allCases.filter { preferences.aiFeatures.contains($0) && $0 != .completion && $0 != .voiceDraft }
     }
 
     var translationTarget: String {
@@ -130,9 +121,23 @@ final class AIWritingController: ObservableObject {
     private func clearResultIfCurrent(_ target: AIFeature) {
         if pendingSend?.feature == target { pendingSend = nil; message = "" }
         guard feature == target else { return }
+        reset()
+    }
+
+    /// Снимает только показанный результат; выбранная функция и поля ввода остаются.
+    func reset() {
         cancel()
+        pendingSend = nil
         snapshot = nil; suggestions = []; references = []; report = ""; image = nil; message = ""; sentSummary = nil
         generatedAt = nil; resultRevision = nil
+    }
+
+    var hasResult: Bool { !report.isEmpty || !suggestions.isEmpty || !references.isEmpty || image != nil }
+
+    /// Название документа, которому принадлежит результат, если выбрана другая вкладка.
+    var otherDocumentName: String? {
+        guard hasResult, let snapshot, let appState, appState.selectedDocumentID != snapshot.documentID else { return nil }
+        return appState.documents.first { $0.id == snapshot.documentID }?.displayName
     }
 
     func prepare(_ feature: AIFeature) {
@@ -149,7 +154,7 @@ final class AIWritingController: ObservableObject {
     func selectRewrite(_ mode: AIRewriteMode) {
         guard let appState, appState.preferences.aiFeatures.contains(.rewrite) else { return }
         rewriteMode = mode
-        if mode.requiresOption { prepare(.rewrite) } else { run(.rewrite) }
+        prepare(.rewrite)
     }
 
     func prepareImageEdit(_ request: AIImageEditRequest) {
@@ -159,7 +164,7 @@ final class AIWritingController: ObservableObject {
         cancel()
         requestedFeature = .imageEdit; feature = .imageEdit
         imageEditRequest = request; imageDescriptionRequest = nil; imageEditSource = nil; image = nil; report = ""; suggestions = []; references = []; message = ""
-        generatedAt = nil; resultRevision = nil; isWorking = true; reportIsBackground = false
+        generatedAt = nil; resultRevision = nil; isWorking = true
         appState.isAIWritingVisible = true
         let current = generation
         task = Task { [weak self, weak document] in
@@ -191,7 +196,7 @@ final class AIWritingController: ObservableObject {
         sentSummary = nil; snapshot = nil; pendingSend = nil
         generatedAt = nil; resultRevision = nil
         activeProfile = profile; activeKey = key; activeNeedsKey = true; activeFeatures = [.imageDescription]
-        isWorking = true; reportIsBackground = false
+        isWorking = true
         appState.isAIWritingVisible = true
         let current = generation, describe = self.describe
         task = Task { [weak self, weak document] in
@@ -200,7 +205,8 @@ final class AIWritingController: ObservableObject {
                 let data = try await Self.loadImage(for: request, document: document)
                 let text = try await describe(data, profile, key)
                 guard let self, !Task.isCancelled, self.generation == current,
-                      self.currentImageRequest(self.imageDescriptionRequest, feature: .imageDescription) != nil,
+                      self.imageDescriptionRequest != nil, self.appState?.selectedDocumentID == request.documentID,
+                      self.appState?.preferences.aiFeatures.contains(.imageDescription) == true,
                       self.appState?.preferences.aiProfile(for: .imageDescription) == profile,
                       self.keyIsCurrent(key, profile: profile, role: .text, required: true) else { return }
                 self.report = text; self.generatedAt = Date(); self.resultRevision = request.revision
@@ -230,7 +236,7 @@ final class AIWritingController: ObservableObject {
         do { key = try loadKey(.image, profile.baseURL) } catch { fail(error); return }
         cancel(); imageEditRequest = request; imageEditSource = source; feature = .imageEdit; requestedFeature = .imageEdit
         activeProfile = profile; activeKey = key; activeNeedsKey = true; activeFeatures = [.imageEdit]
-        image = nil; message = ""; isWorking = true; reportIsBackground = false
+        image = nil; message = ""; isWorking = true
         let current = generation, editImage = self.editImage
         task = Task { [weak self] in
             defer { if let self, self.generation == current { self.isWorking = false } }
@@ -263,8 +269,12 @@ final class AIWritingController: ObservableObject {
     }
 
     func applyImageEdit() {
-        guard let result = image, let request = currentImageEditRequest(),
-              let input = MarkdownImageEditingService.initial(in: request.originalMarkdown as NSString, selection: NSRange(location: 0, length: (request.originalMarkdown as NSString).length)) else { return }
+        guard let result = image else { return }
+        guard let request = currentImageEditRequest(),
+              let input = MarkdownImageEditingService.initial(in: request.originalMarkdown as NSString, selection: NSRange(location: 0, length: (request.originalMarkdown as NSString).length)) else {
+            post(L10n.tr("编辑内容已变化，请重新执行转换"))
+            return
+        }
         do {
             let address: String
             if request.address.lowercased().hasPrefix("data:image/") {
@@ -317,15 +327,15 @@ final class AIWritingController: ObservableObject {
             post(L10n.tr("请输入目标语言或语气"), kind: .info)
             return
         }
-        start(feature, option: option, background: false)
+        start(feature, option: option)
     }
 
     func sendAnyway() {
         guard let pending = pendingSend else { return }
-        start(pending.feature, option: pending.option, background: false, approving: pending)
+        start(pending.feature, option: pending.option, approving: pending)
     }
 
-    private func start(_ feature: AIFeature, option: String, background: Bool, backgroundFeatures: [AIFeature] = [], approving: PendingSend? = nil) {
+    private func start(_ feature: AIFeature, option: String, approving: PendingSend? = nil) {
         guard let appState, let document = appState.selectedDocument,
               document.ioState == .idle,
               appState.preferences.aiFeatures.contains(feature) else { return }
@@ -336,7 +346,7 @@ final class AIWritingController: ObservableObject {
         let extraction = EditorTextExtractionRequest(documentID: document.id, allowsTokenAtCaret: false, allowsWholeDocument: !feature.isReplacement && feature != .illustration)
         NotificationCenter.default.post(name: EditorCommandNotification.extractTextSelection, object: extraction)
         guard let snapshot = extraction.result else {
-            if !background { post(L10n.tr("请先选择需要处理的文本"), kind: .info) }
+            post(L10n.tr("请先选择需要处理的文本"), kind: .info)
             return
         }
         if let approving, !approving.snapshot.matches(snapshot) {
@@ -347,27 +357,17 @@ final class AIWritingController: ObservableObject {
         let measured = feature != .illustration
         let bytes = !measured ? 0 : (needsKey ? AIRequestSize.bytes(snapshot.text, option) : AIRequestSize.bytes(option.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? snapshot.text : option))
         if bytes > max(AIRequestSize.threshold, approving?.bytes ?? 0) {
-            if background { return }
             pendingSend = PendingSend(feature: feature, option: option, snapshot: snapshot, bytes: bytes)
             post(AIRequestSize.warning(label: AIRequestSize.label(snapshot), bytes: bytes), kind: .info, action: .sendAnyway)
             return
         }
         pendingSend = nil
         let key: String?
-        let features = background ? backgroundFeatures : [feature]
-        var credentials: [AIFeature: Credentials] = [:]
         let searchKey: String?
         let readerKey: String?
         do {
             let store = AIKeychainStore()
             key = try needsKey ? loadKey(feature.role, profile.baseURL) : nil
-            credentials[feature] = Credentials(profile: profile, key: key, required: needsKey)
-            for currentFeature in features where currentFeature != feature {
-                let currentProfile = appState.preferences.aiProfile(for: currentFeature)
-                guard currentProfile.isEnabled else { post(L10n.tr("AI 功能已关闭"), action: .openSettings); return }
-                let currentKey = try loadKey(currentFeature.role, currentProfile.baseURL)
-                credentials[currentFeature] = Credentials(profile: currentProfile, key: currentKey, required: true)
-            }
             searchKey = try jina.flatMap { $0.searchEnabled ? try store.load(for: JinaServiceKind.search, baseURL: $0.searchEndpoint) : nil }
             readerKey = try jina.flatMap { $0.readerEnabled ? try store.load(for: JinaServiceKind.reader, baseURL: $0.readerEndpoint) : nil }
         } catch { fail(error); return }
@@ -381,13 +381,10 @@ final class AIWritingController: ObservableObject {
         sentSummary = measured ? AIRequestSize.sent(label: AIRequestSize.label(snapshot), bytes: bytes) : nil
         isWorking = true
         activeProfile = profile
-        batchCredentials = credentials
         activeKey = key
         activeNeedsKey = needsKey
         activeJinaConfiguration = jina
-        isBackground = background
-        reportIsBackground = background
-        activeFeatures = Set(background ? backgroundFeatures : [feature])
+        activeFeatures = [feature]
         let current = generation
         let taskGeneration = document.taskCoordinator.begin(.aiWriting)
         let generate = self.generate
@@ -398,33 +395,21 @@ final class AIWritingController: ObservableObject {
                 if let self, self.generation == current { self.isWorking = false }
             }
             do {
-                var skipped = 0
-                var accepted = 0
-                for currentFeature in features {
-                    try Task.checkCancellation()
-                    guard let item = credentials[currentFeature] else { return }
-                    let result = try await generate(currentFeature, snapshot.text, option, item.profile, item.key, jina, searchKey, readerKey, currentFeature == .rewrite ? mode : nil)
-                    guard let self, !Task.isCancelled, self.isCurrent(current, snapshot: snapshot, feature: currentFeature, profile: item.profile),
-                          self.activeCredentialsAreCurrent(),
-                          document.taskCoordinator.isCurrent(taskGeneration, for: .aiWriting),
-                          AIJinaCredentials.isCurrent(jina, searchKey: searchKey, readerKey: readerKey, preferences: self.appState?.preferences),
-                          self.keyIsCurrent(item.key, profile: item.profile, role: currentFeature.role, required: item.required),
-                          !background || self.appState?.preferences.aiBackgroundEnabled == true else { return }
-                    self.suggestions.append(contentsOf: result.suggestions)
-                    self.references.append(contentsOf: result.references)
-                    if !result.report.isEmpty {
-                        if !self.report.isEmpty { self.report += "\n\n" }
-                        self.report += background ? "\(currentFeature.title)\n\(result.report)" : result.report
-                    }
-                    self.image = result.image
-                    self.generatedAt = Date(); self.resultRevision = snapshot.editorRevision
-                    if currentFeature == .metadata { document.aiMetadata = result.report }
-                    skipped += result.skipped
-                    accepted += result.accepted
-                }
-                if skipped > 0, let self, !background {
-                    let allDropped = self.suggestions.isEmpty && self.references.isEmpty && (self.report.isEmpty || (feature == .sources && accepted == 0))
-                    self.post(AIRequestSize.skippedMessage(skipped, allDropped: allDropped), kind: .info)
+                let result = try await generate(feature, snapshot.text, option, profile, key, jina, searchKey, readerKey, feature == .rewrite ? mode : nil)
+                guard let self, !Task.isCancelled, self.isCurrent(current, snapshot: snapshot, feature: feature, profile: profile),
+                      self.activeCredentialsAreCurrent(),
+                      document.taskCoordinator.isCurrent(taskGeneration, for: .aiWriting),
+                      AIJinaCredentials.isCurrent(jina, searchKey: searchKey, readerKey: readerKey, preferences: self.appState?.preferences),
+                      self.keyIsCurrent(key, profile: profile, role: feature.role, required: needsKey) else { return }
+                self.suggestions.append(contentsOf: result.suggestions)
+                self.references.append(contentsOf: result.references)
+                if !result.report.isEmpty { self.report = result.report }
+                self.image = result.image
+                self.generatedAt = Date(); self.resultRevision = snapshot.editorRevision
+                if feature == .metadata { document.aiMetadata = result.report }
+                if result.skipped > 0 {
+                    let allDropped = self.suggestions.isEmpty && self.references.isEmpty && (self.report.isEmpty || (feature == .sources && result.accepted == 0))
+                    self.post(AIRequestSize.skippedMessage(result.skipped, allDropped: allDropped), kind: .info)
                 }
             } catch {
                 guard let self, !Task.isCancelled, self.isCurrent(current, snapshot: snapshot, feature: feature, profile: profile) && document.taskCoordinator.isCurrent(taskGeneration, for: .aiWriting) else { return }
@@ -452,12 +437,26 @@ final class AIWritingController: ObservableObject {
     private func activeCredentialsAreCurrent() -> Bool {
         guard let appState, let profile = activeProfile,
               appState.preferences.aiProfile(for: feature) == profile else { return false }
-        guard keyIsCurrent(activeKey, profile: profile, role: feature.role, required: activeNeedsKey) else { return false }
-        return batchCredentials.allSatisfy { feature, item in
-            appState.preferences.aiFeatures.contains(feature) &&
-            appState.preferences.aiProfile(for: feature) == item.profile &&
-            keyIsCurrent(item.key, profile: item.profile, role: feature.role, required: item.required)
+        return keyIsCurrent(activeKey, profile: profile, role: feature.role, required: activeNeedsKey)
+    }
+
+    /// Живой текст редактора и выделение с актуальной версией: версия из снимка после любой правки устарела. Диапазоны снимка и замены заданы в координатах редактора, а не текста документа. nil, если открыта другая вкладка или документ занят.
+    private func liveText(for snapshot: EditorTextSelectionSnapshot, requiresEditable: Bool = true) -> (text: NSString, selection: EditorTextSelectionSnapshot)? {
+        guard let appState, appState.selectedDocumentID == snapshot.documentID,
+              let document = appState.selectedDocument, document.ioState == .idle else { return nil }
+        let extraction = EditorTextExtractionRequest(documentID: snapshot.documentID, allowsTokenAtCaret: false, allowsInsertionPoint: true, requiresEditable: requiresEditable, includesEditorText: true)
+        NotificationCenter.default.post(name: EditorCommandNotification.extractTextSelection, object: extraction)
+        // nil: вкладка неактивна, идёт ввод marked text или текст только для чтения
+        guard let current = extraction.result else {
+            if requiresEditable { post(document.isReadingMode ? L10n.tr("阅读模式下无法修改") : L10n.tr("当前文本无法修改")) }
+            return nil
         }
+        return ((extraction.editorText ?? document.synchronizedSnapshot().text) as NSString, current)
+    }
+
+    private func place(_ suggestion: AIWritingSuggestion, snapshot: EditorTextSelectionSnapshot, in text: NSString) -> NSRange? {
+        let expected = NSRange(location: snapshot.range.location + suggestion.range.location, length: suggestion.range.length)
+        return AIWritingPlacement.locate(original: suggestion.original, expected: expected, in: text)
     }
 
     func accept(_ suggestion: AIWritingSuggestion) {
@@ -465,13 +464,19 @@ final class AIWritingController: ObservableObject {
               appState.selectedDocumentID == snapshot.documentID,
               appState.preferences.aiFeatures.contains(feature),
               activeCredentialsAreCurrent(),
-              suggestion.range.location != NSNotFound,
-              suggestion.range.location <= (snapshot.text as NSString).length,
-              suggestion.range.length <= (snapshot.text as NSString).length - suggestion.range.location else { return }
-        let range = NSRange(location: snapshot.range.location + suggestion.range.location, length: suggestion.range.length)
-        let request = EditorRangeReplacementRequest(documentID: snapshot.documentID, range: range, originalText: suggestion.original, replacementText: suggestion.replacement, expectedEditorRevision: snapshot.editorRevision, actionName: feature.title)
+              suggestions.contains(where: { $0.id == suggestion.id }),
+              let live = liveText(for: snapshot) else { return }
+        guard let range = place(suggestion, snapshot: snapshot, in: live.text) else {
+            unavailableIDs.insert(suggestion.id)
+            return
+        }
+        let request = EditorRangeReplacementRequest(documentID: snapshot.documentID, range: range, originalText: suggestion.original, replacementText: suggestion.replacement, expectedEditorRevision: live.selection.editorRevision, actionName: feature.title)
         NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
-        if !request.wasHandled { message = request.failureMessage ?? L10n.tr("编辑内容已变化，请重新执行转换") }
+        guard request.wasHandled else { message = request.failureMessage ?? L10n.tr("编辑内容已变化，请重新执行转换"); return }
+        // Остальные правки сдвигаются на разницу длин (UTF-16), считая в хранимых координатах принятой правки
+        let delta = (suggestion.replacement as NSString).length - range.length
+        let end = NSMaxRange(suggestion.range)
+        suggestions = suggestions.filter { $0.id != suggestion.id }.map { $0.range.location >= end ? $0.shifted(by: delta) : $0 }
     }
 
     /// Одна замена объемлющего диапазона и одна группа отмены: после первой правки версия редактора меняется, поэтому по очереди через accept() нельзя.
@@ -479,28 +484,35 @@ final class AIWritingController: ObservableObject {
         guard let snapshot, let appState,
               appState.selectedDocumentID == snapshot.documentID,
               appState.preferences.aiFeatures.contains(feature),
-              activeCredentialsAreCurrent() else { return }
-        let text = snapshot.text as NSString
-        let items = suggestions.filter { $0.original != $0.replacement }.sorted { $0.range.location < $1.range.location }
-        guard let first = items.first else { post(L10n.tr("转换结果与原文相同"), kind: .info); return }
+              activeCredentialsAreCurrent(),
+              let live = liveText(for: snapshot) else { return }
+        let items = suggestions.filter { $0.original != $0.replacement }
+        guard !items.isEmpty else { post(L10n.tr("转换结果与原文相同"), kind: .info); return }
+        var placed: [(suggestion: AIWritingSuggestion, range: NSRange)] = []
+        var missing = Set<UUID>()
+        for item in items {
+            if let range = place(item, snapshot: snapshot, in: live.text) { placed.append((suggestion: item, range: range)) } else { missing.insert(item.id) }
+        }
+        unavailableIDs = missing
+        placed.sort { $0.range.location < $1.range.location }
+        guard let first = placed.first else { post(L10n.tr("原文已不存在，无法应用")); return }
         var cursor = first.range.location
         var composed = ""
-        for item in items {
-            guard item.range.location != NSNotFound, item.range.location >= cursor,
-                  item.range.length >= 0, NSMaxRange(item.range) <= text.length,
-                  text.substring(with: item.range) == item.original else {
+        for (item, range) in placed {
+            guard range.location >= cursor else {
                 post(L10n.tr("建议的位置互相重叠，请逐条接受"))
                 return
             }
-            composed += text.substring(with: NSRange(location: cursor, length: item.range.location - cursor)) + item.replacement
-            cursor = NSMaxRange(item.range)
+            composed += live.text.substring(with: NSRange(location: cursor, length: range.location - cursor)) + item.replacement
+            cursor = NSMaxRange(range)
         }
         let span = NSRange(location: first.range.location, length: cursor - first.range.location)
-        let request = EditorRangeReplacementRequest(documentID: snapshot.documentID, range: NSRange(location: snapshot.range.location + span.location, length: span.length), originalText: text.substring(with: span), replacementText: composed, expectedEditorRevision: snapshot.editorRevision, actionName: feature.title)
+        let request = EditorRangeReplacementRequest(documentID: snapshot.documentID, range: span, originalText: live.text.substring(with: span), replacementText: composed, expectedEditorRevision: live.selection.editorRevision, actionName: feature.title)
         request.groupsUndo = true
         NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
-        if request.wasHandled { suggestions = [] }
-        else { message = request.failureMessage ?? L10n.tr("编辑内容已变化，请重新执行转换") }
+        guard request.wasHandled else { message = request.failureMessage ?? L10n.tr("编辑内容已变化，请重新执行转换"); return }
+        suggestions = suggestions.filter { missing.contains($0.id) }
+        if !missing.isEmpty { post(L10n.tr("已接受 %lld 处修改，%lld 处无法应用", placed.count, missing.count), kind: .info) }
     }
 
     func rejectAll() { suggestions = [] }
@@ -508,8 +520,11 @@ final class AIWritingController: ObservableObject {
     func reject(_ suggestion: AIWritingSuggestion) { suggestions.removeAll { $0.id == suggestion.id } }
 
     func reveal(_ suggestion: AIWritingSuggestion) {
-        guard let snapshot else { return }
-        let range = NSRange(location: snapshot.range.location + suggestion.range.location, length: suggestion.range.length)
+        guard let snapshot, let text = liveText(for: snapshot, requiresEditable: false)?.text else { return }
+        guard let range = place(suggestion, snapshot: snapshot, in: text) else {
+            unavailableIDs.insert(suggestion.id)
+            return
+        }
         NotificationCenter.default.post(name: EditorCommandNotification.revealSelection, object: EditorSelectionRequest(documentID: snapshot.documentID, range: range))
     }
 
@@ -518,27 +533,41 @@ final class AIWritingController: ObservableObject {
               appState.preferences.aiFeatures.contains(feature), activeCredentialsAreCurrent(),
               references.contains(where: { $0.id == reference.id }),
               reference.range.location != NSNotFound,
-              reference.range.location <= (snapshot.text as NSString).length,
-              reference.range.length <= (snapshot.text as NSString).length - reference.range.location,
-              (snapshot.text as NSString).substring(with: reference.range) == reference.quote else { return }
+              let text = liveText(for: snapshot, requiresEditable: false)?.text else { return }
         let range = NSRange(location: snapshot.range.location + reference.range.location, length: reference.range.length)
+        // Цитата сверяется с живым текстом: устаревшая цитата не открывается
+        guard NSMaxRange(range) <= text.length, text.substring(with: range) == reference.quote else { return }
         NotificationCenter.default.post(name: EditorCommandNotification.revealSelection, object: EditorSelectionRequest(documentID: snapshot.documentID, range: range))
     }
 
-    var canInsertSummary: Bool { feature == .summary && !reportIsBackground && !report.isEmpty }
+    var canInsertSummary: Bool { feature == .summary && !report.isEmpty }
 
     func insertSummary() {
-        guard canInsertSummary, let snapshot else { return }
-        accept(AIWritingSuggestion(id: UUID(), range: NSRange(location: snapshot.range.length, length: 0), original: "", replacement: "\n\n" + report, explanation: ""))
+        guard canInsertSummary else { return }
+        insertBlock(report)
     }
 
     func insertImage() {
-        guard let image, let snapshot else { return }
+        guard let image else { return }
         guard let source = CGImageSourceCreateWithData(image as CFData, nil),
               let identifier = CGImageSourceGetType(source) as String?,
               let mime = UTType(identifier)?.preferredMIMEType else { return }
-        let replacement = "\n\n![AI](data:\(mime);base64,\(image.base64EncodedString()))"
-        accept(AIWritingSuggestion(id: UUID(), range: NSRange(location: snapshot.range.length, length: 0), original: "", replacement: replacement, explanation: ""))
+        insertBlock("![AI](data:\(mime);base64,\(image.base64EncodedString()))")
+    }
+
+    /// Сводка и картинка: если текст не менялся, после исходного фрагмента, иначе в текущий курсор. Отказа из-за правки текста нет.
+    private func insertBlock(_ block: String) {
+        guard let snapshot, let appState,
+              appState.selectedDocumentID == snapshot.documentID,
+              appState.preferences.aiFeatures.contains(feature),
+              activeCredentialsAreCurrent(),
+              let live = liveText(for: snapshot) else { return }
+        let location = live.selection.editorRevision == snapshot.editorRevision ? NSMaxRange(snapshot.range) : NSMaxRange(live.selection.range)
+        guard location <= live.text.length else { return }
+        let replacement = AIDocumentToolsController.blockSeparator(before: location, in: live.text) + block
+        let request = EditorRangeReplacementRequest(documentID: snapshot.documentID, range: NSRange(location: location, length: 0), originalText: "", replacementText: replacement, expectedEditorRevision: live.selection.editorRevision, actionName: feature.title)
+        NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
+        if !request.wasHandled { message = request.failureMessage ?? L10n.tr("编辑内容已变化，请重新执行转换") }
     }
 
     func saveImage() {
@@ -576,7 +605,6 @@ final class AIWritingController: ObservableObject {
             let data = try Data(contentsOf: url)
             let key = try loadKey(.text, profile.baseURL)
             cancel(); feature = .imageDescription; imageDescriptionRequest = nil; activeProfile = profile; activeKey = key; activeNeedsKey = true; activeFeatures = [.imageDescription]; report = ""; suggestions = []; references = []; image = nil; message = ""; isWorking = true
-            reportIsBackground = false
             let current = generation, describe = self.describe
             task = Task { [weak self] in
                 defer { if let self, self.generation == current { self.isWorking = false } }
@@ -601,24 +629,20 @@ final class AIWritingController: ObservableObject {
         task?.cancel(); task = nil
         isWorking = false
         activeProfile = nil
-        batchCredentials = [:]
         activeKey = nil
         activeNeedsKey = false
         activeJinaConfiguration = nil
-        isBackground = false
         activeFeatures = []
     }
 
     func invalidate(documentID: UUID) {
         documentTools.invalidate(documentID: documentID)
         question.invalidate(documentID: documentID)
-        if snapshot?.documentID == documentID || imageEditRequest?.documentID == documentID || imageDescriptionRequest?.documentID == documentID || appState?.selectedDocumentID == documentID {
+        if snapshot?.documentID == documentID || pendingSend?.snapshot.documentID == documentID || imageEditRequest?.documentID == documentID || imageDescriptionRequest?.documentID == documentID {
             if pendingSend != nil { pendingSend = nil; message = "" }
             cancel(); snapshot = nil; suggestions = []; references = []; report = ""; image = nil; imageEditSource = nil; imageEditRequest = nil; imageDescriptionRequest = nil; sentSummary = nil
+            generatedAt = nil; resultRevision = nil
         }
-        debounce?.cancel(); debounce = nil
-        cancelMetadata()
-        generatedAt = nil; resultRevision = nil
     }
 
     /// Окно закрывается: агент не должен работать без окна.
@@ -627,75 +651,11 @@ final class AIWritingController: ObservableObject {
     func selectedDocumentChanged() {
         documentTools.selectedDocumentChanged()
         question.selectedDocumentChanged()
-        cancel(); cancelMetadata(); debounce?.cancel(); snapshot = nil; suggestions = []; references = []; report = ""; image = nil; imageEditSource = nil; imageEditRequest = nil; imageDescriptionRequest = nil
+        // Готовый результат остаётся в панели; сбрасывается только запрос, ещё идущий для прежней вкладки
+        if isWorking { reset() }
+        imageEditSource = nil; imageEditRequest = nil; imageDescriptionRequest = nil
         if pendingSend != nil { pendingSend = nil; message = "" }
-        sentSummary = nil
-        generatedAt = nil; resultRevision = nil
-    }
-
-    func documentChanged(_ documentID: UUID) {
-        invalidate(documentID: documentID)
-        guard let appState, appState.selectedDocumentID == documentID,
-              appState.selectedDocument?.isLargeFileMode != true,
-              appState.preferences.aiBackgroundEnabled else { return }
-        debounce = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-            guard !Task.isCancelled, let self, let appState = self.appState,
-                  appState.selectedDocumentID == documentID, appState.preferences.aiBackgroundEnabled,
-                  appState.selectedDocument?.isLargeFileMode != true,
-                  appState.hostWindow?.isKeyWindow == true,
-                  !self.isWorking, (self.reportIsBackground || (self.suggestions.isEmpty && self.image == nil && self.report.isEmpty)) else { return }
-            let features = AIFeature.allCases.filter { $0.isBackground && $0 != .completion && appState.preferences.aiFeatures.contains($0) }
-            guard let feature = features.first else { return }
-            self.start(feature, option: "", background: true, backgroundFeatures: features)
-        }
-    }
-
-    func didSave(documentID: UUID) {
-        guard let appState, appState.selectedDocumentID == documentID,
-              let document = appState.selectedDocument, document.ioState == .idle, !document.isLargeFileMode,
-              appState.preferences.aiBackgroundEnabled,
-              appState.preferences.aiFeatures.contains(.metadata) else { return }
-        let profile = appState.preferences.aiProfile(for: .metadata)
-        guard profile.isEnabled else { return }
-        let key: String?
-        do { key = try loadKey(.text, profile.baseURL) }
-        catch { return }
-        let snapshot = document.synchronizedSnapshot()
-        guard AIRequestSize.bytes(snapshot.text) <= AIRequestSize.threshold else { return }
-        cancelMetadata()
-        metadataProfile = profile
-        let current = metadataGeneration
-        let taskGeneration = document.taskCoordinator.begin(.aiMetadata)
-        let generate = self.generate
-        metadataTask = Task { [weak self, weak document] in
-            do {
-                let result = try await generate(.metadata, snapshot.text, "", profile, key, nil, nil, nil, nil)
-                guard let self, let document, let appState = self.appState,
-                      !Task.isCancelled, self.metadataGeneration == current,
-                      document.taskCoordinator.isCurrent(taskGeneration, for: .aiMetadata),
-                      appState.selectedDocumentID == documentID,
-                      appState.documents.contains(where: { $0 === document }),
-                      document.textRevision == snapshot.revision, !document.hasPendingLiveEdits,
-                      appState.preferences.aiBackgroundEnabled,
-                      appState.preferences.aiFeatures.contains(.metadata),
-                      appState.preferences.aiProfile(for: .metadata) == profile,
-                      self.keyIsCurrent(key, profile: profile, role: .text, required: true) else { return }
-                document.aiMetadata = result.report
-                document.taskCoordinator.finish(.aiMetadata, generation: taskGeneration)
-                self.metadataTask = nil; self.metadataProfile = nil
-            } catch {
-                guard let self, self.metadataGeneration == current else { return }
-                document?.taskCoordinator.finish(.aiMetadata, generation: taskGeneration)
-                self.metadataTask = nil; self.metadataProfile = nil
-            }
-        }
-        if let metadataTask { document.taskCoordinator.attachTask(metadataTask, kind: .aiMetadata, generation: taskGeneration) }
-    }
-
-    private func cancelMetadata() {
-        metadataGeneration += 1
-        metadataTask?.cancel(); metadataTask = nil; metadataProfile = nil
+        objectWillChange.send()
     }
 
     func updateMetadata(_ text: String) {
@@ -703,7 +663,6 @@ final class AIWritingController: ObservableObject {
               let document = appState.selectedDocument, document.id == snapshot.documentID,
               appState.preferences.aiFeatures.contains(.metadata),
               activeCredentialsAreCurrent() else { return }
-        cancelMetadata()
         document.aiMetadata = text
         report = text
     }
@@ -715,9 +674,8 @@ final class AIWritingController: ObservableObject {
         objectWillChange.send()
         guard let appState else { return }
         objectWillChange.send()
-        if metadataProfile != nil && (!appState.preferences.aiBackgroundEnabled || !appState.preferences.aiFeatures.contains(.metadata) || metadataProfile != appState.preferences.aiProfile(for: .metadata)) { cancelMetadata() }
-        if ((!report.isEmpty || snapshot != nil || image != nil || imageEditRequest != nil) && !appState.preferences.aiFeatures.contains(feature)) || !activeFeatures.isSubset(of: appState.preferences.aiFeatures) || (activeProfile != nil && !activeCredentialsAreCurrent()) || (activeJinaConfiguration != nil && activeJinaConfiguration != appState.preferences.jinaConfiguration) || (reportIsBackground && !appState.preferences.aiBackgroundEnabled) {
-            cancel(); debounce?.cancel(); snapshot = nil; suggestions = []; references = []; report = ""; image = nil; imageEditSource = nil; imageEditRequest = nil; imageDescriptionRequest = nil
+        if ((!report.isEmpty || snapshot != nil || image != nil || imageEditRequest != nil) && !appState.preferences.aiFeatures.contains(feature)) || !activeFeatures.isSubset(of: appState.preferences.aiFeatures) || (activeProfile != nil && !activeCredentialsAreCurrent()) || (activeJinaConfiguration != nil && activeJinaConfiguration != appState.preferences.jinaConfiguration) {
+            cancel(); snapshot = nil; suggestions = []; references = []; report = ""; image = nil; imageEditSource = nil; imageEditRequest = nil; imageDescriptionRequest = nil
             if pendingSend != nil { pendingSend = nil; message = "" }
             sentSummary = nil
         }

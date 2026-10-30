@@ -67,6 +67,7 @@ final class AIMediaClientTests: XCTestCase {
         for response in ["Привет", #"{"text":"Привет"}"#] {
             AIMediaURLProtocol.handler = { request in
                 XCTAssertEqual(request.url?.path, "/gateway/v1/audio/transcriptions")
+                XCTAssertEqual(request.value(forHTTPHeaderField: "X-Title"), "KosLacEditor")
                 XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer secret")
                 XCTAssertTrue(request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data; boundary=") == true)
                 let body = try self.requestBody(request)
@@ -88,6 +89,7 @@ final class AIMediaClientTests: XCTestCase {
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer secret")
             XCTAssertEqual(request.httpMethod, "POST")
             XCTAssertEqual(request.url?.path, "/gateway/v1/pdf/convert")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Title"), "KosLacEditor")
             let body = try self.requestBody(request)
             for field in ["name=\"output\"\r\n\r\ndocx", "Content-Type: application/pdf"] {
                 XCTAssertNotNil(body.range(of: Data(field.utf8)))

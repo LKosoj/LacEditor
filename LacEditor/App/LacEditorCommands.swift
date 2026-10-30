@@ -338,7 +338,7 @@ struct LacEditorCommands: Commands {
             Divider()
             ForEach(AIFeatureGroup.allCases) { group in
                 Menu(group.title) {
-                    ForEach(AIFeature.features(in: group).filter { $0 != .ask }) { feature in
+                    ForEach(AIFeature.features(in: group).filter { $0 != .ask && $0 != .completion && $0 != .voiceDraft }) { feature in
                         if feature == .rewrite {
                             Menu(feature.title) {
                                 ForEach(AIRewriteMode.allCases) { mode in
@@ -354,13 +354,7 @@ struct LacEditorCommands: Commands {
                         } else {
                             Button(feature.title) {
                                 showAIPanel()
-                                if feature.opensPanelFirst {
-                                    appState?.aiWriting.prepare(feature)
-                                } else if feature == .imageDescription {
-                                    appState?.aiWriting.describeImage()
-                                } else {
-                                    appState?.aiWriting.run(feature)
-                                }
+                                appState?.aiWriting.prepare(feature)
                             }
                             .help(feature.detail)
                             .disabled(appState?.selectedDocument == nil || appState?.preferences.aiFeatures.contains(feature) != true)
@@ -421,12 +415,18 @@ struct LacEditorCommands: Commands {
             Divider()
             Picker(L10n.tr("Markdown 编辑方式"), selection: Binding(
                 get: { appState?.selectedDocument?.isMarkdownFormatted ?? false },
-                set: { appState?.selectedDocument?.isMarkdownFormatted = $0 }
+                set: { formatted in
+                    if isReadingMode {
+                        if !formatted { appState?.exitReadingModeToSource() }
+                    } else {
+                        appState?.selectedDocument?.isMarkdownFormatted = formatted
+                    }
+                }
             )) {
                 Text(L10n.tr("Markdown 源码")).tag(false)
                 Text(L10n.tr("格式化文本")).tag(true)
             }
-            .disabled(appState?.selectedDocument?.language != .markdown || isReadingMode)
+            .disabled(appState?.selectedDocument?.language != .markdown)
             Button {
                 appState?.togglePreview()
             } label: {

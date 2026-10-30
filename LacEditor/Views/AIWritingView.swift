@@ -65,11 +65,17 @@ struct AIWritingView: View {
                     .frame(minWidth: 72)
                     .disabled(!controller.isWorking && !canRun)
                     if controller.isWorking { ProgressView().controlSize(.small).accessibilityLabel(L10n.tr("正在执行…")) }
+                    if controller.hasResult && !controller.isWorking {
+                        Button(L10n.tr("重置结果")) { controller.reset() }
+                    }
                 }
                 if !controller.message.isEmpty {
                     AIPanelMessageView(kind: controller.messageKind, text: controller.message, action: controller.messageAction,
                                        openSettings: openSettings, retry: { runCurrent() },
                                        sendAnyway: { controller.sendAnyway() })
+                }
+                if let name = controller.otherDocumentName {
+                    StatusMessageView(kind: .info, text: L10n.tr("结果属于文档 %@，请切换到该文档后再应用", name))
                 }
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
@@ -87,6 +93,7 @@ struct AIWritingView: View {
                         }
                         if controller.canInsertSummary {
                             Button(L10n.tr("插入摘要")) { controller.insertSummary() }
+                                .disabled(controller.otherDocumentName != nil)
                         }
                         ForEach(controller.references) { reference in
                             Button { controller.revealReference(reference) } label: {
@@ -102,6 +109,7 @@ struct AIWritingView: View {
                             HStack {
                                 Button(L10n.tr("全部接受（%lld）", controller.suggestions.count)) { controller.acceptAll() }
                                     .buttonStyle(.borderedProminent)
+                                    .disabled(controller.otherDocumentName != nil)
                                 Button(L10n.tr("全部拒绝")) { controller.rejectAll() }
                             }
                         }
@@ -112,6 +120,9 @@ struct AIWritingView: View {
                                 Text(L10n.tr("转换结果")).font(.caption).foregroundStyle(.secondary)
                                 Text(controller.wordDiff(for: suggestion).replacement).textSelection(.enabled)
                                 if !suggestion.explanation.isEmpty { Text(suggestion.explanation).foregroundStyle(.secondary) }
+                                if controller.unavailableIDs.contains(suggestion.id) {
+                                    StatusMessageView(kind: .error, text: L10n.tr("原文已不存在，无法应用"))
+                                }
                                 HStack {
                                     Button(L10n.tr("定位")) { controller.reveal(suggestion) }
                                     acceptButton(suggestion, prominent: controller.suggestions.count == 1)
@@ -129,6 +140,7 @@ struct AIWritingView: View {
                                 } else {
                                     Button(L10n.tr("保存图片")) { controller.saveImage() }
                                     Button(L10n.tr("插入图片")) { controller.insertImage() }
+                                        .disabled(controller.otherDocumentName != nil)
                                 }
                             }
                         }
@@ -174,8 +186,10 @@ struct AIWritingView: View {
     @ViewBuilder private func acceptButton(_ suggestion: AIWritingSuggestion, prominent: Bool) -> some View {
         if prominent {
             Button(L10n.tr("接受")) { controller.accept(suggestion) }.buttonStyle(.borderedProminent)
+                .disabled(controller.otherDocumentName != nil)
         } else {
             Button(L10n.tr("接受")) { controller.accept(suggestion) }.buttonStyle(.bordered)
+                .disabled(controller.otherDocumentName != nil)
         }
     }
 }

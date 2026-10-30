@@ -614,7 +614,7 @@ final class LacTextView: NSTextView {
                 _ = taskCheckboxHandler(checkbox)
                 return
             }
-            if let character = layout.uppercaseHeadingSourcePosition(at: location, in: container) {
+            if isEditable, let character = layout.uppercaseHeadingSourcePosition(at: location, in: container) {
                 guard let window, let storage = textStorage else {
                     super.mouseDown(with: event)
                     return

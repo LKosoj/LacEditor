@@ -28,7 +28,7 @@ struct AIDocumentToolsView: View {
     var openSettings: () -> Void = {}
 
     private func submit() {
-        guard controller.isEnabled(feature), !controller.isWorking, !controller.recorder.isRecording else { return }
+        guard controller.isEnabled(feature), !controller.isWorking else { return }
         controller.run(feature)
     }
 
@@ -70,27 +70,9 @@ struct AIDocumentToolsView: View {
                     Text(check.instructions).foregroundStyle(.secondary).textSelection(.enabled)
                 }
             }
-            if feature == .recognizeDocument || feature == .voiceDraft {
-                Button(L10n.tr("选择文件")) { controller.chooseFile(feature: feature) }.disabled(controller.isWorking)
+            if feature == .recognizeDocument {
+                Button(L10n.tr("选择文件")) { controller.chooseFile() }.disabled(controller.isWorking)
                 if let url = controller.fileURL { Text(url.lastPathComponent).lineLimit(1).truncationMode(.middle) }
-                if feature == .voiceDraft {
-                    if controller.recorder.isRecording {
-                        Button(L10n.tr("停止录音")) { controller.stopRecording() }
-                        if let start = controller.recorder.startedAt {
-                            TimelineView(.periodic(from: start, by: 1)) { context in
-                                HStack(spacing: 6) {
-                                    Circle().fill(.red).frame(width: 8, height: 8)
-                                    Text(Duration.seconds(Int(context.date.timeIntervalSince(start))).formatted(.time(pattern: .minuteSecond)))
-                                        .monospacedDigit()
-                                }
-                                .accessibilityElement(children: .combine)
-                                .accessibilityLabel(L10n.tr("正在录音"))
-                            }
-                        }
-                    } else {
-                        Button(L10n.tr("开始录音")) { controller.startRecording() }.disabled(controller.isWorking)
-                    }
-                }
             }
             if AIDocumentToolsController.usesOption(feature) {
                 TextField(L10n.tr("其他要求"), text: $controller.option).onSubmit { submit() }
@@ -101,8 +83,10 @@ struct AIDocumentToolsView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .frame(minWidth: 72)
-                .disabled(!controller.isWorking && controller.recorder.isRecording)
                 if controller.isWorking { ProgressView().controlSize(.small).accessibilityLabel(L10n.tr("正在执行…")) }
+                if controller.hasResult && !controller.isWorking {
+                    Button(L10n.tr("重置结果")) { controller.clearResult() }
+                }
             }
             }
             .disabled(!controller.isEnabled(feature))
@@ -110,6 +94,9 @@ struct AIDocumentToolsView: View {
                 AIPanelMessageView(kind: controller.messageKind, text: controller.message, action: controller.messageAction,
                                    openSettings: openSettings, retry: { controller.run(feature) },
                                    sendAnyway: { controller.sendAnyway() })
+            }
+            if let name = controller.otherDocumentName {
+                StatusMessageView(kind: .info, text: L10n.tr("结果属于文档 %@，请切换到该文档后再应用", name))
             }
             if controller.isResultStale { StatusMessageView(kind: .info, text: L10n.tr("参数已更改，下方结果对应之前的设置。请重新运行。")) }
             ScrollView {
@@ -132,8 +119,8 @@ struct AIDocumentToolsView: View {
                         }
                         HStack {
                             Button(L10n.tr("复制")) { controller.copy() }
-                            if [.recognizeDocument, .voiceDraft, .mermaid].contains(feature) {
-                                Button(L10n.tr("插入")) { controller.insert() }.disabled(controller.isResultStale)
+                            if [.recognizeDocument, .mermaid].contains(feature) {
+                                Button(L10n.tr("插入")) { controller.insert() }.disabled(controller.isResultStale || controller.otherDocumentName != nil)
                             }
                         }
                     }
@@ -141,6 +128,7 @@ struct AIDocumentToolsView: View {
             }
         }
         .onExitCommand(perform: controller.isWorking ? { controller.stop() } : nil)
+        .onAppear { if let active = controller.activeFeature, active != feature { controller.clearResult() } }
         .onDisappear { controller.hidden() }
         .onChange(of: feature) { _, _ in controller.hidden(); controller.clearResult() }
     }

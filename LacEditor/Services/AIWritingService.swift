@@ -6,12 +6,33 @@ struct AIWritingSuggestion: Identifiable {
     let original: String
     let replacement: String
     let explanation: String
+
+    /// Та же правка (тот же id, кеш подсветки слов остаётся верным), сдвинутая после замены, изменившей длину текста.
+    func shifted(by delta: Int) -> AIWritingSuggestion {
+        AIWritingSuggestion(id: id, range: NSRange(location: range.location + delta, length: range.length),
+                            original: original, replacement: replacement, explanation: explanation)
+    }
 }
 
 struct AIWritingReference: Identifiable {
     let id: UUID
     let range: NSRange
     let quote: String
+}
+
+/// Где правка применима в текущем тексте: ожидаемое место, если оригинал на нём остался, иначе единственное вхождение, иначе nil (не угадываем).
+enum AIWritingPlacement {
+    static func locate(original: String, expected: NSRange, in text: NSString) -> NSRange? {
+        guard !original.isEmpty else { return nil }
+        if expected.location != NSNotFound, expected.location >= 0, expected.length >= 0,
+           NSMaxRange(expected) <= text.length,
+           text.substring(with: expected) == original { return expected }
+        let first = text.range(of: original, options: .literal)
+        guard first.location != NSNotFound else { return nil }
+        let next = NSRange(location: first.location + 1, length: text.length - first.location - 1)
+        guard text.range(of: original, options: .literal, range: next).location == NSNotFound else { return nil }
+        return first
+    }
 }
 
 struct AIWritingResult {

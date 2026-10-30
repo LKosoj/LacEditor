@@ -27,10 +27,13 @@ struct StatusBarView: View {
                 .accessibilityIdentifier("status.save")
                 if document.isLargeFileMode { performanceMenu }
                 if document.isReadingMode {
-                    statusItem(L10n.tr("阅读模式"), icon: "book")
-                        .help(L10n.tr("阅读模式：文本只读，可选择、复制并跟随链接（⌥⌘R 退出）"))
-                        .accessibilityLabel(L10n.tr("阅读模式"))
-                        .accessibilityIdentifier("status.readingMode")
+                    Button { appState.toggleReadingMode() } label: {
+                        statusItem(L10n.tr("阅读模式"), icon: "book")
+                    }
+                    .buttonStyle(.plain)
+                    .help(L10n.tr("阅读模式：文本只读，可选择、复制并跟随链接（⌥⌘R 退出）"))
+                    .accessibilityLabel(L10n.tr("退出阅读模式"))
+                    .accessibilityIdentifier("status.readingMode")
                 }
                 if let suggestion = document.textCodecSuggestionTitle, geometry.size.width >= 600 {
                     Button { appState.presentTextTransformation(.smartDecode) } label: {

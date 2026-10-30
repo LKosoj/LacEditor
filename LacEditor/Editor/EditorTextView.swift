@@ -148,9 +148,6 @@ struct EditorTextView: NSViewRepresentable {
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
         textView.allowsUndo = true
-        textView.usesFindPanel = true
-        textView.usesFindBar = true
-        textView.isIncrementalSearchingEnabled = true
         textView.textContainerInset = NSSize(width: Self.minimumHorizontalInset, height: topInset)
         // Leave a one-pixel safety edge so AppKit's insertion caret is not
         // clipped when it sits at the first column.

@@ -17,6 +17,13 @@ struct AIFeatureSettingsView: View {
         })
     }
 
+    private var cleanupModelBinding: Binding<String> {
+        Binding(get: { preferences.aiFeatureModelIDs[AppPreferences.voiceCleanupModelKey] ?? "" }, set: { value in
+            if value.isEmpty { preferences.aiFeatureModelIDs.removeValue(forKey: AppPreferences.voiceCleanupModelKey) }
+            else { preferences.aiFeatureModelIDs[AppPreferences.voiceCleanupModelKey] = value }
+        })
+    }
+
     private var roleName: String {
         switch selectedFeature.role {
         case .text: L10n.tr("文本模型")
@@ -34,8 +41,6 @@ struct AIFeatureSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             PreferenceGroup(title: L10n.tr("通用")) {
-                Toggle(L10n.tr("后台 AI 功能"), isOn: $preferences.aiBackgroundEnabled).padding(.horizontal, 16).padding(.vertical, 8)
-                Divider().padding(.horizontal, 16).opacity(0.5)
                 Toggle(L10n.tr("系统拼写检查"), isOn: $preferences.systemSpellingEnabled).padding(.horizontal, 16).padding(.vertical, 8)
                 Divider().padding(.horizontal, 16).opacity(0.5)
                 Toggle(L10n.tr("系统语法检查"), isOn: $preferences.systemGrammarEnabled).padding(.horizontal, 16).padding(.vertical, 8)
@@ -75,6 +80,16 @@ struct AIFeatureSettingsView: View {
                     TextField(L10n.tr("功能模型名称（留空使用默认值）"), text: modelBinding)
                         .textFieldStyle(.roundedBorder).frame(width: 220)
                         .accessibilityLabel(L10n.tr("功能模型名称（留空使用默认值）"))
+                }
+                if selectedFeature == .voiceDraft {
+                    SettingsRowDivider()
+                    PreferenceRow(title: L10n.tr("整理听写文字的模型"),
+                                  detail: L10n.tr("使用%@的服务地址：%@", L10n.tr("文本模型"), Self.displayedValue(preferences.aiConfiguration.text.baseURL))
+                                  + "\n" + L10n.tr("留空使用默认模型：%@", Self.displayedValue(preferences.aiConfiguration.text.modelID))) {
+                        TextField(L10n.tr("功能模型名称（留空使用默认值）"), text: cleanupModelBinding)
+                            .textFieldStyle(.roundedBorder).frame(width: 220)
+                            .accessibilityLabel(L10n.tr("功能模型名称（留空使用默认值）"))
+                    }
                 }
                 SettingsRowDivider()
                 PreferenceRow(title: L10n.tr("选择模型"),

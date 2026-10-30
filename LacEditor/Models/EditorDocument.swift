@@ -85,7 +85,6 @@ final class DocumentTaskCoordinator: @unchecked Sendable {
         case markdownPresentation
         case aiWriting
         case aiCompletion
-        case aiMetadata
         case aiDocumentTools
         case aiQuestion
         case lineEndings

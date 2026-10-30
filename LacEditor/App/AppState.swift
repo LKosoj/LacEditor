@@ -54,7 +54,6 @@ private func documentTaskSignpostName(
     case .markdownPresentation: "MarkdownPresentation"
     case .aiWriting: "AIWriting"
     case .aiCompletion: "AICompletion"
-    case .aiMetadata: "AIMetadata"
     case .aiDocumentTools: "AIDocumentTools"
     case .aiQuestion: "AIQuestion"
     case .lineEndings: "LineEndings"
@@ -227,14 +226,18 @@ final class EditorTextExtractionRequest {
     let allowsWholeDocument: Bool
     let allowsInsertionPoint: Bool
     let requiresEditable: Bool
+    let includesEditorText: Bool
     var result: EditorTextSelectionSnapshot?
+    /// Текст редактора целиком: в его координатах заданы `result.range` и замены. Может отличаться от текста документа (свёрнутые data URI).
+    var editorText: String?
 
-    init(documentID: UUID, allowsTokenAtCaret: Bool, allowsWholeDocument: Bool = false, allowsInsertionPoint: Bool = false, requiresEditable: Bool = false) {
+    init(documentID: UUID, allowsTokenAtCaret: Bool, allowsWholeDocument: Bool = false, allowsInsertionPoint: Bool = false, requiresEditable: Bool = false, includesEditorText: Bool = false) {
         self.documentID = documentID
         self.allowsTokenAtCaret = allowsTokenAtCaret
         self.allowsWholeDocument = allowsWholeDocument
         self.allowsInsertionPoint = allowsInsertionPoint
         self.requiresEditable = requiresEditable
+        self.includesEditorText = includesEditorText
     }
 }
 
@@ -473,6 +476,7 @@ final class AppState: ObservableObject {
     let findReplace = FindReplaceState()
     let textTransformation = TextTransformationPreviewState()
     lazy var aiWriting = AIWritingController(appState: self)
+    lazy var aiDictation = AIDictationController(appState: self)
     @Published var isAIWritingVisible = false
     let commandPalette = CommandPaletteController()
     weak var hostWindow: NSWindow? {
@@ -662,7 +666,6 @@ final class AppState: ObservableObject {
                     self.scheduleFindRefresh()
                 }
                 self.textTransformation.invalidate(documentID: documentID)
-                self.aiWriting.documentChanged(documentID)
                 self.scheduleRecoverySnapshot(for: document)
             }
         }
@@ -770,6 +773,14 @@ final class AppState: ObservableObject {
               !isOpeningPlaceholder(document),
               (hostWindow?.firstResponder as? NSTextView)?.hasMarkedText() != true else { return }
         document.setReadingMode(!document.isReadingMode)
+    }
+
+    /// Выходит из режима чтения и показывает Markdown-исходник. Условия те же, что у toggleReadingMode.
+    func exitReadingModeToSource() {
+        guard let document = selectedDocument, document.isReadingMode, document.language == .markdown else { return }
+        toggleReadingMode()
+        guard !document.isReadingMode else { return }
+        document.isMarkdownFormatted = false
     }
 
     func toggleTypewriterMode() { isTypewriterMode.toggle() }
@@ -2329,6 +2340,7 @@ final class AppState: ObservableObject {
 
     func closeAuxiliaryWindows() {
         aiWriting.windowClosed()
+        aiDictation.windowClosed()
         closeVersionHistory()
         closeManuscript()
         templateTask?.cancel()
@@ -4854,7 +4866,6 @@ final class AppState: ObservableObject {
                         : nil
                     self.recentFiles.record(url)
                     self.scheduleRecoverySnapshot(for: document, delay: 0)
-                    self.aiWriting.didSave(documentID: document.id)
                     completion?(!document.isDirty)
                 } else {
                     let description = saveResult.errorDescription ?? L10n.tr("无法取得保存后的文件状态")

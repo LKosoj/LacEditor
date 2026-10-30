@@ -368,6 +368,7 @@ final class MarkdownPresentationController {
     private var needsCompositionRefresh = false
     private var generation: UInt = 0
     private var document: EditorDocument?
+    private var appliedReadingMode = false
     private var revision: UInt = 0
     private var currentRevision: (() -> UInt)?
     private var readableEnabled: Bool { document?.language == .markdown && document?.isWordCountEnabled == true }
@@ -507,6 +508,10 @@ final class MarkdownPresentationController {
             needsRefresh = false
             if presentation != nil || !styledRanges.isEmpty { clear() }
             if enabled, let parsedResult { install(parsedResult) }
+        }
+        if appliedReadingMode != document.isReadingMode {
+            appliedReadingMode = document.isReadingMode
+            if enabled && presentation != nil { selectionChanged() }
         }
         guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled else {
             cancel()
@@ -1538,6 +1543,7 @@ final class MarkdownPresentationController {
     }
 
     private func inlineSelection() -> NSRange? {
+        guard document?.isReadingMode != true else { return nil }
         guard let textView, let text = textView.textStorage?.string as NSString? else { return nil }
         let selection = textView.selectedRange()
         guard selection.location <= text.length else { return nil }
@@ -1546,6 +1552,7 @@ final class MarkdownPresentationController {
     }
 
     private func revealedRange() -> NSRange? {
+        guard document?.isReadingMode != true else { return nil }
         guard let textView, let text = textView.textStorage?.string as NSString? else { return nil }
         let selection = textView.selectedRange()
         guard selection.location <= text.length else { return nil }

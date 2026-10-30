@@ -1,2 +1,2 @@
 "NSLocalNetworkUsageDescription" = "Connect to local AI or Jina services that you specify in settings.";
-"NSMicrophoneUsageDescription" = "Record voice drafts that you start, for review and optional transcription using your configured service.";
+"NSMicrophoneUsageDescription" = "Record dictation that you start, to be transcribed by your configured service and inserted into the document.";

@@ -162,6 +162,7 @@ struct AIMediaClient {
         request.timeoutInterval = AIClient.requestTimeout
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue(AIClient.titleHeaderValue, forHTTPHeaderField: "X-Title")
         authorize(&request, key: key)
         request.httpBody = body
         return request

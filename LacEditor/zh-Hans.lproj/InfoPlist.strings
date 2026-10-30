@@ -1,2 +1,2 @@
 "NSLocalNetworkUsageDescription" = "连接你在设置中指定的本地 AI 或 Jina 服务。";
-"NSMicrophoneUsageDescription" = "录制你主动开始的语音草稿，供你预览并选择发送给所配置的语音识别服务。";
+"NSMicrophoneUsageDescription" = "录制你主动开始的语音听写，识别后插入文档；音频只发送给你所配置的语音识别服务。";

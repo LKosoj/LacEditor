@@ -211,6 +211,7 @@
 		D01600000000000000000007 /* AIAgentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01600000000000000000008 /* AIAgentView.swift */; };
 		D01600000000000000000009 /* AIAgentEdits.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0160000000000000000000A /* AIAgentEdits.swift */; };
 		D0160000000000000000000B /* AIAgentPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0160000000000000000000C /* AIAgentPreset.swift */; };
+		D01700000000000000000001 /* AIDictationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01700000000000000000002 /* AIDictationController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -435,6 +436,7 @@
 		D01600000000000000000008 /* AIAgentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIAgentView.swift; path = Views/AIAgentView.swift; sourceTree = "<group>"; };
 		D0160000000000000000000A /* AIAgentEdits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIAgentEdits.swift; path = Services/AIAgentEdits.swift; sourceTree = "<group>"; };
 		D0160000000000000000000C /* AIAgentPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIAgentPreset.swift; path = Models/AIAgentPreset.swift; sourceTree = "<group>"; };
+		D01700000000000000000002 /* AIDictationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIDictationController.swift; path = Services/AIDictationController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -537,6 +539,7 @@
 				D01600000000000000000006 /* AIAgentController.swift */,
 				D01600000000000000000008 /* AIAgentView.swift */,
 				D0160000000000000000000A /* AIAgentEdits.swift */,
+				D01700000000000000000002 /* AIDictationController.swift */,
 				D01100000000000000000002 /* Models/AITranslationLanguage.swift */,
 				D00C00000000000000000002 /* Mermaid */,
 				D01200000000000000000022 /* MathJax */,
@@ -982,6 +985,7 @@
 				D01600000000000000000007 /* AIAgentView.swift in Sources */,
 				D01600000000000000000009 /* AIAgentEdits.swift in Sources */,
 				D0160000000000000000000B /* AIAgentPreset.swift in Sources */,
+				D01700000000000000000001 /* AIDictationController.swift in Sources */,
 				D01400000000000000000003 /* AIQuestionService.swift in Sources */,
 				D01500000000000000000001 /* AIWebSearchService.swift in Sources */,
 				D01400000000000000000005 /* AIQuestionView.swift in Sources */,

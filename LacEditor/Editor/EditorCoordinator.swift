@@ -225,7 +225,6 @@ extension EditorTextView {
         private var aiSettings: AIConfiguration?
         private var aiCompletionSettings: AIModelProfile?
         private var aiFeatures: Set<AIFeature> = []
-        private var aiBackgroundEnabled = false
         private var aiCompletionRevision: UInt?
         private var aiCompletionCaret: Int?
         private var aiCompletionProfile: AIModelProfile?
@@ -332,15 +331,13 @@ extension EditorTextView {
             let settings = preferences?.aiConfiguration
             let completionSettings = preferences?.aiProfile(for: .completion)
             let features = preferences?.aiFeatures ?? []
-            let background = preferences?.aiBackgroundEnabled ?? false
-            if aiSettings != settings || aiCompletionSettings != completionSettings || aiFeatures != features || aiBackgroundEnabled != background {
+            if aiSettings != settings || aiCompletionSettings != completionSettings || aiFeatures != features {
                 cancelAICompletion()
             }
             aiPreferences = preferences
             aiSettings = settings
             aiCompletionSettings = completionSettings
             aiFeatures = features
-            aiBackgroundEnabled = background
             if let textView {
                 textView.acceptAICompletion = { [weak self] in self?.acceptCompletion() ?? false }
                 textView.dismissAICompletion = { [weak self] in self?.cancelAICompletion() }
@@ -358,7 +355,7 @@ extension EditorTextView {
 
         private func scheduleAICompletion() {
             cancelAICompletion()
-            guard isActive, !document.isLargeFileMode, aiBackgroundEnabled, aiFeatures.contains(.completion),
+            guard isActive, !document.isLargeFileMode, aiFeatures.contains(.completion),
                   let preferences = aiPreferences, let textView, !textView.hasMarkedText(),
                   let text = textView.textStorage?.mutableString else { return }
             let selection = textView.selectedRange()
@@ -380,7 +377,7 @@ extension EditorTextView {
                     guard let self, let textView, self.isActive, self.document.id == documentID,
                           self.contentRevision == revision, !self.document.isLargeFileMode, !textView.hasMarkedText(),
                           textView.selectedRange() == selection,
-                          self.aiBackgroundEnabled, self.aiFeatures.contains(.completion),
+                          self.aiFeatures.contains(.completion),
                           self.aiPreferences?.aiProfile(for: .completion) == profile else { return false }
                     return true
                 }, show: { [weak self, weak textView] completion, key in
@@ -398,7 +395,7 @@ extension EditorTextView {
                   let completion = textView.completionText, let revision = aiCompletionRevision,
                   let caret = aiCompletionCaret, revision == contentRevision,
                   textView.selectedRange() == NSRange(location: caret, length: 0),
-                  aiBackgroundEnabled, aiFeatures.contains(.completion),
+                  aiFeatures.contains(.completion),
                   let profile = aiCompletionProfile,
                   aiPreferences?.aiProfile(for: .completion) == profile else { cancelAICompletion(); return false }
             do {
@@ -1197,6 +1194,7 @@ extension EditorTextView {
                       let request = notification.object as? EditorTextExtractionRequest,
                       request.documentID == document.id else { return }
                 extractSelection(for: request)
+                if request.includesEditorText, request.result != nil { request.editorText = textView?.string }
             })
             observerTokens.append(NotificationCenter.default.addObserver(
                 forName: EditorCommandNotification.formatMarkdown,

@@ -74,6 +74,8 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         static let save = NSToolbarItem.Identifier("LacEditor.Save")
         static let find = NSToolbarItem.Identifier("LacEditor.Find")
         static let markdownPresentation = NSToolbarItem.Identifier("LacEditor.MarkdownPresentation")
+        static let readingMode = NSToolbarItem.Identifier("LacEditor.ReadingMode")
+        static let dictation = NSToolbarItem.Identifier("LacEditor.Dictation")
         static let aiWriting = NSToolbarItem.Identifier("LacEditor.AIWriting")
         static let importDocument = NSToolbarItem.Identifier("LacEditor.Import")
         static let export = NSToolbarItem.Identifier("LacEditor.Export")
@@ -99,6 +101,9 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         let canUndo: Bool
         let canRedo: Bool
         let readingMode: Bool
+        let dictationState: AIDictationController.State
+        let dictationEnabled: Bool
+        let dictationToolTip: String
     }
     private let titleField = TitlePathField(labelWithString: "LacEditor")
     private let languageButton = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -108,6 +113,8 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
     private weak var saveItem: NSToolbarItem?
     private weak var findItem: NSToolbarItem?
     private weak var markdownPresentationItem: NSToolbarItem?
+    private weak var readingModeItem: NSToolbarItem?
+    private weak var dictationItem: NSToolbarItem?
     private weak var aiWritingItem: NSToolbarItem?
     private weak var exportItem: NSMenuToolbarItem?
     private let exportMenu = NSMenu()
@@ -131,6 +138,16 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
 
     func makeToolbar() -> NSToolbar {
         migrateSidebarItemIdentifier()
+        addSavedToolbarItem(
+            ItemIdentifier.readingMode,
+            after: ItemIdentifier.markdownPresentation,
+            flag: "LacEditor.ToolbarReadingModeAdded"
+        )
+        addSavedToolbarItem(
+            ItemIdentifier.dictation,
+            after: ItemIdentifier.readingMode,
+            flag: "LacEditor.ToolbarDictationAdded"
+        )
         let toolbar = EditorWindowToolbar(
             identifier: NSToolbar.Identifier("LacEditor.EditorToolbar")
         )
@@ -144,6 +161,12 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         return toolbar
     }
 
+    /// Элемент мог появиться после последнего update(), например из палитры настройки панели.
+    private func refreshAfterItemCreation() {
+        lastPresentation = nil
+        DispatchQueue.main.async { [weak self] in self?.update() }
+    }
+
     func update(appState: AppState? = nil) {
         if let appState {
             self.appState = appState
@@ -152,6 +175,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
 
         let document = appState.selectedDocument
         let manager = appState.hostWindow?.firstResponder?.undoManager
+        let dictation = appState.aiDictation
         let presentation = Presentation(
             documentID: document?.id,
             url: document?.url,
@@ -164,7 +188,10 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             aiWritingVisible: appState.isAIWritingVisible,
             canUndo: manager?.canUndo == true && document?.isReadingMode != true,
             canRedo: manager?.canRedo == true && document?.isReadingMode != true,
-            readingMode: document?.isReadingMode == true
+            readingMode: document?.isReadingMode == true,
+            dictationState: dictation.state,
+            dictationEnabled: dictation.isButtonEnabled,
+            dictationToolTip: dictation.buttonToolTip
         )
         guard presentation != lastPresentation else { return }
         // Items are materialized after makeToolbar returns. Do not cache an
@@ -183,6 +210,13 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         redoItem?.isEnabled = presentation.canRedo
         saveItem?.isEnabled = document != nil
         findItem?.isEnabled = document != nil
+        readingModeItem?.isEnabled = document != nil
+        dictationItem?.isEnabled = presentation.dictationEnabled
+        dictationItem?.image = NSImage(
+            systemSymbolName: dictation.buttonSymbol,
+            accessibilityDescription: dictation.buttonAccessibility
+        )
+        dictationItem?.toolTip = presentation.dictationToolTip
         sidebarItem?.toolTip = appState.isSidebarVisible
             ? L10n.tr("隐藏侧边栏（⌃⌘B）")
             : L10n.tr("显示侧边栏（⌃⌘B）")
@@ -220,7 +254,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         previewItem?.toolTip = document.isPreviewEffectivelyEnabled
             ? L10n.tr("隐藏 Markdown 预览（⌥⌘P）")
             : L10n.tr("显示 Markdown 预览（⌥⌘P）")
-        markdownPresentationItem?.isEnabled = document.language == .markdown && !document.isReadingMode
+        markdownPresentationItem?.isEnabled = document.language == .markdown
         let presentationTip = document.isMarkdownFormatted
             ? L10n.tr("显示 Markdown 源码")
             : L10n.tr("显示格式化文本")
@@ -229,6 +263,13 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             accessibilityDescription: presentationTip
         )
         markdownPresentationItem?.toolTip = presentationTip
+        readingModeItem?.image = NSImage(
+            systemSymbolName: document.isReadingMode ? "book.fill" : "book",
+            accessibilityDescription: L10n.tr("阅读模式")
+        )
+        readingModeItem?.toolTip = document.isReadingMode
+            ? L10n.tr("退出阅读模式（⌥⌘R）")
+            : L10n.tr("进入阅读模式（⌥⌘R）")
         aiWritingItem?.image = NSImage(
             systemSymbolName: appState.isAIWritingVisible ? "sparkles.rectangle.stack.fill" : "sparkles.rectangle.stack",
             accessibilityDescription: L10n.tr("显示或隐藏 AI 助手")
@@ -246,6 +287,8 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             ItemIdentifier.find,
             ItemIdentifier.language,
             ItemIdentifier.markdownPresentation,
+            ItemIdentifier.readingMode,
+            ItemIdentifier.dictation,
             ItemIdentifier.preview
         ]
     }
@@ -263,6 +306,8 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             ItemIdentifier.language,
             ItemIdentifier.aiWriting,
             ItemIdentifier.markdownPresentation,
+            ItemIdentifier.readingMode,
+            ItemIdentifier.dictation,
             ItemIdentifier.preview,
             ItemIdentifier.importDocument,
             ItemIdentifier.export,
@@ -335,6 +380,30 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             return item
         case ItemIdentifier.markdownPresentation:
             return makeMarkdownPresentationItem()
+        case ItemIdentifier.readingMode:
+            let item = makeActionItem(
+                identifier: itemIdentifier,
+                label: L10n.tr("阅读模式"),
+                symbol: "book",
+                toolTip: L10n.tr("进入阅读模式（⌥⌘R）"),
+                action: #selector(toggleReadingMode)
+            )
+            item.autovalidates = false
+            readingModeItem = item
+            refreshAfterItemCreation()
+            return item
+        case ItemIdentifier.dictation:
+            let item = makeActionItem(
+                identifier: itemIdentifier,
+                label: AIFeature.voiceDraft.title,
+                symbol: "mic",
+                toolTip: AIFeature.voiceDraft.title,
+                action: #selector(toggleDictation)
+            )
+            item.autovalidates = false
+            dictationItem = item
+            refreshAfterItemCreation()
+            return item
         case ItemIdentifier.importDocument:
             return makeActionItem(
                 identifier: itemIdentifier,
@@ -381,6 +450,30 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             changed = true
         }
         if changed { UserDefaults.standard.set(configuration, forKey: key) }
+    }
+
+    /// Один раз добавляет новую кнопку в уже сохранённую пользователем конфигурацию панели.
+    /// Пометка `flag` хранится в UserDefaults, поэтому убранную пользователем кнопку повторно не возвращаем.
+    func addSavedToolbarItem(
+        _ item: NSToolbarItem.Identifier,
+        after anchor: NSToolbarItem.Identifier,
+        flag: String,
+        defaults: UserDefaults = .standard
+    ) {
+        guard !defaults.bool(forKey: flag) else { return }
+        defaults.set(true, forKey: flag)
+        let key = "NSToolbar Configuration LacEditor.EditorToolbar"
+        guard var configuration = defaults.dictionary(forKey: key) else { return }
+        var changed = false
+        for listKey in ["TB Default Item Identifiers", "TB Item Identifiers"] {
+            guard var identifiers = configuration[listKey] as? [String],
+                  !identifiers.contains(item.rawValue) else { continue }
+            let index = identifiers.firstIndex(of: anchor.rawValue).map { $0 + 1 } ?? identifiers.count
+            identifiers.insert(item.rawValue, at: index)
+            configuration[listKey] = identifiers
+            changed = true
+        }
+        if changed { defaults.set(configuration, forKey: key) }
     }
 
     private func makeTitleItem() -> NSToolbarItem {
@@ -666,10 +759,23 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         update()
     }
 
+    @objc private func toggleReadingMode() {
+        appState?.toggleReadingMode()
+        update()
+    }
+
+    @objc private func toggleDictation() {
+        appState?.aiDictation.toggle()
+    }
+
     @objc private func toggleMarkdownPresentation() {
         guard let document = appState?.selectedDocument,
-              document.language == .markdown, !document.isReadingMode else { return }
-        document.isMarkdownFormatted.toggle()
+              document.language == .markdown else { return }
+        if document.isReadingMode {
+            appState?.exitReadingModeToSource()
+        } else {
+            document.isMarkdownFormatted.toggle()
+        }
         update()
     }
 }

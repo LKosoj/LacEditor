@@ -244,6 +244,7 @@ enum AIRequestSize {
 
 struct AIClient {
     static let requestTimeout: TimeInterval = 600
+    static let titleHeaderValue = "KosLacEditor"
     static let defaultSession: URLSession = {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = requestTimeout
@@ -267,6 +268,7 @@ struct AIClient {
                          allowsMediaData: Bool = false, timeout: TimeInterval = AIClient.requestTimeout) throws -> URLRequest {
         var request = URLRequest(url: try endpoint(profile, path: path))
         request.timeoutInterval = timeout
+        request.setValue(AIClient.titleHeaderValue, forHTTPHeaderField: "X-Title")
         if let key, !key.isEmpty { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
         if let body {
             request.httpMethod = "POST"
@@ -298,6 +300,7 @@ struct AIClient {
         request.timeoutInterval = AIClient.requestTimeout
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue(AIClient.titleHeaderValue, forHTTPHeaderField: "X-Title")
         if let key, !key.isEmpty { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
         request.httpBody = body
         return request

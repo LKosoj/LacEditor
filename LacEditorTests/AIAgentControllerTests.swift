@@ -163,7 +163,6 @@ final class AIAgentControllerTests: XCTestCase {
         XCTAssertFalse(AIFeature.agent.detail.isEmpty)
         XCTAssertEqual(AIFeature.agent.role, .text)
         XCTAssertTrue(AIFeature.agent.isDocumentTool)
-        XCTAssertTrue(AIFeature.agent.opensPanelFirst)
         XCTAssertEqual(AIFeature(rawValue: "agent"), .agent)
     }
 

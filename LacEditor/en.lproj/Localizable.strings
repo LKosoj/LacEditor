@@ -508,7 +508,6 @@
 "转换为表格" = "Convert to table";
 "生成插图" = "Generate illustration";
 "图片说明" = "Image description";
-"后台 AI 功能" = "Background AI features";
 "系统拼写检查" = "System spelling check";
 "系统语法检查" = "System grammar check";
 "AI 功能" = "AI features";
@@ -551,7 +550,7 @@
 "请至少添加一个来源。" = "Add at least one source.";
 "请选择两个版本。" = "Select two versions.";
 "请选择已启用的检查。" = "Select an enabled check.";
-"请选择文件或完成录音。" = "Select a file or finish recording.";
+"请选择文件。" = "Select a file.";
 "添加已打开的文档" = "Add open document";
 "添加文件" = "Add files";
 "移除" = "Remove";
@@ -560,8 +559,18 @@
 "检查" = "Check";
 "请选择" = "Select";
 "选择文件" = "Choose file";
-"停止录音" = "Stop recording";
-"开始录音" = "Start recording";
+"语音听写：点击开始录音，再次点击停止" = "Dictation: click to start recording, click again to stop";
+"再次点击停止录音并插入文字" = "Click again to stop recording and insert the text";
+"正在请求麦克风权限…" = "Requesting microphone access…";
+"正在识别并整理文字…" = "Transcribing and cleaning up the text…";
+"听写不可用：请在 AI 设置中启用「语音听写」和语音转写服务，并填写模型" = "Dictation unavailable: enable \"Dictation\" and the speech transcription service in AI settings and set a model";
+"听写不可用：当前文档不可编辑" = "Dictation unavailable: the current document cannot be edited";
+"听写识别失败" = "Dictation failed";
+"删除录音" = "Delete recording";
+"文本模型未启用，已插入未整理的识别结果" = "The text model is off; the raw transcript was inserted";
+"整理文字失败，已插入未整理的识别结果" = "Cleanup failed; the raw transcript was inserted";
+"无法插入到原文档，听写文字已复制到剪贴板" = "Could not insert into the original document; the dictated text was copied to the clipboard";
+"整理听写文字的模型" = "Dictation cleanup model";
 "其他要求" = "Additional instructions";
 "文本差异" = "Text differences";
 "复制" = "Copy";
@@ -571,7 +580,7 @@
 "根据所选文档审阅" = "Review with Selected Documents";
 "比较文本版本" = "Compare Text Versions";
 "识别图片或 PDF" = "Recognize Image or PDF";
-"语音草稿" = "Voice Draft";
+"语音听写" = "Dictation";
 "生成 Mermaid 图表" = "Generate Mermaid Diagram";
 "解释所选内容" = "Explain Selection";
 
@@ -1517,7 +1526,7 @@
 "需要：选中的文本" = "Needs: selected text";
 "需要：选中的文本，没有选区时使用整篇文档" = "Needs: the selection, or the whole document if nothing is selected";
 "需要：选中的文本；选择「调整语气」时还需填写期望的语气" = "Needs: selected text; for “Adjust tone”, also the tone you want";
-"需要：光标前的文字（需开启后台 AI 功能）" = "Needs: the text before the cursor (background AI must be on)";
+"需要：光标前的文字" = "Needs: the text before the cursor";
 "需要：选中的文本或整篇文档；可填写目标读者，留空则按普通读者" = "Needs: the selection or whole document; optionally a target reader (empty means an ordinary reader)";
 "需要：一条简短的网页搜索查询（需启用 Jina 搜索）" = "Needs: a short web search query (Jina search must be enabled)";
 "需要：选中的文本和目标语言" = "Needs: selected text and a target language";
@@ -1528,7 +1537,7 @@
 "需要：两个要比较的文本版本" = "Needs: two text versions to compare";
 "需要：一条自定义检查规则" = "Needs: a custom check rule";
 "需要：图片或 PDF 文件" = "Needs: an image or PDF file";
-"需要：麦克风录音或音频文件" = "Needs: a microphone recording or audio file";
+"需要：麦克风；点击工具栏的麦克风按钮开始录音，再次点击停止" = "Needs: a microphone. Click the toolbar microphone button to start recording, click again to stop";
 "需要：选中的文本，并说明要绘制的图表" = "Needs: selected text and what diagram to draw";
 "需要：选中的文本和期望的语气，例如正式、友好" = "Needs: selected text and the tone you want, e.g. formal, friendly";
 "结果：逐条修改建议，可逐条接受或拒绝" = "Result: edit suggestions you can accept or reject one by one";
@@ -1550,7 +1559,7 @@
 "结果：对两个版本差异的说明" = "Result: an explanation of the differences between the two versions";
 "结果：按该规则生成的检查报告" = "Result: a report produced by that rule";
 "结果：识别出的文字，可插入文档" = "Result: the recognised text, ready to insert";
-"结果：转写出的文字，可插入文档" = "Result: the transcribed text, ready to insert";
+"结果：识别并整理后的文字，插入光标处" = "Result: transcribed and cleaned-up text inserted at the caret";
 "结果：Mermaid 图表代码，可插入文档" = "Result: Mermaid diagram code, ready to insert";
 "结果：换一种说法的文本，意思不变" = "Result: the text reworded, same meaning";
 "结果：更短的文本，保留原意" = "Result: a shorter text that keeps the meaning";
@@ -1720,6 +1729,8 @@
 "依赖已被拒绝的修改，无法应用" = "Depends on a rejected edit and cannot be applied";
 "已接受 %lld 处修改" = "Accepted %lld edits";
 "已接受 %lld 处修改，%lld 处无法应用" = "Accepted %lld edits, %lld could not be applied";
+"重置结果" = "Reset Result";
+"结果属于文档 %@，请切换到该文档后再应用" = "This result belongs to the document %@. Switch to it to apply";
 "没有可应用的修改" = "None of the edits could be applied";
 "文档已关闭，其修改建议已丢弃" = "The document was closed; its proposed edits were discarded";
 "代理的修改" = "Agent edits";
@@ -1780,3 +1791,6 @@
 "写入失败，文件保持原样" = "Writing failed; the file is unchanged";
 "已写入 %lld 个文件，%lld 个被跳过" = "%lld files written, %lld skipped";
 "修改建议已变化，请重试" = "The proposals changed; try again";
+"进入阅读模式（⌥⌘R）" = "Enter reading mode (⌥⌘R)";
+"退出阅读模式（⌥⌘R）" = "Exit reading mode (⌥⌘R)";
+"退出阅读模式" = "Exit Reading Mode";

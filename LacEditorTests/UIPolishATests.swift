@@ -211,14 +211,17 @@ final class UIPolishATests: XCTestCase {
     }
 
     @MainActor
-    func testAcceptAllRejectsOverlapAndChangedOriginal() async throws {
+    func testAcceptAllRejectsOverlapAndAppliesRestWhenOriginalChanged() async throws {
         let suite = "LacEditor-UIPolishA-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let document = EditorDocument(text: "abcone two three")
         let selection = observeWriting(document)
         var requestCount = 0
-        let apply = NotificationCenter.default.addObserver(forName: EditorCommandNotification.applyRangeReplacement, object: nil, queue: .main) { _ in requestCount += 1 }
+        let apply = NotificationCenter.default.addObserver(forName: EditorCommandNotification.applyRangeReplacement, object: nil, queue: .main) { notification in
+            requestCount += 1
+            (notification.object as? EditorRangeReplacementRequest)?.wasHandled = true
+        }
         defer { NotificationCenter.default.removeObserver(selection); NotificationCenter.default.removeObserver(apply) }
         let (overlapping, state1) = try await makeWriting(defaults: defaults, document: document, suggestions: [
             AIWritingSuggestion(id: UUID(), range: NSRange(location: 0, length: 7), original: "one two", replacement: "x", explanation: ""),
@@ -228,13 +231,16 @@ final class UIPolishATests: XCTestCase {
         XCTAssertEqual(requestCount, 0)
         XCTAssertFalse(overlapping.message.isEmpty)
         XCTAssertEqual(overlapping.suggestions.count, 2)
+        let missing = AIWritingSuggestion(id: UUID(), range: NSRange(location: 0, length: 3), original: "uno", replacement: "1", explanation: "")
         let (changed, state2) = try await makeWriting(defaults: defaults, document: document, suggestions: [
-            AIWritingSuggestion(id: UUID(), range: NSRange(location: 0, length: 3), original: "uno", replacement: "1", explanation: ""),
+            missing,
             AIWritingSuggestion(id: UUID(), range: NSRange(location: 8, length: 5), original: "three", replacement: "3", explanation: "")
         ])
         changed.acceptAll()
-        XCTAssertEqual(requestCount, 0)
-        XCTAssertEqual(changed.suggestions.count, 2)
+        XCTAssertEqual(requestCount, 1)
+        XCTAssertEqual(changed.suggestions.map(\.id), [missing.id])
+        XCTAssertEqual(changed.unavailableIDs, [missing.id])
+        XCTAssertEqual(changed.message, L10n.tr("已接受 %lld 处修改，%lld 处无法应用", 1, 1))
         withExtendedLifetime((state1, state2)) {}
     }
 
@@ -265,6 +271,9 @@ final class UIPolishATests: XCTestCase {
         XCTAssertTrue(tools.contains(".onSubmit"))
         XCTAssertFalse(tools.contains(".onChange(of: controller.option)"))
         XCTAssertTrue(writing.contains("acceptAll()"))
+        XCTAssertTrue(writing.contains("unavailableIDs"))
+        XCTAssertTrue(tools.contains("重置结果"))
+        XCTAssertTrue(writing.contains("重置结果"))
         for source in [tools, writing] {
             XCTAssertFalse(source.contains("keyboardShortcut"))
             XCTAssertTrue(source.contains(".onExitCommand"))

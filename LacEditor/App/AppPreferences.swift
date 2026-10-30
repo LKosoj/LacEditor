@@ -487,9 +487,6 @@ final class AppPreferences: ObservableObject {
             if let data = try? JSONEncoder().encode(aiCustomChecks) { defaults.set(data, forKey: Keys.aiCustomChecks) }
         }
     }
-    @Published var aiBackgroundEnabled: Bool {
-        didSet { defaults.set(aiBackgroundEnabled, forKey: Keys.aiBackgroundEnabled) }
-    }
     @Published var autoPairBracketsEnabled: Bool {
         didSet { defaults.set(autoPairBracketsEnabled, forKey: Keys.autoPairBracketsEnabled) }
     }
@@ -615,11 +612,20 @@ final class AppPreferences: ObservableObject {
             if let data = try? JSONEncoder().encode(migrated.features.sorted()) { defaults.set(data, forKey: Keys.aiFeatures) }
             defaults.set(migrated.models, forKey: Keys.aiFeatureModelIDs)
         }
-        aiFeatures = Set(migrated.features.compactMap(AIFeature.init(rawValue:)))
+        var features = migrated.features
+        if !defaults.bool(forKey: Keys.aiBackgroundRemoved) {
+            // Автодополнение работало только при фоновом переключателе: остаётся лишь там, где были включены оба.
+            if !defaults.bool(forKey: Keys.aiBackgroundEnabled), features.contains(AIFeature.completion.rawValue) {
+                features.removeAll { $0 == AIFeature.completion.rawValue }
+                if let data = try? JSONEncoder().encode(features.sorted()) { defaults.set(data, forKey: Keys.aiFeatures) }
+            }
+            defaults.removeObject(forKey: Keys.aiBackgroundEnabled)
+            defaults.set(true, forKey: Keys.aiBackgroundRemoved)
+        }
+        aiFeatures = Set(features.compactMap(AIFeature.init(rawValue:)))
         aiFeatureModelIDs = migrated.models
         aiCustomChecks = defaults.data(forKey: Keys.aiCustomChecks)
             .flatMap { try? JSONDecoder().decode([AICustomCheck].self, from: $0) } ?? []
-        aiBackgroundEnabled = defaults.bool(forKey: Keys.aiBackgroundEnabled)
         autoPairBracketsEnabled = defaults.bool(forKey: Keys.autoPairBracketsEnabled)
         autoPairMarkdownEnabled = defaults.bool(forKey: Keys.autoPairMarkdownEnabled)
         smartQuotesEnabled = defaults.bool(forKey: Keys.smartQuotesEnabled)
@@ -733,6 +739,15 @@ final class AppPreferences: ObservableObject {
         return profile
     }
 
+    /// Текстовый профиль для очистки диктовки: модель берётся из aiFeatureModelIDs["voiceCleanup"], пусто = модель профиля текста.
+    static let voiceCleanupModelKey = "voiceCleanup"
+    func voiceCleanupProfile() -> AIModelProfile {
+        var profile = aiConfiguration[.text]
+        let model = aiFeatureModelIDs[Self.voiceCleanupModelKey]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !model.isEmpty { profile.modelID = model }
+        return profile
+    }
+
     var hasConfirmedWorkspaceExitPrompt: Bool {
         defaults.bool(forKey: Keys.confirmedWorkspaceExitPrompt)
     }
@@ -787,6 +802,7 @@ final class AppPreferences: ObservableObject {
         static let aiFeatureModelIDs = "aiFeatureModelIDs"
         static let aiCustomChecks = "aiCustomChecks"
         static let aiBackgroundEnabled = "aiBackgroundEnabled"
+        static let aiBackgroundRemoved = "aiBackgroundRemoved"
         static let autoPairBracketsEnabled = "autoPairBracketsEnabled"
         static let autoPairMarkdownEnabled = "autoPairMarkdownEnabled"
         static let smartQuotesEnabled = "smartQuotesEnabled"
