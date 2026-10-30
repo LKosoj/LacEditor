@@ -634,6 +634,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         var document: EditorDocument? = EditorDocument(text: "before", language: .markdown)
         document?.isMarkdownFormatted = true
         weak var weakDocument = document
+        weakDocument = document
         var state: AppState? = AppState(initialDocument: try XCTUnwrap(document), recentFiles: manager.recentFiles, preferences: manager.preferences)
         var coordinator: EditorTextView.Coordinator? = EditorTextView.Coordinator(document: try XCTUnwrap(document))
         let storage = NSTextStorage(string: "before"), layout = FoldLayoutManager()

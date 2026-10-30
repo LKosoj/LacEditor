@@ -15,11 +15,12 @@ final class AIDocumentToolsTests: XCTestCase {
         let document = EditorDocument(text: "prefix 😀乙")
         let state = AppState(initialDocument: document, recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
         let controller = AIDocumentToolsController(appState: state, generate: { _, _, _, _, _, _, _ in "graph TD\nA-->B" }, loadKey: { _, _ in nil })
-        var revision: UInt = 3
+        final class RevisionBox: @unchecked Sendable { var value: UInt = 3 }
+        let revision = RevisionBox()
         var replacement: EditorRangeReplacementRequest?
         let center = NotificationCenter.default
         let extraction = center.addObserver(forName: EditorCommandNotification.extractTextSelection, object: nil, queue: .main) { notification in
-            (notification.object as? EditorTextExtractionRequest)?.result = EditorTextSelectionSnapshot(documentID: document.id, range: NSRange(location: 7, length: 3), text: "😀乙", editorRevision: revision, wasExplicitSelection: true)
+            (notification.object as? EditorTextExtractionRequest)?.result = EditorTextSelectionSnapshot(documentID: document.id, range: NSRange(location: 7, length: 3), text: "😀乙", editorRevision: revision.value, wasExplicitSelection: true)
         }
         let apply = center.addObserver(forName: EditorCommandNotification.applyRangeReplacement, object: nil, queue: .main) { notification in
             replacement = notification.object as? EditorRangeReplacementRequest
@@ -33,7 +34,7 @@ final class AIDocumentToolsTests: XCTestCase {
         XCTAssertEqual(replacement?.range, NSRange(location: 10, length: 0))
         XCTAssertEqual(replacement?.replacementText, "\n\n```mermaid\ngraph TD\nA-->B\n```")
         replacement = nil
-        revision += 1
+        revision.value += 1
         controller.insert()
         XCTAssertNil(replacement)
     }

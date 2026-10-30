@@ -1,5 +1,5 @@
 import XCTest
-@testable import LacEditor
+@preconcurrency @testable import LacEditor
 
 final class UIPolishATests: XCTestCase {
     // MARK: AIWordDiff
@@ -187,10 +187,11 @@ final class UIPolishATests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let document = EditorDocument(text: "abcone two three")
         let selection = observeWriting(document)
-        var requests: [EditorRangeReplacementRequest] = []
+        final class RequestBox: @unchecked Sendable { var values: [EditorRangeReplacementRequest] = [] }
+        let requests = RequestBox()
         let apply = NotificationCenter.default.addObserver(forName: EditorCommandNotification.applyRangeReplacement, object: nil, queue: .main) { notification in
             guard let request = notification.object as? EditorRangeReplacementRequest else { return }
-            requests.append(request); request.wasHandled = true
+            requests.values.append(request); request.wasHandled = true
         }
         defer { NotificationCenter.default.removeObserver(selection); NotificationCenter.default.removeObserver(apply) }
         let (controller, state) = try await makeWriting(defaults: defaults, document: document, suggestions: [
@@ -199,8 +200,8 @@ final class UIPolishATests: XCTestCase {
         ])
         XCTAssertEqual(controller.suggestions.count, 2)
         controller.acceptAll()
-        XCTAssertEqual(requests.count, 1)
-        let request = try XCTUnwrap(requests.first)
+        XCTAssertEqual(requests.values.count, 1)
+        let request = try XCTUnwrap(requests.values.first)
         XCTAssertEqual(request.range, NSRange(location: 3, length: 13))
         XCTAssertEqual(request.originalText, "one two three")
         XCTAssertEqual(request.replacementText, "1 two 3")

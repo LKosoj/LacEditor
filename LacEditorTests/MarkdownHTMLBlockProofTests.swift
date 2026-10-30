@@ -51,7 +51,7 @@ final class MarkdownHTMLBlockProofTests: XCTestCase {
         var blockView = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownHTMLBlockView }.first { $0.alphaValue == 1 })
         XCTAssertGreaterThan(blockView.frame.height, 0)
         XCTAssertEqual(storage.string, source)
-        XCTAssertEqual(view.accessibilityValue() as? String, source)
+        XCTAssertEqual(view.accessibilityValue(), source)
         scroll.setFrameSize(NSSize(width: 1, height: 300)); view.setFrameSize(NSSize(width: 1, height: 300))
         container.containerSize = NSSize(width: 1, height: 500); controller.viewportChanged()
         XCTAssertNil(blockView.superview)

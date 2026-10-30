@@ -55,7 +55,7 @@ final class MarkdownLayoutTests: XCTestCase {
         }
         for _ in 0..<200 where rendered() == nil { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertNotNil(rendered())
-        XCTAssertEqual(view.accessibilityValue() as? String, source)
+        XCTAssertEqual(view.accessibilityValue(), source)
         XCTAssertEqual(view.accessibilityChildren()?.count ?? 0, accessibilityChildren)
         XCTAssertEqual(view.accessibilitySelectedTextRange(), raw.range(of: "end"))
         let lightImage = try XCTUnwrap(layout.markdownInlineImage(for: range)?.tiffRepresentation)
@@ -68,7 +68,7 @@ final class MarkdownLayoutTests: XCTestCase {
         XCTAssertNotEqual(darkImage, lightImage)
         scroll.contentView.scroll(to: NSPoint(x: 0, y: 300)); scroll.reflectScrolledClipView(scroll.contentView)
         controller.viewportChanged()
-        XCTAssertEqual(view.accessibilityValue() as? String, source)
+        XCTAssertEqual(view.accessibilityValue(), source)
         XCTAssertEqual(view.accessibilityChildren()?.count ?? 0, accessibilityChildren)
         scroll.contentView.scroll(to: .zero); scroll.reflectScrolledClipView(scroll.contentView)
         controller.viewportChanged()
@@ -93,12 +93,12 @@ final class MarkdownLayoutTests: XCTestCase {
         controller.compositionFinished(revision: 0)
         view.setSelectedRange(range); controller.selectionChanged()
         XCTAssertNil(rendered())
-        XCTAssertEqual(view.accessibilityValue() as? String, source)
+        XCTAssertEqual(view.accessibilityValue(), source)
         XCTAssertEqual(view.accessibilitySelectedTextRange(), range)
         XCTAssertEqual(storage.string, source)
         XCTAssertFalse(document.isDirty)
         controller.update(document: document, enabled: false, isActive: true, revision: 0, currentRevision: { 0 })
-        XCTAssertEqual(view.accessibilityValue() as? String, source)
+        XCTAssertEqual(view.accessibilityValue(), source)
         XCTAssertEqual(view.accessibilitySelectedTextRange(), range)
         XCTAssertEqual(view.accessibilityChildren()?.count ?? 0, accessibilityChildren)
     }

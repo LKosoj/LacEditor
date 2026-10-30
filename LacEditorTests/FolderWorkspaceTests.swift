@@ -258,6 +258,7 @@ final class FolderWorkspaceTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         var store: FolderWorkspaceStore? = FolderWorkspaceStore()
         weak var weakStore = store
+        weakStore = store
         let load = try XCTUnwrap(store?.setRoot(root))
         await load.value
         _ = store?.setRoot(nil)

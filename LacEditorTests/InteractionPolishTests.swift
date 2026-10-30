@@ -78,6 +78,7 @@ final class InteractionPolishTests: XCTestCase {
         content.addSubview(first)
         var second: ToolTipTrackingView? = ToolTipTrackingView(text: "文件二", shortcut: "⌘,")
         weak var released = second
+        released = second
         content.addSubview(try XCTUnwrap(second))
         let event = try XCTUnwrap(NSEvent.enterExitEvent(with: .mouseEntered, location: .zero,
             modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
@@ -144,6 +145,7 @@ final class InteractionPolishTests: XCTestCase {
     func testFeedbackExpiryReplacementPauseUndoAndRelease() async throws {
         var state: InlineFeedbackState? = InlineFeedbackState(duration: .milliseconds(100))
         weak var released = state
+        released = state
         state?.show("旧消息")
         try await Task.sleep(for: .milliseconds(60))
         state?.show("新消息")

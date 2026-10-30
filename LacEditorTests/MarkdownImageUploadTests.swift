@@ -1559,6 +1559,7 @@ final class MarkdownImageUploadTests: XCTestCase {
         let document = EditorDocument(text: "before", language: .markdown)
         var state: AppState? = AppState(initialDocument: document, recentFiles: manager.recentFiles, preferences: manager.preferences)
         weak var weakState = state
+        weakState = state
         let coordinator = EditorTextView.Coordinator(document: document)
         let storage = NSTextStorage(string: "before"), layout = FoldLayoutManager()
         storage.addLayoutManager(layout)

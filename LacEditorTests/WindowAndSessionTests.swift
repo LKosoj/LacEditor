@@ -4,6 +4,14 @@ import SwiftUI
 import XCTest
 @testable import LacEditor
 
+private func semaphoreIsSignaled(_ semaphore: DispatchSemaphore) async -> Bool {
+    await withCheckedContinuation { continuation in
+        DispatchQueue.global().async {
+            continuation.resume(returning: semaphore.wait(timeout: .now()) == .success)
+        }
+    }
+}
+
 @MainActor
 final class WindowAndSessionTests: XCTestCase {
     func testWorkspaceFolderMetadataAndLegacyManifestCompatibility() throws {
@@ -119,7 +127,7 @@ final class WindowAndSessionTests: XCTestCase {
         manager.requestApplicationTermination { result = $0 }
         var saveStarted = false
         for _ in 0..<100 {
-            if fileManager.started.wait(timeout: .now()) == .success { saveStarted = true; break }
+            if await semaphoreIsSignaled(fileManager.started) { saveStarted = true; break }
             try await Task.sleep(for: .milliseconds(20))
         }
         XCTAssertTrue(saveStarted)
@@ -127,7 +135,7 @@ final class WindowAndSessionTests: XCTestCase {
         state.beginOpeningFile(url)
         var didStartRead = false
         for _ in 0..<100 {
-            if readStarted.wait(timeout: .now()) == .success { didStartRead = true; break }
+            if await semaphoreIsSignaled(readStarted) { didStartRead = true; break }
             try await Task.sleep(for: .milliseconds(20))
         }
         XCTAssertTrue(didStartRead)
@@ -184,7 +192,7 @@ final class WindowAndSessionTests: XCTestCase {
         for _ in 0..<150 where state.hasPendingOpen { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertFalse(modalTimedOut, "Opening error dialog did not appear")
         XCTAssertTrue(state.hasFailedOpeningPlaceholder)
-        let placeholder = try XCTUnwrap(state.selectedDocument)
+        _ = try XCTUnwrap(state.selectedDocument)
         XCTAssertFalse(state.save())
         var result: Bool?
         manager.requestApplicationTermination { result = $0 }
