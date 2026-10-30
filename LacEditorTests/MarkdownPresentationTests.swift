@@ -63,6 +63,49 @@ final class MarkdownPresentationTests: XCTestCase {
         XCTAssertEqual(view.string, "zx" + source)
     }
 
+    func testTemporaryAttributesAreChangedOutsideTextStorageEditing() throws {
+        _ = NSApplication.shared
+        let source = "<u>underline</u> <s>strike</s> <mark>highlight</mark>"
+        let raw = source as NSString
+        let storage = NSTextStorage(string: source)
+        let layout = FoldLayoutManager()
+        storage.addLayoutManager(layout)
+        let container = NSTextContainer(containerSize: NSSize(width: 600, height: 200))
+        layout.addTextContainer(container)
+        let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 200), textContainer: container)
+        view.font = lacEditorFont(size: 14)
+        let scroll = NSScrollView(frame: view.frame)
+        scroll.documentView = view
+        view.setSelectedRange(NSRange(location: raw.length, length: 0))
+        layout.ensureLayout(for: container)
+        let document = EditorDocument(text: source, language: .markdown)
+        let controller = MarkdownPresentationController(textView: view, layout: layout)
+        defer { controller.cancel() }
+        controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
+        let parsed = MarkdownPresentationParser.parse(source)
+        let underlineSpan = try XCTUnwrap(parsed.spans.first { $0.kind == .underline })
+        let strikeSpan = try XCTUnwrap(parsed.spans.first { $0.kind == .strikethrough })
+        let highlightSpan = try XCTUnwrap(parsed.spans.first { $0.kind == .highlight })
+        controller.installTablePresentation(parsed, document: document, revision: 0)
+        layout.ensureLayout(for: container)
+        controller.metricsChanged()
+        let underline = underlineSpan.range
+        XCTAssertNotNil(layout.temporaryAttribute(.underlineStyle, atCharacterIndex: underline.location, effectiveRange: nil))
+        XCTAssertNotNil(layout.temporaryAttribute(.strikethroughStyle, atCharacterIndex: strikeSpan.range.location, effectiveRange: nil))
+        XCTAssertNotNil(layout.temporaryAttribute(.backgroundColor, atCharacterIndex: highlightSpan.range.location, effectiveRange: nil))
+
+        layout.invalidateGlyphs(forCharacterRange: NSRange(location: 0, length: storage.length), changeInLength: 0, actualCharacterRange: nil)
+        controller.update(document: document, enabled: false, isActive: true, revision: 0, currentRevision: { 0 })
+
+        XCTAssertNil(layout.temporaryAttribute(.underlineStyle, atCharacterIndex: underline.location, effectiveRange: nil))
+        XCTAssertNil(layout.temporaryAttribute(.strikethroughStyle, atCharacterIndex: strikeSpan.range.location, effectiveRange: nil))
+        XCTAssertNil(layout.temporaryAttribute(.backgroundColor, atCharacterIndex: highlightSpan.range.location, effectiveRange: nil))
+        XCTAssertEqual(storage.string, source)
+        XCTAssertFalse(document.isDirty)
+        withExtendedLifetime(view) {}
+        withExtendedLifetime(scroll) {}
+    }
+
     func testInactiveEditorWaitsUntilActivationToApplyFormatting() async throws {
         _ = NSApplication.shared
         let source = "# Heading"

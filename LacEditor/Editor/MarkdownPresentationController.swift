@@ -1645,6 +1645,7 @@ final class MarkdownPresentationController {
         var activeIndices = Set<Int>()
         var eventIndex = 0
         let typing = textView.typingAttributes
+        var temporaryAttributes: [(NSAttributedString.Key, Any, NSRange)] = []
         storage.beginEditing()
         if boundaries.count > 1 {
             for index in 0..<(boundaries.count - 1) {
@@ -1687,23 +1688,25 @@ final class MarkdownPresentationController {
                 }
                 storage.addAttribute(.font, value: font, range: part)
                 if active.contains(where: { $0.kind == .strikethrough }) {
-                    layout.addTemporaryAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, forCharacterRange: part)
+                    temporaryAttributes.append((.strikethroughStyle, NSUnderlineStyle.single.rawValue, part))
                 }
                 if active.contains(where: { $0.kind == .link || $0.kind == .underline }) {
-                    layout.addTemporaryAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, forCharacterRange: part)
+                    temporaryAttributes.append((.underlineStyle, NSUnderlineStyle.single.rawValue, part))
                 }
                 if inlineStyle.background != nil || active.contains(where: { $0.kind == .quote || $0.kind == .code || $0.kind == .keyboard || $0.kind == .codeBlock || $0.kind == .highlight || $0.kind == .yaml }) {
-                    let color = backgroundColor(for: active)
-                    layout.addTemporaryAttribute(.backgroundColor, value: color, forCharacterRange: part)
+                    temporaryAttributes.append((.backgroundColor, backgroundColor(for: active), part))
                     backgroundRanges.append(part)
                 }
                 if let color = inlineStyle.foreground {
-                    layout.addTemporaryAttribute(.foregroundColor, value: color.nsColor, forCharacterRange: part)
+                    temporaryAttributes.append((.foregroundColor, color.nsColor, part))
                     rememberInlineForeground(part)
                 }
             }
         }
         storage.endEditing()
+        for (key, value, range) in temporaryAttributes {
+            layout.addTemporaryAttribute(key, value: value, forCharacterRange: range)
+        }
         textView.typingAttributes = typing
         if strikeCompletedTasks, let tasks = presentation?.completedTaskRanges {
             var low = 0, high = completedTaskPrefixEnds.count
@@ -3162,6 +3165,11 @@ final class MarkdownPresentationController {
             guard safe.length > 0 else { continue }
             storage.addAttribute(.font, value: layout.textFont, range: safe)
             storage.removeAttribute(.baselineOffset, range: safe)
+        }
+        storage.endEditing()
+        for range in styledRanges {
+            let safe = NSIntersectionRange(range, target)
+            guard safe.length > 0 else { continue }
             layout.removeTemporaryAttribute(.strikethroughStyle, forCharacterRange: safe)
             layout.removeTemporaryAttribute(.underlineStyle, forCharacterRange: safe)
         }
@@ -3169,7 +3177,6 @@ final class MarkdownPresentationController {
             let safe = NSIntersectionRange(range, target)
             if safe.length > 0 { layout.removeTemporaryAttribute(.backgroundColor, forCharacterRange: safe) }
         }
-        storage.endEditing()
         textView.typingAttributes = typing
         if !foregroundRanges.isEmpty { restoreCodeColors?(foregroundRanges) }
         if requested == nil {
