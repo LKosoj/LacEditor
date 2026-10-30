@@ -34,7 +34,7 @@ enum AIJinaCredentials {
          try configuration.readerEnabled ? loadKey(.reader, configuration.readerEndpoint) : nil)
     }
 
-    static func isCurrent(_ configuration: JinaConfiguration?, searchKey: String?, readerKey: String?,
+    @MainActor static func isCurrent(_ configuration: JinaConfiguration?, searchKey: String?, readerKey: String?,
                           preferences: AppPreferences?, loadKey: KeyLoader = defaultLoader) -> Bool {
         guard let configuration else { return true }
         guard preferences?.jinaConfiguration == configuration else { return false }
