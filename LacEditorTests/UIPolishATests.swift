@@ -127,11 +127,11 @@ final class UIPolishATests: XCTestCase {
         for _ in 0..<1000 where controller.isWorking { await Task.yield() }
         XCTAssertEqual(controller.messageKind, .error)
         XCTAssertEqual(controller.messageAction, .retry)
-        failure = .http(401)
+        failure = .http(401, nil)
         controller.run(.mermaid)
         for _ in 0..<1000 where controller.isWorking { await Task.yield() }
         XCTAssertEqual(controller.messageAction, .openSettings)
-        failure = .http(503)
+        failure = .http(503, nil)
         controller.run(.mermaid)
         for _ in 0..<1000 where controller.isWorking { await Task.yield() }
         XCTAssertEqual(controller.messageAction, .retry)
