@@ -54,7 +54,7 @@ final class ManuscriptController: ObservableObject {
     }
 
     /// Чтение и склейка в одном фоновом задании; отмена внешней задачи отменяет и его.
-    static let defaultBuild: @Sendable (Request) async throws -> ManuscriptService.Output = { request in
+    nonisolated static let defaultBuild: @Sendable (Request) async throws -> ManuscriptService.Output = { request in
         let work = Task.detached(priority: .userInitiated) { () throws -> ManuscriptService.Output in
             let sources = try FolderSearchService.manuscriptSources(root: request.root, files: request.files,
                                                                     openDocuments: request.documents, isCancelled: { Task.isCancelled })

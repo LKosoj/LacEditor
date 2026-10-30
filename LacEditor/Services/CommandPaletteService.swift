@@ -15,7 +15,7 @@ struct PaletteCommand: Identifiable, Equatable {
 @MainActor
 enum CommandPaletteService {
     /// Обходит меню в порядке показа; недоступные, скрытые, служебные и системные подменю пропускаются.
-    static func collect(from menu: NSMenu?, excluding: (NSMenuItem) -> Bool = { _ in false }) -> [PaletteCommand] {
+    static func collect(from menu: NSMenu?, excluding: @MainActor (NSMenuItem) -> Bool = { _ in false }) -> [PaletteCommand] {
         guard let menu else { return [] }
         var result: [PaletteCommand] = []
         walk(menu, path: [], indexPath: [], excluding: excluding, into: &result)
@@ -23,7 +23,7 @@ enum CommandPaletteService {
     }
 
     private static func walk(_ menu: NSMenu, path: [String], indexPath: [Int],
-                             excluding: (NSMenuItem) -> Bool, into result: inout [PaletteCommand]) {
+                             excluding: @MainActor (NSMenuItem) -> Bool, into result: inout [PaletteCommand]) {
         // SwiftUI и AppKit обновляют доступность пунктов лениво
         menu.update()
         for (index, item) in menu.items.enumerated() {
@@ -192,7 +192,7 @@ final class CommandPaletteController: ObservableObject {
     var results: [PaletteCommand] { entries.map(\.command) }
 
     func present(menu: NSMenu?, preferences: AppPreferences? = nil,
-                 excluding: (NSMenuItem) -> Bool = CommandPaletteService.isPaletteItem) {
+                 excluding: @MainActor (NSMenuItem) -> Bool = CommandPaletteService.isPaletteItem) {
         self.preferences = preferences
         commands = CommandPaletteService.collect(from: menu, excluding: excluding)
         query = ""

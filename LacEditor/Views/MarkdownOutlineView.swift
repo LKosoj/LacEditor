@@ -40,22 +40,7 @@ struct MarkdownOutlineView: View {
                             .padding(.vertical, 8)
                     } else {
                         ForEach(Array(visibleHeadings.enumerated()), id: \.element.id) { offset, heading in
-                            MarkdownOutlineRow(heading: heading, isCurrent: heading.id == currentID,
-                                               canMove: canMove, move: { _ = move($0, $1) }) { reveal(heading) }
-                                .focused($focusedID, equals: heading.id)
-                                .editorFocusRing(focusedID == heading.id)
-                                .id(heading.id)
-                                .modifier(OutlineSectionDrop(
-                                    heading: heading, next: offset + 1 < visibleHeadings.count ? visibleHeadings[offset + 1] : nil,
-                                    document: document, indicator: $indicator, drop: drop))
-                                .onKeyPress(.upArrow) { press in
-                                    if press.modifiers == .option { return moveSection(heading, .up) }
-                                    return moveFocus(from: heading.id, offset: -1, proxy: proxy)
-                                }
-                                .onKeyPress(.downArrow) { press in
-                                    if press.modifiers == .option { return moveSection(heading, .down) }
-                                    return moveFocus(from: heading.id, offset: 1, proxy: proxy)
-                                }
+                            outlineRow(heading: heading, offset: offset, proxy: proxy)
                         }
                         // зона «в конец документа»
                         Color.clear.frame(height: 14).contentShape(Rectangle())
@@ -95,6 +80,26 @@ struct MarkdownOutlineView: View {
             currentID = MarkdownOutlineCurrent.headingID(in: visibleHeadings, caret: document.selectionRange.location,
                                                          isCurrent: document.isMarkdownOutlineCurrent)
         }
+    }
+
+    @ViewBuilder
+    private func outlineRow(heading: MarkdownHeading, offset: Int, proxy: ScrollViewProxy) -> some View {
+        MarkdownOutlineRow(heading: heading, isCurrent: heading.id == currentID,
+                           canMove: canMove, move: { _ = move($0, $1) }) { reveal(heading) }
+            .focused($focusedID, equals: heading.id)
+            .editorFocusRing(focusedID == heading.id)
+            .id(heading.id)
+            .modifier(OutlineSectionDrop(
+                heading: heading, next: offset + 1 < visibleHeadings.count ? visibleHeadings[offset + 1] : nil,
+                document: document, indicator: $indicator, drop: drop))
+            .onKeyPress(keys: [.upArrow], phases: .down) { press in
+                if press.modifiers == .option { return moveSection(heading, .up) }
+                return moveFocus(from: heading.id, offset: -1, proxy: proxy)
+            }
+            .onKeyPress(keys: [.downArrow], phases: .down) { press in
+                if press.modifiers == .option { return moveSection(heading, .down) }
+                return moveFocus(from: heading.id, offset: 1, proxy: proxy)
+            }
     }
 
     private func moveSection(_ heading: MarkdownHeading, _ direction: MarkdownSectionMoveService.Direction) -> KeyPress.Result {
