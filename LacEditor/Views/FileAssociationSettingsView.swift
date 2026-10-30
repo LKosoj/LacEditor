@@ -17,6 +17,16 @@ struct FileAssociationSettingsView: View {
                     if !service.identity.canSetDefaults {
                         Text(L10n.tr("请从「应用程序」中的正式 LacEditor 打开此页。开发、验收、实验或未安装的副本不能设置默认应用。"))
                             .font(.subheadline).foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(L10n.tr("文件关联诊断")).font(.caption).bold()
+                            Text(L10n.tr("Bundle ID：%@", service.identity.identifier ?? L10n.tr("未提供")))
+                            Text(L10n.tr("文件类型声明：%@", service.identity.declaresAssociations ? "Alternate" : L10n.tr("未声明")))
+                            Text(L10n.tr("安装路径匹配：%@", service.identity.isInstalledPath ? L10n.tr("是") : L10n.tr("否")))
+                            Text(L10n.tr("解析后的路径：%@", service.identity.resolvedPath))
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(16)
             }

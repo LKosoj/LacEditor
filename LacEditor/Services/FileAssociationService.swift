@@ -37,12 +37,22 @@ final class FileAssociationService: ObservableObject {
         let identifier: String?
         let declaresAssociations: Bool
 
-        var canSetDefaults: Bool {
-            guard identifier == "com.koslaceditor.app", declaresAssociations else { return false }
-            let path = url.standardizedFileURL.resolvingSymlinksInPath().path
+        var resolvedPath: String {
+            url.standardizedFileURL.resolvingSymlinksInPath().path
+        }
+
+        var isOfficialIdentifier: Bool {
+            identifier == "com.koslaceditor.app"
+        }
+
+        var isInstalledPath: Bool {
             let installed = ["/Applications/LacEditor.app",
                              FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/LacEditor.app").path]
-            return installed.contains(path)
+            return installed.contains(resolvedPath)
+        }
+
+        var canSetDefaults: Bool {
+            isOfficialIdentifier && declaresAssociations && isInstalledPath
         }
 
         static var current: Self {

@@ -110,6 +110,15 @@
 "开启自动换行" = "Enable automatic line wrapping";
 "异常关闭保护" = "Abnormal shutdown protection";
 "当前应用位置" = "Current application location";
+"文件关联诊断" = "File association diagnostics";
+"Bundle ID：%@" = "Bundle ID: %@";
+"文件类型声明：%@" = "Document type declaration: %@";
+"安装路径匹配：%@" = "Installed path matches: %@";
+"解析后的路径：%@" = "Resolved path: %@";
+"未提供" = "not provided";
+"未声明" = "missing";
+"是" = "yes";
+"否" = "no";
 "当前文档：%@" = "Current document: %@";
 "当前编码无法保存这些字符" = "The current encoding cannot save these characters";
 "当前：%@" = "Current: %@";
