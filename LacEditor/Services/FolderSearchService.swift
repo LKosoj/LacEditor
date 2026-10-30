@@ -213,6 +213,32 @@ enum FolderSearchService {
         return .init(rename: rename, files: plans, skipped: counts, problems: problems)
     }
 
+    struct ManuscriptSource: Sendable { let file: File; let text: String; let isOpen: Bool }
+
+    /// Тексты выбранных файлов в порядке `files`; открытые документы приоритетнее диска, невыбранные файлы не читаются.
+    static func manuscriptSources(root: URL, files: [File], openDocuments: [OpenDocument],
+                                  isCancelled: () -> Bool = { false }) throws -> Result<ManuscriptSource> {
+        let root = normalized(root)
+        try checkCancellation(isCancelled)
+        var order: [URL: Int] = [:]
+        for (index, file) in files.enumerated() where order[normalized(file.url)] == nil { order[normalized(file.url)] = index }
+        var found: [(Int, ManuscriptSource)] = []
+        let problems = try scan(root: root, openDocuments: openDocuments, markdownOnly: true, isCancelled: isCancelled,
+                                skip: { url, _ in order[url] == nil }) { text, file, source in
+            guard let index = order[normalized(file.url)] else { return }
+            let isOpen: Bool = { if case .open = source { true } else { false } }()
+            found.append((index, ManuscriptSource(file: file, text: text, isOpen: isOpen)))
+        }
+        try checkCancellation(isCancelled)
+        // Проблемы обхода касаются всей папки: оставляем только выбранные файлы.
+        let selected = problems.filter { order[normalized($0.url)] != nil }
+        // Файл исчез после показа списка: обход его не видел, но молча выпасть из рукописи он не должен.
+        let reported = Set(found.map { normalized($0.1.file.url) } + selected.map { normalized($0.url) })
+        let missing = order.sorted { $0.value < $1.value }.map(\.key).filter { !reported.contains($0) }
+            .map { Problem(url: $0, reason: .inaccessible) }
+        return Result(root: root, values: found.sorted { $0.0 < $1.0 }.map(\.1), problems: selected + missing)
+    }
+
     /// Общий обход папки: открытые документы приоритетнее диска, символические ссылки и изменившиеся файлы попадают в проблемы.
     private static func scan(root: URL, openDocuments: [OpenDocument], markdownOnly: Bool, isCancelled: () -> Bool,
                              skip: (URL, DocumentFileIdentity?) -> Bool = { _, _ in false },

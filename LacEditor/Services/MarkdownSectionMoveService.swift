@@ -166,19 +166,20 @@ enum MarkdownSectionMoveService {
 
     /// Блок с `start` начинается с setext-заголовка: строка с текстом и подчёркивание `===`/`---`.
     private static func startsWithSetext(_ text: NSString, at start: Int) -> Bool {
-        guard start < text.length else { return false }
-        let firstEnd = lineEnd(text, from: start)
-        guard firstEnd < text.length else { return false }
-        let first = text.substring(with: NSRange(location: start, length: firstEnd - start))
-        if isBlank(first) || isATX(first) { return false }
-        let crlf = text.character(at: firstEnd) == 13 && firstEnd + 1 < text.length && text.character(at: firstEnd + 1) == 10
-        let secondStart = firstEnd + (crlf ? 2 : 1)
-        guard secondStart < text.length else { return false }
-        let secondEnd = lineEnd(text, from: secondStart)
-        return isSetextUnderline(text.substring(with: NSRange(location: secondStart, length: secondEnd - secondStart)))
+        // Подчёркивание может стоять под заголовком из нескольких строк.
+        var lineStart = start
+        while lineStart < text.length {
+            let end = lineEnd(text, from: lineStart)
+            let line = text.substring(with: NSRange(location: lineStart, length: end - lineStart))
+            if lineStart > start, isSetextUnderline(line) { return true }
+            if isBlank(line) || isATX(line) || end >= text.length { return false }
+            let crlf = text.character(at: end) == 13 && end + 1 < text.length && text.character(at: end + 1) == 10
+            lineStart = end + (crlf ? 2 : 1)
+        }
+        return false
     }
 
-    /// Стык после `end`: безопасен, если слева пустая строка или ATX-заголовок; `terminator` — последний перевод строки слева.
+    /// Стык после `end`: безопасен, если слева пустая строка, ATX-заголовок или подчёркивание; `terminator` — последний перевод строки слева.
     private static func junction(_ text: NSString, end: Int) -> (safe: Bool, terminator: String) {
         guard end > 0, isBreak(text.character(at: end - 1)) else { return (true, "") }
         var index = end - 1
@@ -191,7 +192,7 @@ enum MarkdownSectionMoveService {
         var start = index - 1
         while start > 0, !isBreak(text.character(at: start - 1)) { start -= 1 }
         let line = text.substring(with: NSRange(location: start, length: index - start))
-        return (isBlank(line) || isATX(line), terminator)
+        return (isBlank(line) || isATX(line) || isSetextUnderline(line), terminator)
     }
 
     private static func lines(of text: String) -> [String] {

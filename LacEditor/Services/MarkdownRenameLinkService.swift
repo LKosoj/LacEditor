@@ -66,7 +66,7 @@ enum MarkdownRenameLinkService {
 
     private static let pathAllowed: CharacterSet = {
         var set = CharacterSet.urlPathAllowed
-        set.remove(charactersIn: "()[]<>\\ /$:")
+        set.remove(charactersIn: "()[]<>\\ /$:&")
         return set
     }()
 
@@ -175,7 +175,7 @@ enum MarkdownRenameLinkService {
         let encoded = parts.map { part -> String in
             if part == ".." { return part }
             let needs = percentStyle || part.unicodeScalars.contains { scalar in
-                scalar.value < 0x20 || scalar.value == 0x7F || (isBracketed ? "<>\\%#?" : " ()[]<>\\%#?").unicodeScalars.contains(scalar)
+                scalar.value < 0x20 || scalar.value == 0x7F || (isBracketed ? "<>\\%#?&" : " ()[]<>\\%#?&").unicodeScalars.contains(scalar)
             }
             return needs ? (part.addingPercentEncoding(withAllowedCharacters: pathAllowed) ?? part) : part
         }
@@ -183,14 +183,15 @@ enum MarkdownRenameLinkService {
         if isAbsolute { newPath = "/" + newPath } else if hasDot, !newPath.hasPrefix("..") { newPath = "./" + newPath }
         // Новый адрес обязан вести ровно на новый файл с тем же фрагментом.
         let expected = hadExtension ? context.rename.newURL.path : context.rename.newURL.deletingPathExtension().path
-        guard case let .file(url, fragment)? = try? MarkdownLinkNavigationService.destination(for: newPath + suffix, documentURL: file.url),
-              case let .file(_, oldFragment)? = try? MarkdownLinkNavigationService.destination(for: raw, documentURL: file.url),
+        let newAddress = MarkdownBacklinkScanner.navigableAddress(newPath + suffix)
+        guard case let .file(url, fragment)? = try? MarkdownLinkNavigationService.destination(for: newAddress, documentURL: file.url),
+              case let .file(_, oldFragment)? = try? MarkdownLinkNavigationService.destination(for: MarkdownBacklinkScanner.navigableAddress(raw), documentURL: file.url),
               fragment == oldFragment, url.path == expected else { return nil }
         return .init(range: NSRange(location: rawRange.location, length: pathLength), original: oldPath, replacement: newPath)
     }
 
     /// Сырой адрес в хвосте `](…)` (внутри `<>` без скобок). Адрес до пробела или управляющего символа, скобки с `\` не разбираются.
-    private static func rawDestination(in text: NSString, tail: NSRange) -> (NSRange, Bool)? {
+    static func rawDestination(in text: NSString, tail: NSRange) -> (NSRange, Bool)? {
         let end = NSMaxRange(tail) - 1
         var index = tail.location + 2
         while index < end, [32, 9, 10, 13].contains(text.character(at: index)) { index += 1 }

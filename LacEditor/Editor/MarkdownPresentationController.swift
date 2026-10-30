@@ -358,6 +358,7 @@ final class MarkdownPresentationController {
     private var lastVisibleRange: NSRange?
     private var lastRevealedRange: NSRange?
     var emojiCompletionReady: (() -> Void)?
+    var parsedResultDidChange: (() -> Void)?
     var geometryDidChange: (() -> Void)?
     var restoreDelimiterHighlight: (() -> Void)?
     var restoreCodeColors: (([NSRange]) -> Void)?
@@ -517,7 +518,7 @@ final class MarkdownPresentationController {
                 publishOutline(parsedResult, revision: revision)
             }
             publishReadableTextIfNeeded()
-            if elementPathEnabled && (activated || documentChanged) {
+            if elementPathEnabled && (activated || documentChanged || formatChanged) {
                 DispatchQueue.main.async { [weak self] in self?.refreshElementPath() }
             }
             if ((readableEnabled && parsedResult.readableText == nil) || (enabled && !parsedResult.emojiCandidatesIncluded)) && work == nil && operation == nil {
@@ -977,6 +978,14 @@ final class MarkdownPresentationController {
         guard isActive, self.document === document, self.revision == revision,
               currentRevision?() == revision, !hasMarkedText else { return nil }
         return parsedResult
+    }
+
+    /// Индекс текущего разбора для правок CriticMarkup: только для актуальной версии, длины текста и без незавершённого ввода.
+    func criticElementIndex(document: EditorDocument, revision: UInt, textLength: Int) -> MarkdownElementIndex? {
+        guard isActive, self.document === document, self.revision == revision, parsedRevision == revision,
+              currentRevision?() == revision, !hasMarkedText,
+              let elements = parsedResult?.elements, elements.textLength == textLength else { return nil }
+        return elements
     }
 
     func mathReference(at point: NSPoint, document: EditorDocument, revision: UInt) -> NSRange? {
@@ -1444,6 +1453,7 @@ final class MarkdownPresentationController {
                     if !result.wikiLinks.isEmpty { self.wikiCatalogNeeded?() }
                     if self.wikiCompletionRequested { self.wikiCompletionReady?() }
                     self.refreshElementPath()
+                    self.parsedResultDidChange?()
                 }
             }
             self.operation = operation

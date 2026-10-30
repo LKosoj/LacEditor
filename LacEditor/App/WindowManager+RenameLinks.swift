@@ -12,7 +12,7 @@ extension WindowManager {
         }
         func current() -> (document: EditorDocument, state: AppState, snapshot: DocumentTextSnapshot)? {
             guard let document = documentsForAI.first(where: { $0.id == id }), let state = stateContaining(document),
-                  document.fileIdentity != nil, document.ioState == .idle,
+                  document.fileIdentity?.matches(DocumentFileIdentity.resolve(plan.file.url)) == true, document.ioState == .idle,
                   !state.isOpeningPlaceholder(document), !document.hasPendingLiveEdits,
                   (state.hostWindow?.firstResponder as? NSTextView)?.hasMarkedText() != true else { return nil }
             let snapshot = document.synchronizedSnapshot()

@@ -88,11 +88,17 @@ private struct MarkdownDataImageProjection {
     }
 
     func intersectsToken(_ range: NSRange, in display: String) -> Bool {
+        intersectsToken([range], in: display)
+    }
+
+    func intersectsToken(_ ranges: [NSRange], in display: String) -> Bool {
         let raw = display as NSString
         return entries.contains { entry in
             let token = raw.range(of: entry.token)
-            return token.location != NSNotFound && (NSIntersectionRange(token, range).length > 0 ||
-                (range.length == 0 && range.location > token.location && range.location < NSMaxRange(token)))
+            return token.location != NSNotFound && ranges.contains { range in
+                NSIntersectionRange(token, range).length > 0 ||
+                    (range.length == 0 && range.location > token.location && range.location < NSMaxRange(token))
+            }
         }
     }
 }
@@ -279,6 +285,7 @@ extension EditorTextView {
         private var observerTokens: [NSObjectProtocol] = []
         private var findHighlightMatches: [NSRange] = []
         private var appliedFindRanges: [NSRange] = []
+        private var hasCriticColors = false
         private var appliedFindVisibleRange: NSRange?
         private var findMatchesChanged = false
         private let lineIndex: LogicalLineIndex
@@ -1212,6 +1219,16 @@ extension EditorTextView {
                 applyLineEditing(request.command)
             })
             observerTokens.append(NotificationCenter.default.addObserver(
+                forName: EditorCommandNotification.criticMarkup,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let self,
+                      let request = notification.object as? CriticMarkupRequest,
+                      request.documentID == document.id else { return }
+                applyCriticMarkup(request.command)
+            })
+            observerTokens.append(NotificationCenter.default.addObserver(
                 forName: EditorCommandNotification.applyRangeReplacement,
                 object: nil,
                 queue: .main
@@ -1408,6 +1425,96 @@ extension EditorTextView {
             textView.setSelectedRange(edit.selectionRange)
             textView.scrollRangeToVisible(edit.selectionRange)
             undoManager?.setActionName(command.actionName)
+        }
+
+        private func applyCriticMarkup(_ command: CriticMarkupCommand) {
+            guard isActive, document.language == .markdown, document.ioState == .idle, tableCellEditor == nil,
+                  let textView, !textView.hasMarkedText(), textView.selectedRanges.count == 1,
+                  let storage = textView.textStorage else { return }
+            let navigates = command == .next || command == .previous
+            guard navigates || textView.isEditable else { return }
+            guard !document.isLargeFileMode else {
+                document.setStatusError(L10n.tr("大文件模式下无法使用修订标记"))
+                return
+            }
+            let length = storage.length
+            let index: MarkdownElementIndex
+            if let ready = markdownPresentation?.criticElementIndex(document: document, revision: contentRevision, textLength: length) {
+                index = ready
+            } else {
+                // Готового разбора нет (ввод, большой текст): один синхронный разбор по явной команде.
+                index = MarkdownPresentationParser.parse(storage.string, syntax: syntaxOptions).elements
+                guard index.textLength == length else { return }
+            }
+            let text = storage.mutableString
+            let excluded = index.excludedRanges(intersecting: NSRange(location: 0, length: length))
+            let items = CriticMarkupService.items(in: text, excluded: excluded)
+            let selection = textView.selectedRange()
+            var replacements: [(range: NSRange, replacement: String)] = []
+            let finalSelection: NSRange
+            switch command {
+            case .next, .previous:
+                guard let item = command == .next ? CriticMarkupService.next(after: selection, in: items)
+                                                  : CriticMarkupService.previous(before: selection, in: items) else {
+                    document.statusMessage = L10n.tr("没有更多修订标记")
+                    return
+                }
+                clearFoldIfNeeded(toReveal: item.range)
+                textView.setSelectedRange(item.range)
+                textView.scrollRangeToVisible(item.range)
+                return
+            case .accept, .reject:
+                guard let item = CriticMarkupService.item(at: selection, in: items) else {
+                    document.setStatusError(L10n.tr("光标不在修订标记内"))
+                    return
+                }
+                let result = CriticMarkupService.resolution(of: item, accept: command == .accept, in: text)
+                replacements = [(item.range, result)]
+                finalSelection = NSRange(location: item.range.location, length: (result as NSString).length)
+            case .acceptAll, .rejectAll:
+                guard let first = items.first else {
+                    document.statusMessage = L10n.tr("没有修订标记")
+                    return
+                }
+                replacements = CriticMarkupService.resolutions(of: items, accept: command == .acceptAll, in: text)
+                finalSelection = NSRange(location: first.range.location, length: 0)
+            case .suggestInsertion, .suggestDeletion, .addComment:
+                guard let edit = CriticMarkupService.suggestion(command, in: text, selection: selection, items: items, excluded: excluded) else {
+                    document.setStatusError(L10n.tr("此处不能添加修订标记"))
+                    return
+                }
+                replacements = [(edit.range, edit.replacement)]
+                finalSelection = edit.selectionRange
+            }
+            if markdownImageProjectionEnabled, markdownImageProjection.intersectsToken(replacements.map(\.range), in: storage.string) {
+                document.setStatusError(L10n.tr("修订含大图片，请在源码视图中处理"))
+                return
+            }
+            textView.breakUndoCoalescing()
+            let undoManager = textView.undoManager
+            undoManager?.beginUndoGrouping()
+            defer {
+                undoManager?.endUndoGrouping()
+                textView.breakUndoCoalescing()
+            }
+            isApplyingAutomatedEdit = true
+            defer { isApplyingAutomatedEdit = false }
+            // От конца к началу: диапазоны ещё не применённых замен остаются верными.
+            for replacement in replacements {
+                guard NSMaxRange(replacement.range) <= storage.length,
+                      textView.shouldChangeText(in: replacement.range, replacementString: replacement.replacement) else {
+                    document.setStatusError(L10n.tr("当前文本无法修改"))
+                    return
+                }
+                storage.replaceCharacters(in: replacement.range, with: replacement.replacement)
+                textView.didChangeText()
+            }
+            textView.setSelectedRange(finalSelection)
+            textView.scrollRangeToVisible(finalSelection)
+            undoManager?.setActionName(command.actionName)
+            if command == .acceptAll || command == .rejectAll {
+                document.statusMessage = L10n.tr("已处理 %d 处修订", items.count)
+            }
         }
 
         private func finishTableDrag(_ start: FoldLayoutManager.TableDragHandle, target: FoldLayoutManager.TableDragHandle?) {
@@ -3260,6 +3367,10 @@ extension EditorTextView {
                 markdownPresentation?.setUppercaseHeadingLevels(uppercaseHeadingLevels)
                 markdownPresentation?.setMathOptions(mathOptions)
                 markdownPresentation?.emojiCompletionReady = { [weak self] in self?.scheduleEmojiCompletion() }
+                markdownPresentation?.parsedResultDidChange = { [weak self] in
+                    guard let self, let range = self.visibleHighlightRange() else { return }
+                    self.reapplyCriticColors(in: range)
+                }
                 markdownPresentation?.wikiCompletionReady = { [weak self] in self?.scheduleWikiCompletion() }
                 markdownPresentation?.wikiCatalogNeeded = { [weak self] in self?.requestWikiCatalog?() }
                 markdownPresentation?.wikiResolver = wikiResolver
@@ -3330,6 +3441,7 @@ extension EditorTextView {
             }
             updateSyntaxOptions()
             markdownPresentation?.setElementPathEnabled(document.language == .markdown && !document.isLargeFileMode)
+            if document.language != .markdown || document.isLargeFileMode { clearCriticHighlights() }
             markdownPresentation?.update(
                 document: document,
                 enabled: document.language == .markdown && document.isMarkdownFormatted,
@@ -4641,6 +4753,7 @@ extension EditorTextView {
             )
             markdownPresentation?.reapplyCodeColors(in: range)
             markdownPresentation?.reapplyLinkColors(in: range)
+            reapplyCriticColors(in: range)
             os_signpost(
                 .end,
                 log: editorPerformanceLog,
@@ -4741,6 +4854,7 @@ extension EditorTextView {
             )
             markdownPresentation?.reapplyCodeColors(in: range)
             markdownPresentation?.reapplyLinkColors(in: range)
+            reapplyCriticColors(in: range)
         }
 
         private func updateCursor() {
@@ -4884,6 +4998,48 @@ extension EditorTextView {
                 name: "TextKitVisibleLayout",
                 signpostID: layoutSignpostID
             )
+        }
+
+        private func criticColor(_ kind: CriticMarkupKind) -> NSColor {
+            switch kind {
+            case .insertion: .lacCriticInsertText
+            case .deletion: .lacCriticDeleteText
+            case .substitution: .lacCriticSubstituteText
+            case .comment: .lacCriticCommentText
+            case .highlight: .lacCriticHighlightText
+            }
+        }
+
+        /// Цвет правок CriticMarkup поверх подсветки синтаксиса; без готового разбора ничего не меняет.
+        /// Устаревший цвет снимает следующий проход подсветки: координаты прежних правок после ввода не хранятся.
+        private func reapplyCriticColors(in range: NSRange) {
+            guard isActive, document.language == .markdown, !document.isLargeFileMode, !document.hasPendingLiveEdits,
+                  let textView, !textView.hasMarkedText(), let layoutManager = textView.layoutManager,
+                  let storage = textView.textStorage,
+                  let index = markdownPresentation?.criticElementIndex(document: document, revision: contentRevision, textLength: storage.length)
+            else { return }
+            let bounded = NSIntersectionRange(range, NSRange(location: 0, length: storage.length))
+            guard bounded.length > 0 else { return }
+            let text = storage.mutableString
+            let window = CriticMarkupService.paragraphRange(containing: bounded, in: text)
+            guard text.range(of: "{", options: .literal, range: window).location != NSNotFound else { return }
+            let items = CriticMarkupService.items(in: text, window: window, excluded: index.excludedRanges(intersecting: window))
+                .filter { NSIntersectionRange($0.range, bounded).length > 0 }
+            guard !items.isEmpty else { return }
+            hasCriticColors = true
+            if !document.isSyntaxHighlightingEnabled { clearsDisabledSyntaxOnScroll = true }
+            for item in items {
+                layoutManager.addTemporaryAttribute(.foregroundColor, value: criticColor(item.kind),
+                                                    forCharacterRange: NSIntersectionRange(item.range, bounded))
+            }
+        }
+
+        private func clearCriticHighlights() {
+            guard hasCriticColors else { return }
+            hasCriticColors = false
+            highlightedRanges.removeAll()
+            if !document.isSyntaxHighlightingEnabled { clearsDisabledSyntaxOnScroll = true }
+            scheduleHighlight(delay: 0)
         }
 
         private func visibleHighlightRange() -> NSRange? {

@@ -1075,6 +1075,41 @@ extension NSColor {
             : NSColor(calibratedRed: 0.05, green: 0.35, blue: 0.60, alpha: 1)
     }
 
+    /// Вставка CriticMarkup; контраст к `lacEditorBackground` не ниже 4,5:1 в обеих темах.
+    static let lacCriticInsertText = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(calibratedRed: 0.45, green: 0.85, blue: 0.5, alpha: 1)
+            : NSColor(calibratedRed: 0.05, green: 0.42, blue: 0.15, alpha: 1)
+    }
+
+    /// Удаление CriticMarkup; контраст к `lacEditorBackground` не ниже 4,5:1 в обеих темах.
+    static let lacCriticDeleteText = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(calibratedRed: 1.0, green: 0.55, blue: 0.55, alpha: 1)
+            : NSColor(calibratedRed: 0.7, green: 0.1, blue: 0.1, alpha: 1)
+    }
+
+    /// Подмена CriticMarkup; контраст к `lacEditorBackground` не ниже 4,5:1 в обеих темах.
+    static let lacCriticSubstituteText = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(calibratedRed: 0.8, green: 0.65, blue: 1.0, alpha: 1)
+            : NSColor(calibratedRed: 0.45, green: 0.15, blue: 0.65, alpha: 1)
+    }
+
+    /// Комментарий CriticMarkup; контраст к `lacEditorBackground` не ниже 4,5:1 в обеих темах.
+    static let lacCriticCommentText = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(calibratedRed: 0.4, green: 0.85, blue: 0.85, alpha: 1)
+            : NSColor(calibratedRed: 0.0, green: 0.4, blue: 0.4, alpha: 1)
+    }
+
+    /// Выделение CriticMarkup; контраст к `lacEditorBackground` не ниже 4,5:1 в обеих темах.
+    static let lacCriticHighlightText = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(calibratedRed: 1.0, green: 0.9, blue: 0.4, alpha: 1)
+            : NSColor(calibratedRed: 0.55, green: 0.4, blue: 0.0, alpha: 1)
+    }
+
     static let lacCommentText = NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             ? NSColor(calibratedRed: 0.60, green: 0.66, blue: 0.62, alpha: 1)

@@ -36,6 +36,26 @@ final class ContrastTests: XCTestCase {
         }
     }
 
+    func testCriticMarkupColorsMeetContrastOnEditorBackground() {
+        let colors: [NSColor] = [.lacCriticInsertText, .lacCriticDeleteText, .lacCriticSubstituteText,
+                                 .lacCriticCommentText, .lacCriticHighlightText]
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            var components: [[CGFloat]] = []
+            for color in colors {
+                XCTAssertGreaterThanOrEqual(contrast(color, .lacEditorBackground, name), 4.5)
+                NSAppearance(named: name)!.performAsCurrentDrawingAppearance {
+                    let c = color.usingColorSpace(.sRGB)!
+                    components.append([c.redComponent, c.greenComponent, c.blueComponent])
+                }
+            }
+            for first in components.indices {
+                for second in components.indices where second > first {
+                    XCTAssertNotEqual(components[first], components[second])
+                }
+            }
+        }
+    }
+
     func testRulerLabelIsRightAlignedWithGap() {
         let origin = LineNumberGeometry.labelOrigin(
             rulerWidth: 44, labelSize: NSSize(width: 20, height: 13), lineRect: NSRect(x: 0, y: 0, width: 44, height: 20)

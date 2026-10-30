@@ -45,8 +45,13 @@ enum MarkdownBacklinkScanner {
     }
 
     /// Файловый адрес без расширения проверяется как `.md` и `.markdown`, как при переходе по ссылке; `#якорь` того же файла не считается.
+    /// Адрес в `<…>` содержит буквальные пробелы, которые разбор URL может не принять.
+    static func navigableAddress(_ address: String) -> String {
+        address.replacingOccurrences(of: " ", with: "%20")
+    }
+
     static func isLink(_ address: String, from documentURL: URL, to target: FolderSearchService.BacklinkTarget) -> Bool {
-        guard case let .file(url, _)? = try? MarkdownLinkNavigationService.destination(for: address, documentURL: documentURL) else { return false }
+        guard case let .file(url, _)? = try? MarkdownLinkNavigationService.destination(for: navigableAddress(address), documentURL: documentURL) else { return false }
         var candidates = [url]
         if url.pathExtension.isEmpty { candidates += [url.appendingPathExtension("md"), url.appendingPathExtension("markdown")] }
         let targetPath = target.url.standardizedFileURL.path as NSString

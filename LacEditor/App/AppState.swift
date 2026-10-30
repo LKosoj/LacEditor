@@ -85,6 +85,7 @@ enum EditorCommandNotification {
     static let insertMarkdownImage = Notification.Name("LacEditor.insertMarkdownImage")
     static let formatMarkdown = Notification.Name("LacEditor.formatMarkdown")
     static let editLines = Notification.Name("LacEditor.editLines")
+    static let criticMarkup = Notification.Name("LacEditor.criticMarkup")
     static let revealSelection = Notification.Name("LacEditor.revealSelection")
     static let findHighlights = Notification.Name("LacEditor.findHighlights")
     static let toggleFold = Notification.Name("LacEditor.toggleFold")
@@ -153,6 +154,11 @@ struct MarkdownFormattingRequest {
 struct LineEditingRequest {
     let documentID: UUID
     let command: LineEditingCommand
+}
+
+struct CriticMarkupRequest {
+    let documentID: UUID
+    let command: CriticMarkupCommand
 }
 
 final class EditorTextUpdateRequest {
@@ -480,6 +486,8 @@ final class AppState: ObservableObject {
     private var findRefreshTask: Task<Void, Never>?
     var templateTask: Task<Void, Never>?
     var renameLinkTask: Task<Void, Never>?
+    var manuscriptSheet: NSWindow?
+    var manuscriptStorage: ManuscriptController?
     private var textTransformationWindowController: TextTransformationWindowController?
     let fileService = FileService()
     private let fileOpeningQueue: OperationQueue = {
@@ -2321,6 +2329,7 @@ final class AppState: ObservableObject {
 
     func closeAuxiliaryWindows() {
         closeVersionHistory()
+        closeManuscript()
         templateTask?.cancel()
         templateTask = nil
         renameLinkTask?.cancel()
@@ -4500,6 +4509,14 @@ final class AppState: ObservableObject {
         )
     }
 
+    func criticMarkup(_ command: CriticMarkupCommand) {
+        guard let document = selectedDocument, document.language == .markdown, document.ioState == .idle else { return }
+        NotificationCenter.default.post(
+            name: EditorCommandNotification.criticMarkup,
+            object: CriticMarkupRequest(documentID: document.id, command: command)
+        )
+    }
+
     func markdownClipboard(_ command: MarkdownClipboardCommand) {
         guard let document = selectedDocument, document.language == .markdown, document.ioState == .idle else { return }
         NotificationCenter.default.post(name: EditorCommandNotification.markdownClipboard,
@@ -4521,13 +4538,15 @@ final class AppState: ObservableObject {
         return MarkdownSectionMoveService.target(direction, section: index, headings: document.markdownHeadings) != nil
     }
 
-    /// Перенос раздела кнопкой «Вверх/Вниз».
-    func moveMarkdownSection(_ heading: MarkdownHeading, _ direction: MarkdownSectionMoveService.Direction, in document: EditorDocument) {
+    /// Перенос раздела кнопкой «Вверх/Вниз». false — перенос не состоялся.
+    @discardableResult
+    func moveMarkdownSection(_ heading: MarkdownHeading, _ direction: MarkdownSectionMoveService.Direction, in document: EditorDocument) -> Bool {
         performMarkdownSectionMove(heading, in: document) { MarkdownSectionMoveService.target(direction, section: $0, headings: $1) }
     }
 
     /// Перенос раздела перетаскиванием: `before` — заголовок, перед которым встанет раздел; nil — в конец документа.
-    func moveMarkdownSection(_ heading: MarkdownHeading, before: MarkdownHeading?, in document: EditorDocument) {
+    @discardableResult
+    func moveMarkdownSection(_ heading: MarkdownHeading, before: MarkdownHeading?, in document: EditorDocument) -> Bool {
         performMarkdownSectionMove(heading, in: document) { _, headings in
             guard let before else { return .end }
             return headings.firstIndex(where: { $0.sameSource(as: before) }).map(MarkdownSectionMoveService.Target.before)
@@ -4537,25 +4556,25 @@ final class AppState: ObservableObject {
     private func performMarkdownSectionMove(
         _ heading: MarkdownHeading, in document: EditorDocument,
         target: (Int, [MarkdownHeading]) -> MarkdownSectionMoveService.Target?
-    ) {
+    ) -> Bool {
         guard selectedDocument === document, document.language == .markdown, document.ioState == .idle,
-              !openingPlaceholderIDs.contains(document.id) else { return }
+              !openingPlaceholderIDs.contains(document.id) else { return false }
         guard !document.isReadingMode else {
             document.setStatusError(L10n.tr("阅读模式下无法修改"))
-            return
+            return false
         }
         // сначала перенос ввода из редактора в модель: он же гасит устаревший список заголовков
         let snapshot = document.synchronizedSnapshot()
         guard document.isMarkdownOutlineCurrent, !document.hasPendingLiveEdits else {
             document.statusMessage = L10n.tr("正在更新大纲…")
-            return
+            return false
         }
         let headings = document.markdownHeadings
         guard let index = headings.firstIndex(where: { $0.sameSource(as: heading) }),
-              let place = target(index, headings) else { return }
+              let place = target(index, headings) else { return false }
         guard let selection = editableSelection(in: document) else {
             document.setStatusError(L10n.tr("当前文本无法修改"))
-            return
+            return false
         }
         let source = snapshot.text as NSString
         switch MarkdownSectionMoveService.move(in: source, headings: headings, section: index, to: place) {
@@ -4565,6 +4584,7 @@ final class AppState: ObservableObject {
             case .insideSelf: document.setStatusError(L10n.tr("无法把章节移入自身"))
             default: document.setStatusError(L10n.tr("无法移动该章节"))
             }
+            return false
         case let .success(move):
             let request = EditorRangeReplacementRequest(documentID: document.id, range: move.range,
                 originalText: source.substring(with: move.range), replacementText: move.replacement,
@@ -4573,6 +4593,7 @@ final class AppState: ObservableObject {
             request.resultingSelection = move.selectionRange
             NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
             if !request.wasHandled { document.setStatusError(request.failureMessage ?? L10n.tr("当前文本无法修改")) }
+            return request.wasHandled
         }
     }
 

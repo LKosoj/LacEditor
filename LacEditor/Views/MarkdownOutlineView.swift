@@ -7,14 +7,14 @@ struct MarkdownOutlineView: View {
     var maximumLevel = 6
     let reveal: (MarkdownHeading) -> Void
     var canMove: (MarkdownHeading, MarkdownSectionMoveService.Direction) -> Bool = { _, _ in false }
-    var move: (MarkdownHeading, MarkdownSectionMoveService.Direction) -> Void = { _, _ in }
+    var move: (MarkdownHeading, MarkdownSectionMoveService.Direction) -> Bool = { _, _ in false }
     /// Раздел и заголовок, перед которым он встанет (nil — в конец документа).
     var drop: (MarkdownHeading, MarkdownHeading?) -> Void = { _, _ in }
-    @State private var draggedID: Int?
     @State private var indicator: OutlineDropIndicator?
     @State private var visibleHeadings: [MarkdownHeading] = []
     @State private var currentID: Int?
     @State private var contentHeight: CGFloat = 0
+    @State private var awaitsMovedFocus = false
     @FocusState private var focusedID: Int?
 
     static let maximumHeight: CGFloat = 320
@@ -41,13 +41,13 @@ struct MarkdownOutlineView: View {
                     } else {
                         ForEach(Array(visibleHeadings.enumerated()), id: \.element.id) { offset, heading in
                             MarkdownOutlineRow(heading: heading, isCurrent: heading.id == currentID,
-                                               canMove: canMove, move: move) { reveal(heading) }
+                                               canMove: canMove, move: { _ = move($0, $1) }) { reveal(heading) }
                                 .focused($focusedID, equals: heading.id)
                                 .editorFocusRing(focusedID == heading.id)
                                 .id(heading.id)
                                 .modifier(OutlineSectionDrop(
                                     heading: heading, next: offset + 1 < visibleHeadings.count ? visibleHeadings[offset + 1] : nil,
-                                    document: document, draggedID: $draggedID, indicator: $indicator, drop: drop))
+                                    document: document, indicator: $indicator, drop: drop))
                                 .onKeyPress(.upArrow) { press in
                                     if press.modifiers == .option { return moveSection(heading, .up) }
                                     return moveFocus(from: heading.id, offset: -1, proxy: proxy)
@@ -60,7 +60,7 @@ struct MarkdownOutlineView: View {
                         // зона «в конец документа»
                         Color.clear.frame(height: 14).contentShape(Rectangle())
                             .modifier(OutlineSectionDrop(heading: nil, next: nil, document: document,
-                                                         draggedID: $draggedID, indicator: $indicator, drop: drop))
+                                                         indicator: $indicator, drop: drop))
                     }
                 }
                 .font(.callout)
@@ -80,9 +80,14 @@ struct MarkdownOutlineView: View {
         }
         .onReceive(document.$markdownHeadings) { headings in
             visibleHeadings = headings.filter { $0.level <= maximumLevel }
+            // перенос ставит курсор в начало строки заголовка (перед отступом до трёх пробелов): фокус следует за ним на новое место
+            if awaitsMovedFocus {
+                awaitsMovedFocus = false
+                let caret = document.selectionRange.location
+                if let moved = visibleHeadings.first(where: { (0...3).contains($0.range.location - caret) }) { focusedID = moved.id }
+            }
         }
         .onDisappear {
-            draggedID = nil
             indicator = nil
         }
         .onChange(of: maximumLevel) { _, value in
@@ -94,7 +99,7 @@ struct MarkdownOutlineView: View {
 
     private func moveSection(_ heading: MarkdownHeading, _ direction: MarkdownSectionMoveService.Direction) -> KeyPress.Result {
         guard heading.isTopLevel, canMove(heading, direction) else { return .ignored }
-        move(heading, direction)
+        awaitsMovedFocus = move(heading, direction)
         return .handled
     }
 
@@ -143,6 +148,12 @@ private struct MarkdownOutlineRow: View {
 /// Тип переноса раздела: только внутри этого окна, чужие перетаскивания не принимаются.
 private let outlineSectionType = UTType(exportedAs: "com.laceditor.outline-section")
 
+/// Последнее начатое перетаскивание раздела. Тип виден всем окнам, а об отмене система не сообщает:
+/// значение перезаписывается при каждом начале, и окно другого документа его отвергает.
+@MainActor private enum OutlineSectionDrag {
+    static var current: (documentID: UUID, headingID: Int)?
+}
+
 /// Куда встанет раздел: у строки `id` сверху или снизу; id == nil — полоса «в конец».
 private struct OutlineDropIndicator: Equatable {
     enum Placement { case before, after }
@@ -156,7 +167,6 @@ private struct OutlineSectionDrop: ViewModifier {
     /// Следующая видимая строка: нижняя половина строки означает вставку перед ней.
     let next: MarkdownHeading?
     let document: EditorDocument
-    @Binding var draggedID: Int?
     @Binding var indicator: OutlineDropIndicator?
     let drop: (MarkdownHeading, MarkdownHeading?) -> Void
     @State private var height: CGFloat = 24
@@ -175,13 +185,13 @@ private struct OutlineSectionDrop: ViewModifier {
             }
             .onDrop(of: [outlineSectionType], delegate: OutlineSectionDropDelegate(
                 heading: heading, next: next, height: height, document: document,
-                draggedID: $draggedID, indicator: $indicator, drop: drop))
+                indicator: $indicator, drop: drop))
     }
 
     @ViewBuilder private func draggable(_ content: Content) -> some View {
         if let heading, heading.isTopLevel {
             content.onDrag {
-                draggedID = heading.id
+                OutlineSectionDrag.current = (document.id, heading.id)
                 let provider = NSItemProvider()
                 provider.registerDataRepresentation(forTypeIdentifier: outlineSectionType.identifier, visibility: .ownProcess) {
                     $0(Data(), nil)
@@ -200,9 +210,12 @@ private struct OutlineSectionDropDelegate: DropDelegate {
     let next: MarkdownHeading?
     let height: CGFloat
     let document: EditorDocument
-    @Binding var draggedID: Int?
     @Binding var indicator: OutlineDropIndicator?
     let drop: (MarkdownHeading, MarkdownHeading?) -> Void
+
+    private var draggedID: Int? {
+        OutlineSectionDrag.current.flatMap { $0.documentID == document.id ? $0.headingID : nil }
+    }
 
     /// Раздел, заголовок «перед» (nil — в конец) и положение индикатора; nil, если сюда ставить нельзя.
     private func resolve(_ info: DropInfo) -> (section: MarkdownHeading, before: MarkdownHeading?, placement: OutlineDropIndicator.Placement)? {
@@ -243,7 +256,7 @@ private struct OutlineSectionDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         let place = validateDrop(info: info) ? resolve(info) : nil
         indicator = nil
-        draggedID = nil
+        OutlineSectionDrag.current = nil
         guard let place else { return false }
         drop(place.section, place.before)
         return true

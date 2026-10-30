@@ -1170,7 +1170,7 @@ final class WindowManager: ObservableObject {
     private func renameFile(_ url: URL, to newName: String) {
         // Ссылки ищутся до переименования: по старому адресу файл ещё существует.
         let candidate = url.deletingLastPathComponent().appendingPathComponent(newName).standardizedFileURL
-        if !newName.isEmpty, !newName.contains("/"),
+        if !newName.isEmpty, !newName.contains("/"), !FileManager.default.fileExists(atPath: candidate.path),
            let owner = states.values.first(where: { $0.renameLinkScope(from: url, to: candidate) != nil }) {
             Task { @MainActor [weak self, weak owner] in
                 let plan = await owner?.prepareMarkdownLinkUpdate(from: url, to: candidate)

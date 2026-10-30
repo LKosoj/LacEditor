@@ -114,6 +114,15 @@ final class MarkdownRenameLinkTests: XCTestCase {
         XCTAssertEqual(try read("source.md", in: root), "[[Old]] [t](a%23b.md)")
     }
 
+    func testAmpersandInNewNameIsEncoded() throws {
+        let root = try directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try write("", "Old.md", in: root)
+        try write("[t](Old.md)", "source.md", in: root)
+        _ = try rename(root, "Old.md", "x&copy.md")
+        XCTAssertEqual(try read("source.md", in: root), "[t](x%26copy.md)")
+    }
+
     func testUnsupportedAndForeignLinksAreNotTouched() throws {
         let root = try directory()
         defer { try? FileManager.default.removeItem(at: root) }

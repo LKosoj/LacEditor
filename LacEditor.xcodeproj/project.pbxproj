@@ -110,6 +110,11 @@
 		D01302000000000000000005 /* VersionHistoryController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01302000000000000000006 /* VersionHistoryController.swift */; };
 		D01302000000000000000001 /* FileVersionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01302000000000000000002 /* FileVersionService.swift */; };
 		D01408000000000000000001 /* WritingGoalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01408000000000000000002 /* WritingGoalStore.swift */; };
+		D01410000000000000000001 /* CriticMarkupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01410000000000000000002 /* CriticMarkupService.swift */; };
+		D01407000000000000000007 /* AppState+Manuscript.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01407000000000000000008 /* AppState+Manuscript.swift */; };
+		D01407000000000000000005 /* ManuscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01407000000000000000006 /* ManuscriptView.swift */; };
+		D01407000000000000000003 /* ManuscriptController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01407000000000000000004 /* ManuscriptController.swift */; };
+		D01407000000000000000001 /* ManuscriptService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01407000000000000000002 /* ManuscriptService.swift */; };
 		D01409000000000000000001 /* MarkdownRenameLinkService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01409000000000000000002 /* MarkdownRenameLinkService.swift */; };
 		D01409000000000000000003 /* AppState+RenameLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01409000000000000000004 /* AppState+RenameLinks.swift */; };
 		D01409000000000000000005 /* WindowManager+RenameLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01409000000000000000006 /* WindowManager+RenameLinks.swift */; };
@@ -329,6 +334,11 @@
 		D01302000000000000000006 /* VersionHistoryController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VersionHistoryController.swift; path = Services/VersionHistoryController.swift; sourceTree = "<group>"; };
 		D01302000000000000000002 /* FileVersionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FileVersionService.swift; path = Services/FileVersionService.swift; sourceTree = "<group>"; };
 		D01408000000000000000002 /* WritingGoalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WritingGoalStore.swift; path = Services/WritingGoalStore.swift; sourceTree = "<group>"; };
+		D01410000000000000000002 /* CriticMarkupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CriticMarkupService.swift; path = Services/CriticMarkupService.swift; sourceTree = "<group>"; };
+		D01407000000000000000008 /* AppState+Manuscript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Manuscript.swift"; sourceTree = "<group>"; };
+		D01407000000000000000006 /* ManuscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ManuscriptView.swift; path = Views/ManuscriptView.swift; sourceTree = "<group>"; };
+		D01407000000000000000004 /* ManuscriptController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ManuscriptController.swift; path = Services/ManuscriptController.swift; sourceTree = "<group>"; };
+		D01407000000000000000002 /* ManuscriptService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ManuscriptService.swift; path = Services/ManuscriptService.swift; sourceTree = "<group>"; };
 		D01409000000000000000002 /* MarkdownRenameLinkService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MarkdownRenameLinkService.swift; path = Services/MarkdownRenameLinkService.swift; sourceTree = "<group>"; };
 		D01409000000000000000004 /* AppState+RenameLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+RenameLinks.swift"; sourceTree = "<group>"; };
 		D01409000000000000000006 /* WindowManager+RenameLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WindowManager+RenameLinks.swift"; sourceTree = "<group>"; };
@@ -502,6 +512,10 @@
 				D01302000000000000000006 /* VersionHistoryController.swift */,
 				D01302000000000000000002 /* FileVersionService.swift */,
 				D01408000000000000000002 /* WritingGoalStore.swift */,
+				D01410000000000000000002 /* CriticMarkupService.swift */,
+				D01407000000000000000006 /* ManuscriptView.swift */,
+				D01407000000000000000004 /* ManuscriptController.swift */,
+				D01407000000000000000002 /* ManuscriptService.swift */,
 				D01409000000000000000002 /* MarkdownRenameLinkService.swift */,
 				D01000000000000000000008 /* AICustomChecksSettingsView.swift */,
 				D0100000000000000000000A /* AIMediaClient.swift */,
@@ -545,6 +559,7 @@
 				A00000000000000000000002 /* AppState.swift */,
 				D01312000000000000000012 /* AppState+Templates.swift */,
 				D01409000000000000000004 /* AppState+RenameLinks.swift */,
+				D01407000000000000000008 /* AppState+Manuscript.swift */,
 				D01409000000000000000006 /* WindowManager+RenameLinks.swift */,
 				A0000000000000000000002C /* AppPreferences.swift */,
 				A00000000000000000000003 /* LacEditorCommands.swift */,
@@ -944,6 +959,11 @@
 				D01302000000000000000005 /* VersionHistoryController.swift in Sources */,
 				D01302000000000000000001 /* FileVersionService.swift in Sources */,
 				D01408000000000000000001 /* WritingGoalStore.swift in Sources */,
+				D01410000000000000000001 /* CriticMarkupService.swift in Sources */,
+				D01407000000000000000007 /* AppState+Manuscript.swift in Sources */,
+				D01407000000000000000005 /* ManuscriptView.swift in Sources */,
+				D01407000000000000000003 /* ManuscriptController.swift in Sources */,
+				D01407000000000000000001 /* ManuscriptService.swift in Sources */,
 				D01409000000000000000001 /* MarkdownRenameLinkService.swift in Sources */,
 				D01409000000000000000003 /* AppState+RenameLinks.swift in Sources */,
 				D01409000000000000000005 /* WindowManager+RenameLinks.swift in Sources */,

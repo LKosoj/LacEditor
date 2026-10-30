@@ -973,4 +973,44 @@ struct MarkdownElementIndex: Equatable, Sendable {
         }
         return MarkdownElementPath(elements: elements)
     }
+
+    /// Диапазоны кода, HTML-блоков, формул, таблиц и front matter, пересекающие окно; целые, отсортированные и объединённые.
+    func excludedRanges(intersecting window: NSRange) -> [NSRange] {
+        func isExcluded(_ kind: MarkdownElement.Kind) -> Bool {
+            switch kind {
+            case .frontMatter, .codeBlock, .mathBlock, .table, .htmlBlock, .code, .formula: return true
+            default: return false
+            }
+        }
+        var found: [NSRange] = []
+        for entries in [blocks, inlines] {
+            var low = 0, high = entries.count
+            while low < high {
+                let middle = (low + high) / 2
+                if entries[middle].range.location < window.location { low = middle + 1 } else { high = middle }
+            }
+            // Раньше окна могут начинаться только предки записи перед ним.
+            var index = low - 1
+            while index >= 0 {
+                let entry = entries[index]
+                if NSMaxRange(entry.range) > window.location, isExcluded(entry.kind) { found.append(entry.range) }
+                index = entry.parent
+            }
+            index = low
+            while index < entries.count, entries[index].range.location < NSMaxRange(window) {
+                if isExcluded(entries[index].kind) { found.append(entries[index].range) }
+                index += 1
+            }
+        }
+        found.sort { $0.location < $1.location }
+        var merged: [NSRange] = []
+        for range in found {
+            if let last = merged.last, range.location <= NSMaxRange(last) {
+                merged[merged.count - 1] = NSRange(location: last.location, length: max(NSMaxRange(last), NSMaxRange(range)) - last.location)
+            } else {
+                merged.append(range)
+            }
+        }
+        return merged
+    }
 }

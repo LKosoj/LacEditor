@@ -90,6 +90,12 @@ struct LacEditorCommands: Commands {
                 Label(L10n.tr("导入…"), systemImage: "square.and.arrow.down")
             }
                 .disabled(appState == nil)
+            Button {
+                appState?.presentManuscript()
+            } label: {
+                Label(L10n.tr("合并为文稿…"), systemImage: "doc.on.doc")
+            }
+                .disabled(appState == nil || appState?.folderWorkspace.rootURL == nil)
             Menu {
                 if windowManager.recentFiles.urls.isEmpty {
                     Text(L10n.tr("无最近文件"))
@@ -607,6 +613,19 @@ struct LacEditorCommands: Commands {
                         Button(L10n.tr("居中对齐")) { appState?.formatMarkdown(.table(.align(.center))) }
                         Button(L10n.tr("右对齐")) { appState?.formatMarkdown(.table(.align(.right))) }
                     }
+                }
+                Menu(L10n.tr("修订")) {
+                    Button(L10n.tr("建议插入")) { appState?.criticMarkup(.suggestInsertion) }
+                    Button(L10n.tr("建议删除")) { appState?.criticMarkup(.suggestDeletion) }
+                    Button(L10n.tr("添加批注")) { appState?.criticMarkup(.addComment) }
+                    Divider()
+                    Button(L10n.tr("接受当前修订")) { appState?.criticMarkup(.accept) }
+                    Button(L10n.tr("拒绝当前修订")) { appState?.criticMarkup(.reject) }
+                    Button(L10n.tr("接受全部修订")) { appState?.criticMarkup(.acceptAll) }
+                    Button(L10n.tr("拒绝全部修订")) { appState?.criticMarkup(.rejectAll) }
+                    Divider()
+                    Button(L10n.tr("下一处修订")) { appState?.criticMarkup(.next) }
+                    Button(L10n.tr("上一处修订")) { appState?.criticMarkup(.previous) }
                 }
             }
             .disabled(appState?.selectedDocument?.language != .markdown || appState?.selectedDocument?.ioState != .idle || isReadingMode)

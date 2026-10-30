@@ -32,26 +32,24 @@ extension AppState {
         }
         // Отмена этой задачи (кнопка «Пропустить», закрытие окна) останавливает обход.
         renameLinkTask = Task { await withTaskCancellationHandler { _ = await search.value } onCancel: { search.cancel() } }
-        var sheet: NSAlert?
+        let alert = NSAlert()
+        alert.messageText = L10n.tr("正在查找指向该文件的链接…")
+        let spinner = NSProgressIndicator(frame: NSRect(x: 0, y: 0, width: 32, height: 32))
+        spinner.style = .spinning
+        spinner.isIndeterminate = true
+        spinner.startAnimation(nil)
+        alert.accessoryView = spinner
+        alert.addButton(withTitle: L10n.tr("跳过"))
         let indicator = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 400_000_000)
             guard !Task.isCancelled, let self, let window = self.hostWindow else { return }
-            let alert = NSAlert()
-            alert.messageText = L10n.tr("正在查找指向该文件的链接…")
-            let spinner = NSProgressIndicator(frame: NSRect(x: 0, y: 0, width: 32, height: 32))
-            spinner.style = .spinning
-            spinner.isIndeterminate = true
-            spinner.startAnimation(nil)
-            alert.accessoryView = spinner
-            alert.addButton(withTitle: L10n.tr("跳过"))
-            sheet = alert
             alert.beginSheetModal(for: window) { [weak self] response in
                 if response == .alertFirstButtonReturn { self?.renameLinkTask?.cancel() }
             }
         }
         let plan = await search.value
         indicator.cancel()
-        if let window = sheet?.window { window.sheetParent?.endSheet(window, returnCode: .abort) }
+        alert.window.sheetParent?.endSheet(alert.window, returnCode: .abort)
         renameLinkTask = nil
         guard folderWorkspace.rootURL == rename.root else { return nil }
         return plan
@@ -59,27 +57,44 @@ extension AppState {
 
     /// Вопрос, запись и отчёт после успешного переноса.
     func completeMarkdownLinkUpdate(_ plan: MarkdownRenameLinkService.Plan?) async {
-        guard let plan, folderWorkspace.rootURL == plan.rename.root, let manager = windowManager,
-              FileManager.default.fileExists(atPath: plan.rename.newURL.path),
-              !FileManager.default.fileExists(atPath: plan.rename.oldURL.path) else { return }
+        guard let plan, folderWorkspace.rootURL == plan.rename.root, let manager = windowManager else { return }
+        let (old, new) = (plan.rename.oldURL, plan.rename.newURL)
+        // Старый путь может вести на тот же файл, если менялся только регистр имени.
+        guard FileManager.default.fileExists(atPath: new.path),
+              !FileManager.default.fileExists(atPath: old.path) ||
+                DocumentFileIdentity.resolve(old).matches(DocumentFileIdentity.resolve(new)) else { return }
+        var notes: [String] = []
+        if plan.skipped.total > 0 {
+            notes.append(L10n.tr("另有 %d 个链接不会修改：新文件名含有 # | [ ]，存在多个同名文件，或写法不受支持。", plan.skipped.total))
+        }
+        if !plan.problems.isEmpty {
+            notes.append(L10n.tr("有 %d 个文件无法检查，其中的链接不会修改。", plan.problems.count))
+        }
         guard plan.linkCount > 0 else {
-            if plan.skipped.total > 0 { sidebarFeedback.show(L10n.tr("未更新 %d 个链接", plan.skipped.total), symbol: "info.circle") }
+            guard !notes.isEmpty else { return }
+            // Не строка обратной связи: она заменила бы кнопку отмены переноса.
+            let note = NSAlert()
+            note.messageText = L10n.tr("部分文件未更新")
+            note.informativeText = notes.joined(separator: "\n\n")
+            note.addButton(withTitle: L10n.tr("确定"))
+            note.runModal()
             return
         }
         let alert = NSAlert()
         alert.messageText = L10n.tr("更新 %d 个链接（%d 个文件）？", plan.linkCount, plan.fileCount)
         var details = L10n.tr("文件已重命名。“撤销”重命名不会还原这些链接。已关闭的文件将直接写入磁盘，无法撤销；已打开的文档会作为一次编辑修改，可以撤销。")
-        if plan.skipped.total > 0 {
-            details += "\n\n" + L10n.tr("另有 %d 个链接不会修改：新文件名含有 # | [ ]，存在多个同名文件，或写法不受支持。", plan.skipped.total)
+        if old.deletingLastPathComponent() != new.deletingLastPathComponent() {
+            details += "\n\n" + L10n.tr("该文件自身的相对链接不会修改。")
         }
-        alert.informativeText = details
+        alert.informativeText = ([details] + notes).joined(separator: "\n\n")
         alert.addButton(withTitle: L10n.tr("不更新"))
         alert.addButton(withTitle: L10n.tr("更新链接"))
         guard alert.runModal() == .alertSecondButtonReturn, folderWorkspace.rootURL == plan.rename.root else { return }
-        var report = MarkdownRenameLinkService.Report()
-        let task = Task { report = await self.applyMarkdownLinkEdits(plan, manager: manager) }
-        renameLinkTask = task
-        await task.value
+        // Отмена переноса во время записи вернула бы файл, а ссылки остались бы на новом имени.
+        sidebarFeedback.show(L10n.tr("正在更新链接…"), symbol: "info.circle")
+        let task = Task { await self.applyMarkdownLinkEdits(plan, manager: manager) }
+        renameLinkTask = Task { await withTaskCancellationHandler { _ = await task.value } onCancel: { task.cancel() } }
+        let report = await task.value
         renameLinkTask = nil
         guard folderWorkspace.rootURL == plan.rename.root else { return }
         folderWorkspace.refresh()

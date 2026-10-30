@@ -63,6 +63,9 @@ swiftc \
     LacEditor/Models/MarkdownMedia.swift \
     LacEditor/Models/MarkdownInlineStyle.swift \
     LacEditor/Editor/FoldLayoutManager.swift \
+    LacEditor/Services/MarkdownAutoPairService.swift \
+    LacEditor/Services/FocusSentenceService.swift \
+    LacEditor/Editor/LacTextView.swift \
     LacEditor/Editor/CodeLexicalScanner.swift \
     LacEditor/Editor/DelimiterMatchingService.swift \
     LacEditor/Editor/SyntaxParser.swift \
@@ -72,6 +75,7 @@ swiftc \
 .build/core-verification
 
 swiftc \
+    LacEditor/App/L10n.swift \
     LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Models/MarkdownPresentation.swift \
     LacEditor/Models/MarkdownColorOverrides.swift \
@@ -79,6 +83,11 @@ swiftc \
     LacEditor/Models/MarkdownMedia.swift \
     LacEditor/Models/MarkdownInlineStyle.swift \
     LacEditor/Editor/FoldLayoutManager.swift \
+    LacEditor/Editor/ListContinuationService.swift \
+    LacEditor/Services/TextCodecService.swift \
+    LacEditor/Services/MarkdownAutoPairService.swift \
+    LacEditor/Services/FocusSentenceService.swift \
+    LacEditor/Editor/LacTextView.swift \
     LacEditor/Editor/LogicalLineIndex.swift \
     Verification/FoldLayoutVerification.swift \
     -o .build/fold-layout-verification

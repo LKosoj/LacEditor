@@ -7,7 +7,8 @@ final class MarkdownSectionMoveTests: XCTestCase {
 
     // MARK: Вспомогательное
 
-    /// Построчный разбор для чистых тестов: ATX и setext-заголовки на верхнем уровне, front matter пропускается.
+    /// Построчный разбор для чистых тестов: ATX и setext-заголовки (также многострочные, с начала абзаца) на верхнем уровне,
+    /// front matter пропускается.
     private func headings(_ text: String) -> [MarkdownHeading] {
         let ns = text as NSString
         var lines: [(text: String, start: Int)] = []
@@ -31,17 +32,32 @@ final class MarkdownSectionMoveTests: XCTestCase {
             let leading = line.prefix { $0 == " " }.count
             let body = line.dropFirst(leading)
             let hashes = body.prefix { $0 == "#" }.count
-            if leading <= 3, (1...6).contains(hashes), body.dropFirst(hashes).first.map({ $0 == " " || $0 == "\t" }) ?? true {
+            func isATX(_ text: String) -> Bool {
+                let body = text.drop { $0 == " " }
+                let count = body.prefix { $0 == "#" }.count
+                return text.count - body.count <= 3 && (1...6).contains(count)
+                    && (body.dropFirst(count).first.map { $0 == " " || $0 == "\t" } ?? true)
+            }
+            func underline(_ text: String) -> Character? {
+                let trimmed = text.trimmingCharacters(in: .whitespaces)
+                guard let mark = trimmed.first, mark == "=" || mark == "-", trimmed.allSatisfy({ $0 == mark }) else { return nil }
+                return mark
+            }
+            if isATX(line) {
                 result.append(MarkdownHeading(
                     level: hashes, title: body.dropFirst(hashes).trimmingCharacters(in: .whitespaces),
                     range: NSRange(location: lines[current].start + leading, length: line.utf16.count - leading), isTopLevel: true))
-            } else if !line.trimmingCharacters(in: .whitespaces).isEmpty, current + 1 < lines.count {
-                let under = lines[current + 1].text.trimmingCharacters(in: .whitespaces)
-                if let mark = under.first, mark == "=" || mark == "-", under.allSatisfy({ $0 == mark }) {
+            } else if !line.trimmingCharacters(in: .whitespaces).isEmpty {
+                var end = current + 1
+                while end < lines.count, underline(lines[end].text) == nil, !isATX(lines[end].text),
+                      !lines[end].text.trimmingCharacters(in: .whitespaces).isEmpty { end += 1 }
+                if end < lines.count, let mark = underline(lines[end].text) {
+                    let start = lines[current].start
+                    let last = lines[end - 1]
                     result.append(MarkdownHeading(
-                        level: mark == "=" ? 1 : 2, title: line, range: NSRange(location: lines[current].start, length: line.utf16.count),
-                        isTopLevel: true))
-                    current += 1
+                        level: mark == "=" ? 1 : 2, title: line,
+                        range: NSRange(location: start, length: last.start + last.text.utf16.count - start), isTopLevel: true))
+                    current = end
                 }
             }
             current += 1
@@ -164,6 +180,11 @@ final class MarkdownSectionMoveTests: XCTestCase {
                        "# A\nTitle\n=====\nbody\n# B\nq\n")
         XCTAssertEqual(moved("Title\n=====\nbody\n# A\npara\n\n# B\nq\n", section: 0, to: .before(2)),
                        "# A\npara\n\nTitle\n=====\nbody\n# B\nq\n")
+    }
+
+    func testMultilineSetextAfterParagraphGetsBlankLine() {
+        XCTAssertEqual(moved("Line1\nLine2\n====\nbody\n# A\npara\n# B\nq\n", section: 0, to: .before(2)),
+                       "# A\npara\n\nLine1\nLine2\n====\nbody\n# B\nq\n")
     }
 
     // MARK: Хвост документа

@@ -181,6 +181,13 @@ final class DocumentTaskCoordinator: @unchecked Sendable {
     }
 }
 
+/// Итог записи копии для восстановления.
+enum DocumentRecoveryPersistResult: Equatable, Sendable {
+    case written
+    case failed(String)
+    case noSession
+}
+
 /// Состояние копии для восстановления; временное, в сессию не пишется.
 enum RecoveryCopyState: Equatable { case untracked, pending, protected, failed(String) }
 

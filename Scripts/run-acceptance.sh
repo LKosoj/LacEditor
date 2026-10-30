@@ -67,6 +67,10 @@ swiftc -O -parse-as-library \
     LacEditor/Models/MarkdownMedia.swift \
     LacEditor/Models/MarkdownInlineStyle.swift \
     LacEditor/Editor/FoldLayoutManager.swift \
+    LacEditor/Services/TextCodecService.swift \
+    LacEditor/Services/MarkdownAutoPairService.swift \
+    LacEditor/Services/FocusSentenceService.swift \
+    LacEditor/Editor/LacTextView.swift \
     LacEditor/Editor/CodeLexicalScanner.swift \
     LacEditor/Editor/DelimiterMatchingService.swift \
     LacEditor/Editor/SyntaxParser.swift \
@@ -88,6 +92,11 @@ swiftc -O -parse-as-library \
     LacEditor/Models/DocumentStatistics.swift \
     LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Models/EditorDocument.swift \
+    LacEditor/Models/MarkdownPresentation.swift \
+    LacEditor/Models/MarkdownColorOverrides.swift \
+    LacEditor/Models/MarkdownListStyle.swift \
+    LacEditor/Models/MarkdownMedia.swift \
+    LacEditor/Models/MarkdownInlineStyle.swift \
     LacEditor/Services/LineEndingService.swift \
     LacEditor/Services/FileService.swift \
     LacEditor/Services/TextSearchService.swift \
