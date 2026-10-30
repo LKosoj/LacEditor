@@ -11,6 +11,7 @@ final class AIDocumentToolsTests: XCTestCase {
         preferences.aiFeatures = [.mermaid]
         var configuration = preferences.aiConfiguration
         configuration.text.isEnabled = true
+        configuration.text.modelID = "test-model"
         preferences.aiConfiguration = configuration
         let document = EditorDocument(text: "prefix 😀乙")
         let state = AppState(initialDocument: document, recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
@@ -48,6 +49,8 @@ final class AIDocumentToolsTests: XCTestCase {
         preferences.aiFeatures = [.contextReview]
         var configuration = preferences.aiConfiguration
         configuration.text.isEnabled = true
+        configuration.text.modelID = "test-model"
+        configuration.text.modelID = "test-model"
         preferences.aiConfiguration = configuration
         let target = EditorDocument(text: "target")
         let source = EditorDocument(text: "source")
@@ -235,10 +238,12 @@ final class AIDocumentToolsTests: XCTestCase {
         preferences.aiFeatures = [.contextReview]
         var configuration = preferences.aiConfiguration
         configuration.text.isEnabled = true
+        configuration.text.modelID = "test-model"
         preferences.aiConfiguration = configuration
         let target = EditorDocument(text: "target")
         let source = EditorDocument(text: sourceText)
         let state = AppState(initialDocuments: [target, source], recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
+        state.selectedDocumentID = target.id
         let controller = AIDocumentToolsController(appState: state, generate: { _, _, _, _, _, _, _ in
             await MainActor.run { calls() }
             return response

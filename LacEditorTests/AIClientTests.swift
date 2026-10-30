@@ -265,7 +265,22 @@ final class AIClientTests: XCTestCase {
             XCTAssertEqual(request.url?.path, "/gateway/v1/images/edits")
             XCTAssertEqual(request.httpMethod, "POST")
             XCTAssertTrue(request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data; boundary=") == true)
-            let body = try XCTUnwrap(request.httpBody)
+            let body: Data
+            if let httpBody = request.httpBody {
+                body = httpBody
+            } else {
+                let stream = try XCTUnwrap(request.httpBodyStream)
+                stream.open()
+                defer { stream.close() }
+                var data = Data()
+                var buffer = [UInt8](repeating: 0, count: 4_096)
+                while stream.hasBytesAvailable {
+                    let count = stream.read(&buffer, maxLength: buffer.count)
+                    if count <= 0 { break }
+                    data.append(buffer, count: count)
+                }
+                body = data
+            }
             let text = String(decoding: body, as: UTF8.self)
             XCTAssertTrue(text.contains("name=\"model\""))
             XCTAssertTrue(text.contains("test-model"))
@@ -273,7 +288,7 @@ final class AIClientTests: XCTestCase {
             XCTAssertTrue(text.contains("make it blue"))
             XCTAssertTrue(text.contains("name=\"image\"; filename=\"image.png\""))
             XCTAssertNotNil(body.range(of: png))
-            return (200, Data("{\"data\":[{\"b64_json\":\"(png.base64EncodedString())\"}]}".utf8))
+            return (200, Data("{\"data\":[{\"b64_json\":\"\(png.base64EncodedString())\"}]}".utf8))
         }
         let result = try await makeClient().editImage(data: png, prompt: "make it blue", profile: profile(.images), key: nil)
         XCTAssertEqual(result, png)

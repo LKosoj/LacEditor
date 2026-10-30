@@ -11,6 +11,7 @@ final class AIQuestionControllerTests: XCTestCase {
         preferences.aiFeatures = [.ask]
         var configuration = preferences.aiConfiguration
         configuration.text.isEnabled = true
+        configuration.text.modelID = "test-model"
         preferences.aiConfiguration = configuration
         let state = AppState(initialDocuments: documents, recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
         return (AIQuestionController(appState: state, converse: converse, loadKey: { _, _ in nil }), state, preferences)
