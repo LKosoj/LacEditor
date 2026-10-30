@@ -27,7 +27,7 @@ final class AIDictationController: ObservableObject {
     private let writePasteboard: (String) -> Void
 
     init(appState: AppState,
-         recorder: AIVoiceRecorder = AIVoiceRecorder(),
+         recorder: AIVoiceRecorder? = nil,
          transcribe: @escaping (URL, AIModelProfile, String?) async throws -> String = { try await AIMediaClient().transcribe(fileURL: $0, profile: $1, key: $2) },
          cleanup: @escaping (String, AIModelProfile, String?) async throws -> String = {
              try await AIClient().generateText(input: $0, instructions: AIDictationController.cleanupInstructions, profile: $1, key: $2)
@@ -35,7 +35,7 @@ final class AIDictationController: ObservableObject {
          loadKey: @escaping (AIRole, String) throws -> String? = { try AIKeychainStore().load(for: $0, baseURL: $1) },
          askRetry: ((String) async -> Bool)? = nil,
          writePasteboard: @escaping (String) -> Void = { NSPasteboard.general.clearContents(); NSPasteboard.general.setString($0, forType: .string) }) {
-        self.appState = appState; self.recorder = recorder; self.transcribe = transcribe; self.cleanup = cleanup
+        self.appState = appState; self.recorder = recorder ?? AIVoiceRecorder(); self.transcribe = transcribe; self.cleanup = cleanup
         self.loadKey = loadKey; self.askRetry = askRetry; self.writePasteboard = writePasteboard
         // Панель инструментов слушает AppState, поэтому каждая смена состояния пересылается туда.
         stateObserver = $state.dropFirst().sink { [weak appState] _ in appState?.objectWillChange.send() }
