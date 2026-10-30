@@ -1,5 +1,10 @@
 import Foundation
 
+enum CommentSyntax: Equatable {
+    case line(String)
+    case block(open: String, close: String)
+}
+
 enum EditorLanguage: String, CaseIterable, Identifiable {
     case plainText = "Plain Text"
     case markdown = "Markdown"
@@ -50,6 +55,17 @@ enum EditorLanguage: String, CaseIterable, Identifiable {
         case .yaml: "list.bullet.rectangle"
         case .cFamily: "c.square"
         case .sql: "cylinder.split.1x2"
+        }
+    }
+
+    var commentSyntax: CommentSyntax? {
+        switch self {
+        case .swift, .javascript, .typescript, .cFamily: .line("//")
+        case .python, .shell, .yaml: .line("#")
+        case .sql: .line("--")
+        case .html, .markdown: .block(open: "<!--", close: "-->")
+        case .css: .block(open: "/*", close: "*/")
+        case .json, .plainText: nil
         }
     }
 

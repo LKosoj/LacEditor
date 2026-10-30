@@ -30,6 +30,12 @@ final class ContrastTests: XCTestCase {
         }
     }
 
+    func testTagColorMeetsContrastOnEditorBackground() {
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            XCTAssertGreaterThanOrEqual(contrast(.lacTagText, .lacEditorBackground, name), 4.5)
+        }
+    }
+
     func testRulerLabelIsRightAlignedWithGap() {
         let origin = LineNumberGeometry.labelOrigin(
             rulerWidth: 44, labelSize: NSSize(width: 20, height: 13), lineRect: NSRect(x: 0, y: 0, width: 44, height: 20)

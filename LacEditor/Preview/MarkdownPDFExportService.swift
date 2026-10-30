@@ -215,7 +215,8 @@ final class MarkdownPDFExportService: NSObject, WKNavigationDelegate {
     func start(snapshot: DocumentTextSnapshot, darkMode: Bool, typography: MarkdownTypography? = nil,
                mathOptions: MathJaxRenderService.Options = .init(), options: MarkdownNativeExportOptions = .init(),
                headers: MarkdownPDFHeaderFooterOptions = .init(), sourceURL: URL? = nil,
-               htmlOptions: MarkdownHTMLExportOptions = .init(), syntax: MarkdownSyntaxOptions = .init()) {
+               htmlOptions: MarkdownHTMLExportOptions = .init(), syntax: MarkdownSyntaxOptions = .init(),
+               wiki: MarkdownWikiLinkSource? = nil) {
         self.htmlOptions = htmlOptions
         self.options = options
         self.headers = headers
@@ -272,9 +273,13 @@ final class MarkdownPDFExportService: NSObject, WKNavigationDelegate {
             }
             let imageSession = self?.imageSession ?? .shared
             let pageTask = Task.detached(priority: .userInitiated) {
+                // Список файлов читается с диска заново; без него wiki-ссылки остаются обычным текстом.
+                let wikiContext = (wiki != nil && snapshot.text.contains("[[")) ? wiki.flatMap {
+                    try? MarkdownWikiLinkContext.load(root: $0.root, documentURL: $0.documentURL, isCancelled: { Task.isCancelled })
+                } : nil
                 var page = MarkdownRenderer.renderPage(snapshot.text, darkMode: darkMode, includeHTMLMedia: isHTML, renderEmoji: true,
                                                        resolveLocalImages: !isHTML, documentURL: sourceURL, prepareRemoteImages: !isHTML, syntax: syntax, forExport: true, includeHeadingNumbers: true, includeListStyles: true,
-                                                       staticWidgetFallback: !isHTML, preserveRawHTMLBlocks: isHTML, highlightCode: !isHTML)
+                                                       staticWidgetFallback: !isHTML, preserveRawHTMLBlocks: isHTML, highlightCode: !isHTML, wiki: wikiContext)
                 try? await page.resolveRemoteImages(session: imageSession)
                 try? page.prepareLocalMedia(load: true)
                 if isImage && options.customImageFontSize {

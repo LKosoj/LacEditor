@@ -49,7 +49,7 @@ extension SettingsSection {
         case .appearance:
             ["界面主题", "外观", "语言", "界面语言", "窗口界面", "显示状态栏", "Markdown 浅色外观颜色", "Markdown 深色外观颜色"]
         case .files:
-            ["离开与继续", "启动文件夹", "本地恢复", "异常关闭保护"]
+            ["离开与继续", "启动文件夹", "模板与每日笔记", "模板文件夹", "每日笔记文件夹", "每日笔记日期格式", "本地恢复", "异常关闭保护"]
         case .associations:
             ["当前应用位置", "文件格式", "设为默认"]
         case .performance:
@@ -692,6 +692,37 @@ struct SettingsView: View {
                             if panel.runModal() == .OK, let url = panel.url { appState.preferences.startupFolderPath = url.path }
                         }
                     }
+                }
+            }
+            PreferenceGroup(title: L10n.tr("模板与每日笔记")) {
+                PreferenceRow(title: L10n.tr("模板文件夹"), detail: L10n.tr("留空时无法使用“从模板新建笔记”。")) {
+                    HStack {
+                        TextField(L10n.tr("未设置"), text: Binding(
+                            get: { appState.preferences.templatesFolderPath },
+                            set: { appState.preferences.templatesFolderPath = $0 }
+                        )).frame(width: 180).accessibilityLabel(L10n.tr("模板文件夹"))
+                        Button(L10n.tr("选择…")) {
+                            let panel = NSOpenPanel()
+                            panel.canChooseFiles = false
+                            panel.canChooseDirectories = true
+                            panel.allowsMultipleSelection = false
+                            if panel.runModal() == .OK, let url = panel.url { appState.preferences.templatesFolderPath = url.path }
+                        }
+                    }
+                }
+                rowDivider
+                PreferenceRow(title: L10n.tr("每日笔记文件夹"), detail: L10n.tr("相对于工作文件夹；留空表示工作文件夹根目录。")) {
+                    TextField(L10n.tr("未设置"), text: Binding(
+                        get: { appState.preferences.dailyNotesFolder },
+                        set: { appState.preferences.dailyNotesFolder = $0 }
+                    )).frame(width: 180).accessibilityLabel(L10n.tr("每日笔记文件夹"))
+                }
+                rowDivider
+                PreferenceRow(title: L10n.tr("每日笔记日期格式"), detail: L10n.tr("用于文件名，默认 yyyy-MM-dd；不能包含 / 或 :。")) {
+                    TextField(NoteTemplateService.defaultDateFormat, text: Binding(
+                        get: { appState.preferences.dailyNoteDateFormat },
+                        set: { appState.preferences.dailyNoteDateFormat = $0 }
+                    )).frame(width: 180).accessibilityLabel(L10n.tr("每日笔记日期格式"))
                 }
             }
             PreferenceGroup(title: L10n.tr("本地恢复")) {

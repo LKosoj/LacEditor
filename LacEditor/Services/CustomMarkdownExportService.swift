@@ -192,7 +192,8 @@ enum CustomMarkdownExportService {
     // Explicit PDF-engine profile: Pandoc and its engine share one process group.
     static func preparePDFEngine(text: String, source: URL?, destination: URL, profile: MarkdownExportProfile,
                                  executable: URL? = nil, isCancelled: @escaping () -> Bool = { false },
-                                 syntax: MarkdownSyntaxOptions = .init(), extractEmbeddedMedia: Bool = false) throws -> Result {
+                                 syntax: MarkdownSyntaxOptions = .init(), extractEmbeddedMedia: Bool = false,
+                                 wiki: MarkdownWikiLinkSource? = nil) throws -> Result {
         guard !isCancelled() else { throw CancellationError() }
         guard destination.pathExtension.lowercased() == "pdf",
               let engine = profile.pdfEngine, engine.hasPrefix("/"), FileManager.default.isExecutableFile(atPath: engine) else {
@@ -209,8 +210,8 @@ enum CustomMarkdownExportService {
         defer { if !retained { try? manager.removeItem(at: outputDirectory) } }
         let input = work.appendingPathComponent("input.md")
         let output = outputDirectory.appendingPathComponent("output.pdf")
-        let snapshot = text.contains("$") || syntax.preserveExportWhitespace || !syntax.strictMode
-            ? try PandocExportService.markedExportSnapshot(text, syntax: syntax, includeTOC: false, isCancelled: isCancelled) : nil
+        let snapshot = text.contains("$") || syntax.preserveExportWhitespace || !syntax.strictMode || (wiki != nil && text.contains("[["))
+            ? try PandocExportService.markedExportSnapshot(text, syntax: syntax, includeTOC: false, wiki: wiki, isCancelled: isCancelled) : nil
         let imageRooted = try PandocExportService.rootImageSnapshot(snapshot?.text ?? text, document: source, isCancelled: isCancelled)
         let preparedText = try PandocExportService.rootMediaSnapshot(imageRooted, document: source, isCancelled: isCancelled)
         try Data(preparedText.utf8).write(to: input, options: .withoutOverwriting)

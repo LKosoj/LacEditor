@@ -87,6 +87,8 @@ final class DocumentTaskCoordinator: @unchecked Sendable {
         case aiCompletion
         case aiMetadata
         case aiDocumentTools
+        case lineEndings
+        case lineEndingConversion
     }
 
     private let lock = NSLock()
@@ -188,7 +190,10 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
             pendingLiveTextIsEmpty = nil
             textRevision &+= 1
             textSnapshotCache = nil
-            if !isTakingMetricsSnapshot { scheduleMetricsRefresh() }
+            if !isTakingMetricsSnapshot {
+                scheduleMetricsRefresh()
+                scheduleLineEndingRefresh()
+            }
         }
     }
     @Published var url: URL?
@@ -214,6 +219,8 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     @Published var ioState: DocumentIOState = .idle
     @Published private(set) var statistics: DocumentStatistics?
     @Published private(set) var statisticsUnavailable = false
+    /// Временный результат фонового подсчёта; nil, пока он не получен. В сессию не пишется.
+    @Published private(set) var lineEndings: LineEndingSummary?
     private(set) var textRevision: UInt = 0
     private var textSnapshotCache: DocumentTextSnapshot?
     var scrollPositionRatio: CGFloat = 0
@@ -238,6 +245,10 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     private var metricsSuspended = false
     private var isTakingMetricsSnapshot = false
     private var metricsDebounceWorkItem: DispatchWorkItem?
+    /// Кодировка последнего прочитанного или записанного состояния; только в объекте документа, не в сессии.
+    private var savedEncoding: String.Encoding
+    private var lineEndingGeneration: UInt = 0
+    private var lineEndingWorkItem: DispatchWorkItem?
 
     init(
         id: UUID = UUID(),
@@ -257,6 +268,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         self.url = url
         self.language = language
         self.fileEncoding = fileEncoding
+        self.savedEncoding = fileEncoding
         self.fileIdentity = url.map(DocumentFileIdentity.resolve)
         self.fileRevisionSnapshot = fileRevisionSnapshot
         self.isDirty = isDirty
@@ -273,11 +285,17 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         if resolvedProfile == .standard && text.utf16.count >= 100_000 {
             scheduleMetricsRefresh()
         }
+        if text.utf16.count < 100_000 {
+            lineEndings = LineEndingService.detect(in: text)
+        } else {
+            scheduleLineEndingRefresh(delay: 0)
+        }
     }
 
     deinit {
         taskCoordinator.cancelAll()
         metricsDebounceWorkItem?.cancel()
+        lineEndingWorkItem?.cancel()
     }
 
     var displayName: String {
@@ -296,6 +314,13 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
 
     func updateFileEncoding(_ encoding: String.Encoding) {
         fileEncoding = encoding
+    }
+
+    /// Меняет кодировку будущей записи: текст не трогается, документ становится несохранённым.
+    /// В историю отмены редактора это не попадает.
+    func changeFileEncodingPendingSave(_ encoding: String.Encoding) {
+        fileEncoding = encoding
+        refreshDirtyState()
     }
 
     func updateFileRevisionSnapshot(_ snapshot: FileRevisionSnapshot?) {
@@ -381,7 +406,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     func refreshDirtyState() {
         synchronizeLiveText()
         let currentText = text
-        let shouldBeDirty = savedText.map { currentText != $0 } ?? true
+        let shouldBeDirty = (savedText.map { currentText != $0 } ?? true) || fileEncoding != savedEncoding
         updateDirtyState(shouldBeDirty)
     }
 
@@ -389,11 +414,13 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         synchronizeLiveText()
         let currentText = text
         savedText = currentText
+        savedEncoding = fileEncoding
         updateDirtyState(false)
     }
 
     func markSaved(snapshot: String, revision: UInt) {
         savedText = snapshot
+        savedEncoding = fileEncoding
         let shouldBeDirty = textRevision != revision
             || hasPendingLiveEdits
             || text != snapshot
@@ -418,7 +445,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         liveTextAcknowledgement = nil
         hasPendingLiveEdits = false
         pendingLiveTextIsEmpty = nil
-        let shouldBeDirty = savedText.map { text != $0 } ?? true
+        let shouldBeDirty = (savedText.map { text != $0 } ?? true) || fileEncoding != savedEncoding
         updateDirtyState(shouldBeDirty)
     }
 
@@ -427,6 +454,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         hasPendingLiveEdits = true
         pendingLiveTextIsEmpty = isEmpty
         scheduleMetricsRefresh()
+        scheduleLineEndingRefresh()
         let shouldBeDirty = !(url == nil && isEmpty)
         updateDirtyState(shouldBeDirty)
     }
@@ -598,8 +626,56 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         coordinator.attachTask(task, kind: .metrics, generation: taskGeneration)
     }
 
+    /// Определяет окончания строк в фоне по снимку; результат применяется только для той же версии текста.
+    private func scheduleLineEndingRefresh(delay: TimeInterval = 0.5) {
+        lineEndingGeneration &+= 1
+        let generation = lineEndingGeneration
+        lineEndingWorkItem?.cancel()
+        lineEndingWorkItem = nil
+        taskCoordinator.cancel(.lineEndings)
+        guard !metricsSuspended else { return }
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, self.lineEndingGeneration == generation, !self.metricsSuspended else { return }
+            self.lineEndingWorkItem = nil
+            // В большом профиле не копируем живой текст редактора ради справочного показа.
+            if self.performanceProfile != .standard, self.hasPendingLiveEdits {
+                if self.lineEndings != nil { self.lineEndings = nil }
+                return
+            }
+            self.isTakingMetricsSnapshot = true
+            let snapshot = self.synchronizedSnapshot()
+            self.isTakingMetricsSnapshot = false
+            guard !self.hasPendingLiveEdits else { return }
+            let coordinator = self.taskCoordinator
+            let taskGeneration = coordinator.begin(.lineEndings)
+            let task = Task.detached(priority: .utility) { [weak self] in
+                guard let result = LineEndingService.detect(in: snapshot.text, isCancelled: { Task.isCancelled }),
+                      !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .lineEndings) else { return }
+                await MainActor.run { [weak self] in
+                    guard let self, self.lineEndingGeneration == generation,
+                          self.textRevision == snapshot.revision, !self.hasPendingLiveEdits,
+                          !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .lineEndings) else { return }
+                    self.lineEndings = result
+                    coordinator.finish(.lineEndings, generation: taskGeneration)
+                }
+            }
+            coordinator.attachTask(task, kind: .lineEndings, generation: taskGeneration)
+        }
+        lineEndingWorkItem = workItem
+        if delay <= 0 {
+            DispatchQueue.main.async(execute: workItem)
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+        }
+    }
+
     func cancelMetricsRefresh() {
         metricsSuspended = true
+        lineEndingGeneration &+= 1
+        lineEndingWorkItem?.cancel()
+        lineEndingWorkItem = nil
+        taskCoordinator.cancel(.lineEndings)
         metricsGeneration &+= 1
         metricsDebounceWorkItem?.cancel()
         metricsDebounceWorkItem = nil
@@ -611,6 +687,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         guard metricsSuspended else { return }
         metricsSuspended = false
         scheduleMetricsRefresh()
+        scheduleLineEndingRefresh()
     }
 }
 

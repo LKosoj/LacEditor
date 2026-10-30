@@ -43,6 +43,15 @@ enum FolderSearchService {
         return Result(root: root, values: result.listedFiles, problems: result.problems)
     }
 
+    /// Markdown-файлы папки для разрешения wiki-ссылок; без метаданных и без индекса.
+    static func markdownFiles(root: URL, isCancelled: () -> Bool = { false }) throws -> Result<File> {
+        let root = normalized(root)
+        let listing = try enumerate(root: root, isCancelled: isCancelled)
+        let files = listing.files.filter { ["md", "markdown"].contains($0.url.pathExtension.lowercased()) }
+        try checkCancellation(isCancelled)
+        return Result(root: root, values: files, problems: listing.problems)
+    }
+
     enum ProblemReason: Equatable, Sendable {
         case inaccessible, symbolicLink, invalidUTF8, changed, conflictingOpenDocuments, invalidTags
     }
@@ -64,6 +73,15 @@ enum FolderSearchService {
         let contextRange: NSRange
         let context: String
         let source: Source
+
+        var key: MatchKey { MatchKey(url: file.url, location: range.location, length: range.length) }
+    }
+
+    /// Ключ совпадения для выбора флажками и предпросмотра замены.
+    struct MatchKey: Hashable, Sendable {
+        let url: URL
+        let location: Int
+        let length: Int
     }
 
     struct Result<Value: Sendable>: Sendable {
@@ -125,11 +143,47 @@ enum FolderSearchService {
 
     enum SearchKind { case text, tags }
 
-    static func search(root: URL, query: String, caseSensitive: Bool, openDocuments: [OpenDocument], kind: SearchKind = .text,
-                       isCancelled: () -> Bool = { false }) throws -> Result<Match> {
+    /// Документ, на который ищутся обратные ссылки: сам он среди источников не просматривается.
+    struct BacklinkTarget: Equatable, Sendable {
+        let url: URL
+        let identity: DocumentFileIdentity
+        let syntax: MarkdownSyntaxOptions
+    }
+
+    /// Обратные ссылки: разрешённые wiki-ссылки и обычные Markdown-ссылки на `target` в `.md/.markdown` папки.
+    static func backlinks(root: URL, target: BacklinkTarget, openDocuments: [OpenDocument],
+                          isCancelled: () -> Bool = { false }) throws -> Result<Match> {
         let root = normalized(root)
         try checkCancellation(isCancelled)
-        guard !query.isEmpty else { return Result(root: root, values: [], problems: []) }
+        let targetURL = normalized(target.url)
+        guard let targetPath = relativePath(targetURL, root: root) else { return Result(root: root, values: [], problems: []) }
+        let needles = MarkdownBacklinkScanner.needles(for: target)
+        var prepared: (targetPath: String, resolver: MarkdownWikiLinkResolver)?
+        var matches: [Match] = []
+        let problems = try scan(root: root, openDocuments: openDocuments, markdownOnly: true, isCancelled: isCancelled,
+                                skip: { url, identity in identity?.matches(target.identity) == true || url == targetURL },
+                                prepare: { files in
+            // Цель всегда входит в набор путей, даже если файла ещё нет на диске.
+            var paths = files.filter { ["md", "markdown"].contains($0.url.pathExtension.lowercased()) }.map(\.relativePath)
+            let folded = MarkdownWikiLinkResolver.fold(targetPath)
+            let known = paths.first { MarkdownWikiLinkResolver.fold($0) == folded }
+            if known == nil { paths.append(targetPath) }
+            prepared = (known ?? targetPath, MarkdownWikiLinkResolver(base: root, paths: paths))
+        }) { text, file, source in
+            guard let prepared else { return }
+            let ranges = try MarkdownBacklinkScanner.ranges(in: text, file: file, target: target, targetPath: prepared.targetPath, resolver: prepared.resolver,
+                                                            needles: needles, isCancelled: isCancelled)
+            try appendMatches(ranges, in: text, file: file, source: source, isCancelled: isCancelled, to: &matches)
+        }
+        try checkCancellation(isCancelled)
+        return Result(root: root, values: matches, problems: problems)
+    }
+
+    /// Общий обход папки: открытые документы приоритетнее диска, символические ссылки и изменившиеся файлы попадают в проблемы.
+    private static func scan(root: URL, openDocuments: [OpenDocument], markdownOnly: Bool, isCancelled: () -> Bool,
+                             skip: (URL, DocumentFileIdentity?) -> Bool = { _, _ in false },
+                             prepare: ([File]) throws -> Void = { _ in },
+                             visit: (String, File, Source) throws -> Void) throws -> [Problem] {
         let listing = try enumerate(root: root, isCancelled: isCancelled)
         var problems = listing.problems
         var documents: [OpenDocument] = []
@@ -161,29 +215,15 @@ enum FolderSearchService {
             }
         }
         files.sort(by: fileOrder)
+        try prepare(files)
         var visited = IdentityLookup()
-        var matches: [Match] = []
-        var tagInputs: [MarkdownTagReader.Input] = []
-        var tagMatches: [UUID: Match] = [:]
-        func append(_ text: String, file: File, source: Source) throws {
-            if kind == .text {
-                try appendMatches(text, file: file, source: source, query: query, caseSensitive: caseSensitive,
-                                  isCancelled: isCancelled, to: &matches)
-            } else if let frontMatter = MarkdownPresentationParser.frontMatter(text) {
-                try checkCancellation(isCancelled)
-                let raw = (text as NSString).substring(with: frontMatter.range)
-                let id = UUID()
-                tagInputs.append(MarkdownTagReader.Input(id: id, frontMatter: raw))
-                tagMatches[id] = Match(file: file, range: frontMatter.range, matchedText: raw,
-                                       contextRange: frontMatter.range, context: "", source: source)
-            }
-        }
         for file in files {
             try checkCancellation(isCancelled)
-            if kind == .tags, !["md", "markdown"].contains(file.url.pathExtension.lowercased()) { continue }
+            if markdownOnly, !["md", "markdown"].contains(file.url.pathExtension.lowercased()) { continue }
             let url = normalized(file.url)
             if excluded.contains(url) { continue }
             let identity = try pathIsSafe(url, root: root, isCancelled: isCancelled) ? DocumentFileIdentity.resolve(url) : nil
+            if skip(url, identity) { continue }
             let candidateIndices = Set((documentURLs[url] ?? []) + (identity.map { documentIdentities.matches($0) } ?? [])).sorted()
             let candidates = candidateIndices.map { documents[$0] }
             if let first = candidates.first {
@@ -193,10 +233,11 @@ enum FolderSearchService {
                 }
                 guard visited.matches(first.identity).isEmpty else { continue }
                 visited.insert(first.identity, value: 0)
+                if skip(url, first.identity) { continue }
                 let origin = Source.open(documentID: first.snapshot.documentID, revision: first.snapshot.revision, identity: first.identity)
                 let documentURL = normalized(first.url)
                 let documentFile = File(url: documentURL, relativePath: relativePath(documentURL, root: root)!)
-                try append(first.snapshot.text, file: documentFile, source: origin)
+                try visit(first.snapshot.text, documentFile, origin)
                 continue
             }
             guard try pathIsSafe(url, root: root, isCancelled: isCancelled) else {
@@ -218,29 +259,67 @@ enum FolderSearchService {
                 guard let text = String(data: data, encoding: .utf8) else {
                     problems.append(Problem(url: url, reason: .invalidUTF8)); continue
                 }
-                try append(text, file: file, source: .disk(after))
+                try visit(text, file, .disk(after))
             } catch is CancellationError { throw CancellationError() }
             catch { problems.append(Problem(url: url, reason: .inaccessible)) }
         }
+        return problems
+    }
+
+    static func search(root: URL, query: String, caseSensitive: Bool, openDocuments: [OpenDocument], kind: SearchKind = .text,
+                       options: TextSearchService.Options? = nil, isCancelled: () -> Bool = { false }) throws -> Result<Match> {
+        let root = normalized(root)
         try checkCancellation(isCancelled)
-        if kind == .tags {
-            let results = try MarkdownTagReader.read(tagInputs, isCancelled: isCancelled)
-            let options: NSString.CompareOptions = caseSensitive ? [.literal] : [.literal, .caseInsensitive]
-            for input in tagInputs {
-                try checkCancellation(isCancelled)
-                guard let original = tagMatches[input.id], let result = results[input.id] else { continue }
-                switch result {
-                case let .tags(tags):
-                    guard tags.contains(where: { ($0 as NSString).compare(query, options: options) == .orderedSame }) else { continue }
-                    matches.append(Match(file: original.file, range: original.range, matchedText: original.matchedText,
-                                         contextRange: original.contextRange, context: tags.joined(separator: ", "), source: original.source))
-                case .invalid:
-                    problems.append(Problem(url: original.file.url, reason: .invalidTags))
-                }
+        guard !query.isEmpty else { return Result(root: root, values: [], problems: []) }
+        var matches: [Match] = []
+        var tagProblems: [Problem] = []
+        let problems = try scan(root: root, openDocuments: openDocuments, markdownOnly: kind == .tags, isCancelled: isCancelled) { text, file, source in
+            if kind == .text {
+                try appendMatches(text, file: file, source: source, query: query,
+                                  options: options ?? TextSearchService.Options(caseSensitive: caseSensitive),
+                                  isCancelled: isCancelled, to: &matches)
+            } else {
+                try appendTagMatches(text, file: file, source: source, query: query, isCancelled: isCancelled,
+                                     to: &matches, problems: &tagProblems)
             }
         }
         try checkCancellation(isCancelled)
-        return Result(root: root, values: matches, problems: problems)
+        return Result(root: root, values: matches, problems: problems + tagProblems)
+    }
+
+    /// Тег папки: имя в первом встреченном написании и число файлов, где он есть (YAML и встроенные, повтор в файле — один).
+    struct TagEntry: Equatable, Sendable {
+        let name: String
+        let fileCount: Int
+    }
+
+    static func tagListing(root: URL, openDocuments: [OpenDocument], isCancelled: () -> Bool = { false }) throws -> Result<TagEntry> {
+        let root = normalized(root)
+        try checkCancellation(isCancelled)
+        var names: [String: String] = [:]
+        var counts: [String: Int] = [:]
+        var tagProblems: [Problem] = []
+        let problems = try scan(root: root, openDocuments: openDocuments, markdownOnly: true, isCancelled: isCancelled) { text, file, _ in
+            let parsed = try MarkdownTagReader.read(text: text, isCancelled: isCancelled)
+            var found: [String] = []
+            switch parsed.yaml {
+            case let .tags(tags)?: found = tags.map(MarkdownTagReader.normalized)
+            case .invalid?: tagProblems.append(Problem(url: file.url, reason: .invalidTags))
+            case nil: break
+            }
+            found.append(contentsOf: parsed.inline.map(\.name))
+            var seen: Set<String> = []
+            for name in found where !name.isEmpty {
+                let key = name.lowercased()
+                guard seen.insert(key).inserted else { continue }
+                if names[key] == nil { names[key] = name }
+                counts[key, default: 0] += 1
+            }
+        }
+        try checkCancellation(isCancelled)
+        let entries = names.map { TagEntry(name: $0.value, fileCount: counts[$0.key] ?? 0) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        return Result(root: root, values: entries, problems: problems + tagProblems)
     }
 
     static func isCurrent(_ match: Match, openDocument: OpenDocument) -> Bool {
@@ -248,6 +327,33 @@ enum FolderSearchService {
               openDocument.snapshot.documentID == id, openDocument.snapshot.revision == revision,
               identity.matches(openDocument.identity), normalized(openDocument.url) == normalized(match.file.url) else { return false }
         return hasFragment(match, text: openDocument.snapshot.text)
+    }
+
+    enum ReplaceReadFailure: Error, Equatable { case changed, symbolicLink, notExactUTF8, inaccessible }
+
+    /// Чтение закрытого файла перед записью замены: отметка до и после чтения, путь без символических ссылок,
+    /// байты равны UTF-8 перекодированию текста (без BOM и нестандартных последовательностей).
+    static func readForReplace(url: URL, root: URL, expected: FileRevisionSnapshot,
+                               isCancelled: () -> Bool = { false }) throws -> String {
+        let root = normalized(root), url = normalized(url)
+        try checkCancellation(isCancelled)
+        guard relativePath(url, root: root) != nil else { throw ReplaceReadFailure.inaccessible }
+        guard try pathIsSafe(url, root: root, isCancelled: isCancelled) else { throw ReplaceReadFailure.symbolicLink }
+        let data: Data
+        do {
+            guard try FileRevisionSnapshot.capture(url) == expected else { throw ReplaceReadFailure.changed }
+            try checkCancellation(isCancelled)
+            data = try Data(contentsOf: url)
+            try checkCancellation(isCancelled)
+            guard try FileRevisionSnapshot.capture(url) == expected,
+                  try pathIsSafe(url, root: root, isCancelled: isCancelled) else { throw ReplaceReadFailure.changed }
+        } catch let failure as ReplaceReadFailure { throw failure }
+        catch is CancellationError { throw CancellationError() }
+        catch { throw ReplaceReadFailure.inaccessible }
+        // BOM Foundation может отбросить при декодировании: файл с ним не угадываем, а пропускаем.
+        guard !data.starts(with: [0xEF, 0xBB, 0xBF]),
+              let text = String(data: data, encoding: .utf8), Data(text.utf8) == data else { throw ReplaceReadFailure.notExactUTF8 }
+        return text
     }
 
     static func isCurrent(_ match: Match, root: URL, isCancelled: () -> Bool = { false }) throws -> Bool {
@@ -269,7 +375,7 @@ enum FolderSearchService {
         catch { return false }
     }
 
-    private static func hasFragment(_ match: Match, text: String) -> Bool {
+    static func hasFragment(_ match: Match, text: String) -> Bool {
         let source = text as NSString
         return match.range.location >= 0 && match.range.location <= source.length &&
             match.range.length >= 0 && match.range.length <= source.length - match.range.location &&
@@ -277,9 +383,15 @@ enum FolderSearchService {
     }
 
     private static func appendMatches(_ text: String, file: File, source: Source, query: String,
-                                      caseSensitive: Bool, isCancelled: () -> Bool, to output: inout [Match]) throws {
+                                      options: TextSearchService.Options, isCancelled: () -> Bool, to output: inout [Match]) throws {
         try checkCancellation(isCancelled)
-        let ranges = TextSearchService.allRanges(in: text, query: query, caseSensitive: caseSensitive, isCancelled: isCancelled)
+        let ranges = try TextSearchService.allRanges(in: text, query: query, options: options, isCancelled: isCancelled)
+        try appendMatches(ranges, in: text, file: file, source: source, isCancelled: isCancelled, to: &output)
+    }
+
+    /// Совпадения по готовым диапазонам (по возрастанию): строка контекста общая для текстового поиска и обратных ссылок.
+    private static func appendMatches(_ ranges: [NSRange], in text: String, file: File, source: Source,
+                                      isCancelled: () -> Bool, to output: inout [Match]) throws {
         try checkCancellation(isCancelled)
         let string = text as NSString
         var contexts: [NSRange: String] = [:]
@@ -298,6 +410,34 @@ enum FolderSearchService {
             if let cached = contexts[context] { contextText = cached }
             else { contextText = string.substring(with: context); contexts[context] = contextText }
             output.append(Match(file: file, range: range, matchedText: string.substring(with: range),
+                                contextRange: context, context: contextText, source: source))
+        }
+    }
+
+    private static func appendTagMatches(_ text: String, file: File, source: Source, query: String, isCancelled: () -> Bool,
+                                         to output: inout [Match], problems: inout [Problem]) throws {
+        let parsed = try MarkdownTagReader.read(text: text, isCancelled: isCancelled)
+        let string = text as NSString
+        if let range = parsed.frontMatterRange, let yaml = parsed.yaml {
+            switch yaml {
+            case let .tags(tags):
+                if tags.contains(where: { MarkdownTagReader.matches(tag: $0, query: query) }) {
+                    output.append(Match(file: file, range: range, matchedText: string.substring(with: range),
+                                        contextRange: range, context: tags.joined(separator: ", "), source: source))
+                }
+            case .invalid:
+                problems.append(Problem(url: file.url, reason: .invalidTags))
+            }
+        }
+        var lastContext: (range: NSRange, text: String)?
+        for tag in parsed.inline where MarkdownTagReader.matches(tag: tag.name, query: query) {
+            try checkCancellation(isCancelled)
+            let context = string.lineRange(for: tag.range)
+            let contextText: String
+            if let lastContext, lastContext.range == context { contextText = lastContext.text }
+            else { contextText = string.substring(with: context) }
+            lastContext = (context, contextText)
+            output.append(Match(file: file, range: tag.range, matchedText: string.substring(with: tag.range),
                                 contextRange: context, context: contextText, source: source))
         }
     }

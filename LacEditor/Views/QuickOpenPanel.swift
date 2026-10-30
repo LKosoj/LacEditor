@@ -41,7 +41,7 @@ struct QuickOpenOverlay: View {
         let previous = previousResponder as? NSView
         previousResponder = nil
         DispatchQueue.main.async {
-            guard let window = appState.hostWindow else { return }
+            guard let window = appState.hostWindow, !appState.commandPalette.isPresented else { return }
             if (window.firstResponder as? NSTextView)?.hasMarkedText() == true { return }
             // фокус уже у другого элемента (не у исчезнувшего поля панели) — не отбираем
             if let current = window.firstResponder, !(current is NSWindow),

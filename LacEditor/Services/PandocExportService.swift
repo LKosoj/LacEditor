@@ -131,13 +131,20 @@ enum PandocExportService {
         var preservesSpaces = false
     }
 
-    static func markedExportSnapshot(_ text: String, syntax: MarkdownSyntaxOptions, includeTOC: Bool,
+    static func markedExportSnapshot(_ text: String, syntax: MarkdownSyntaxOptions, includeTOC: Bool, wiki: MarkdownWikiLinkSource? = nil,
                                      isCancelled: @escaping () -> Bool) throws -> (text: String, math: [MathMarker], toc: [String]) {
-        let presentation = MarkdownPresentationParser.parse(text, includeEmojiCandidates: true, syntax: syntax, isCancelled: isCancelled)
+        let presentation = MarkdownPresentationParser.parse(text, includeEmojiCandidates: true, includeWikiLinks: wiki != nil, syntax: syntax, isCancelled: isCancelled)
         if isCancelled() { throw CancellationError() }
         let values = try EmojiShortcodeResolver.resolve(presentation.emojiCandidates.map(\.name), isCancelled: isCancelled)
         var replacements: [(NSRange, String)] = presentation.emojiCandidates.compactMap { candidate in
             values[candidate.name].map { (candidate.range, $0) }
+        }
+        if let wiki, !presentation.wikiLinks.isEmpty {
+            // Список файлов читается с диска заново; ссылки, пересекающиеся с эмодзи или формулой, остаются текстом.
+            let context = try MarkdownWikiLinkContext.load(root: wiki.root, documentURL: wiki.documentURL, isCancelled: isCancelled)
+            let others = replacements.map(\.0) + (presentation.inlineFormulas.map(\.range) + presentation.formulas.map(\.range))
+            let links = presentation.wikiLinks.filter { link in !others.contains { NSIntersectionRange($0, link.range).length > 0 } }
+            replacements.append(contentsOf: MarkdownWikiLinkRewriter.replacements(links: links, context: context, in: text as NSString, isCancelled: isCancelled))
         }
         let ranges = includeTOC ? presentation.tableOfContents : []
         var prefix: String
@@ -931,7 +938,8 @@ enum PandocExportService {
     // the second consumes that exact parsed document and writes only to a temporary file.
     static func prepare(text original: String, source: URL?, destination: URL, profile: MarkdownExportProfile,
                         title: String, executable: URL? = nil, isCancelled: @escaping () -> Bool = { false },
-                        htmlOptions: MarkdownHTMLExportOptions? = nil, syntax: MarkdownSyntaxOptions = .init()) throws -> PandocExportResult {
+                        htmlOptions: MarkdownHTMLExportOptions? = nil, syntax: MarkdownSyntaxOptions = .init(),
+                        wiki: MarkdownWikiLinkSource? = nil) throws -> PandocExportResult {
         if isCancelled() { throw CancellationError() }
         guard let pandoc = executable ?? findPandoc() else { throw PandocExportError.missingPandoc }
         guard ["", "mediawiki", "latex"].contains(profile.rawType) else { throw PandocExportError.invalidConfiguration(L10n.tr("不支持此原始类型")) }
@@ -965,7 +973,7 @@ enum PandocExportService {
                 throw PandocExportError.invalidConfiguration(L10n.tr("原始类型与输出格式不匹配"))
             }
         }
-        let snapshot = try markedExportSnapshot(original, syntax: syntax, includeTOC: !profile.rawType.isEmpty, isCancelled: isCancelled)
+        let snapshot = try markedExportSnapshot(original, syntax: syntax, includeTOC: !profile.rawType.isEmpty, wiki: wiki, isCancelled: isCancelled)
         let manager = FileManager.default
         let temporary = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try manager.createDirectory(at: temporary, withIntermediateDirectories: false)
@@ -1152,10 +1160,10 @@ enum PandocExportService {
     static func prepare(
         text original: String, source: URL?, destination: URL, format: PandocExportFormat,
         title: String, executable: URL? = nil, isCancelled: @escaping () -> Bool = { false },
-        htmlOptions: MarkdownHTMLExportOptions = .init(), syntax: MarkdownSyntaxOptions = .init()
+        htmlOptions: MarkdownHTMLExportOptions = .init(), syntax: MarkdownSyntaxOptions = .init(), wiki: MarkdownWikiLinkSource? = nil
     ) throws -> PandocExportResult {
         guard let pandoc = executable ?? findPandoc() else { throw PandocExportError.missingPandoc }
-        let snapshot = try markedExportSnapshot(original, syntax: syntax, includeTOC: false, isCancelled: isCancelled)
+        let snapshot = try markedExportSnapshot(original, syntax: syntax, includeTOC: false, wiki: wiki, isCancelled: isCancelled)
         let emojiText = snapshot.text
         let rootedText: String
         if format == .html {

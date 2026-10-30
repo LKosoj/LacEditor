@@ -34,6 +34,7 @@ struct StatusBarView: View {
                 }
                 Spacer(minLength: 0)
                 if geometry.size.width >= 420 { statusItem(document.encodingName).help(L10n.tr("文件编码")) }
+                if geometry.size.width >= 480 { lineEndingMenu }
                 if geometry.size.width >= 620, document.isWordCountEnabled {
                     Menu {
                         if let statistics = document.statistics {
@@ -96,6 +97,42 @@ struct StatusBarView: View {
         case .lines: L10n.tr("%@ 行", String(value.lines))
         case .readingMinutes: L10n.tr("%@ 分钟", String(value.readingMinutes))
         }
+    }
+
+    private var lineEndingLabel: String {
+        guard let summary = document.lineEndings else { return "…" }
+        if summary.isMixed { return L10n.tr("混合") }
+        // Без переносов новая строка в редакторе вставляется как LF.
+        return (summary.uniform ?? .lf).shortName
+    }
+
+    private var lineEndingMenu: some View {
+        Menu {
+            Text(L10n.tr("换行符"))
+            if let summary = document.lineEndings {
+                Text(L10n.tr("LF：%@，CRLF：%@，CR：%@", String(summary.lf), String(summary.crlf), String(summary.cr)))
+            } else {
+                Text(L10n.tr("正在检测换行符…"))
+            }
+            Divider()
+            ForEach(LineEnding.allCases) { kind in
+                Button { appState.convertLineEndings(to: kind) } label: {
+                    if document.lineEndings?.uniform == kind {
+                        Label(L10n.tr("转换为 %@", kind.shortName), systemImage: "checkmark")
+                    } else {
+                        Text(L10n.tr("转换为 %@", kind.shortName))
+                    }
+                }
+            }
+        } label: {
+            Text(lineEndingLabel)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .disabled(document.ioState != .idle)
+        .help(L10n.tr("换行符：%@", lineEndingLabel))
+        .accessibilityLabel(L10n.tr("换行符：%@", lineEndingLabel))
+        .accessibilityIdentifier("status.lineEnding")
     }
 
     private var performanceMenu: some View {

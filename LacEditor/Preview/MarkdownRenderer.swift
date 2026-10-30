@@ -412,7 +412,9 @@ enum MarkdownRenderer {
                            resolveLocalImages: Bool = false, documentURL: URL? = nil, prepareRemoteImages: Bool = false,
                            syntax: MarkdownSyntaxOptions = .init(), forExport: Bool = false, includeHeadingNumbers: Bool = false, includeListStyles: Bool = false,
                            staticWidgetFallback: Bool = false, preserveRawHTMLBlocks: Bool = false,
-                           includeSourcePositions: Bool = false, isPreview: Bool = false, highlightCode: Bool = false) -> MarkdownRenderedPage {
+                           includeSourcePositions: Bool = false, isPreview: Bool = false, highlightCode: Bool = false,
+                           wiki: MarkdownWikiLinkContext? = nil) -> MarkdownRenderedPage {
+        let markdown = substitutingWikiLinks(markdown, wiki: wiki, syntax: syntax)
         // Позиции исходника нужны только предпросмотру; в экспорт, PDF и копирование они не попадают.
         let sourcePositions = includeSourcePositions && !forExport
         let remoteImageMarkers = RemoteImageMarkers()
@@ -444,6 +446,13 @@ enum MarkdownRenderer {
         page.rawHTMLBlocks = rawHTMLBlocks.values
         page.rawHTMLBlockProofFailed = rawHTMLBlocks.failed
         return page
+    }
+
+    /// `[[…]]` → обычная ссылка либо простой текст (цель не найдена или неоднозначна); число строк не меняется.
+    static func substitutingWikiLinks(_ markdown: String, wiki: MarkdownWikiLinkContext?, syntax: MarkdownSyntaxOptions) -> String {
+        guard let wiki, markdown.contains("[[") else { return markdown }
+        let links = MarkdownWikiLinkExtractor.links(in: markdown, syntax: syntax, isCancelled: { Task.isCancelled })
+        return MarkdownWikiLinkRewriter.rewrite(markdown, links: links, context: wiki, isCancelled: { Task.isCancelled })
     }
 
     private static func htmlEscaped(_ value: String) -> String {

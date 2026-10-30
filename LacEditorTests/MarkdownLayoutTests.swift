@@ -1970,6 +1970,34 @@ final class MarkdownLayoutTests: XCTestCase {
         XCTAssertFalse(controller.allowsEmojiCompletion(document: document, revision: revision, prefixRange: NSRange(location: position, length: 3)))
     }
 
+    func testWikiCompletionAllowedOnlyInConfirmedText() async throws {
+        _ = NSApplication.shared
+        let source = "中文 hello `[[code` [link](https://example.com/[[url)"
+        let document = EditorDocument(text: source, language: .markdown)
+        let (storage, layout, container) = makeLayout(source)
+        let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 400), textContainer: container)
+        let scroll = NSScrollView(frame: view.frame)
+        scroll.documentView = view
+        let controller = MarkdownPresentationController(textView: view, layout: layout)
+        defer { controller.cancel(); withExtendedLifetime(scroll) {} }
+        var revision: UInt = 0
+        controller.update(document: document, enabled: false, isActive: true, revision: revision, currentRevision: { revision })
+        let position = NSMaxRange(storage.mutableString.range(of: "hello"))
+        controller.beginWikiCompletion()
+        revision += 1
+        controller.noteFenceContextEdit(range: NSRange(location: position, length: 0), replacement: "[[", in: storage.mutableString, revision: revision)
+        storage.replaceCharacters(in: NSRange(location: position, length: 0), with: "[[")
+        controller.edited(revision: revision)
+        for _ in 0..<200 where controller.navigationPresentation(document: document, revision: revision) == nil {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertNotNil(controller.navigationPresentation(document: document, revision: revision))
+        XCTAssertTrue(controller.allowsWikiCompletion(document: document, revision: revision, range: NSRange(location: position, length: 2)))
+        for word in ["[[code", "[[url"] {
+            XCTAssertFalse(controller.allowsWikiCompletion(document: document, revision: revision, range: storage.mutableString.range(of: word)))
+        }
+    }
+
     func testConfirmedEmptyNestedFenceProvidesContinuationPrefix() async throws {
         _ = NSApplication.shared
         for (source, prefix, continuation) in [

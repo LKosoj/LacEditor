@@ -200,18 +200,48 @@ final class FileService {
     }
 
     func chooseEncoding(for url: URL) -> FileEncodingChoice? {
-        let choices = Self.selectableEncodings
+        chooseEncoding(
+            title: L10n.tr("请选择文件编码"),
+            message: L10n.tr("“%@”不是有效的 UTF-8 文件。请选择用于打开它的文本编码。", url.lastPathComponent),
+            confirmTitle: L10n.tr("打开"),
+            choices: Self.selectableEncodings,
+            selected: nil
+        )
+    }
+
+    func chooseEncoding(
+        title: String,
+        message: String,
+        confirmTitle: String,
+        choices: [FileEncodingChoice],
+        selected: String.Encoding?
+    ) -> FileEncodingChoice? {
         let alert = NSAlert()
-        alert.messageText = L10n.tr("请选择文件编码")
-        alert.informativeText = L10n.tr("“%@”不是有效的 UTF-8 文件。请选择用于打开它的文本编码。", url.lastPathComponent)
-        alert.addButton(withTitle: L10n.tr("打开"))
+        alert.messageText = title
+        alert.informativeText = message
+        alert.addButton(withTitle: confirmTitle)
         alert.addButton(withTitle: L10n.tr("取消"))
         let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 260, height: 26))
         popup.addItems(withTitles: choices.map(\.name))
+        if let selected, let index = choices.firstIndex(where: { $0.encoding == selected }) {
+            popup.selectItem(at: index)
+        }
         alert.accessoryView = popup
 
         guard alert.runModal() == .alertFirstButtonReturn else { return nil }
         return choices[popup.indexOfSelectedItem]
+    }
+
+    /// Читает файл целиком без декодирования; отметка сверяется до и после чтения, как в `prepareRead`.
+    nonisolated static func readRawData(_ url: URL) throws -> (data: Data, snapshot: FileRevisionSnapshot) {
+        let before = try FileRevisionSnapshot.capture(url)
+        let options: Data.ReadingOptions = (before.fileSize ?? 0) > 20 * 1_024 * 1_024
+            ? .mappedIfSafe
+            : []
+        let data = try Data(contentsOf: url, options: options).withUnsafeBytes { Data($0) }
+        let after = try FileRevisionSnapshot.capture(url)
+        guard before == after else { throw CocoaError(.fileReadUnknown) }
+        return (data, before)
     }
 
     nonisolated static func decode(
@@ -277,6 +307,11 @@ final class FileService {
         FileEncodingChoice(name: L10n.tr("西欧（Windows Latin 1）"), encoding: .windowsCP1252),
         FileEncodingChoice(name: L10n.tr("Mac OS 罗马编码"), encoding: .macOSRoman)
     ]
+
+    /// UTF-8 нет в `selectableEncodings` (его выбирают автоматически при открытии), но для явного выбора он нужен.
+    nonisolated static var encodingChoices: [FileEncodingChoice] {
+        [FileEncodingChoice(name: "UTF-8", encoding: .utf8)] + selectableEncodings
+    }
 
     nonisolated private static func countLines(in text: String) -> Int {
         var count = 1
@@ -387,6 +422,12 @@ final class FileService {
         } else {
             try Data().write(to: destination, options: .withoutOverwriting)
         }
+        return destination
+    }
+
+    nonisolated func createWorkspaceTextFile(named name: String, contents: String, in directory: URL, root: URL) throws -> URL {
+        let destination = try workspaceDestination(named: name, in: directory, root: root)
+        try Data(contents.utf8).write(to: destination, options: .withoutOverwriting)
         return destination
     }
 

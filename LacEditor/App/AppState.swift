@@ -10,6 +10,11 @@ private let filePerformanceLog = OSLog(
     category: "FilePerformance"
 )
 
+private let fileVersionLog = OSLog(
+    subsystem: "com.laceditor.LacEditor",
+    category: "FileVersions"
+)
+
 private let taskPerformanceLog = OSLog(
     subsystem: "com.laceditor.LacEditor",
     category: "DocumentTasks"
@@ -51,6 +56,8 @@ private func documentTaskSignpostName(
     case .aiCompletion: "AICompletion"
     case .aiMetadata: "AIMetadata"
     case .aiDocumentTools: "AIDocumentTools"
+    case .lineEndings: "LineEndings"
+    case .lineEndingConversion: "LineEndingConversion"
     }
 }
 
@@ -76,6 +83,7 @@ enum EditorCommandNotification {
     static let markdownClipboard = Notification.Name("LacEditor.markdownClipboard")
     static let insertMarkdownImage = Notification.Name("LacEditor.insertMarkdownImage")
     static let formatMarkdown = Notification.Name("LacEditor.formatMarkdown")
+    static let editLines = Notification.Name("LacEditor.editLines")
     static let revealSelection = Notification.Name("LacEditor.revealSelection")
     static let findHighlights = Notification.Name("LacEditor.findHighlights")
     static let toggleFold = Notification.Name("LacEditor.toggleFold")
@@ -139,6 +147,11 @@ struct FindHighlightRequest {
 struct MarkdownFormattingRequest {
     let documentID: UUID
     let command: MarkdownFormattingCommand
+}
+
+struct LineEditingRequest {
+    let documentID: UUID
+    let command: LineEditingCommand
 }
 
 final class EditorTextUpdateRequest {
@@ -323,6 +336,7 @@ final class AppState: ObservableObject {
     @Published private(set) var isTypewriterMode = false
     @Published private(set) var viewMagnification: CGFloat = 1
     @Published var isMarkdownOutlineExpanded = false
+    @Published var isBacklinksExpanded = false
     var isWordWrapEnabled: Bool {
         get { preferences.wordWrapEnabled }
         set { preferences.wordWrapEnabled = newValue }
@@ -363,6 +377,10 @@ final class AppState: ObservableObject {
     let recentFiles: RecentFilesStore
     let preferences: AppPreferences
     let folderWorkspace = FolderWorkspaceStore()
+    /// Список Markdown-файлов для wiki-ссылок (оформление, предпросмотр, экспорт, подсказки).
+    let wikiCatalog = WikiLinkCatalog()
+    private var wikiCatalogCancellable: AnyCancellable?
+    private var wikiRootCancellable: AnyCancellable?
     private var folderSearchStorage: FolderSearchController?
     private var folderSearchRootCancellable: AnyCancellable?
     var folderSearch: FolderSearchController {
@@ -384,6 +402,24 @@ final class AppState: ObservableObject {
             return (self.windowManager?.sidebarLibrary.pinnedFolderURLs ?? []) + self.recentFiles.folderURLs
         }, openFolder: { [weak self] url in
             self?.openFolder(url)
+        }, confirmReplace: { summary in
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = L10n.tr("确认替换？")
+            var text = L10n.tr("将在 %d 个文件中替换 %d 处。已关闭的文件将直接写入磁盘，此操作无法用“撤销”命令撤回；已打开的文档会作为一次编辑进行，可以撤销。", summary.fileCount, summary.matchCount)
+            if summary.openCount > 0 {
+                text += "\n" + L10n.tr("其中 %d 个文件已在编辑器中打开，将切换到对应窗口。", summary.openCount)
+            }
+            alert.informativeText = text
+            alert.addButton(withTitle: L10n.tr("取消"))
+            let replace = alert.addButton(withTitle: L10n.tr("替换"))
+            replace.hasDestructiveAction = true
+            return alert.runModal() == .alertSecondButtonReturn
+        }, interpretsEscapes: { [weak self] in
+            self?.findReplace.interpretsEscapes ?? true
+        }, applyOpen: { [weak self] replace in
+            guard let manager = self?.windowManager else { return .skipped(.changed) }
+            return await manager.applyFolderReplace(replace)
         })
         controller.setRoot(folderWorkspace.rootURL)
         folderSearchStorage = controller
@@ -392,10 +428,46 @@ final class AppState: ObservableObject {
         }
         return controller
     }
+    /// Обратные ссылки текущего документа; панель вызывает `update`, события папки — `refreshSoon`.
+    private var backlinksStorage: MarkdownBacklinksController?
+    var backlinks: MarkdownBacklinksController {
+        if let backlinksStorage { return backlinksStorage }
+        let controller = MarkdownBacklinksController(snapshots: { [weak self] in
+            guard let self, let root = self.folderWorkspace.rootURL, let manager = self.windowManager else { return nil }
+            return manager.folderSearchSnapshots(root: root)
+        }, open: { [weak self] url in
+            guard !Task.isCancelled, let self, let root = self.folderWorkspace.rootURL,
+                  url.standardizedFileURL.pathComponents.starts(with: root.standardizedFileURL.pathComponents),
+                  let manager = self.windowManager else { return nil }
+            return await manager.openFolderSearchFile(url, preferredState: self)
+        }, reveal: { [weak self] match, document in
+            self?.windowManager?.revealFolderSearchMatch(match, expected: document) == true
+        }, syntax: { [weak self] in
+            self?.preferences.markdownSyntax ?? .init()
+        })
+        backlinksStorage = controller
+        return controller
+    }
+    private var folderTagsStorage: FolderTagsController?
+    private var folderTagsRootCancellable: AnyCancellable?
+    var folderTags: FolderTagsController {
+        if let folderTagsStorage { return folderTagsStorage }
+        let controller = FolderTagsController(snapshots: { [weak self] in
+            guard let self, let root = self.folderWorkspace.rootURL, let manager = self.windowManager else { return nil }
+            return manager.folderSearchSnapshots(root: root)
+        })
+        controller.setRoot(folderWorkspace.rootURL)
+        folderTagsStorage = controller
+        folderTagsRootCancellable = folderWorkspace.$rootURL.sink { [weak controller] root in
+            controller?.setRoot(root)
+        }
+        return controller
+    }
     let findReplace = FindReplaceState()
     let textTransformation = TextTransformationPreviewState()
     lazy var aiWriting = AIWritingController(appState: self)
     @Published var isAIWritingVisible = false
+    let commandPalette = CommandPaletteController()
     weak var hostWindow: NSWindow? {
         didSet {
             if oldValue !== hostWindow && isDistractionFree { toggleDistractionFree() }
@@ -405,8 +477,9 @@ final class AppState: ObservableObject {
     private var previousToolbarVisibility: Bool?
     weak var windowManager: WindowManager?
     private var findRefreshTask: Task<Void, Never>?
+    var templateTask: Task<Void, Never>?
     private var textTransformationWindowController: TextTransformationWindowController?
-    private let fileService = FileService()
+    let fileService = FileService()
     private let fileOpeningQueue: OperationQueue = {
         let queue = OperationQueue()
         queue.name = "com.laceditor.file-opening"
@@ -450,6 +523,7 @@ final class AppState: ObservableObject {
     private var openingFileURLs: Set<URL> = []
     private var openingOperations: [URL: Operation] = [:]
     private var openingPlaceholderIDs: Set<UUID> = []
+    private var versionHistorySheet: NSWindow?
     private var contentChangeObserver: NSObjectProtocol?
     private var markdownLinkObserver: NSObjectProtocol?
     private var markdownLinkTask: (id: UUID, documentID: UUID, task: Task<Void, Never>)?
@@ -458,6 +532,8 @@ final class AppState: ObservableObject {
     private var preferencesCancellable: AnyCancellable?
     private let recoveryStore: DocumentRecoveryStore?
     private let readFile: @Sendable (URL) throws -> PreparedFileRead
+    /// Сырые байты для «Открыть заново в кодировке»: `readFile` при валидном UTF-8 возвращает уже декодированный текст.
+    private let readRawFile: @Sendable (URL) throws -> (data: Data, snapshot: FileRevisionSnapshot)
 
     init(
         initialDocument: EditorDocument? = nil,
@@ -465,17 +541,30 @@ final class AppState: ObservableObject {
         recentFiles: RecentFilesStore,
         preferences: AppPreferences,
         recoveryStore: DocumentRecoveryStore? = nil,
-        readFile: @escaping @Sendable (URL) throws -> PreparedFileRead = { try FileService.prepareRead($0) }
+        readFile: @escaping @Sendable (URL) throws -> PreparedFileRead = { try FileService.prepareRead($0) },
+        readRawFile: @escaping @Sendable (URL) throws -> (data: Data, snapshot: FileRevisionSnapshot) = { try FileService.readRawData($0) }
     ) {
         self.recentFiles = recentFiles
         self.preferences = preferences
         self.recoveryStore = recoveryStore
         self.readFile = readFile
+        self.readRawFile = readRawFile
         isSidebarVisible = UserDefaults.standard.object(
             forKey: "isSidebarVisible"
         ) as? Bool ?? true
         preferencesCancellable = preferences.objectWillChange.sink { [weak self] in
             self?.objectWillChange.send()
+        }
+        wikiCatalogCancellable = wikiCatalog.objectWillChange.sink { [weak self] in
+            self?.objectWillChange.send()
+        }
+        folderWorkspace.filesDidChange = { [weak self] in self?.wikiCatalog.invalidate(); self?.backlinksStorage?.refreshSoon() }
+        // @Published сообщает до смены значения: каталог запрашиваем на следующем шаге главного потока.
+        wikiRootCancellable = folderWorkspace.$rootURL.dropFirst().sink { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self, let document = self.selectedDocument, document.language == .markdown else { return }
+                self.requestWikiCatalog(for: document)
+            }
         }
         if !initialDocuments.isEmpty {
             openingPlaceholderIDs.formUnion(initialDocuments.filter { $0.ioState == .opening && $0.text.isEmpty }.map(\.id))
@@ -664,6 +753,20 @@ final class AppState: ObservableObject {
     func increaseViewMagnification() { setViewMagnification(viewMagnification * 1.2) }
     func decreaseViewMagnification() { setViewMagnification(viewMagnification / 1.2) }
     func resetViewMagnification() { setViewMagnification(1) }
+
+    /// Палитра команд и быстрое открытие взаимно исключают друг друга; повторный вызов закрывает палитру.
+    func showCommandPalette() {
+        guard let window = hostWindow else { return }
+        if commandPalette.isPresented { commandPalette.dismiss(); return }
+        if (window.firstResponder as? NSTextView)?.hasMarkedText() == true { return }
+        folderSearch.cancelQuickOpen()
+        commandPalette.present(menu: NSApp.mainMenu)
+    }
+
+    func showQuickOpen() {
+        commandPalette.dismiss()
+        folderSearch.requestQuickOpen()
+    }
 
     func toggleDistractionFree() {
         if isDistractionFree {
@@ -1039,6 +1142,65 @@ final class AppState: ObservableObject {
         observe(document)
     }
 
+    var canShowVersionHistory: Bool {
+        guard let document = selectedDocument else { return false }
+        return document.url != nil && document.ioState == .idle && !isOpeningPlaceholder(document)
+    }
+
+    func presentVersionHistory(mode: VersionHistoryController.Mode) {
+        guard canShowVersionHistory, versionHistorySheet == nil,
+              let document = selectedDocument, let url = document.url,
+              let window = hostWindow, let manager = windowManager, manager.activeState === self,
+              manager.ownsVisibleState(self, window: window) else { return }
+        let controller = VersionHistoryController(document: document, url: url, mode: mode) { [weak self, weak document] text, base in
+            guard let self, let document else { return L10n.tr("当前文本无法修改") }
+            return self.applyVersionRestore(text, to: document, base: base)
+        }
+        controller.onRestored = { [weak self, weak document] in
+            self?.closeVersionHistory()
+            document?.statusMessage = L10n.tr("已恢复历史版本，尚未保存")
+        }
+        let sheet = NSWindow(contentViewController: NSHostingController(rootView: VersionHistoryView(
+            controller: controller,
+            fileName: url.lastPathComponent,
+            close: { [weak self] in self?.closeVersionHistory() }
+        )))
+        sheet.styleMask.remove(.closable)
+        versionHistorySheet = sheet
+        window.beginSheet(sheet)
+    }
+
+    private func closeVersionHistory() {
+        guard let sheet = versionHistorySheet else { return }
+        versionHistorySheet = nil
+        sheet.sheetParent?.endSheet(sheet)
+    }
+
+    /// Заменяет весь текст версией одной заменой редактора; файл на диске не пишется.
+    /// Возвращает текст ошибки или nil при успехе.
+    private func applyVersionRestore(_ text: String, to document: EditorDocument, base: DocumentTextSnapshot) -> String? {
+        guard selectedDocument === document, document.ioState == .idle, !document.hasPendingLiveEdits,
+              document.synchronizedSnapshot() == base else { return L10n.tr("文档已更改，比较结果已过期") }
+        let extraction = EditorTextExtractionRequest(documentID: document.id, allowsTokenAtCaret: false,
+            allowsWholeDocument: true, requiresEditable: true)
+        NotificationCenter.default.post(name: EditorCommandNotification.extractTextSelection, object: extraction)
+        guard let current = extraction.result else { return L10n.tr("当前文本无法修改") }
+        let request = EditorRangeReplacementRequest(
+            documentID: document.id,
+            range: NSRange(location: 0, length: (base.text as NSString).length),
+            originalText: base.text,
+            replacementText: text,
+            expectedEditorRevision: current.editorRevision,
+            actionName: L10n.tr("恢复历史版本")
+        )
+        let newLength = (text as NSString).length
+        let location = min(document.selectionRange.location, newLength)
+        request.resultingSelection = NSRange(location: location, length: min(document.selectionRange.length, newLength - location))
+        request.groupsUndo = true
+        NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
+        return request.wasHandled ? nil : (request.failureMessage ?? L10n.tr("当前文本无法修改"))
+    }
+
     @discardableResult
     func save(_ document: EditorDocument? = nil) -> Bool {
         guard let document = document ?? selectedDocument else { return false }
@@ -1177,6 +1339,7 @@ final class AppState: ObservableObject {
         document.statusMessage = L10n.tr("正在导出…")
         let savedHTMLOptions = htmlOptions ?? preferences.markdownHTMLExportOptions
         let syntax = preferences.markdownSyntax
+        let wiki = MarkdownWikiLinkSource(root: folderWorkspace.rootURL, documentURL: source)
         let needsImages = [.html, .docx, .odt, .rtf, .epub, .fb2, .latex].contains(format)
         let operation = BlockOperation()
         if needsImages { customExportOperations[document.id] = operation; imageExportDocuments.insert(document.id) }
@@ -1185,7 +1348,7 @@ final class AppState: ObservableObject {
             let result = Result {
                 let prepared = try PandocExportService.prepare(
                     text: preparedText, source: source, destination: destination, format: format,
-                    title: baseName, isCancelled: { operation.isCancelled }, htmlOptions: savedHTMLOptions, syntax: syntax
+                    title: baseName, isCancelled: { operation.isCancelled }, htmlOptions: savedHTMLOptions, syntax: syntax, wiki: wiki
                 )
                 guard prepared.latexAssets != nil else { return (prepared, false) }
                 do {
@@ -1355,6 +1518,7 @@ final class AppState: ObservableObject {
         let isLatex = writer.isEmpty ? ["tex", "latex"].contains(inferred) : writer == "latex"
         let savedHTMLOptions = htmlOptions ?? preferences.markdownHTMLExportOptions
         let syntax = preferences.markdownSyntax
+        let wiki = MarkdownWikiLinkSource(root: folderWorkspace.rootURL, documentURL: source)
         let needsImages = isLatex || (profile.rawType.isEmpty && (writer.isEmpty
             ? ["html", "htm", "docx", "odt", "rtf", "fb2", "epub", "pptx"].contains(inferred)
             : ["html", "html4", "html5", "docx", "odt", "rtf", "fb2", "epub", "epub2", "epub3", "pptx"].contains(writer)))
@@ -1363,7 +1527,7 @@ final class AppState: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [self, document] in
             let result = Result {
                 let prepared = try PandocExportService.prepare(text: preparedText, source: source, destination: destination,
-                    profile: profile, title: baseName, isCancelled: { operation.isCancelled }, htmlOptions: isHTML ? savedHTMLOptions : nil, syntax: syntax)
+                    profile: profile, title: baseName, isCancelled: { operation.isCancelled }, htmlOptions: isHTML ? savedHTMLOptions : nil, syntax: syntax, wiki: wiki)
                 guard prepared.latexAssets != nil else { return (prepared, false) }
                 do {
                     @MainActor func validateCurrent() throws {
@@ -1529,6 +1693,7 @@ final class AppState: ObservableObject {
         let snapshot = document.synchronizedSnapshot()
         let expectedExists = existed, initialRevision = revision
         let syntax = preferences.markdownSyntax
+        let wiki = MarkdownWikiLinkSource(root: folderWorkspace.rootURL, documentURL: source)
         let operation = BlockOperation()
         customExportOperations[document.id] = operation
         let preparesDiagrams = profile.kind == "pdf-engine"
@@ -1541,7 +1706,7 @@ final class AppState: ObservableObject {
                 if profile.kind == "pdf-engine", case let .file(url) = destination {
                     return try CustomMarkdownExportService.preparePDFEngine(text: preparedText, source: source, destination: url,
                         profile: profile, isCancelled: { operation.isCancelled }, syntax: syntax,
-                        extractEmbeddedMedia: !preparedText.utf16.elementsEqual(snapshot.text.utf16))
+                        extractEmbeddedMedia: !preparedText.utf16.elementsEqual(snapshot.text.utf16), wiki: wiki)
                 }
                 return try CustomMarkdownExportService.prepare(text: snapshot.text, source: source, destination: destination,
                                                                command: profile.command ?? "", isCancelled: { operation.isCancelled })
@@ -1824,7 +1989,8 @@ final class AppState: ObservableObject {
         let windowIsDark = window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let darkMode = Self.markdownOutputUsesDarkMode(for: mode, windowIsDark: windowIsDark)
         service.start(snapshot: snapshot, darkMode: darkMode, typography: preferences.markdownTypography,
-                      mathOptions: .init(physics: preferences.mathPhysicsEnabled, numbering: preferences.mathNumbering), options: options, headers: headers, sourceURL: source, htmlOptions: htmlOptions, syntax: preferences.markdownSyntax)
+                      mathOptions: .init(physics: preferences.mathPhysicsEnabled, numbering: preferences.mathNumbering), options: options, headers: headers, sourceURL: source, htmlOptions: htmlOptions, syntax: preferences.markdownSyntax,
+                      wiki: MarkdownWikiLinkSource(root: folderWorkspace.rootURL, documentURL: source))
     }
 
     func closeSelectedDocument() {
@@ -2129,6 +2295,9 @@ final class AppState: ObservableObject {
     }
 
     func closeAuxiliaryWindows() {
+        closeVersionHistory()
+        templateTask?.cancel()
+        templateTask = nil
         markdownLinkTask?.task.cancel()
         markdownLinkTask = nil
         Array(pdfExports.values).forEach { $0.cancel() }
@@ -2141,6 +2310,8 @@ final class AppState: ObservableObject {
         imageCopyOperations.values.forEach { $0.cancel() }
         imageCopyOperations.removeAll()
         folderSearchStorage?.close()
+        backlinksStorage?.close()
+        folderTagsStorage?.invalidate()
         folderWorkspace.setRoot(nil)
         sidebarFeedback.clear()
         dismissFindReplace()
@@ -2888,6 +3059,8 @@ final class AppState: ObservableObject {
     /// SwiftUI retains its primary scene, but closed documents must not return.
     func resetClosedWindow() {
         folderSearchStorage?.close()
+        backlinksStorage?.close()
+        folderTagsStorage?.invalidate()
         folderWorkspace.setRoot(nil)
         isFocusMode = false
         isTypewriterMode = false
@@ -4225,6 +4398,15 @@ final class AppState: ObservableObject {
         )
     }
 
+    func editLines(_ command: LineEditingCommand) {
+        guard let document = selectedDocument, document.ioState == .idle else { return }
+        if command == .toggleComment, document.language.commentSyntax == nil { return }
+        NotificationCenter.default.post(
+            name: EditorCommandNotification.editLines,
+            object: LineEditingRequest(documentID: document.id, command: command)
+        )
+    }
+
     func markdownClipboard(_ command: MarkdownClipboardCommand) {
         guard let document = selectedDocument, document.language == .markdown, document.ioState == .idle else { return }
         NotificationCenter.default.post(name: EditorCommandNotification.markdownClipboard,
@@ -4236,6 +4418,21 @@ final class AppState: ObservableObject {
               document.ioState == .idle, document.isMarkdownOutlineCurrent,
               document.markdownHeadings.contains(where: { $0.sameSource(as: heading) }) else { return }
         reveal(NSRange(location: heading.range.location, length: 0), in: document)
+    }
+
+    /// Текущий список файлов для wiki-ссылок документа; nil, пока он не загружен или относится к другой базе.
+    func wikiResolver(for document: EditorDocument) -> MarkdownWikiLinkResolver? {
+        guard document.language == .markdown, let snapshot = wikiCatalog.snapshot,
+              snapshot.base == MarkdownWikiLinkResolver.base(root: folderWorkspace.rootURL, documentURL: document.url) else { return nil }
+        return snapshot
+    }
+
+    func wikiContext(for document: EditorDocument) -> MarkdownWikiLinkContext? {
+        wikiResolver(for: document).map { MarkdownWikiLinkContext(resolver: $0, documentURL: document.url) }
+    }
+
+    func requestWikiCatalog(for document: EditorDocument) {
+        wikiCatalog.ensure(root: folderWorkspace.rootURL, documentURL: document.url)
     }
 
     private func isCurrentMarkdownLink(_ request: MarkdownLinkNavigationRequest) -> Bool {
@@ -4489,6 +4686,10 @@ final class AppState: ObservableObject {
                     }
                 }
             }
+            // Версия не участвует в результате сохранения: снимок файла уже зафиксирован выше.
+            if saveResult.succeeded, let error = FileVersionService.recordVersion(of: url) {
+                os_log(.error, log: fileVersionLog, "FileVersion: %{public}@", error.localizedDescription)
+            }
         }
         return true
     }
@@ -4649,6 +4850,173 @@ final class AppState: ObservableObject {
         scheduleRecoverySnapshot(for: document, delay: 0)
     }
 
+    /// Приводит все переносы документа к одному виду одной заменой с одной отменой.
+    func convertLineEndings(to target: LineEnding) {
+        guard let document = selectedDocument, document.ioState == .idle,
+              !openingPlaceholderIDs.contains(document.id) else { return }
+        guard let first = editableSelection(in: document) else {
+            document.setStatusError(L10n.tr("当前文本无法修改"))
+            return
+        }
+        let snapshot = document.synchronizedSnapshot()
+        let source = snapshot.text as NSString
+        guard !document.hasPendingLiveEdits, first.documentID == document.id, first.range.location != NSNotFound,
+              first.range.length <= source.length - first.range.location else {
+            document.setStatusError(L10n.tr("当前文本无法修改"))
+            return
+        }
+        let coordinator = document.taskCoordinator
+        let generation = coordinator.begin(.lineEndingConversion)
+        let task = Task.detached(priority: .userInitiated) { [weak self, weak document] in
+            let converted = LineEndingService.convert(snapshot.text, to: target, isCancelled: { Task.isCancelled })
+            guard !Task.isCancelled else { return }
+            await MainActor.run { [weak self, weak document] in
+                guard let self, let document, !Task.isCancelled,
+                      coordinator.isCurrent(generation, for: .lineEndingConversion) else { return }
+                coordinator.finish(.lineEndingConversion, generation: generation)
+                guard let converted else {
+                    document.statusMessage = L10n.tr("转换结果与原文相同")
+                    return
+                }
+                // Правка во время фонового расчёта или смена вкладки отменяют применение.
+                guard self.documents.contains(where: { $0 === document }), self.selectedDocument === document,
+                      document.ioState == .idle else { return }
+                let current = document.synchronizedSnapshot()
+                guard current.revision == snapshot.revision, !document.hasPendingLiveEdits,
+                      let second = editableSelection(in: document), first.matches(second) else {
+                    document.statusMessage = L10n.tr("编辑内容已变化，请重新执行转换")
+                    return
+                }
+                let source = snapshot.text as NSString
+                func mapped(_ location: Int) -> Int {
+                    LineEndingService.mappedLocation(location, in: source, to: target)
+                }
+                let newLength = (converted as NSString).length
+                let start = min(mapped(first.range.location), newLength)
+                let end = min(mapped(NSMaxRange(first.range)), newLength)
+                let request = EditorRangeReplacementRequest(documentID: document.id, range: NSRange(location: 0, length: source.length),
+                    originalText: snapshot.text, replacementText: converted,
+                    expectedEditorRevision: second.editorRevision, actionName: L10n.tr("转换换行符"))
+                request.groupsUndo = true
+                request.resultingSelection = NSRange(location: start, length: max(0, end - start))
+                NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
+                if !request.wasHandled {
+                    document.setStatusError(request.failureMessage ?? L10n.tr("当前文本无法修改"))
+                }
+            }
+        }
+        coordinator.attachTask(task, kind: .lineEndingConversion, generation: generation)
+    }
+
+    private func editableSelection(in document: EditorDocument) -> EditorTextSelectionSnapshot? {
+        let request = EditorTextExtractionRequest(documentID: document.id, allowsTokenAtCaret: false, allowsInsertionPoint: true, requiresEditable: true)
+        NotificationCenter.default.post(name: EditorCommandNotification.extractTextSelection, object: request)
+        return request.result
+    }
+
+    private func encodingChoices(including current: String.Encoding) -> [FileEncodingChoice] {
+        var choices = FileService.encodingChoices
+        if !choices.contains(where: { $0.encoding == current }) {
+            choices.insert(FileEncodingChoice(name: FileService.encodingName(for: current), encoding: current), at: 0)
+        }
+        return choices
+    }
+
+    func chooseSaveEncoding() {
+        guard let document = selectedDocument, document.ioState == .idle,
+              !openingPlaceholderIDs.contains(document.id) else { return }
+        guard let choice = fileService.chooseEncoding(
+            title: L10n.tr("选择保存编码"),
+            message: L10n.tr("保存时将把文本转换为所选编码；无法表示的字符会阻止保存。"),
+            confirmTitle: L10n.tr("选择"),
+            choices: encodingChoices(including: document.fileEncoding),
+            selected: document.fileEncoding
+        ) else { return }
+        guard selectedDocument === document else { return }
+        applySaveEncoding(choice, to: document)
+    }
+
+    /// Только меняет кодировку будущей записи и помечает документ несохранённым; сам файл не трогается.
+    /// Запись идёт обычным `write` с проверкой внешних изменений и запретом потери символов.
+    /// Это не текстовая правка, в историю отмены редактора она не попадает.
+    func applySaveEncoding(_ choice: FileEncodingChoice, to document: EditorDocument) {
+        guard document.ioState == .idle, !openingPlaceholderIDs.contains(document.id),
+              choice.encoding != document.fileEncoding else { return }
+        document.changeFileEncodingPendingSave(choice.encoding)
+        document.statusMessage = L10n.tr("保存编码已设为%@，保存时将转换文件", choice.name)
+        scheduleRecoverySnapshot(for: document, delay: 0)
+    }
+
+    func chooseReopenEncoding() {
+        guard let document = selectedDocument, document.url != nil, document.ioState == .idle,
+              !openingPlaceholderIDs.contains(document.id) else { return }
+        _ = document.synchronizedText()
+        let expectedRevision = document.textRevision
+        if document.isDirty {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = L10n.tr("要丢弃未保存的修改并重新打开吗？")
+            alert.informativeText = L10n.tr("“%@”有未保存的修改，重新打开会丢弃这些修改和撤销记录。", document.displayName)
+            alert.addButton(withTitle: L10n.tr("重新打开"))
+            alert.addButton(withTitle: L10n.tr("取消"))
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
+        guard let choice = fileService.chooseEncoding(
+            title: L10n.tr("选择重新打开所用的编码"),
+            message: L10n.tr("“%@”将从磁盘按所选编码重新读取。", document.displayName),
+            confirmTitle: L10n.tr("重新打开"),
+            choices: encodingChoices(including: document.fileEncoding),
+            selected: document.fileEncoding
+        ) else { return }
+        _ = document.synchronizedText()
+        guard selectedDocument === document, document.ioState == .idle,
+              document.textRevision == expectedRevision, !document.hasPendingLiveEdits else { return }
+        reopen(document, with: choice)
+    }
+
+    /// Перечитывает файл целиком в выбранной кодировке через `finishReload`; история отмены сбрасывается.
+    func reopen(_ document: EditorDocument, with choice: FileEncodingChoice) {
+        guard let url = document.url, document.ioState == .idle,
+              !openingPlaceholderIDs.contains(document.id) else { return }
+        _ = document.synchronizedText()
+        let expectedRevision = document.textRevision
+        let normalized = url.standardizedFileURL
+        document.ioState = .opening
+        let readRawFile = self.readRawFile
+        let operation = BlockOperation()
+        operation.addExecutionBlock { [weak self, weak document, weak operation] in
+            guard operation?.isCancelled == false else { return }
+            let result = Result<DecodedFile, Error> {
+                let raw = try readRawFile(normalized)
+                return try FileService.decode(
+                    raw.data,
+                    encoding: choice.encoding,
+                    encodingName: choice.name,
+                    byteCount: raw.data.count,
+                    fileRevisionSnapshot: raw.snapshot
+                )
+            }
+            DispatchQueue.main.async { [weak self, weak document, weak operation] in
+                guard let self, let document, let operation, !operation.isCancelled,
+                      self.openingOperations[normalized] === operation else { return }
+                self.openingOperations.removeValue(forKey: normalized)
+                do {
+                    let decoded = try result.get()
+                    _ = document.synchronizedText()
+                    let isCurrent = document.textRevision == expectedRevision && !document.hasPendingLiveEdits
+                    self.finishReload(decoded, document: document, expectedRevision: expectedRevision)
+                    if isCurrent { document.statusMessage = L10n.tr("已按%@重新打开", choice.name) }
+                } catch {
+                    // Документ остаётся доступным: ошибка видна в строке состояния.
+                    document.ioState = .idle
+                    document.setStatusError(error.localizedDescription)
+                }
+            }
+        }
+        openingOperations[normalized] = operation
+        fileOpeningQueue.addOperation(operation)
+    }
+
     private func handleSaveError(
         _ error: Error,
         for document: EditorDocument,
@@ -4799,6 +5167,7 @@ final class AppState: ObservableObject {
 
     private func removeDocument(_ document: EditorDocument) {
         guard let index = documents.firstIndex(where: { $0.id == document.id }) else { return }
+        closeVersionHistory()
         previousMarkdownExports.removeValue(forKey: document.id)
         _ = windowManager?.cancelRestoration(document)
         if document.ioState == .opening, let url = document.url?.standardizedFileURL {
@@ -4816,7 +5185,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func presentError(title: String, error: Error) {
+    func presentError(title: String, error: Error) {
         let alert = NSAlert(error: error)
         alert.messageText = title
         alert.runModal()

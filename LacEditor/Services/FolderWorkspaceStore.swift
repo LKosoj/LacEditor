@@ -74,6 +74,8 @@ final class FolderWorkspaceStore: ObservableObject {
     @Published private(set) var watchError: String?
     @Published private(set) var notice: String?
 
+    /// Состав файлов мог измениться (события папки или явное обновление).
+    var filesDidChange: (() -> Void)?
     private let enumerate: @Sendable (URL, URL) throws -> [FolderWorkspaceEntry]
     private let enumerateList: @Sendable (URL, @Sendable () -> Bool) throws -> FolderSearchService.Result<FolderSearchService.ListedFile>
     private var generation: UInt = 0
@@ -146,6 +148,7 @@ final class FolderWorkspaceStore: ObservableObject {
 
     func refresh() {
         guard rootURL != nil else { return }
+        filesDidChange?()
         if display == .list { _ = loadList(); return }
         let active = display == .tree ? expanded : Set(currentDirectory.map { [$0] } ?? [])
         for directory in active { load(directory) }
@@ -395,6 +398,7 @@ final class FolderWorkspaceStore: ObservableObject {
 
     private func receive(_ events: [FolderWorkspaceEvents.Event], root: URL, generation: UInt) {
         guard rootURL == root, self.generation == generation else { return }
+        filesDidChange?()
         if display == .list { _ = loadList(); return }
         let full = FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagUserDropped | kFSEventStreamEventFlagKernelDropped | kFSEventStreamEventFlagRootChanged)
         if events.contains(where: { $0.flags & full != 0 }) { refresh(); return }

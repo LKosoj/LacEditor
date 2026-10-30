@@ -36,6 +36,18 @@ struct LacEditorCommands: Commands {
             }
                 .keyboardShortcut("t", modifiers: .command)
                 .disabled(appState == nil)
+            Button {
+                appState?.newNoteFromTemplate()
+            } label: {
+                Label(L10n.tr("从模板新建笔记…"), systemImage: "doc.badge.plus")
+            }
+                .disabled(appState == nil)
+            Button {
+                appState?.openDailyNote()
+            } label: {
+                Label(L10n.tr("每日笔记"), systemImage: "calendar")
+            }
+                .disabled(appState == nil)
             Divider()
             Button {
                 appState?.openFiles()
@@ -52,7 +64,7 @@ struct LacEditorCommands: Commands {
                 .disabled(appState == nil)
             Button(L10n.tr("快速打开…")) {
                 guard let appState else { return }
-                appState.folderSearch.requestQuickOpen()
+                appState.showQuickOpen()
             }
             .keyboardShortcut("o", modifiers: [.command, .shift])
             .disabled(appState == nil || (appState?.folderWorkspace.rootURL == nil &&
@@ -114,6 +126,10 @@ struct LacEditorCommands: Commands {
             }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
                 .disabled(appState == nil)
+            Button(L10n.tr("以编码保存…")) { appState?.chooseSaveEncoding() }
+                .disabled(appState?.selectedDocument == nil || appState?.selectedDocument?.ioState != .idle)
+            Button(L10n.tr("以编码重新打开…")) { appState?.chooseReopenEncoding() }
+                .disabled(appState?.selectedDocument?.url == nil || appState?.selectedDocument?.ioState != .idle)
             Menu(L10n.tr("导出")) {
                 Button("HTML") { appState?.exportMarkdown(as: .html) }
                 Button(L10n.tr("HTML（无样式）")) { appState?.exportMarkdown(as: .htmlPlain) }
@@ -134,6 +150,11 @@ struct LacEditorCommands: Commands {
             Button(L10n.tr("打印 Markdown…")) { appState?.printMarkdown() }
                 .keyboardShortcut("p", modifiers: .command)
                 .disabled(appState?.selectedDocument?.language != .markdown)
+            Divider()
+            Button(L10n.tr("浏览版本…")) { appState?.presentVersionHistory(mode: .history) }
+                .disabled(appState?.canShowVersionHistory != true)
+            Button(L10n.tr("与磁盘文件比较…")) { appState?.presentVersionHistory(mode: .disk) }
+                .disabled(appState?.canShowVersionHistory != true)
             Divider()
             Button {
                 if let keyWindow = NSApp.keyWindow,
@@ -157,6 +178,27 @@ struct LacEditorCommands: Commands {
                 Button(L10n.tr("复制代码块内容")) { appState?.markdownClipboard(.copyCodeBlock) }
             }
             .disabled(appState?.selectedDocument?.language != .markdown || appState?.selectedDocument?.ioState != .idle)
+            Divider()
+            Menu(L10n.tr("行操作")) {
+                Button(L10n.tr("复制当前行")) { appState?.editLines(.duplicate) }
+                    .keyboardShortcut("d", modifiers: [.command, .shift])
+                Button(L10n.tr("上移当前行")) { appState?.editLines(.moveUp) }
+                    .keyboardShortcut(.upArrow, modifiers: [.command, .control])
+                Button(L10n.tr("下移当前行")) { appState?.editLines(.moveDown) }
+                    .keyboardShortcut(.downArrow, modifiers: [.command, .control])
+                Button(L10n.tr("删除当前行")) { appState?.editLines(.deleteLine) }
+                    .keyboardShortcut("k", modifiers: [.control, .shift])
+                Button(L10n.tr("合并行")) { appState?.editLines(.join) }
+                    .keyboardShortcut("j", modifiers: [.command, .control])
+                Divider()
+                Button(L10n.tr("升序排序行")) { appState?.editLines(.sortAscending) }
+                Button(L10n.tr("降序排序行")) { appState?.editLines(.sortDescending) }
+            }
+            .disabled(appState?.selectedDocument == nil || appState?.selectedDocument?.ioState != .idle)
+            Button(L10n.tr("切换注释")) { appState?.editLines(.toggleComment) }
+                .keyboardShortcut("/", modifiers: .command)
+                .disabled(appState?.selectedDocument?.language.commentSyntax == nil
+                          || appState?.selectedDocument?.ioState != .idle)
             Divider()
             Button {
                 appState?.presentFindReplace(mode: .find)
@@ -246,6 +288,12 @@ struct LacEditorCommands: Commands {
                 Label(L10n.tr("压缩 JSON"), systemImage: "arrow.down.right.and.arrow.up.left")
             }
                 .disabled(appState == nil)
+            Menu(L10n.tr("换行符")) {
+                ForEach(LineEnding.allCases) { kind in
+                    Button(L10n.tr("转换为 %@", kind.shortName)) { appState?.convertLineEndings(to: kind) }
+                }
+            }
+            .disabled(appState?.selectedDocument == nil || appState?.selectedDocument?.ioState != .idle)
         }
 
         // Suppress SwiftUI's automatic sidebar titlebar control. macOS 26
@@ -309,6 +357,10 @@ struct LacEditorCommands: Commands {
             }
             .keyboardShortcut("j", modifiers: [.command, .shift])
             .disabled(appState?.hostWindow == nil)
+            Divider()
+            Button(L10n.tr("命令面板…")) { appState?.showCommandPalette() }
+                .keyboardShortcut("a", modifiers: [.command, .shift])
+                .disabled(appState?.hostWindow == nil)
             Divider()
             Toggle(L10n.tr("聚焦当前段落"), isOn: Binding(
                 get: { appState?.isFocusMode ?? false },

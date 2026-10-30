@@ -379,6 +379,10 @@ final class LacTextView: NSTextView {
     var emojiCompletionValues: [String] = []
     var acceptEmojiCompletion: ((String, NSRange) -> Bool)?
     var dismissEmojiCompletion: (() -> Void)?
+    var wikiCompletionRange: NSRange?
+    var wikiCompletionValues: [String] = []
+    var acceptWikiCompletion: ((String, NSRange) -> Bool)?
+    var dismissWikiCompletion: (() -> Void)?
     var editSource: DocumentProvenance.Source = .unknown
     var autoPairBracketsEnabled = false
     var autoPairMarkdownEnabled = false
@@ -389,14 +393,24 @@ final class LacTextView: NSTextView {
     private var pairKeyCharacter: String?
     var focusModeEnabled = false { didSet { if focusModeEnabled != oldValue { needsDisplay = true } } }
 
-    override var rangeForUserCompletion: NSRange { emojiCompletionRange ?? super.rangeForUserCompletion }
+    override var rangeForUserCompletion: NSRange { wikiCompletionRange ?? emojiCompletionRange ?? super.rangeForUserCompletion }
 
     override func completions(forPartialWordRange charRange: NSRange, indexOfSelectedItem index: UnsafeMutablePointer<Int>) -> [String]? {
+        if wikiCompletionRange == charRange { return wikiCompletionValues }
         guard emojiCompletionRange == charRange else { return super.completions(forPartialWordRange: charRange, indexOfSelectedItem: index) }
         return emojiCompletionValues
     }
 
     override func insertCompletion(_ word: String, forPartialWordRange charRange: NSRange, movement: Int, isFinal: Bool) {
+        if wikiCompletionRange == charRange {
+            // Esc и слово, совпавшее с набранным, ничего не вставляют: иначе отмена дописала бы «]]».
+            if isFinal, movement != NSCancelTextMovement,
+               NSMaxRange(charRange) <= (string as NSString).length, (string as NSString).substring(with: charRange) != word {
+                _ = acceptWikiCompletion?(word, charRange)
+                dismissWikiCompletion?()
+            }
+            return
+        }
         guard emojiCompletionRange == charRange else {
             super.insertCompletion(word, forPartialWordRange: charRange, movement: movement, isFinal: isFinal)
             return
@@ -506,14 +520,15 @@ final class LacTextView: NSTextView {
         }
         if hasMarkedText() { super.keyDown(with: event); return }
         if event.keyCode == 53, completionText != nil { dismissAICompletion?(); return }
-        if event.keyCode == 53, emojiCompletionRange != nil {
+        if event.keyCode == 53, emojiCompletionRange != nil || wikiCompletionRange != nil {
             super.keyDown(with: event)
             dismissEmojiCompletion?()
+            dismissWikiCompletion?()
             return
         }
         if event.keyCode == 48, event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
            !hasMarkedText(), acceptAICompletion?() == true { return }
-        if event.keyCode == 48, emojiCompletionRange != nil {
+        if event.keyCode == 48, emojiCompletionRange != nil || wikiCompletionRange != nil {
             super.keyDown(with: event)
             return
         }
@@ -953,6 +968,7 @@ final class LacTextView: NSTextView {
         let wasMarked = hasMarkedText()
         pairKeyCharacter = nil
         dismissEmojiCompletion?()
+        dismissWikiCompletion?()
         super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
         compositionStartHandler?(hasMarkedText())
         resumeAfterComposition(wasMarked: wasMarked)

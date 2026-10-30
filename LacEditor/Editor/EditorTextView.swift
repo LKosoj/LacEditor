@@ -37,6 +37,9 @@ struct EditorTextView: NSViewRepresentable {
     var viewMagnification: CGFloat = 1
     var magnificationDidChange: ((CGFloat) -> Void)? = nil
     var requestAIImageEdit: ((AIImageEditRequest) -> Void)? = nil
+    var wikiResolver: MarkdownWikiLinkResolver? = nil
+    var requestWikiCatalog: (() -> Void)? = nil
+    var wikiSource: (() -> MarkdownWikiLinkSource)? = nil
 
     static func applyWritingChecks(to textView: NSTextView, spellingEnabled: Bool, grammarEnabled: Bool) {
         guard !textView.hasMarkedText() else { return }
@@ -216,6 +219,9 @@ struct EditorTextView: NSViewRepresentable {
         context.coordinator.currentTabWidth = tabWidth
         context.coordinator.maximumTextWidth = maximumTextWidth.map { CGFloat($0) }
         context.coordinator.currentLanguage = document.language
+        context.coordinator.requestWikiCatalog = requestWikiCatalog
+        context.coordinator.wikiSource = wikiSource
+        context.coordinator.updateWikiResolver(wikiResolver)
         context.coordinator.isMarkdownOutlineVisible = isOutlineVisible
         context.coordinator.updatePerformanceFeatures()
         context.coordinator.lastSynchronizedRevision = document.textRevision

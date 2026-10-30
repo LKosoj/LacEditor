@@ -1068,6 +1068,13 @@ extension NSColor {
             : NSColor(calibratedWhite: 0.40, alpha: 1)
     }
 
+    /// Встроенные `#теги` в оформленном Markdown; контраст к `lacEditorBackground` не ниже 4,5:1 в обеих темах.
+    static let lacTagText = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(calibratedRed: 0.45, green: 0.72, blue: 1.0, alpha: 1)
+            : NSColor(calibratedRed: 0.05, green: 0.35, blue: 0.60, alpha: 1)
+    }
+
     static let lacCommentText = NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             ? NSColor(calibratedRed: 0.60, green: 0.66, blue: 0.62, alpha: 1)

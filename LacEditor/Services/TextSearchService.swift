@@ -284,7 +284,7 @@ enum TextSearchService {
         return out
     }
 
-    private static func template(for replacement: String, options: Options, interpretsEscapes: Bool) -> String {
+    static func template(for replacement: String, options: Options, interpretsEscapes: Bool) -> String {
         options.usesRegex
             ? regexTemplate(replacement)
             : NSRegularExpression.escapedTemplate(for: interpreted(replacement, enabled: interpretsEscapes))

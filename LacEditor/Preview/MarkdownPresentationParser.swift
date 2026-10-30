@@ -1679,7 +1679,7 @@ enum MarkdownPresentationParser {
         return isCancelled() ? [] : candidates
     }
 
-    static func parse(_ text: String, includeReadableText: Bool = false, includeEmojiCandidates: Bool = false, includeUppercaseRuns: Bool = false, syntax: MarkdownSyntaxOptions = .init(), isCancelled: @escaping () -> Bool = { false }) -> MarkdownPresentation {
+    static func parse(_ text: String, includeReadableText: Bool = false, includeEmojiCandidates: Bool = false, includeUppercaseRuns: Bool = false, includeWikiLinks: Bool = false, syntax: MarkdownSyntaxOptions = .init(), isCancelled: @escaping () -> Bool = { false }) -> MarkdownPresentation {
         guard !text.utf8.contains(0) else { return MarkdownPresentation(spans: []) }
         let options = ((syntax.smartPunctuation ?? true) ? CMARK_OPT_SMART : 0) | CMARK_OPT_TABLE_SPANS | CMARK_OPT_HARDBREAKS | CMARK_OPT_FOOTNOTES
         let frontMatter = frontMatter(text)
@@ -1687,6 +1687,7 @@ enum MarkdownPresentationParser {
         return MarkdownMathExtension.withDocument(input, options: options, includeInline: syntax.inlineMath, legacyInlineMath: syntax.legacyInlineMath, strictMode: syntax.strictMode, sourceForPositions: text, isCancelled: isCancelled) { root, mathExtension, mathInline in
         let source = Source(text, root: root, textOrigins: MarkdownMathExtension.textOrigins(in: mathExtension), looseHeadings: MarkdownMathExtension.looseHeadings(in: mathExtension), looseListRanges: MarkdownMathExtension.looseListRanges(in: mathExtension), isCancelled: isCancelled)
         let sourceText = text as NSString
+        let wikiEnabled = includeWikiLinks && sourceText.range(of: "[[").location != NSNotFound
         var spans: [MarkdownPresentationSpan] = []
         if let frontMatter { spans.append(MarkdownPresentationSpan(range: frontMatter.range, kind: .yaml, markerRanges: frontMatter.markers)) }
         var headings: [MarkdownHeading] = []
@@ -1839,9 +1840,14 @@ enum MarkdownPresentationParser {
             else if !isCancelled() { unconfirmedInlineRanges.insert(node) }
             return result
         }
-        var emojiCandidates = includeEmojiCandidates ? MarkdownEmojiCandidateExtractor.candidates(in: root, source: source, text: sourceText, isCancelled: isCancelled, onSmartRange: { smartTextRanges.append($0) }, onTextRange: { _, range in emojiCompletionRanges.append(range) }) { node, offset, candidate in
-            emojiByNode[node, default: []].append((offset, candidate))
+        var wikiTextRanges: [NSRange] = []
+        var emojiCandidates = (includeEmojiCandidates || wikiEnabled) ? MarkdownEmojiCandidateExtractor.candidates(in: root, source: source, text: sourceText, isCancelled: isCancelled, onSmartRange: { range in
+            if includeEmojiCandidates { smartTextRanges.append(range) }
+            if wikiEnabled { wikiTextRanges.append(range) }
+        }, onTextRange: { _, range in if includeEmojiCandidates { emojiCompletionRanges.append(range) } }) { node, offset, candidate in
+            if includeEmojiCandidates { emojiByNode[node, default: []].append((offset, candidate)) }
         }.map { MarkdownEmojiCandidate(name: $0.name, range: $0.range) }.sorted { $0.range.location < $1.range.location } : []
+        if !includeEmojiCandidates { emojiCandidates = [] }
         let inlineByNode = mathInline.reduce(into: [OpaquePointer: MarkdownMathExtension.Inline]()) { $0[$1.node] = $1 }
         var taskCheckboxes: [MarkdownTaskCheckbox] = []
         var completedTaskRanges: [NSRange] = []
@@ -3237,6 +3243,7 @@ enum MarkdownPresentationParser {
             inlineFormulas.removeAll { blocked($0.range) }
             emojiCandidates.removeAll { blocked($0.range) }
             emojiCompletionRanges.removeAll { blocked($0) }
+            wikiTextRanges.removeAll { blocked($0) }
             smartTextRanges.removeAll { blocked($0) }
             safeText.removeAll { blocked($0.range) }
             paragraphs.removeAll { blocked($0.range) }
@@ -3266,7 +3273,31 @@ enum MarkdownPresentationParser {
             }
             if isCancelled() { return MarkdownPresentation(spans: []) }
         }
-        return MarkdownPresentation(spans: spans, headings: headings, namedAnchors: namedAnchors, images: images, audioBlocks: audioBlocks, iframeBlocks: iframeBlocks, detailsBlocks: detailsBlocks, htmlBlocks: htmlBlocks, pageBreaks: pageBreaks, ruby: ruby, links: links, diagrams: diagrams, formulas: formulas, inlineFormulas: inlineFormulas, emojiCandidates: emojiCandidates, emojiCandidatesIncluded: includeEmojiCandidates, emojiCompletionRanges: emojiCompletionRanges.sorted { $0.location < $1.location }, smartTextRanges: smartTextRanges.sorted { $0.location < $1.location }, smartRawHTMLRanges: htmlRangesAvailable ? rawHTMLRanges : nil, textReplacements: safeText, paragraphs: paragraphs.sorted { $0.range.location < $1.range.location }, completedTaskRanges: completedTaskRanges.sorted { $0.location < $1.location }, taskCheckboxes: taskCheckboxes, listMarkers: listMarkers.sorted { $0.range.location < $1.range.location }, looseIndents: MarkdownMathExtension.looseIndents(in: mathExtension), footnotes: footnotes, tableOfContents: tableOfContents, tables: tables, codeBlocks: codeBlocks, fenceContainerLines: fenceContainerLines.sorted { $0.line.location < $1.line.location }, fenceBlockedRanges: merged, fenceBlockedEOF: fenceBlockedEOF, fenceContextAvailable: fenceContextAvailable, readableText: readableText)
+        var wikiLinks: [MarkdownWikiLink] = []
+        if wikiEnabled, !wikiTextRanges.isEmpty {
+            var excluded: [NSRange] = []
+            excluded.append(contentsOf: links.map(\.range))
+            excluded.append(contentsOf: images.map(\.range))
+            excluded.append(contentsOf: tables.map(\.range))
+            excluded.append(contentsOf: headings.map(\.range))
+            excluded.append(contentsOf: formulas.map(\.range))
+            excluded.append(contentsOf: inlineFormulas.map(\.range))
+            excluded.append(contentsOf: ruby.map(\.range))
+            excluded.append(contentsOf: htmlBlocks.map(\.range))
+            excluded.append(contentsOf: audioBlocks.map(\.range))
+            excluded.append(contentsOf: iframeBlocks.map(\.range))
+            excluded.append(contentsOf: detailsBlocks.map(\.range))
+            excluded.append(contentsOf: codeBlocks.map(\.range))
+            excluded.append(contentsOf: diagrams.map(\.range))
+            excluded.append(contentsOf: pageBreaks)
+            excluded.append(contentsOf: tableOfContents)
+            for footnote in footnotes { excluded.append(footnote.referenceRange); excluded.append(footnote.definitionRange) }
+            for span in spans { if case .link = span.kind { excluded.append(span.range) } }
+            wikiLinks = MarkdownWikiLinkExtractor.links(textRanges: wikiTextRanges, excluded: excluded, text: sourceText, isCancelled: isCancelled)
+            if isCancelled() { return MarkdownPresentation(spans: []) }
+            for link in wikiLinks { spans.append(MarkdownPresentationSpan(range: link.range, kind: .link, markerRanges: link.markerRanges)) }
+        }
+        return MarkdownPresentation(spans: spans, headings: headings, namedAnchors: namedAnchors, images: images, audioBlocks: audioBlocks, iframeBlocks: iframeBlocks, detailsBlocks: detailsBlocks, htmlBlocks: htmlBlocks, pageBreaks: pageBreaks, ruby: ruby, links: links, diagrams: diagrams, formulas: formulas, inlineFormulas: inlineFormulas, emojiCandidates: emojiCandidates, emojiCandidatesIncluded: includeEmojiCandidates, emojiCompletionRanges: emojiCompletionRanges.sorted { $0.location < $1.location }, smartTextRanges: smartTextRanges.sorted { $0.location < $1.location }, smartRawHTMLRanges: htmlRangesAvailable ? rawHTMLRanges : nil, textReplacements: safeText, paragraphs: paragraphs.sorted { $0.range.location < $1.range.location }, completedTaskRanges: completedTaskRanges.sorted { $0.location < $1.location }, taskCheckboxes: taskCheckboxes, listMarkers: listMarkers.sorted { $0.range.location < $1.range.location }, looseIndents: MarkdownMathExtension.looseIndents(in: mathExtension), footnotes: footnotes, tableOfContents: tableOfContents, tables: tables, codeBlocks: codeBlocks, fenceContainerLines: fenceContainerLines.sorted { $0.line.location < $1.line.location }, fenceBlockedRanges: merged, fenceBlockedEOF: fenceBlockedEOF, fenceContextAvailable: fenceContextAvailable, readableText: readableText).withWikiLinks(wikiLinks)
         } ?? MarkdownPresentation(spans: [])
     }
 

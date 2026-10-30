@@ -26,7 +26,9 @@ struct SidebarView: View {
                 // одна величина горизонтального отступа (10) для оглавления, фильтра и списка
                 .padding(.horizontal, 10)
                 .padding(.top, 12)
+                BacklinksSection(document: document)
             }
+            FolderTagsSection(store: appState.folderWorkspace, controller: appState.folderTags, search: appState.folderSearch)
             HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass").font(.callout).foregroundStyle(.secondary)
                     .accessibilityHidden(true)
@@ -179,5 +181,58 @@ private struct ExperimentSampleControls: View {
                     .fixedSize(horizontal: false, vertical: true).padding(.horizontal, 9)
             }
         }.padding(.horizontal, 10)
+    }
+}
+
+private struct BacklinksTrigger: Hashable {
+    let documentID: UUID
+    let isActive: Bool
+}
+
+private struct BacklinksSectionLabel: View {
+    @ObservedObject var controller: MarkdownBacklinksController
+
+    var body: some View {
+        let count = controller.state == .loaded ? String(controller.matches.count) : nil
+        HStack(spacing: 6) {
+            Text(L10n.tr("反向链接"))
+                .font(.subheadline.weight(.semibold)).tracking(0.5)
+                .foregroundStyle(.secondary)
+            if let count {
+                Text(count).font(.caption).foregroundStyle(.secondary).accessibilityHidden(true)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(count.map { L10n.tr("反向链接，%@", $0) } ?? L10n.tr("反向链接"))
+    }
+}
+
+/// Подписки привязаны к `@ObservedObject document`: при смене выбранного документа блок получает нового наблюдателя.
+private struct BacklinksSection: View {
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject var document: EditorDocument
+
+    private var isActive: Bool { appState.isBacklinksExpanded && appState.isSidebarEffectivelyVisible }
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $appState.isBacklinksExpanded) {
+            MarkdownBacklinksView(controller: appState.backlinks) { appState.openFolder() }
+        } label: {
+            BacklinksSectionLabel(controller: appState.backlinks)
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 8)
+        .task(id: BacklinksTrigger(documentID: document.id, isActive: isActive)) {
+            appState.backlinks.update(root: appState.folderWorkspace.rootURL, document: document, isActive: isActive)
+        }
+        // корень берётся из публикации: `@Published` сообщает до записи свойства
+        .onReceive(appState.folderWorkspace.$rootURL.removeDuplicates()) { root in
+            appState.backlinks.update(root: root, document: document, isActive: isActive)
+        }
+        .onReceive(document.$url.removeDuplicates().dropFirst()) { _ in
+            appState.backlinks.update(root: appState.folderWorkspace.rootURL, document: document, isActive: isActive)
+        }
+        .onReceive(document.$isDirty.removeDuplicates().dropFirst().filter { !$0 }) { _ in appState.backlinks.refreshSoon() }
+        .onDisappear { appState.backlinks.close() }
     }
 }

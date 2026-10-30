@@ -157,4 +157,19 @@ final class FolderSearchTests: XCTestCase {
             return checks > 3
         }) { XCTAssertTrue($0 is CancellationError) }
     }
+
+    func testMarkdownFilesListsOnlyMarkdownAndSkipsSymlinkedDirectories() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("md-files-" + UUID().uuidString, isDirectory: true)
+        let outside = FileManager.default.temporaryDirectory.appendingPathComponent("md-outside-" + UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root); try? FileManager.default.removeItem(at: outside) }
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("sub"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        try "a".write(to: root.appendingPathComponent("a.md"), atomically: true, encoding: .utf8)
+        try "b".write(to: root.appendingPathComponent("sub/b.MARKDOWN"), atomically: true, encoding: .utf8)
+        try "t".write(to: root.appendingPathComponent("t.txt"), atomically: true, encoding: .utf8)
+        try "o".write(to: outside.appendingPathComponent("o.md"), atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("link"), withDestinationURL: outside)
+        let result = try FolderSearchService.markdownFiles(root: root)
+        XCTAssertEqual(Set(result.values.map(\.relativePath)), ["a.md", "sub/b.MARKDOWN"])
+    }
 }

@@ -80,6 +80,7 @@ struct MainWindowView: View {
             }
         }
         .overlay(alignment: .top) { QuickOpenOverlay(controller: appState.folderSearch) }
+        .overlay(alignment: .top) { CommandPaletteOverlay(controller: appState.commandPalette, folderSearch: appState.folderSearch) }
         .background(
             // Cmd-= — привычный псевдоним Cmd-+ (на US-раскладке плюс — это Shift-=); пункт меню остаётся один.
             Button("") { appState.increaseFontSize() }
@@ -414,6 +415,7 @@ private struct DocumentEditorPane: View {
                         syntax: appState.preferences.markdownSyntax,
                         viewMagnification: appState.viewMagnification,
                         magnificationDidChange: appState.setViewMagnification,
+                        wiki: appState.wikiContext(for: document),
                         document: document
                     )
                 ) : nil
@@ -431,6 +433,19 @@ private struct DocumentEditorPane: View {
                 }
             }
         }
+        .task(id: WikiCatalogKey(documentID: document.id, url: document.url, previewVisible: document.isPreviewEffectivelyEnabled, isMarkdown: document.language == .markdown, root: appState.folderWorkspace.rootURL)) {
+            guard document.language == .markdown, document.isPreviewEffectivelyEnabled,
+                  document.ioState == .idle, document.text.contains("[[") else { return }
+            appState.requestWikiCatalog(for: document)
+        }
+    }
+
+    private struct WikiCatalogKey: Equatable {
+        let documentID: UUID
+        let url: URL?
+        let previewVisible: Bool
+        let isMarkdown: Bool
+        let root: URL?
     }
 
     private var editor: some View {
@@ -460,7 +475,15 @@ private struct DocumentEditorPane: View {
             markdownTOCMaxLevel: appState.preferences.markdownTOCMaxLevel,
             viewMagnification: appState.viewMagnification,
             magnificationDidChange: appState.setViewMagnification,
-            requestAIImageEdit: { request in appState.aiWriting.prepareImageEdit(request) }
+            requestAIImageEdit: { request in appState.aiWriting.prepareImageEdit(request) },
+            wikiResolver: appState.wikiResolver(for: document),
+            requestWikiCatalog: { [weak document] in
+                guard let document else { return }
+                appState.requestWikiCatalog(for: document)
+            },
+            wikiSource: { [weak document, weak appState] in
+                MarkdownWikiLinkSource(root: appState?.folderWorkspace.rootURL, documentURL: document?.url)
+            }
         )
         .disabled(appState.isOpeningPlaceholder(document))
     }

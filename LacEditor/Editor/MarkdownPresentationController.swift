@@ -319,6 +319,10 @@ final class MarkdownPresentationController {
     }
     private var emojiCompletionContext: EmojiCompletionContext?
     private var emojiCompletionRequested = false
+    private var wikiCompletionRequested = false
+    var wikiResolver: MarkdownWikiLinkResolver?
+    var wikiCatalogNeeded: (() -> Void)?
+    var wikiCompletionReady: (() -> Void)?
     private struct SmartTextContext {
         let ranges: [NSRange]
         let rawHTMLRanges: [NSRange]?
@@ -364,7 +368,7 @@ final class MarkdownPresentationController {
     private var revision: UInt = 0
     private var currentRevision: (() -> UInt)?
     private var readableEnabled: Bool { document?.language == .markdown && document?.isWordCountEnabled == true }
-    private var emojiCompletionEnabled: Bool { document?.language == .markdown && emojiCompletionRequested }
+    private var emojiCompletionEnabled: Bool { document?.language == .markdown && (emojiCompletionRequested || wikiCompletionRequested) }
     private var mathPairEnabled: Bool { document?.language == .markdown && mathPairRequested }
 
     func setMathPairContextEnabled(_ enabled: Bool) {
@@ -434,6 +438,7 @@ final class MarkdownPresentationController {
             cancel()
             emojiCompletionContext = nil
             emojiCompletionRequested = false
+            wikiCompletionRequested = false
             smartTextContext = nil
             mathPairContext = nil
         }
@@ -666,6 +671,39 @@ final class MarkdownPresentationController {
 
     func beginEmojiCompletion() {
         emojiCompletionRequested = true
+    }
+
+    func beginWikiCompletion() {
+        wikiCompletionRequested = true
+        wikiCatalogNeeded?()
+        if !hasMarkedText, parsedResult == nil, work == nil && operation == nil { schedule(revision: revision) }
+    }
+
+    func endWikiCompletion() {
+        guard wikiCompletionRequested else { return }
+        wikiCompletionRequested = false
+        if !emojiCompletionRequested { emojiCompletionContext = nil }
+        if !enabled && !outlineVisible && !readableEnabled && !mathPairEnabled && !emojiCompletionRequested { cancel() }
+    }
+
+    /// Диапазон от `[[` до курсора должен целиком лежать в подтверждённом тексте текущей версии.
+    func allowsWikiCompletion(document: EditorDocument, revision: UInt, range: NSRange) -> Bool {
+        guard isActive, document.language == .markdown, self.document === document, currentRevision?() == revision, !hasMarkedText,
+              let context = emojiCompletionContext, context.revision == revision, range.length > 0 else { return false }
+        // cmark выдаёт скобки отдельными текстовыми узлами: проверяем цепочку соседних фрагментов.
+        var low = 0, high = context.ranges.count
+        while low < high {
+            let middle = (low + high) / 2
+            if NSMaxRange(context.ranges[middle]) <= range.location { low = middle + 1 } else { high = middle }
+        }
+        guard low < context.ranges.count, context.ranges[low].location <= range.location else { return false }
+        var covered = NSMaxRange(context.ranges[low])
+        low += 1
+        while covered < NSMaxRange(range), low < context.ranges.count, context.ranges[low].location == covered {
+            covered = NSMaxRange(context.ranges[low])
+            low += 1
+        }
+        return covered >= NSMaxRange(range)
     }
 
     func requestEmojiCompletionAfterTableEdit() {
@@ -1062,6 +1100,7 @@ final class MarkdownPresentationController {
 
     func reapplyLinkColors(in range: NSRange) {
         guard isActive, enabled, !hasMarkedText, currentRevision?() == revision, let layout else { return }
+        defer { applyUnresolvedWikiColors(in: range) }
         if let color = layout.markdownColors.link?.nsColor {
             for span in intersecting(range) where span.kind == .link {
                 let part = NSIntersectionRange(span.range, range)
@@ -1075,6 +1114,42 @@ final class MarkdownPresentationController {
             if part.length > 0 {
                 layout.addTemporaryAttribute(.foregroundColor, value: color.nsColor, forCharacterRange: part)
                 rememberInlineForeground(part)
+            }
+        }
+    }
+
+    /// Wiki-ссылка без единственного файла рисуется приглушённым цветом; пока каталог не загружен, считается разрешённой.
+    private func applyUnresolvedWikiColors(in range: NSRange) {
+        guard let layout, let links = presentation?.wikiLinks, !links.isEmpty else { return }
+        var low = 0, high = links.count
+        while low < high {
+            let middle = (low + high) / 2
+            if NSMaxRange(links[middle].range) <= range.location { low = middle + 1 } else { high = middle }
+        }
+        while low < links.count && links[low].range.location < NSMaxRange(range) {
+            let link = links[low]
+            low += 1
+            guard let resolver = wikiResolver else { continue }
+            switch resolver.resolve(target: link.target) {
+            case .file, .currentDocument: continue
+            case .ambiguous, .missing, .invalid: break
+            }
+            let part = NSIntersectionRange(link.displayRange, range)
+            if part.length > 0 { layout.addTemporaryAttribute(.foregroundColor, value: NSColor.lacMutedText, forCharacterRange: part) }
+        }
+    }
+
+    /// Каталог файлов изменился: заново расставить цвета wiki-ссылок в оформленной области.
+    func wikiResolverChanged() {
+        guard isActive, enabled, let layout, let links = presentation?.wikiLinks, !links.isEmpty else { return }
+        // Во время незавершённого ввода цвета расставит разбор, который запускается после его окончания.
+        guard !hasMarkedText, currentRevision?() == revision else { return }
+        for link in links {
+            for styled in styledRanges where NSIntersectionRange(styled, link.range).length > 0 {
+                let part = NSIntersectionRange(link.displayRange, styled)
+                guard part.length > 0 else { continue }
+                layout.removeTemporaryAttribute(.foregroundColor, forCharacterRange: part)
+                reapplyLinkColors(in: part)
             }
         }
     }
@@ -1217,7 +1292,7 @@ final class MarkdownPresentationController {
             operation.addExecutionBlock { [weak self, weak operation, weak document] in
                 guard let operation, !operation.isCancelled, let document else { return }
                 let parsed = MarkdownPresentationParser.parse(text, includeReadableText: includeReadableText, includeEmojiCandidates: includeEmojiCandidates,
-                                                              includeUppercaseRuns: includeUppercaseRuns, syntax: syntax,
+                                                              includeUppercaseRuns: includeUppercaseRuns, includeWikiLinks: true, syntax: syntax,
                                                               isCancelled: { operation.isCancelled })
                 let result = headingNumbering ? parsed.numberingHeadings(true) : parsed
                 let needsRoot = result.images.contains { MarkdownResourcePaths.requiresRoot($0.url) } || result.audioBlocks.contains { $0.media.sources.contains(where: { MarkdownResourcePaths.requiresRoot($0) }) }
@@ -1313,6 +1388,8 @@ final class MarkdownPresentationController {
                     if self.enabled { self.install(result) }
                     else { self.startEmojiResolution() }
                     if self.emojiCompletionRequested { self.emojiCompletionReady?() }
+                    if !result.wikiLinks.isEmpty { self.wikiCatalogNeeded?() }
+                    if self.wikiCompletionRequested { self.wikiCompletionReady?() }
                 }
             }
             self.operation = operation
@@ -1567,6 +1644,7 @@ final class MarkdownPresentationController {
                 low += 1
             }
         }
+        applyInlineTagColors(in: styleRange, layout: layout)
         var merged = styleRange
         styledRanges = styledRanges.filter { range in
             if NSMaxRange(range) < merged.location || NSMaxRange(merged) < range.location { return true }
@@ -1582,6 +1660,32 @@ final class MarkdownPresentationController {
         notifyGeometryChanged()
         updateFootnoteTooltips(in: styleRange)
         reapplyLinkColors(in: styleRange)
+    }
+
+    /// Встроенные `#теги` красятся временным цветом только в оформляемой области; ячейки таблиц рисуют свои представления.
+    private func applyInlineTagColors(in range: NSRange, layout: FoldLayoutManager) {
+        guard let presentation, let storage = textView?.textStorage else { return }
+        let ranges = presentation.emojiCompletionRanges
+        var low = 0, high = ranges.count
+        while low < high {
+            let middle = (low + high) / 2
+            if NSMaxRange(ranges[middle]) <= range.location { low = middle + 1 } else { high = middle }
+        }
+        var pieces: [NSRange] = []
+        while low < ranges.count && ranges[low].location < NSMaxRange(range) { pieces.append(ranges[low]); low += 1 }
+        guard !pieces.isEmpty else { return }
+        let raw = storage.mutableString
+        guard pieces.contains(where: { raw.range(of: "#", options: .literal, range: $0).location != NSNotFound }) else { return }
+        let extent = NSRange(location: pieces[0].location, length: NSMaxRange(pieces[pieces.count - 1]) - pieces[0].location)
+        let excluded = presentation.links.map(\.range).filter { NSIntersectionRange($0, extent).length > 0 }
+            + presentation.wikiLinks.map(\.range).filter { NSIntersectionRange($0, extent).length > 0 }
+        guard let tags = try? MarkdownTagReader.inlineTags(in: storage.mutableString, textRanges: pieces, excluding: excluded) else { return }
+        for tag in tags where !presentation.tables.contains(where: { NSIntersectionRange($0.range, tag.range).length > 0 }) {
+            let part = NSIntersectionRange(tag.range, range)
+            guard part.length > 0 else { continue }
+            layout.addTemporaryAttribute(.foregroundColor, value: NSColor.lacTagText, forCharacterRange: part)
+            rememberInlineForeground(part)
+        }
     }
 
     private func unstyledRange(in visible: NSRange) -> NSRange? {

@@ -302,6 +302,11 @@ enum MarkdownHeadingAnchors {
         return result
     }
 
+    static func slug(of title: String) -> String {
+        var allocator = Allocator()
+        return allocator.next(title).slug
+    }
+
     static func target(for fragment: String, in headings: [MarkdownHeading]) -> MarkdownHeading? {
         var allocator = Allocator()
         let entries = headings.map { allocator.next($0.title) }
@@ -314,6 +319,16 @@ enum MarkdownHeadingAnchors {
 struct MarkdownLink: Equatable, Sendable {
     let range: NSRange
     let url: String
+}
+
+/// Wiki-ссылка `[[цель#заголовок|текст]]`; все диапазоны в UTF-16 исходника.
+struct MarkdownWikiLink: Equatable, Sendable {
+    let range: NSRange
+    let displayRange: NSRange
+    let target: String
+    let heading: String?
+    let alias: String?
+    let markerRanges: [NSRange]
 }
 
 struct MarkdownImage: Equatable, Sendable {
@@ -602,6 +617,7 @@ struct MarkdownPresentation: Sendable {
     let fenceBlockedEOF: Bool
     let fenceContextAvailable: Bool
     let readableText: MarkdownReadableText?
+    private(set) var wikiLinks: [MarkdownWikiLink] = []
 
     init(spans: [MarkdownPresentationSpan], headings: [MarkdownHeading] = [], namedAnchors: [MarkdownNamedAnchor] = [], images: [MarkdownImage] = [], audioBlocks: [MarkdownAudioBlock] = [], iframeBlocks: [MarkdownIframeBlock] = [], detailsBlocks: [MarkdownDetailsBlock] = [], htmlBlocks: [MarkdownHTMLBlock] = [], pageBreaks: [NSRange] = [], ruby: [MarkdownRuby] = [], links: [MarkdownLink] = [], diagrams: [MarkdownDiagram] = [], formulas: [MarkdownFormula] = [], inlineFormulas: [MarkdownFormula] = [], emojiCandidates: [MarkdownEmojiCandidate] = [], emojiCandidatesIncluded: Bool = false, emojiCompletionRanges: [NSRange] = [], smartTextRanges: [NSRange] = [], smartRawHTMLRanges: [NSRange]? = nil, textReplacements: [MarkdownTextReplacement] = [], paragraphs: [MarkdownParagraph] = [], completedTaskRanges: [NSRange] = [], taskCheckboxes: [MarkdownTaskCheckbox] = [], listMarkers: [MarkdownListMarker] = [], looseIndents: [MarkdownLooseIndent] = [], footnotes: [MarkdownFootnote] = [], tableOfContents: [NSRange] = [], tables: [MarkdownTable] = [], codeBlocks: [MarkdownCodeBlock] = [], fenceContainerLines: [MarkdownFenceContainerLine] = [], fenceBlockedRanges: [NSRange] = [], fenceBlockedEOF: Bool = false, fenceContextAvailable: Bool = false, readableText: MarkdownReadableText? = nil) {
         self.spans = spans
@@ -639,13 +655,19 @@ struct MarkdownPresentation: Sendable {
         self.tableOfContents = tableOfContents
         self.readableText = readableText
     }
+    func withWikiLinks(_ links: [MarkdownWikiLink]) -> MarkdownPresentation {
+        var copy = self
+        copy.wikiLinks = links
+        return copy
+    }
+
     func resolvingHeadingEmoji(_ values: [String: String], readableText: MarkdownReadableText? = nil) -> MarkdownPresentation {
         MarkdownPresentation(spans: spans, headings: headings.map { $0.resolvingEmoji(values) }, namedAnchors: namedAnchors, images: images,
             audioBlocks: audioBlocks, iframeBlocks: iframeBlocks, detailsBlocks: detailsBlocks, htmlBlocks: htmlBlocks, pageBreaks: pageBreaks, ruby: ruby, links: links, diagrams: diagrams, formulas: formulas, inlineFormulas: inlineFormulas,
             emojiCandidates: emojiCandidates, emojiCandidatesIncluded: emojiCandidatesIncluded, emojiCompletionRanges: emojiCompletionRanges, smartTextRanges: smartTextRanges, smartRawHTMLRanges: smartRawHTMLRanges, textReplacements: textReplacements, paragraphs: paragraphs, completedTaskRanges: completedTaskRanges,
             taskCheckboxes: taskCheckboxes, listMarkers: listMarkers, looseIndents: looseIndents, footnotes: footnotes, tableOfContents: tableOfContents, tables: tables,
             codeBlocks: codeBlocks, fenceContainerLines: fenceContainerLines, fenceBlockedRanges: fenceBlockedRanges, fenceBlockedEOF: fenceBlockedEOF,
-            fenceContextAvailable: fenceContextAvailable, readableText: readableText ?? self.readableText)
+            fenceContextAvailable: fenceContextAvailable, readableText: readableText ?? self.readableText).withWikiLinks(wikiLinks)
     }
 
     func numberingHeadings(_ enabled: Bool) -> MarkdownPresentation {
@@ -654,7 +676,7 @@ struct MarkdownPresentation: Sendable {
             emojiCandidates: emojiCandidates, emojiCandidatesIncluded: emojiCandidatesIncluded, emojiCompletionRanges: emojiCompletionRanges, smartTextRanges: smartTextRanges, smartRawHTMLRanges: smartRawHTMLRanges, textReplacements: textReplacements, paragraphs: paragraphs, completedTaskRanges: completedTaskRanges,
             taskCheckboxes: taskCheckboxes, listMarkers: listMarkers, looseIndents: looseIndents, footnotes: footnotes, tableOfContents: tableOfContents, tables: tables,
             codeBlocks: codeBlocks, fenceContainerLines: fenceContainerLines, fenceBlockedRanges: fenceBlockedRanges, fenceBlockedEOF: fenceBlockedEOF,
-            fenceContextAvailable: fenceContextAvailable, readableText: readableText)
+            fenceContextAvailable: fenceContextAvailable, readableText: readableText).withWikiLinks(wikiLinks)
     }
 
     func replacingTable(_ table: MarkdownTable, oldTable: NSRange, edit: NSRange, replacementLength: Int) -> MarkdownPresentation {
@@ -792,6 +814,11 @@ struct MarkdownPresentation: Sendable {
             guard segments.count == block.bodySegments.count, markers.count == block.fenceMarkers.count else { return nil }
             return MarkdownCodeBlock(range: range, bodyRange: body, bodySegments: segments, bodyPadding: block.bodyPadding, infoRange: info, fenceMarkers: markers, continuationPrefix: block.continuationPrefix, isNested: block.isNested, isClosed: block.isClosed, info: block.info, literal: block.literal)
         }
+        let newWikiLinks = wikiLinks.compactMap { link -> MarkdownWikiLink? in
+            let markers = link.markerRanges.compactMap(shift)
+            guard let range = shift(link.range), let display = shift(link.displayRange), markers.count == link.markerRanges.count else { return nil }
+            return MarkdownWikiLink(range: range, displayRange: display, target: link.target, heading: link.heading, alias: link.alias, markerRanges: markers)
+        }
         return MarkdownPresentation(spans: newSpans, headings: newHeadings, namedAnchors: namedAnchors.compactMap { anchor in
                                         shift(anchor.range).map { MarkdownNamedAnchor(name: anchor.name, range: $0) }
                                     }, images: newImages, audioBlocks: newAudio, iframeBlocks: newIframes, detailsBlocks: newDetails, htmlBlocks: newHTMLBlocks, pageBreaks: pageBreaks.compactMap(shift), ruby: newRuby, links: newLinks, diagrams: newDiagrams, formulas: newFormulas, inlineFormulas: newInlineFormulas, emojiCandidates: emojiCandidates.compactMap { candidate in
@@ -818,7 +845,7 @@ struct MarkdownPresentation: Sendable {
                                     }, looseIndents: looseIndents.compactMap { indent in
                                         shift(indent.range).map { MarkdownLooseIndent(range: $0, replacement: indent.replacement) }
                                     }, footnotes: newFootnotes,
-                                    tableOfContents: tableOfContents.compactMap(shift), tables: newTables, codeBlocks: newCodeBlocks)
+                                    tableOfContents: tableOfContents.compactMap(shift), tables: newTables, codeBlocks: newCodeBlocks).withWikiLinks(newWikiLinks)
     }
 
 }

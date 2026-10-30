@@ -104,7 +104,7 @@ extension EditorTextView {
         private enum ClipboardCopyMode: Sendable { case rich, markdown, html }
         var document: EditorDocument {
             didSet {
-                if oldValue !== document { cancelMarkdownLinkNavigation(); cachedMarkdownNavigation = nil; endEmojiCompletion() }
+                if oldValue !== document { cancelMarkdownLinkNavigation(); cachedMarkdownNavigation = nil; endEmojiCompletion(); endWikiCompletion() }
             }
         }
         weak var textView: LacTextView?
@@ -239,6 +239,13 @@ extension EditorTextView {
         var emojiCompletionDidFinish: (() -> Void)?
         private var emojiCompletionID = UUID()
         private(set) var emojiCompletionRequested = false
+        private var wikiCompletionTask: Task<Void, Never>?
+        private var wikiCompletionID = UUID()
+        private var wikiCompletionSpelling = ""
+        private(set) var wikiCompletionRequested = false
+        private(set) var wikiResolver: MarkdownWikiLinkResolver?
+        var requestWikiCatalog: (() -> Void)?
+        var wikiSource: (() -> MarkdownWikiLinkSource)?
         private static let smartCheckingKey = NSSpellChecker.OptionKey(rawValue: "LacEditorSmartCheckingID")
         private var parentSmartChecking: (UUID, UInt, UUID)?
         private var childSmartChecking: (UUID, UInt, UUID)?
@@ -621,6 +628,10 @@ extension EditorTextView {
             let snapshot = document.synchronizedSnapshot()
             guard self.document === document, contentRevision == revision, !textView.hasMarkedText() else { return false }
             func follow(_ parsed: MarkdownPresentation) -> Bool {
+                if let wiki = parsed.wikiLinks.first(where: { link in expectedRange.map { $0 == link.range } ?? NSLocationInRange(position, link.range) }) {
+                    followWikiLink(wiki, parsed: parsed, snapshot: snapshot, document: document, revision: revision, token: token)
+                    return true
+                }
                 guard let link = parsed.links.first(where: { link in expectedRange.map { $0 == link.range } ?? NSLocationInRange(position, link.range) }) else { return false }
                 postMarkdownLink(link, headings: parsed.headings, namedAnchors: parsed.namedAnchors, snapshot: snapshot, document: document, revision: revision, token: token)
                 return true
@@ -631,16 +642,61 @@ extension EditorTextView {
             if let parsed = markdownPresentation?.navigationPresentation(document: document, revision: revision), follow(parsed) { return true }
             let parse = markdownLinkParse, syntax = syntaxOptions
             markdownLinkTask = Task { @MainActor [weak self, weak document] in
-                let parsed = await Task.detached(priority: .userInitiated) { parse?(snapshot.text) ?? MarkdownPresentationParser.parse(snapshot.text, syntax: syntax) }.value
+                let parsed = await Task.detached(priority: .userInitiated) { parse?(snapshot.text) ?? MarkdownPresentationParser.parse(snapshot.text, includeWikiLinks: true, syntax: syntax) }.value
                 guard !Task.isCancelled, let self, let document, self.markdownLinkID == token,
                       self.document === document, self.contentRevision == revision, self.isActive,
                       self.textView?.hasMarkedText() == false, self.tableCellEditor == nil else { return }
                 self.markdownLinkTask = nil
                 self.cachedMarkdownNavigation = (document.id, revision, parsed)
+                if let wiki = parsed.wikiLinks.first(where: { link in expectedRange.map { $0 == link.range } ?? NSLocationInRange(position, link.range) }) {
+                    self.followWikiLink(wiki, parsed: parsed, snapshot: snapshot, document: document, revision: revision, token: token)
+                    return
+                }
                 guard let link = parsed.links.first(where: { link in expectedRange.map { $0 == link.range } ?? NSLocationInRange(position, link.range) }) else { return }
                 self.postMarkdownLink(link, headings: parsed.headings, namedAnchors: parsed.namedAnchors, snapshot: snapshot, document: document, revision: revision, token: token)
             }
             return true
+        }
+
+        /// Каталог ещё не загружен (например, Cmd-клик сразу после открытия): читаем его в фоне и переходим, если ничего не изменилось.
+        private func followWikiLink(_ wiki: MarkdownWikiLink, parsed: MarkdownPresentation, snapshot: DocumentTextSnapshot,
+                                    document: EditorDocument, revision: UInt, token: UUID) {
+            func post(_ resolver: MarkdownWikiLinkResolver) {
+                guard let link = wikiNavigationLink(wiki, resolver: resolver, document: document) else { return }
+                postMarkdownLink(link, headings: parsed.headings, namedAnchors: parsed.namedAnchors, snapshot: snapshot, document: document, revision: revision, token: token)
+            }
+            if let wikiResolver { post(wikiResolver); return }
+            guard let source = wikiSource?() else { post(MarkdownWikiLinkResolver(base: nil, paths: [])); return }
+            requestWikiCatalog?()
+            markdownLinkTask = Task { @MainActor [weak self, weak document] in
+                let loader = Task.detached(priority: .userInitiated) {
+                    try? MarkdownWikiLinkContext.load(root: source.root, documentURL: source.documentURL, isCancelled: { Task.isCancelled })
+                }
+                let context = await withTaskCancellationHandler { await loader.value } onCancel: { loader.cancel() }
+                guard !Task.isCancelled, let self, let document, self.markdownLinkID == token,
+                      self.document === document, self.contentRevision == revision, self.isActive,
+                      self.textView?.hasMarkedText() == false, self.tableCellEditor == nil else { return }
+                self.markdownLinkTask = nil
+                guard let context else {
+                    document.setStatusError(L10n.tr("无法打开链接"))
+                    return
+                }
+                post(context.resolver)
+            }
+        }
+
+        /// Wiki-ссылка превращается в обычный адрес и идёт общим путём перехода; неоднозначную или неверную цель не угадываем.
+        private func wikiNavigationLink(_ wiki: MarkdownWikiLink, resolver: MarkdownWikiLinkResolver, document: EditorDocument) -> MarkdownLink? {
+            let result = MarkdownWikiLinkContext(resolver: resolver, documentURL: document.url).fileAddress(for: wiki)
+            if case .ambiguous = result.resolution {
+                document.setStatusError(L10n.tr("有多个同名文件，请写出路径"))
+                return nil
+            }
+            guard let address = result.address else {
+                document.setStatusError(L10n.tr("无法打开链接"))
+                return nil
+            }
+            return MarkdownLink(range: wiki.range, url: address)
         }
 
         private func postMarkdownLink(_ link: MarkdownLink, headings: [MarkdownHeading], namedAnchors: [MarkdownNamedAnchor], snapshot: DocumentTextSnapshot,
@@ -1145,6 +1201,16 @@ extension EditorTextView {
                 applyMarkdownFormatting(request.command)
             })
             observerTokens.append(NotificationCenter.default.addObserver(
+                forName: EditorCommandNotification.editLines,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let self,
+                      let request = notification.object as? LineEditingRequest,
+                      request.documentID == document.id else { return }
+                applyLineEditing(request.command)
+            })
+            observerTokens.append(NotificationCenter.default.addObserver(
                 forName: EditorCommandNotification.applyRangeReplacement,
                 object: nil,
                 queue: .main
@@ -1279,6 +1345,34 @@ extension EditorTextView {
                   revision == contentRevision, textView.selectedRange() == selection else { return }
             let original = storage.mutableString.substring(with: edit.range)
             guard original != edit.replacement else { return }
+            textView.breakUndoCoalescing()
+            let undoManager = textView.undoManager
+            undoManager?.beginUndoGrouping()
+            defer {
+                undoManager?.endUndoGrouping()
+                textView.breakUndoCoalescing()
+            }
+            isApplyingAutomatedEdit = true
+            defer { isApplyingAutomatedEdit = false }
+            guard textView.shouldChangeText(in: edit.range, replacementString: edit.replacement) else { return }
+            storage.replaceCharacters(in: edit.range, with: edit.replacement)
+            textView.didChangeText()
+            textView.setSelectedRange(edit.selectionRange)
+            textView.scrollRangeToVisible(edit.selectionRange)
+            undoManager?.setActionName(command.actionName)
+        }
+
+        private func applyLineEditing(_ command: LineEditingCommand) {
+            guard isActive, document.ioState == .idle, tableCellEditor == nil,
+                  let textView, textView.isEditable, !textView.hasMarkedText(),
+                  textView.selectedRanges.count == 1, let storage = textView.textStorage else { return }
+            let selection = textView.selectedRange()
+            let revision = contentRevision
+            guard let edit = LineEditingService.edit(in: storage.mutableString, selection: selection, command: command,
+                                                     commentSyntax: document.language.commentSyntax),
+                  revision == contentRevision, textView.selectedRange() == selection,
+                  edit.range.location <= storage.length, edit.range.length <= storage.length - edit.range.location,
+                  storage.mutableString.substring(with: edit.range) != edit.replacement else { return }
             textView.breakUndoCoalescing()
             let undoManager = textView.undoManager
             undoManager?.beginUndoGrouping()
@@ -1848,6 +1942,7 @@ extension EditorTextView {
         func finishTableCell() {
             guard let child = tableCellEditor else { return }
             if emojiCompletionRequested { endEmojiCompletion() }
+            if wikiCompletionRequested { endWikiCompletion() }
             if child.hasMarkedText() { child.unmarkText() }
             tableCellChanged()
             child.contentDidChange = nil
@@ -2971,7 +3066,7 @@ extension EditorTextView {
 
         private func scheduleEmojiCompletion() {
             guard emojiCompletionRequested, isActive, currentLanguage == .markdown, document.language == .markdown, document.ioState == .idle,
-                  let parent = textView, !parent.hasMarkedText(), parent.completionText == nil else { return }
+                  let parent = textView, !parent.hasMarkedText(), parent.completionText == nil, parent.wikiCompletionRange == nil else { return }
             let child = tableCellEditor
             let view: NSTextView = child.map { $0 as NSTextView } ?? parent
             guard view.isEditable, !view.hasMarkedText(), view.selectedRanges.count == 1, let text = view.textStorage?.mutableString else { return }
@@ -3044,6 +3139,93 @@ extension EditorTextView {
             return true
         }
 
+        private func endWikiCompletion() {
+            guard wikiCompletionRequested || wikiCompletionTask != nil || textView?.wikiCompletionRange != nil else { return }
+            wikiCompletionTask?.cancel()
+            wikiCompletionTask = nil
+            wikiCompletionID = UUID()
+            wikiCompletionRequested = false
+            wikiCompletionSpelling = ""
+            textView?.wikiCompletionRange = nil
+            textView?.wikiCompletionValues = []
+            markdownPresentation?.endWikiCompletion()
+        }
+
+        /// Каталог файлов окна изменился: обновить цвета ссылок и, если открыт список после `[[`, пересчитать подсказки.
+        func updateWikiResolver(_ resolver: MarkdownWikiLinkResolver?) {
+            guard resolver != wikiResolver else { return }
+            wikiResolver = resolver
+            markdownPresentation?.wikiResolver = resolver
+            markdownPresentation?.wikiResolverChanged()
+            if wikiCompletionRequested { DispatchQueue.main.async { [weak self] in self?.scheduleWikiCompletion() } }
+        }
+
+        private func scheduleWikiCompletion() {
+            guard wikiCompletionRequested, isActive, currentLanguage == .markdown, document.language == .markdown, document.ioState == .idle,
+                  tableCellEditor == nil, let view = textView, !view.hasMarkedText(), view.completionText == nil, view.isEditable,
+                  view.selectedRanges.count == 1, let text = view.textStorage?.mutableString else { return }
+            let selection = view.selectedRange()
+            guard selection.length == 0, selection.location <= text.length else { endWikiCompletion(); return }
+            var start = selection.location
+            while start > 0 {
+                let unit = text.character(at: start - 1)
+                if unit == 91 { break }
+                if unit == 93 || unit == 124 || unit == 35 || unit == 10 || unit == 13 || unit == 0x2028 || unit == 0x2029 { endWikiCompletion(); return }
+                start -= 1
+            }
+            guard start >= 2, text.character(at: start - 1) == 91, text.character(at: start - 2) == 91,
+                  !(start >= 3 && text.character(at: start - 3) == 33) else { endWikiCompletion(); return }
+            let range = NSRange(location: start, length: selection.location - start)
+            let sourceRange = NSRange(location: start - 2, length: selection.location - start + 2)
+            guard markdownPresentation?.allowsWikiCompletion(document: document, revision: contentRevision, range: sourceRange) == true else {
+                if markdownPresentation?.navigationPresentation(document: document, revision: contentRevision) != nil { endWikiCompletion() }
+                return
+            }
+            guard let resolver = wikiResolver else { requestWikiCatalog?(); return }
+            let spelling = text.substring(with: range)
+            let revision = contentRevision, documentID = document.id, id = UUID()
+            wikiCompletionTask?.cancel()
+            wikiCompletionID = id
+            wikiCompletionTask = Task { [weak self, weak view] in
+                let names = await Task.detached(priority: .userInitiated) { resolver.completions(prefix: spelling) }.value
+                guard !Task.isCancelled, let self, let view,
+                      self.wikiCompletionRequested, self.wikiCompletionID == id, self.isActive,
+                      self.document.id == documentID, self.contentRevision == revision,
+                      self.currentLanguage == .markdown, self.document.language == .markdown, self.document.ioState == .idle,
+                      self.tableCellEditor == nil, view.isEditable, view.completionText == nil, !view.hasMarkedText(),
+                      view.selectedRanges.count == 1, view.selectedRange() == selection,
+                      let text = view.textStorage?.mutableString, NSMaxRange(range) <= text.length,
+                      text.substring(with: range) == spelling,
+                      self.markdownPresentation?.allowsWikiCompletion(document: self.document, revision: revision, range: sourceRange) == true else { return }
+                guard !names.isEmpty else { self.endWikiCompletion(); return }
+                view.wikiCompletionRange = range
+                view.wikiCompletionValues = names
+                self.wikiCompletionSpelling = spelling
+                view.complete(nil)
+            }
+        }
+
+        private func acceptWikiCompletion(_ word: String, range: NSRange) -> Bool {
+            guard wikiCompletionRequested, isActive, currentLanguage == .markdown, document.language == .markdown, document.ioState == .idle,
+                  tableCellEditor == nil, let view = textView, view.isEditable, !view.hasMarkedText(),
+                  view.wikiCompletionRange == range, view.wikiCompletionValues.contains(word),
+                  let text = view.textStorage?.mutableString, NSMaxRange(range) <= text.length,
+                  text.substring(with: range) == wikiCompletionSpelling,
+                  view.selectedRanges.count == 1, view.selectedRange() == NSRange(location: NSMaxRange(range), length: 0),
+                  range.location >= 2,
+                  markdownPresentation?.allowsWikiCompletion(document: document, revision: contentRevision,
+                                                             range: NSRange(location: range.location - 2, length: range.length + 2)) == true else { return false }
+            endWikiCompletion()
+            let end = NSMaxRange(range)
+            let hasClosing = end + 1 < text.length && text.character(at: end) == 93 && text.character(at: end + 1) == 93
+            view.breakUndoCoalescing()
+            view.undoManager?.beginUndoGrouping()
+            defer { view.undoManager?.endUndoGrouping(); view.breakUndoCoalescing() }
+            view.insertText(hasClosing ? word : word + "]]", replacementRange: range)
+            if hasClosing { view.setSelectedRange(NSRange(location: range.location + (word as NSString).length + 2, length: 0)) }
+            return true
+        }
+
         func updateMarkdownPresentation() {
             guard let textView, let foldLayoutManager else { return }
             synchronizeMarkdownImageProjection()
@@ -3058,6 +3240,9 @@ extension EditorTextView {
                 markdownPresentation?.setUppercaseHeadingLevels(uppercaseHeadingLevels)
                 markdownPresentation?.setMathOptions(mathOptions)
                 markdownPresentation?.emojiCompletionReady = { [weak self] in self?.scheduleEmojiCompletion() }
+                markdownPresentation?.wikiCompletionReady = { [weak self] in self?.scheduleWikiCompletion() }
+                markdownPresentation?.wikiCatalogNeeded = { [weak self] in self?.requestWikiCatalog?() }
+                markdownPresentation?.wikiResolver = wikiResolver
                 markdownPresentation?.htmlBlockLink = { [weak self] address, range in
                     guard let self, self.isActive, self.document.language == .markdown, self.document.ioState == .idle,
                           let textView = self.textView, textView.window?.isKeyWindow == true,
@@ -3073,6 +3258,8 @@ extension EditorTextView {
                 }
                 textView.acceptEmojiCompletion = { [weak self] word, range in self?.acceptEmojiCompletion(word, range: range) ?? false }
                 textView.dismissEmojiCompletion = { [weak self] in self?.endEmojiCompletion() }
+                textView.acceptWikiCompletion = { [weak self] word, range in self?.acceptWikiCompletion(word, range: range) ?? false }
+                textView.dismissWikiCompletion = { [weak self] in self?.endWikiCompletion() }
                 markdownPresentation?.geometryDidChange = { [weak self] in
                     self?.ruler?.requestRedraw()
                     self?.updateTableCellFrame()
@@ -3467,7 +3654,7 @@ extension EditorTextView {
             if !newValue, markdownLinkTask != nil { cancelMarkdownLinkNavigation() }
             if !newValue { clipboardPasteTask?.cancel(); clipboardPasteTask = nil }
             if !newValue { clipboardCopyTask?.cancel(); clipboardCopyTask = nil }
-            if !newValue { endEmojiCompletion() }
+            if !newValue { endEmojiCompletion(); endWikiCompletion() }
             if !newValue { textView?.cancelTableDrag(); finishTableCell(); tableAccessibilityVirtualTarget = nil }
             isActive = newValue
             updateMarkdownPresentation()
@@ -3534,6 +3721,7 @@ extension EditorTextView {
             document.noteLiveEdit(isEmpty: textView.textStorage?.length == 0)
             markdownPresentation?.edited(revision: contentRevision)
             if emojiCompletionRequested { DispatchQueue.main.async { [weak self] in self?.scheduleEmojiCompletion() } }
+            if wikiCompletionRequested { DispatchQueue.main.async { [weak self] in self?.scheduleWikiCompletion() } }
             NotificationCenter.default.post(
                 name: EditorCommandNotification.documentContentDidChange,
                 object: document.id
@@ -3762,6 +3950,16 @@ extension EditorTextView {
                     endEmojiCompletion()
                 }
             } else if emojiCompletionRequested && !applyingTableCell { endEmojiCompletion() }
+            if !isApplyingAutomatedEdit, let view = textView as? LacTextView, view.editSource == .typed, !view.hasMarkedText(), tableCellEditor == nil {
+                if !wikiCompletionRequested, replacement == "[" || replacement == "[]", document.language == .markdown, affectedCharRange.length == 0,
+                   affectedCharRange.location > 0, affectedCharRange.location <= nsText.length,
+                   nsText.character(at: affectedCharRange.location - 1) == 91 {
+                    wikiCompletionRequested = true
+                    markdownPresentation?.beginWikiCompletion()
+                } else if wikiCompletionRequested && replacement.utf16.contains(where: { [91, 93, 124, 35, 10, 13, 0x2028, 0x2029].contains($0) }) {
+                    endWikiCompletion()
+                }
+            } else if wikiCompletionRequested { endWikiCompletion() }
             let safeLocation = min(affectedCharRange.location, nsText.length)
             let safeRange = NSRange(
                 location: safeLocation,
@@ -3972,6 +4170,7 @@ extension EditorTextView {
 
         func textViewDidChangeSelection(_ notification: Notification) {
             if emojiCompletionRequested { DispatchQueue.main.async { [weak self] in self?.scheduleEmojiCompletion() } }
+            if wikiCompletionRequested { DispatchQueue.main.async { [weak self] in self?.scheduleWikiCompletion() } }
             if let markdownLinkSelection, textView?.selectedRanges != markdownLinkSelection { cancelMarkdownLinkNavigation() }
             clipboardPasteTask?.cancel()
             clipboardPasteTask = nil

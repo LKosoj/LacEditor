@@ -436,6 +436,15 @@ final class AppPreferences: ObservableObject {
     @Published var startupFolderPath: String {
         didSet { defaults.set(startupFolderPath, forKey: Keys.startupFolderPath) }
     }
+    @Published var templatesFolderPath: String {
+        didSet { defaults.set(templatesFolderPath, forKey: Keys.templatesFolderPath) }
+    }
+    @Published var dailyNotesFolder: String {
+        didSet { defaults.set(dailyNotesFolder, forKey: Keys.dailyNotesFolder) }
+    }
+    @Published var dailyNoteDateFormat: String {
+        didSet { defaults.set(dailyNoteDateFormat, forKey: Keys.dailyNoteDateFormat) }
+    }
     @Published var aiConfiguration: AIConfiguration {
         didSet {
             if let data = try? JSONEncoder().encode(aiConfiguration) {
@@ -627,6 +636,9 @@ final class AppPreferences: ObservableObject {
             rawValue: storedExitBehavior ?? ""
         ) ?? .preserveWorkspace
         startupFolderPath = defaults.string(forKey: Keys.startupFolderPath) ?? ""
+        templatesFolderPath = defaults.string(forKey: Keys.templatesFolderPath) ?? ""
+        dailyNotesFolder = defaults.string(forKey: Keys.dailyNotesFolder) ?? ""
+        dailyNoteDateFormat = defaults.string(forKey: Keys.dailyNoteDateFormat) ?? NoteTemplateService.defaultDateFormat
         loadMarkdownExportConfiguration()
     }
 
@@ -739,6 +751,9 @@ final class AppPreferences: ObservableObject {
         static let theme = "appTheme"
         static let exitBehavior = "workspaceExitBehavior"
         static let startupFolderPath = "startupFolderPath"
+        static let templatesFolderPath = "templatesFolderPath"
+        static let dailyNotesFolder = "dailyNotesFolder"
+        static let dailyNoteDateFormat = "dailyNoteDateFormat"
         static let confirmedWorkspaceExitPrompt = "hasConfirmedWorkspaceExitPrompt"
         static let aiConfiguration = "aiConfiguration"
         static let jinaConfiguration = "jinaConfiguration"

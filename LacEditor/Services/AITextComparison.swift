@@ -30,6 +30,44 @@ enum AITextComparison {
         }.joined(separator: "\n")
     }
 
+    struct Change: Equatable, Sendable {
+        enum Kind: Sendable { case removed, added }
+        let kind: Kind
+        /// Номер строки с единицы: в старом тексте для удалённой, в новом для добавленной.
+        let line: Int
+        let text: String
+    }
+
+    /// Те же изменённые строки, что и в `compare`, но структурой и в порядке документа.
+    static func changes(before: String, after: String) -> [Change] {
+        let old = lines(before)
+        let new = lines(after)
+        var removed = Set<Int>()
+        var inserted = Set<Int>()
+        for change in new.difference(from: old) {
+            switch change {
+            case .remove(let offset, _, _): removed.insert(offset)
+            case .insert(let offset, _, _): inserted.insert(offset)
+            }
+        }
+        var result: [Change] = []
+        var oldIndex = 0
+        var newIndex = 0
+        while oldIndex < old.count || newIndex < new.count {
+            if oldIndex < old.count, removed.contains(oldIndex) {
+                result.append(Change(kind: .removed, line: oldIndex + 1, text: old[oldIndex].text))
+                oldIndex += 1
+            } else if newIndex < new.count, inserted.contains(newIndex) {
+                result.append(Change(kind: .added, line: newIndex + 1, text: new[newIndex].text))
+                newIndex += 1
+            } else {
+                oldIndex += 1
+                newIndex += 1
+            }
+        }
+        return result
+    }
+
     private static func lines(_ text: String) -> [Line] {
         guard !text.isEmpty else { return [] }
         let source = text as NSString

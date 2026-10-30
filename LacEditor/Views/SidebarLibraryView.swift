@@ -189,6 +189,7 @@ struct SidebarLibraryView: View {
         .onChange(of: searchRows.map(\.id), initial: true) { _, _ in
             searchNavigation.setOrder(FolderSearchRowView.selectableIDs(searchRows))
         }
+        .onChange(of: folderSearch.revealRequest) { _, _ in folderSearchExpanded = true }
         .onChange(of: navigationOrder, initial: true) { _, order in selection.setNavigationOrder(order) }
         .onChange(of: selection.navigationOrder) { _, order in
             // фокус не должен оставаться на строке свёрнутой секции

@@ -56,6 +56,7 @@ swiftc -O -parse-as-library \
     LacEditor/Models/DocumentStatistics.swift \
     LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Models/EditorDocument.swift \
+    LacEditor/Services/LineEndingService.swift \
     LacEditor/Services/DocumentProvenance.swift \
     LacEditor/Services/FileService.swift \
     LacEditor/Services/TextSearchService.swift \
@@ -88,6 +89,7 @@ swiftc -O -parse-as-library \
     LacEditor/Models/DocumentStatistics.swift \
     LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Models/EditorDocument.swift \
+    LacEditor/Services/LineEndingService.swift \
     LacEditor/Services/DocumentProvenance.swift \
     LacEditor/Services/FileService.swift \
     LacEditor/Services/TextSearchService.swift \
