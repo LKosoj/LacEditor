@@ -358,6 +358,64 @@ final class DocumentRecoveryStoreTests: XCTestCase {
         relaunchedStore.finishCleanlyForTesting()
     }
 
+    func testPersistCompletionReportsWrittenOnMainThread() throws {
+        let directory = makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = DocumentRecoveryStore(rootURL: directory.appendingPathComponent("Recovery"))
+        _ = try store.startSession()
+        let done = expectation(description: "persist")
+        store.persist(makeSnapshot(text: "text", revision: 1)) { result in
+            XCTAssertEqual(result, .written)
+            XCTAssertTrue(Thread.isMainThread)
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 5)
+        store.finishCleanlyForTesting()
+    }
+
+    func testPersistCompletionReportsNoSessionWithoutWriting() {
+        let directory = makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let recoveryURL = directory.appendingPathComponent("Recovery")
+        let store = DocumentRecoveryStore(rootURL: recoveryURL)
+        let done = expectation(description: "persist")
+        store.persist(makeSnapshot(text: "text", revision: 1)) { result in
+            XCTAssertEqual(result, .noSession)
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 5)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: recoveryURL.path))
+    }
+
+    private final class OrderRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: [Int] = []
+        var values: [Int] { lock.withLock { stored } }
+        func append(_ value: Int) { lock.withLock { stored.append(value) } }
+    }
+
+    func testCompletionOrderFollowsPersistOrder() throws {
+        let directory = makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = DocumentRecoveryStore(rootURL: directory.appendingPathComponent("Recovery"))
+        _ = try store.startSession()
+        let documentID = UUID()
+        let order = OrderRecorder()
+        let done = expectation(description: "persist")
+        done.expectedFulfillmentCount = 2
+        store.persist(makeSnapshot(documentID: documentID, text: "a", revision: 1)) { _ in
+            order.append(1)
+            done.fulfill()
+        }
+        store.persist(makeSnapshot(documentID: documentID, text: "b", revision: 2)) { _ in
+            order.append(2)
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 5)
+        XCTAssertEqual(order.values, [1, 2])
+        store.finishCleanlyForTesting()
+    }
+
     private func makeSnapshot(
         documentID: UUID = UUID(),
         text: String,

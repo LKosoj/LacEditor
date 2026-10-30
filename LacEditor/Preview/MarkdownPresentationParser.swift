@@ -1690,6 +1690,15 @@ enum MarkdownPresentationParser {
         let wikiEnabled = includeWikiLinks && sourceText.range(of: "[[").location != NSNotFound
         var spans: [MarkdownPresentationSpan] = []
         if let frontMatter { spans.append(MarkdownPresentationSpan(range: frontMatter.range, kind: .yaml, markerRanges: frontMatter.markers)) }
+        var elementBlocks: [(NSRange, MarkdownElement.Kind)] = []
+        var elementInlines: [(NSRange, MarkdownElement.Kind)] = []
+        if let frontMatter {
+            // Закрывающий разделитель стоит без перевода строки: диапазон продлевается до конца строки.
+            var end = NSMaxRange(frontMatter.range)
+            if end < sourceText.length && sourceText.character(at: end) == 13 { end += 1 }
+            if end < sourceText.length && sourceText.character(at: end) == 10 { end += 1 }
+            elementBlocks.append((NSRange(location: frontMatter.range.location, length: end - frontMatter.range.location), .frontMatter))
+        }
         var headings: [MarkdownHeading] = []
         var uppercaseHeadingNodes: [OpaquePointer] = []
         var images: [MarkdownImage] = []
@@ -2419,8 +2428,28 @@ enum MarkdownPresentationParser {
                 iframeBlocks.append(MarkdownIframeBlock(range: range, html: MarkdownHTMLMediaService.iframeHTML(frame),
                                                         width: frame.width, height: frame.height, title: frame.title))
             }
-            if !unsupported, let alert = alert(node, source: source, text: sourceText) {
+            let confirmedAlert = unsupported ? nil : alert(node, source: source, text: sourceText)
+            if let alert = confirmedAlert {
                 spans.append(MarkdownPresentationSpan(range: alert.range, kind: .alert(alert.label), markerRanges: [alert.marker]))
+            }
+            if !inUnsupportedContainer {
+                let element: MarkdownElement.Kind?
+                switch type {
+                case "heading": element = .heading(Int(cmark_node_get_heading_level(node)))
+                case "block_quote": element = confirmedAlert == nil ? .quote : .alert
+                case "item": element = .listItem
+                case "tasklist": element = .task
+                case "table": element = .table
+                case "html_block": element = .htmlBlock
+                case "code_block":
+                    if cmark_node_get_syntax_extension(node) == mathExtension { element = .mathBlock }
+                    else {
+                        let word = cmark_node_get_fence_info(node).flatMap { String(cString: $0).split(whereSeparator: \.isWhitespace).first.map(String.init) }
+                        element = .codeBlock(word)
+                    }
+                default: element = nodeType == CMARK_NODE_FOOTNOTE_DEFINITION ? .footnoteDefinition : nil
+                }
+                if let element, let lines = source.wholeLines(node) { elementBlocks.append((lines, element)) }
             }
             if !inUnsupportedContainer, type == "paragraph", let parent = cmark_node_parent(node),
                let parentName = cmark_node_get_type_string(parent), String(cString: parentName) == "document",
@@ -2435,6 +2464,10 @@ enum MarkdownPresentationParser {
                 footnotes.append(MarkdownFootnote(referenceRange: reference, definitionRange: definitionRange,
                                                   text: footnoteText(definition)))
                 spans.append(MarkdownPresentationSpan(range: reference, kind: .link, markerRanges: []))
+                elementInlines.append((reference, .footnoteReference))
+            }
+            if !inUnsupportedContainer, type == "image", let range = source.range(node) {
+                elementInlines.append((range, .image))
             }
             if !inUnsupportedContainer, type == "tasklist",
                let checkbox = source.taskCheckbox(node),
@@ -2579,7 +2612,8 @@ enum MarkdownPresentationParser {
                 }
                 headings.append(MarkdownHeading(
                     level: Int(cmark_node_get_heading_level(node)), title: heading.title, range: range, emoji: heading.emoji,
-                    plainTextRange: plainTextRange
+                    plainTextRange: plainTextRange,
+                    isTopLevel: cmark_node_parent(node).map { cmark_node_get_type($0) == CMARK_NODE_DOCUMENT } == true
                 ))
                 if includeUppercaseRuns && includeEmojiCandidates { uppercaseHeadingNodes.append(node) }
             }
@@ -3137,7 +3171,7 @@ enum MarkdownPresentationParser {
                     htmlImages: confirmedHTMLImages, preserveSoftBreaks: syntax.preserveEditingSoftBreaks,
                     emojiByNode: emojiByNode, isCancelled: isCancelled)
                 headings[index] = MarkdownHeading(level: heading.level, title: heading.title, range: heading.range, emoji: heading.emoji,
-                    displayTitle: heading.displayTitle, number: heading.number, plainTextRange: heading.plainTextRange, uppercaseRuns: runs)
+                    displayTitle: heading.displayTitle, number: heading.number, plainTextRange: heading.plainTextRange, uppercaseRuns: runs, isTopLevel: heading.isTopLevel)
             }
         }
         var quoteDepths: [OpaquePointer: Int] = [:]
@@ -3256,7 +3290,7 @@ enum MarkdownPresentationParser {
             headings = headings.map { heading in
                 guard blocked(heading.range) else { return heading }
                 return MarkdownHeading(level: heading.level, title: heading.title, range: heading.range, emoji: heading.emoji,
-                    displayTitle: heading.displayTitle, number: nil, plainTextRange: nil, uppercaseRuns: nil)
+                    displayTitle: heading.displayTitle, number: nil, plainTextRange: nil, uppercaseRuns: nil, isTopLevel: heading.isTopLevel)
             }
             tables = tables.map { table in
                 guard blocked(table.range) else { return table }
@@ -3297,7 +3331,27 @@ enum MarkdownPresentationParser {
             if isCancelled() { return MarkdownPresentation(spans: []) }
             for link in wikiLinks { spans.append(MarkdownPresentationSpan(range: link.range, kind: .link, markerRanges: link.markerRanges)) }
         }
-        return MarkdownPresentation(spans: spans, headings: headings, namedAnchors: namedAnchors, images: images, audioBlocks: audioBlocks, iframeBlocks: iframeBlocks, detailsBlocks: detailsBlocks, htmlBlocks: htmlBlocks, pageBreaks: pageBreaks, ruby: ruby, links: links, diagrams: diagrams, formulas: formulas, inlineFormulas: inlineFormulas, emojiCandidates: emojiCandidates, emojiCandidatesIncluded: includeEmojiCandidates, emojiCompletionRanges: emojiCompletionRanges.sorted { $0.location < $1.location }, smartTextRanges: smartTextRanges.sorted { $0.location < $1.location }, smartRawHTMLRanges: htmlRangesAvailable ? rawHTMLRanges : nil, textReplacements: safeText, paragraphs: paragraphs.sorted { $0.range.location < $1.range.location }, completedTaskRanges: completedTaskRanges.sorted { $0.location < $1.location }, taskCheckboxes: taskCheckboxes, listMarkers: listMarkers.sorted { $0.range.location < $1.range.location }, looseIndents: MarkdownMathExtension.looseIndents(in: mathExtension), footnotes: footnotes, tableOfContents: tableOfContents, tables: tables, codeBlocks: codeBlocks, fenceContainerLines: fenceContainerLines.sorted { $0.line.location < $1.line.location }, fenceBlockedRanges: merged, fenceBlockedEOF: fenceBlockedEOF, fenceContextAvailable: fenceContextAvailable, readableText: readableText).withWikiLinks(wikiLinks)
+        let footnoteReferences = Set(footnotes.map(\.referenceRange))
+        for span in spans {
+            let element: MarkdownElement.Kind
+            switch span.kind {
+            case .strong: element = .strong
+            case .emphasis: element = .emphasis
+            case .strikethrough: element = .strikethrough
+            case .code: element = .code
+            case .link:
+                if footnoteReferences.contains(span.range) { continue }
+                element = .link
+            default: continue
+            }
+            elementInlines.append((span.range, element))
+        }
+        for formula in inlineFormulas { elementInlines.append((formula.range, .formula)) }
+        if isCancelled() { return MarkdownPresentation(spans: []) }
+        let lastUnit = sourceText.length > 0 ? sourceText.character(at: sourceText.length - 1) : 0
+        let elementIndex = MarkdownElementIndex(textLength: sourceText.length, blocks: elementBlocks, inlines: elementInlines,
+                                                endsWithLineBreak: lastUnit == 0x0A || lastUnit == 0x0D)
+        return MarkdownPresentation(spans: spans, headings: headings, namedAnchors: namedAnchors, images: images, audioBlocks: audioBlocks, iframeBlocks: iframeBlocks, detailsBlocks: detailsBlocks, htmlBlocks: htmlBlocks, pageBreaks: pageBreaks, ruby: ruby, links: links, diagrams: diagrams, formulas: formulas, inlineFormulas: inlineFormulas, emojiCandidates: emojiCandidates, emojiCandidatesIncluded: includeEmojiCandidates, emojiCompletionRanges: emojiCompletionRanges.sorted { $0.location < $1.location }, smartTextRanges: smartTextRanges.sorted { $0.location < $1.location }, smartRawHTMLRanges: htmlRangesAvailable ? rawHTMLRanges : nil, textReplacements: safeText, paragraphs: paragraphs.sorted { $0.range.location < $1.range.location }, completedTaskRanges: completedTaskRanges.sorted { $0.location < $1.location }, taskCheckboxes: taskCheckboxes, listMarkers: listMarkers.sorted { $0.range.location < $1.range.location }, looseIndents: MarkdownMathExtension.looseIndents(in: mathExtension), footnotes: footnotes, tableOfContents: tableOfContents, tables: tables, codeBlocks: codeBlocks, fenceContainerLines: fenceContainerLines.sorted { $0.line.location < $1.line.location }, fenceBlockedRanges: merged, fenceBlockedEOF: fenceBlockedEOF, fenceContextAvailable: fenceContextAvailable, readableText: readableText).withWikiLinks(wikiLinks).withElements(elementIndex)
         } ?? MarkdownPresentation(spans: [])
     }
 

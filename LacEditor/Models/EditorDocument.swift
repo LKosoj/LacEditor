@@ -181,6 +181,14 @@ final class DocumentTaskCoordinator: @unchecked Sendable {
     }
 }
 
+/// Состояние копии для восстановления; временное, в сессию не пишется.
+enum RecoveryCopyState: Equatable { case untracked, pending, protected, failed(String) }
+
+/// Состояние показа сохранения в строке состояния.
+enum DocumentSaveStatus: Equatable {
+    case busy, saved, newDocument, unsavedProtected, unsavedPending, unsavedUntracked, unsavedCopyFailed(String)
+}
+
 final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable {
     let id: UUID
     @Published var text: String {
@@ -190,6 +198,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
             hasPendingLiveEdits = false
             pendingLiveTextIsEmpty = nil
             textRevision &+= 1
+            invalidateRecoveryCopy()
             textSnapshotCache = nil
             if !isTakingMetricsSnapshot {
                 scheduleMetricsRefresh()
@@ -199,7 +208,13 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     }
     @Published var url: URL?
     @Published var language: EditorLanguage {
-        didSet { if language != oldValue { markdownReadableText = nil; scheduleMetricsRefresh() } }
+        didSet {
+            if language != oldValue {
+                markdownReadableText = nil
+                if markdownElementPath != nil { markdownElementPath = nil }
+                scheduleMetricsRefresh()
+            }
+        }
     }
     @Published private(set) var fileEncoding: String.Encoding
     @Published var isDirty: Bool
@@ -213,11 +228,19 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     @Published var textCodecSuggestionTitle: String?
     @Published var markdownHeadings: [MarkdownHeading] = []
     @Published var isMarkdownOutlineCurrent = false
+    /// Путь элементов Markdown под курсором для строки состояния; временный, в сессию не пишется.
+    @Published private(set) var markdownElementPath: MarkdownElementPath?
     @Published var isPreviewVisible: Bool
     @Published var isMarkdownFormatted = false
+    /// Временный режим чтения: правка запрещена, Markdown на это время показывается оформленным. В сессию не пишется.
+    @Published private(set) var isReadingMode = false
+    private var markdownFormattedBeforeReading: Bool?
     @Published var performanceProfile: DocumentPerformanceProfile
     @Published var featureOverrides = DocumentFeatureOverrides()
     @Published var ioState: DocumentIOState = .idle
+    @Published private(set) var recoveryCopy: RecoveryCopyState = .untracked
+    /// Время последней успешной записи в файл; временное, в сессию не пишется.
+    @Published private(set) var lastSavedAt: Date?
     @Published private(set) var statistics: DocumentStatistics?
     @Published private(set) var statisticsUnavailable = false
     /// Временный результат фонового подсчёта; nil, пока он не получен. В сессию не пишется.
@@ -304,6 +327,19 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
 
     var encodingName: String {
         FileService.encodingName(for: fileEncoding)
+    }
+
+    func setReadingMode(_ enabled: Bool) {
+        guard enabled != isReadingMode else { return }
+        if enabled {
+            markdownFormattedBeforeReading = language == .markdown ? isMarkdownFormatted : nil
+            isReadingMode = true
+            if language == .markdown { isMarkdownFormatted = true }
+        } else {
+            isReadingMode = false
+            if let before = markdownFormattedBeforeReading { isMarkdownFormatted = before }
+            markdownFormattedBeforeReading = nil
+        }
     }
 
     /// didSet обычного присваивания сначала сбрасывает признак, затем он ставится заново.
@@ -449,7 +485,56 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         updateDirtyState(shouldBeDirty)
     }
 
+    func beginRecoveryTracking() {
+        // предупреждение о сбое держится до ответа хранилища, иначе мигает при каждой правке
+        if case .failed = recoveryCopy { return }
+        if recoveryCopy != .pending { recoveryCopy = .pending }
+    }
+
+    /// Применяет подтверждение копии только для текущей синхронизированной версии.
+    func acknowledgeRecoveryCopy(revision: UInt, result: DocumentRecoveryPersistResult) {
+        guard revision == textRevision, !hasPendingLiveEdits, isDirty else { return }
+        switch result {
+        case .written: recoveryCopy = .protected
+        case .failed(let message): recoveryCopy = .failed(message)
+        case .noSession: recoveryCopy = .untracked
+        }
+    }
+
+    func invalidateRecoveryCopy() {
+        switch recoveryCopy {
+        case .protected: recoveryCopy = .pending
+        case .untracked, .pending, .failed: break
+        }
+    }
+
+    func resetRecoveryCopy() {
+        if recoveryCopy != .untracked { recoveryCopy = .untracked }
+    }
+
+    func noteSavedToDisk(at date: Date) {
+        lastSavedAt = date
+    }
+
+    var saveStatus: DocumentSaveStatus {
+        if ioState != .idle { return .busy }
+        if !isDirty { return url == nil ? .newDocument : .saved }
+        switch recoveryCopy {
+        case .untracked: return .unsavedUntracked
+        case .pending: return .unsavedPending
+        case .protected: return .unsavedProtected
+        case .failed(let message): return .unsavedCopyFailed(message)
+        }
+    }
+
+    func setMarkdownElementPath(_ value: MarkdownElementPath?) {
+        let value = value?.isEmpty == true ? nil : value
+        guard markdownElementPath != value else { return }
+        markdownElementPath = value
+    }
+
     func noteLiveEdit(isEmpty: Bool) {
+        invalidateRecoveryCopy()
         markdownReadableText = nil
         hasPendingLiveEdits = true
         pendingLiveTextIsEmpty = isEmpty

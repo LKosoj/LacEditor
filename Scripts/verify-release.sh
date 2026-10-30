@@ -96,6 +96,7 @@ swiftc \
     LacEditor/Models/MarkdownInlineStyle.swift \
     LacEditor/Editor/FoldLayoutManager.swift \
     LacEditor/Services/MarkdownAutoPairService.swift \
+    LacEditor/Services/FocusSentenceService.swift \
     LacEditor/Editor/LacTextView.swift \
     Verification/EditorInteractionVerification.swift \
     -o .build/editor-interaction-verification

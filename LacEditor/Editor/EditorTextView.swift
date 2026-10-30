@@ -12,6 +12,8 @@ struct EditorTextView: NSViewRepresentable {
 
     @Environment(\.isEnabled) private var isEnabled
     @ObservedObject var document: EditorDocument
+
+    private var isEditorEditable: Bool { isEnabled && !document.isReadingMode }
     let sessionStore: EditorSessionStore
     let fontSize: CGFloat
     let lineSpacing: CGFloat
@@ -27,6 +29,7 @@ struct EditorTextView: NSViewRepresentable {
     var grammarEnabled = false
     var aiPreferences: AppPreferences? = nil
     var isFocusMode = false
+    var focusScope: FocusScope = .paragraph
     var isTypewriterMode = false
     var textFontFamily: String? = nil
     var codeFontFamily: String? = nil
@@ -76,7 +79,7 @@ struct EditorTextView: NSViewRepresentable {
             if let textView = cachedView.documentView as? LacTextView {
                 textView.autoPairBracketsEnabled = aiPreferences?.autoPairBracketsEnabled ?? false
                 textView.autoPairMarkdownEnabled = aiPreferences?.autoPairMarkdownEnabled ?? false
-                textView.isEditable = isEnabled
+                textView.isEditable = isEditorEditable
                 Self.applyWritingChecks(to: textView, spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
             }
             os_signpost(
@@ -137,7 +140,7 @@ struct EditorTextView: NSViewRepresentable {
             textContainer: textContainer
         )
         textView.remoteImageTransferEnabled = remoteImageTransferEnabled
-        textView.isEditable = isEnabled
+        textView.isEditable = isEditorEditable
         textView.autoPairBracketsEnabled = aiPreferences?.autoPairBracketsEnabled ?? false
         textView.autoPairMarkdownEnabled = aiPreferences?.autoPairMarkdownEnabled ?? false
         textView.isRichText = false
@@ -229,7 +232,7 @@ struct EditorTextView: NSViewRepresentable {
         context.coordinator.lastSynchronizedRevision = document.textRevision
         context.coordinator.installObservers(scrollView: scrollView)
         context.coordinator.updateLineNumbersVisibility(showsLineNumbers)
-        context.coordinator.updateWritingModes(focus: isFocusMode, typewriter: isTypewriterMode)
+        context.coordinator.updateWritingModes(focus: isFocusMode, focusScope: focusScope, typewriter: isTypewriterMode)
         context.coordinator.updateTopInset(topInset)
         context.coordinator.foldLayoutManager?.markdownTOCMaxLevel = markdownTOCMaxLevel
         context.coordinator.foldLayoutManager?.markdownSmallCapsLevels = aiPreferences?.markdownSmallCapsLevels ?? []
@@ -285,7 +288,12 @@ struct EditorTextView: NSViewRepresentable {
         textView.remoteImageTransferEnabled = remoteImageTransferEnabled
         context.coordinator.configureWritingChecks(spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
         context.coordinator.configureAIAssistance(preferences: aiPreferences)
-        textView.isEditable = isEnabled
+        // Набранное в ячейке таблицы фиксируется через shouldChangeText родителя:
+        // закрыть ячейку надо до того, как правка станет запрещённой.
+        if document.isReadingMode, textView.isEditable {
+            context.coordinator.finishTableCell()
+        }
+        textView.isEditable = isEditorEditable
         textView.autoPairBracketsEnabled = aiPreferences?.autoPairBracketsEnabled ?? false
         textView.autoPairMarkdownEnabled = aiPreferences?.autoPairMarkdownEnabled ?? false
         Self.applyWritingChecks(to: textView, spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
@@ -301,7 +309,7 @@ struct EditorTextView: NSViewRepresentable {
         let lineSpacingChanged = context.coordinator.foldLayoutManager?
             .editorLineSpacing != lineSpacing
         let languageChanged = context.coordinator.currentLanguage != document.language
-        if documentChanged || languageChanged || !document.isMarkdownFormatted || !isEnabled ||
+        if documentChanged || languageChanged || !document.isMarkdownFormatted || !isEditorEditable ||
             context.coordinator.lastSynchronizedRevision != document.textRevision {
             context.coordinator.finishTableCell()
         }
@@ -426,7 +434,7 @@ struct EditorTextView: NSViewRepresentable {
         }
         context.coordinator.updatePerformanceFeatures()
         context.coordinator.updateLineNumbersVisibility(showsLineNumbers)
-        context.coordinator.updateWritingModes(focus: isFocusMode, typewriter: isTypewriterMode)
+        context.coordinator.updateWritingModes(focus: isFocusMode, focusScope: focusScope, typewriter: isTypewriterMode)
         context.coordinator.updateTopInset(topInset)
         context.coordinator.updateActivity(isActive)
         context.coordinator.updateMarkdownPresentation()

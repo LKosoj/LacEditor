@@ -296,6 +296,10 @@ final class AppPreferences: ObservableObject {
         }
     }
 
+    /// Закреплённые и недавние команды палитры: пути названий меню на языке интерфейса.
+    @Published var commandPalettePinned: [[String]] { didSet { defaults.set(commandPalettePinned, forKey: Keys.commandPalettePinned) } }
+    @Published var commandPaletteRecent: [[String]] { didSet { defaults.set(commandPaletteRecent, forKey: Keys.commandPaletteRecent) } }
+
     @Published var markdownLightColors: MarkdownColorOverrides {
         didSet { if let data = try? JSONEncoder().encode(markdownLightColors) { defaults.set(data, forKey: Keys.markdownLightColors) } }
     }
@@ -327,6 +331,15 @@ final class AppPreferences: ObservableObject {
             defaults.set(readingWordsPerMinute, forKey: Keys.readingWordsPerMinute)
         }
     }
+    /// Цель слов в день; 0 — выключена. Допустимо 0…1 000 000, иначе значение откатывается.
+    static let maximumDailyWordGoal = 1_000_000
+    @Published var dailyWordGoal: Int {
+        didSet {
+            guard (0...Self.maximumDailyWordGoal).contains(dailyWordGoal) else { dailyWordGoal = oldValue; return }
+            defaults.set(dailyWordGoal, forKey: Keys.dailyWordGoal)
+        }
+    }
+    let writingGoal: WritingGoalStore
 
     @Published var markdownHTMLExportOptions: MarkdownHTMLExportOptions {
         didSet {
@@ -558,6 +571,8 @@ final class AppPreferences: ObservableObject {
         editorLigatures = savedLigatures.flatMap { (0...2).contains($0) ? $0 : nil }
         let savedTOCLevel = defaults.integer(forKey: Keys.markdownTOCMaxLevel)
         markdownTOCMaxLevel = (1...6).contains(savedTOCLevel) ? savedTOCLevel : 6
+        commandPalettePinned = (defaults.array(forKey: Keys.commandPalettePinned) as? [[String]] ?? []).filter { !$0.isEmpty }
+        commandPaletteRecent = Array((defaults.array(forKey: Keys.commandPaletteRecent) as? [[String]] ?? []).filter { !$0.isEmpty }.prefix(CommandPaletteService.recentLimit))
         markdownLightColors = defaults.data(forKey: Keys.markdownLightColors).flatMap { try? JSONDecoder().decode(MarkdownColorOverrides.self, from: $0) } ?? MarkdownColorOverrides()
         markdownDarkColors = defaults.data(forKey: Keys.markdownDarkColors).flatMap { try? JSONDecoder().decode(MarkdownColorOverrides.self, from: $0) } ?? MarkdownColorOverrides()
         let savedWidth = (defaults.object(forKey: Keys.markdownMaximumWidth) as? NSNumber)?.doubleValue
@@ -571,6 +586,9 @@ final class AppPreferences: ObservableObject {
         statisticsDisplayUnit = StatisticsDisplayUnit(rawValue: defaults.string(forKey: Keys.statisticsDisplayUnit) ?? "") ?? .words
         let readingSpeed = defaults.integer(forKey: Keys.readingWordsPerMinute)
         readingWordsPerMinute = readingSpeed > 0 ? readingSpeed : 200
+        let storedGoal = defaults.integer(forKey: Keys.dailyWordGoal)
+        dailyWordGoal = (0...Self.maximumDailyWordGoal).contains(storedGoal) ? storedGoal : 0
+        writingGoal = WritingGoalStore(defaults: defaults)
         markdownHTMLExportOptions = defaults.data(forKey: Keys.markdownHTMLExportOptions)
             .flatMap { try? JSONDecoder().decode(MarkdownHTMLExportOptions.self, from: $0) }
             ?? MarkdownHTMLExportOptions()
@@ -745,6 +763,8 @@ final class AppPreferences: ObservableObject {
         static let markdownStrikeCompletedTasks = "markdownStrikeCompletedTasks"
         static let markdownParagraphSpacing = "markdownParagraphSpacing"
         static let markdownTOCMaxLevel = "markdownTOCMaxLevel"
+        static let commandPalettePinned = "commandPalettePinned"
+        static let commandPaletteRecent = "commandPaletteRecent"
         static let markdownLightColors = "markdownLightColors"
         static let markdownDarkColors = "markdownDarkColors"
         static let markdownMaximumWidth = "markdownMaximumWidth"
@@ -779,6 +799,7 @@ final class AppPreferences: ObservableObject {
         static let markdownExportConfiguration = "markdownExportConfiguration"
         static let statisticsDisplayUnit = "statisticsDisplayUnit"
         static let readingWordsPerMinute = "readingWordsPerMinute"
+        static let dailyWordGoal = "dailyWordGoal"
         static let markdownHTMLExportOptions = "markdownHTMLExportOptions"
         static let markdownPDFHeaderFooterOptions = "markdownPDFHeaderFooterOptions"
         static let markdownNativeExportOptions = "markdownNativeExportOptions"

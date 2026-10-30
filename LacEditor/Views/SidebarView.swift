@@ -15,9 +15,11 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             if let document = appState.selectedDocument, document.language == .markdown {
                 DisclosureGroup(isExpanded: $appState.isMarkdownOutlineExpanded) {
-                    MarkdownOutlineView(document: document, maximumLevel: appState.preferences.markdownTOCMaxLevel) { heading in
-                        appState.revealMarkdownHeading(heading, in: document)
-                    }
+                    MarkdownOutlineView(document: document, maximumLevel: appState.preferences.markdownTOCMaxLevel,
+                                        reveal: { appState.revealMarkdownHeading($0, in: document) },
+                                        canMove: { appState.canMoveMarkdownSection($0, $1, in: document) },
+                                        move: { appState.moveMarkdownSection($0, $1, in: document) },
+                                        drop: { appState.moveMarkdownSection($0, before: $1, in: document) })
                 } label: {
                     Text(L10n.tr("文档大纲"))
                         .font(.subheadline.weight(.semibold)).tracking(0.5)

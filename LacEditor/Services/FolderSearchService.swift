@@ -179,6 +179,40 @@ enum FolderSearchService {
         return Result(root: root, values: matches, problems: problems)
     }
 
+    /// План обновления ссылок на файл, который ещё лежит по старому адресу (вызывать до переноса).
+    static func renameReferences(rename: MarkdownRenameLinkService.Rename, identity: DocumentFileIdentity, syntax: MarkdownSyntaxOptions,
+                                 openDocuments: [OpenDocument], isCancelled: () -> Bool = { false }) throws -> MarkdownRenameLinkService.Plan {
+        let root = normalized(rename.root)
+        try checkCancellation(isCancelled)
+        let oldURL = normalized(rename.oldURL), newURL = normalized(rename.newURL)
+        guard let oldPath = relativePath(oldURL, root: root), let newPath = relativePath(newURL, root: root) else { return .empty(rename) }
+        let target = BacklinkTarget(url: oldURL, identity: identity, syntax: syntax)
+        let needles = MarkdownBacklinkScanner.needles(for: target)
+        var context: MarkdownRenameLinkService.Context?
+        var plans: [MarkdownRenameLinkService.FilePlan] = []
+        var counts = MarkdownRenameLinkService.Counts()
+        let problems = try scan(root: root, openDocuments: openDocuments, markdownOnly: true, isCancelled: isCancelled,
+                                skip: { url, id in id?.matches(identity) == true || url == oldURL },
+                                prepare: { files in
+            // Старый путь всегда входит в набор, даже если файла нет в обходе; новый каталог — тот же набор с новым путём.
+            var paths = files.filter { ["md", "markdown"].contains($0.url.pathExtension.lowercased()) }.map(\.relativePath)
+            let folded = MarkdownWikiLinkResolver.fold(oldPath)
+            let known = paths.first { MarkdownWikiLinkResolver.fold($0) == folded } ?? oldPath
+            if !paths.contains(known) { paths.append(known) }
+            let after = paths.filter { $0 != known } + [newPath]
+            context = .init(rename: rename, oldPath: known, newPath: newPath,
+                            oldResolver: MarkdownWikiLinkResolver(base: root, paths: paths),
+                            newResolver: MarkdownWikiLinkResolver(base: root, paths: after), target: target)
+        }) { text, file, source in
+            guard let context else { return }
+            let edits = try MarkdownRenameLinkService.edits(in: text, file: file, context: context, needles: needles,
+                                                            counts: &counts, isCancelled: isCancelled)
+            if !edits.isEmpty { plans.append(.init(file: file, source: source, edits: edits)) }
+        }
+        try checkCancellation(isCancelled)
+        return .init(rename: rename, files: plans, skipped: counts, problems: problems)
+    }
+
     /// Общий обход папки: открытые документы приоритетнее диска, символические ссылки и изменившиеся файлы попадают в проблемы.
     private static func scan(root: URL, openDocuments: [OpenDocument], markdownOnly: Bool, isCancelled: () -> Bool,
                              skip: (URL, DocumentFileIdentity?) -> Bool = { _, _ in false },

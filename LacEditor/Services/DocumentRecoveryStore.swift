@@ -38,6 +38,13 @@ struct DocumentRecoveryReference: Sendable {
     let contentURL: URL
 }
 
+/// Итог записи копии для восстановления.
+enum DocumentRecoveryPersistResult: Equatable, Sendable {
+    case written
+    case failed(String)
+    case noSession
+}
+
 final class DocumentRecoveryStore: @unchecked Sendable {
     private struct SessionMarker: Codable {
         let sessionID: UUID
@@ -130,10 +137,22 @@ final class DocumentRecoveryStore: @unchecked Sendable {
         }
     }
 
-    func persist(_ snapshot: DocumentRecoverySnapshot) {
+    func persist(_ snapshot: DocumentRecoverySnapshot,
+                 completion: (@Sendable (DocumentRecoveryPersistResult) -> Void)? = nil) {
         queue.async { [weak self] in
             guard let self else { return }
-            try? persistLocked(snapshot)
+            guard let completion else {
+                try? persistLocked(snapshot)
+                return
+            }
+            let result: DocumentRecoveryPersistResult
+            if currentSessionID == nil {
+                result = .noSession
+            } else {
+                do { try persistLocked(snapshot); result = .written }
+                catch { result = .failed(error.localizedDescription) }
+            }
+            DispatchQueue.main.async { completion(result) }
         }
     }
 

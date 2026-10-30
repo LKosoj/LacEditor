@@ -332,6 +332,8 @@ final class MarkdownPresentationController {
     private var smartTextContext: SmartTextContext?
     private var mathPairContext: SmartTextContext?
     private var mathPairRequested = false
+    private var elementPathRequested = false
+    private var parsedRevision: UInt?
     private var parsedSource: String?
     private var outlineVisible = false
     private var spans: [MarkdownPresentationSpan] = []
@@ -370,16 +372,48 @@ final class MarkdownPresentationController {
     private var readableEnabled: Bool { document?.language == .markdown && document?.isWordCountEnabled == true }
     private var emojiCompletionEnabled: Bool { document?.language == .markdown && (emojiCompletionRequested || wikiCompletionRequested) }
     private var mathPairEnabled: Bool { document?.language == .markdown && mathPairRequested }
+    private var elementPathEnabled: Bool { document?.language == .markdown && elementPathRequested }
 
     func setMathPairContextEnabled(_ enabled: Bool) {
         guard mathPairRequested != enabled else { return }
         mathPairRequested = enabled
         if !enabled {
             mathPairContext = nil
-            if !self.enabled && !outlineVisible && !readableEnabled && !emojiCompletionEnabled { cancel() }
+            if !self.enabled && !outlineVisible && !readableEnabled && !emojiCompletionEnabled && !elementPathEnabled { cancel() }
         }
         else if isActive, document?.language == .markdown, !hasMarkedText, mathPairContext == nil, work == nil, operation == nil {
             schedule(revision: revision)
+        }
+    }
+
+    /// Путь элементов под курсором для строки состояния; включает общий разбор, даже если ему больше ничего не нужно.
+    func setElementPathEnabled(_ enabled: Bool) {
+        guard elementPathRequested != enabled else { return }
+        elementPathRequested = enabled
+        guard !enabled else { return }
+        clearElementPath()
+        if !self.enabled && !outlineVisible && !readableEnabled && !emojiCompletionEnabled && !mathPairEnabled { cancel() }
+    }
+
+    /// Снимает показанный путь на следующем проходе главного потока: вызывается и из обновления SwiftUI.
+    private func clearElementPath() {
+        guard let document, document.markdownElementPath != nil else { return }
+        DispatchQueue.main.async { [weak document] in document?.setMarkdownElementPath(nil) }
+    }
+
+    /// Показанный путь не стирается при наборе: он обновляется, когда готов новый разбор. Стирается при непустом выделении.
+    private func refreshElementPath() {
+        guard elementPathEnabled, isActive, let document, let textView else { return }
+        if editingTableCell == nil {
+            let ranges = textView.selectedRanges
+            guard ranges.count == 1, ranges[0].rangeValue.length == 0 else { document.setMarkdownElementPath(nil); return }
+        }
+        guard !hasMarkedText, let parsedResult, parsedRevision == revision, currentRevision?() == revision,
+              let storage = textView.textStorage, parsedResult.elements.textLength == storage.length else { return }
+        if let cell = editingTableCell {
+            document.setMarkdownElementPath(parsedResult.elements.path(at: cell.location, blocksOnly: true))
+        } else {
+            document.setMarkdownElementPath(parsedResult.elements.path(at: textView.selectedRange().location))
         }
     }
 
@@ -398,6 +432,7 @@ final class MarkdownPresentationController {
         syntaxOptions = options
         document?.invalidateMarkdownReadableText()
         document?.isMarkdownOutlineCurrent = false
+        clearElementPath()
         parsedResult = nil
         parsedSource = nil
         fenceContext = nil
@@ -430,7 +465,7 @@ final class MarkdownPresentationController {
         }
         imageBaseURL = document.url
         let formatChanged = self.enabled != enabled
-        if formatChanged { cancel() }
+        if formatChanged { cancel(); clearElementPath() }
         let activated = !self.isActive && isActive
         if self.isActive && !isActive && textView?.hasMarkedText() == true { needsRefresh = true }
         if documentChanged { self.document?.invalidateMarkdownReadableText() }
@@ -442,13 +477,24 @@ final class MarkdownPresentationController {
             smartTextContext = nil
             mathPairContext = nil
         }
-        if documentChanged { parsedResult = nil; parsedSource = nil; fenceContext = nil }
+        if documentChanged {
+            clearElementPath()
+            parsedResult = nil; parsedSource = nil; fenceContext = nil
+        }
         self.document = document
         self.enabled = enabled
         self.outlineVisible = outlineVisible
         self.isActive = isActive
         self.currentRevision = currentRevision
         self.revision = revision
+        if documentChanged { clearElementPath() }
+        if elementPathEnabled, parsedResult != nil, parsedRevision != revision {
+            // Текст заменён снаружи без правки через редактор: прежний разбор и показанный путь устарели.
+            clearElementPath()
+            parsedResult = nil
+            parsedSource = nil
+            cancel()
+        }
         if !document.isSyntaxHighlightingEnabled { cancelCodeHighlighting() }
         if documentChanged || formatChanged || imageBaseChanged { needsRefresh = true }
         guard isActive else { return }
@@ -461,7 +507,7 @@ final class MarkdownPresentationController {
             if presentation != nil || !styledRanges.isEmpty { clear() }
             if enabled, let parsedResult { install(parsedResult) }
         }
-        guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled else {
+        guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled else {
             cancel()
             return
         }
@@ -471,11 +517,14 @@ final class MarkdownPresentationController {
                 publishOutline(parsedResult, revision: revision)
             }
             publishReadableTextIfNeeded()
+            if elementPathEnabled && (activated || documentChanged) {
+                DispatchQueue.main.async { [weak self] in self?.refreshElementPath() }
+            }
             if ((readableEnabled && parsedResult.readableText == nil) || (enabled && !parsedResult.emojiCandidatesIncluded)) && work == nil && operation == nil {
                 schedule(revision: revision)
             }
         } else if (activated || (work == nil && operation == nil)) &&
-                    (enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairContext?.revision != revision) {
+                    (enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || elementPathEnabled || mathPairContext?.revision != revision) {
             schedule(revision: revision)
         }
     }
@@ -683,7 +732,7 @@ final class MarkdownPresentationController {
         guard wikiCompletionRequested else { return }
         wikiCompletionRequested = false
         if !emojiCompletionRequested { emojiCompletionContext = nil }
-        if !enabled && !outlineVisible && !readableEnabled && !mathPairEnabled && !emojiCompletionRequested { cancel() }
+        if !enabled && !outlineVisible && !readableEnabled && !mathPairEnabled && !elementPathEnabled && !emojiCompletionRequested { cancel() }
     }
 
     /// Диапазон от `[[` до курсора должен целиком лежать в подтверждённом тексте текущей версии.
@@ -717,7 +766,7 @@ final class MarkdownPresentationController {
     func endEmojiCompletion() {
         emojiCompletionRequested = false
         emojiCompletionContext = nil
-        if !enabled && !outlineVisible && !readableEnabled && !mathPairEnabled { cancel() }
+        if !enabled && !outlineVisible && !readableEnabled && !mathPairEnabled && !elementPathEnabled { cancel() }
     }
 
     private func noteEmojiCompletionEdit(range: NSRange, replacement: String, in text: NSString, revision: UInt) {
@@ -792,7 +841,7 @@ final class MarkdownPresentationController {
     }
 
     func beforeEdit(range: NSRange, replacementLength: Int) {
-        guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || presentation != nil || parsedResult != nil else { return }
+        guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled || presentation != nil || parsedResult != nil else { return }
         document?.invalidateMarkdownReadableText()
         if document?.isMarkdownOutlineCurrent == true { document?.isMarkdownOutlineCurrent = false }
         parsedResult = nil
@@ -835,7 +884,7 @@ final class MarkdownPresentationController {
     }
 
     func edited(revision: UInt) {
-        guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || presentation != nil || parsedResult != nil else { return }
+        guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled || presentation != nil || parsedResult != nil else { return }
         document?.invalidateMarkdownReadableText()
         if document?.isMarkdownOutlineCurrent == true { document?.isMarkdownOutlineCurrent = false }
         parsedResult = nil
@@ -846,10 +895,11 @@ final class MarkdownPresentationController {
         guard !hasMarkedText else { return }
         guard isActive else { needsRefresh = true; return }
         invalidatePresentation(in: visibleRange())
-        if enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || (mathPairEnabled && mathPairContext?.revision != revision) { schedule(revision: revision) }
+        if enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || elementPathEnabled || (mathPairEnabled && mathPairContext?.revision != revision) { schedule(revision: revision) }
     }
 
     func projectionChanged(revision: UInt) {
+        clearElementPath()
         parsedResult = nil
         parsedSource = nil
         self.revision = revision
@@ -859,7 +909,7 @@ final class MarkdownPresentationController {
 
     func compositionFinished(revision: UInt) {
         if !hasMarkedText, let pendingSyntaxOptions { setSyntaxOptions(pendingSyntaxOptions) }
-        guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || presentation != nil || needsCompositionRefresh else { return }
+        guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled || presentation != nil || needsCompositionRefresh else { return }
         if self.revision != revision { expandedDetails.removeAll() }
         self.revision = revision
         guard !hasMarkedText else { return }
@@ -868,8 +918,8 @@ final class MarkdownPresentationController {
         if needsRefresh {
             needsRefresh = false
             clear()
-            if enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || (mathPairEnabled && mathPairContext?.revision != revision) { schedule(revision: revision) }
-        } else if enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled {
+            if enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || elementPathEnabled || (mathPairEnabled && mathPairContext?.revision != revision) { schedule(revision: revision) }
+        } else if enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled {
             invalidatePresentation(in: visibleRange())
             schedule(revision: revision)
         } else {
@@ -984,6 +1034,7 @@ final class MarkdownPresentationController {
     }
 
     func selectionChanged() {
+        refreshElementPath()
         if isActive, mathPairEnabled, !enabled, !outlineVisible, !readableEnabled, !emojiCompletionEnabled,
            !hasMarkedText, currentRevision?() == revision, let context = mathPairContext,
            let active = context.active, let selection = textView?.selectedRange(),
@@ -1044,6 +1095,7 @@ final class MarkdownPresentationController {
 
     func tableEditingGeometryChanged(cell: NSRange?) {
         editingTableCell = cell
+        DispatchQueue.main.async { [weak self] in self?.refreshElementPath() }
         foldGeometryChanged()
     }
 
@@ -1275,7 +1327,7 @@ final class MarkdownPresentationController {
     private func schedule(revision: UInt) {
         let generation = self.generation
         let item = DispatchWorkItem { [weak self] in
-            guard let self, (self.enabled || self.outlineVisible || self.readableEnabled || self.emojiCompletionEnabled || self.mathPairEnabled), self.isActive, self.generation == generation,
+            guard let self, (self.enabled || self.outlineVisible || self.readableEnabled || self.emojiCompletionEnabled || self.mathPairEnabled || self.elementPathEnabled), self.isActive, self.generation == generation,
                   let document = self.document, let textView = self.textView,
                   !self.hasMarkedText, self.currentRevision?() == revision else { return }
             self.work = nil
@@ -1356,7 +1408,7 @@ final class MarkdownPresentationController {
                 let openings = (paragraphOpenings + codeOpenings).sorted { $0.line.location < $1.line.location }
                 guard !operation.isCancelled else { return }
                 DispatchQueue.main.async { [weak self, weak document] in
-                    guard let self, let document, self.document === document, document.url == sourceURL, (self.enabled || self.outlineVisible || self.readableEnabled || self.emojiCompletionEnabled || self.mathPairEnabled), self.isActive,
+                    guard let self, let document, self.document === document, document.url == sourceURL, (self.enabled || self.outlineVisible || self.readableEnabled || self.emojiCompletionEnabled || self.mathPairEnabled || self.elementPathEnabled), self.isActive,
                           self.generation == generation, self.currentRevision?() == revision,
                           document.taskCoordinator.isCurrent(taskGeneration, for: .markdownPresentation),
                           !self.hasMarkedText else { return }
@@ -1369,6 +1421,7 @@ final class MarkdownPresentationController {
                     self.uppercaseSnapshotReady = includeUppercaseRuns
                     self.parsedResultToken = UUID()
                     self.parsedResult = result
+                    self.parsedRevision = revision
                     self.parsedSource = text
                     self.resourcePaths = paths
                     self.resourceRootInvalid = needsRoot && paths == nil
@@ -1390,6 +1443,7 @@ final class MarkdownPresentationController {
                     if self.emojiCompletionRequested { self.emojiCompletionReady?() }
                     if !result.wikiLinks.isEmpty { self.wikiCatalogNeeded?() }
                     if self.wikiCompletionRequested { self.wikiCompletionReady?() }
+                    self.refreshElementPath()
                 }
             }
             self.operation = operation
@@ -1397,7 +1451,9 @@ final class MarkdownPresentationController {
             self.queue.addOperation(operation)
         }
         work = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: item)
+        // Когда разбор нужен только ради пути, пауза длиннее: короткие остановки при наборе не должны его запускать.
+        let pathOnly = !enabled && !outlineVisible && !readableEnabled && !emojiCompletionEnabled && !mathPairEnabled
+        DispatchQueue.main.asyncAfter(deadline: .now() + (pathOnly ? 0.4 : 0.15), execute: item)
     }
 
     private func install(_ result: MarkdownPresentation) {

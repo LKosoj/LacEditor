@@ -98,6 +98,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         let aiWritingVisible: Bool
         let canUndo: Bool
         let canRedo: Bool
+        let readingMode: Bool
     }
     private let titleField = TitlePathField(labelWithString: "LacEditor")
     private let languageButton = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -161,8 +162,9 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             preview: document?.isPreviewEffectivelyEnabled == true,
             markdownFormatted: document?.isMarkdownFormatted == true,
             aiWritingVisible: appState.isAIWritingVisible,
-            canUndo: manager?.canUndo == true,
-            canRedo: manager?.canRedo == true
+            canUndo: manager?.canUndo == true && document?.isReadingMode != true,
+            canRedo: manager?.canRedo == true && document?.isReadingMode != true,
+            readingMode: document?.isReadingMode == true
         )
         guard presentation != lastPresentation else { return }
         // Items are materialized after makeToolbar returns. Do not cache an
@@ -218,7 +220,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         previewItem?.toolTip = document.isPreviewEffectivelyEnabled
             ? L10n.tr("隐藏 Markdown 预览（⌥⌘P）")
             : L10n.tr("显示 Markdown 预览（⌥⌘P）")
-        markdownPresentationItem?.isEnabled = document.language == .markdown
+        markdownPresentationItem?.isEnabled = document.language == .markdown && !document.isReadingMode
         let presentationTip = document.isMarkdownFormatted
             ? L10n.tr("显示 Markdown 源码")
             : L10n.tr("显示格式化文本")
@@ -666,7 +668,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
 
     @objc private func toggleMarkdownPresentation() {
         guard let document = appState?.selectedDocument,
-              document.language == .markdown else { return }
+              document.language == .markdown, !document.isReadingMode else { return }
         document.isMarkdownFormatted.toggle()
         update()
     }

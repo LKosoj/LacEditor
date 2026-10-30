@@ -286,6 +286,13 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         return tableLine(at: tableLines[index].range.location)
     }
 
+    /// Таблица или блочное изображение/медиа внутри диапазона: их нельзя делить на предложения.
+    func containsAtomicBlock(in range: NSRange) -> Bool {
+        if tableLine(intersecting: range) != nil { return true }
+        return markdownBlockImages.contains { NSIntersectionRange($0.range, range).length > 0 }
+            || markdownMedia.contains { NSIntersectionRange($0.range, range).length > 0 }
+    }
+
     func markdownTableFrame(for cellRange: NSRange, in container: NSTextContainer) -> NSRect? {
         guard let line = tableLine(at: cellRange.location), let row = line.row,
               row.cells.contains(where: { $0.range == cellRange }),

@@ -934,7 +934,9 @@ final class WindowManager: ObservableObject {
         guard case let .open(id, revision, _) = replace.plan.source else { return .skipped(.changed) }
         let matches = replace.plan.matches
         if let document = documentsForAI.first(where: { $0.id == id }), let state = stateContaining(document),
-           document.ioState != .idle || state.isOpeningPlaceholder(document) { return .skipped(.openDocumentBusy) }
+           document.ioState != .idle || state.isOpeningPlaceholder(document) || document.isReadingMode {
+            return .skipped(.openDocumentBusy)
+        }
         func current() -> (document: EditorDocument, state: AppState, snapshot: DocumentTextSnapshot)? {
             guard let document = documentsForAI.first(where: { $0.id == id }), let state = stateContaining(document),
                   let url = document.url, let identity = document.fileIdentity, document.ioState == .idle,
@@ -1166,11 +1168,26 @@ final class WindowManager: ObservableObject {
     }
 
     private func renameFile(_ url: URL, to newName: String) {
+        // Ссылки ищутся до переименования: по старому адресу файл ещё существует.
+        let candidate = url.deletingLastPathComponent().appendingPathComponent(newName).standardizedFileURL
+        if !newName.isEmpty, !newName.contains("/"),
+           let owner = states.values.first(where: { $0.renameLinkScope(from: url, to: candidate) != nil }) {
+            Task { @MainActor [weak self, weak owner] in
+                let plan = await owner?.prepareMarkdownLinkUpdate(from: url, to: candidate)
+                guard let self, self.performRename(url, to: newName) else { return }
+                await owner?.completeMarkdownLinkUpdate(plan)
+            }
+            return
+        }
+        _ = performRename(url, to: newName)
+    }
+
+    private func performRename(_ url: URL, to newName: String) -> Bool {
         guard !folderMovePaths.contains(where: { Self.pathsOverlap($0, url) || Self.pathsOverlap($0, url.resolvingSymlinksInPath()) }) else {
             let alert = NSAlert()
             alert.messageText = L10n.tr("文件操作进行中，请稍后重试")
             alert.runModal()
-            return
+            return false
         }
         do {
             let newURL = try fileService.rename(url, to: newName)
@@ -1179,6 +1196,7 @@ final class WindowManager: ObservableObject {
             }
             recentFiles.replace(url, with: newURL)
             sidebarLibrary.replace(url, with: newURL)
+            return true
         } catch {
             let alert = NSAlert(error: error)
             alert.messageText = L10n.tr("无法重命名文件")
@@ -1187,6 +1205,7 @@ final class WindowManager: ObservableObject {
             } else {
                 alert.runModal()
             }
+            return false
         }
     }
 

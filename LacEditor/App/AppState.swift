@@ -333,6 +333,7 @@ final class AppState: ObservableObject {
     }
     @Published private(set) var isDistractionFree = false
     @Published private(set) var isFocusMode = false
+    @Published private(set) var focusScope: FocusScope = .paragraph
     @Published private(set) var isTypewriterMode = false
     @Published private(set) var viewMagnification: CGFloat = 1
     @Published var isMarkdownOutlineExpanded = false
@@ -478,6 +479,7 @@ final class AppState: ObservableObject {
     weak var windowManager: WindowManager?
     private var findRefreshTask: Task<Void, Never>?
     var templateTask: Task<Void, Never>?
+    var renameLinkTask: Task<Void, Never>?
     private var textTransformationWindowController: TextTransformationWindowController?
     let fileService = FileService()
     private let fileOpeningQueue: OperationQueue = {
@@ -500,7 +502,12 @@ final class AppState: ObservableObject {
     }()
     private var documentCancellables: [UUID: AnyCancellable] = [:]
     private var recoveryCancellables: [UUID: AnyCancellable] = [:]
+    private var writingGoalCancellables: [UUID: AnyCancellable] = [:]
+    private var writingGoalLanguages: [UUID: EditorLanguage] = [:]
     private var recoveryWorkItems: [UUID: DispatchWorkItem] = [:]
+    /// Токены запросов записи копии: подтверждение применяется только к последнему запросу документа.
+    private var recoveryRequestTokens: [UUID: UInt] = [:]
+    private var recoveryTokenCounter: UInt = 0
     private var documentsBeingSnapshotted: Set<UUID> = []
     private var exportingDocumentIDs: Set<UUID> = []
     private var pdfExports: [UUID: MarkdownPDFExportService] = [:]
@@ -743,6 +750,20 @@ final class AppState: ObservableObject {
 
     func toggleFocusMode() { isFocusMode.toggle() }
 
+    func toggleFocusScope(_ scope: FocusScope) {
+        if isFocusMode && focusScope == scope { isFocusMode = false; return }
+        focusScope = scope
+        isFocusMode = true
+    }
+
+    /// Не переключается во время чтения/записи файла и незавершённого системного ввода.
+    func toggleReadingMode() {
+        guard let document = selectedDocument, document.ioState == .idle,
+              !isOpeningPlaceholder(document),
+              (hostWindow?.firstResponder as? NSTextView)?.hasMarkedText() != true else { return }
+        document.setReadingMode(!document.isReadingMode)
+    }
+
     func toggleTypewriterMode() { isTypewriterMode.toggle() }
 
     func setViewMagnification(_ value: CGFloat) {
@@ -760,7 +781,7 @@ final class AppState: ObservableObject {
         if commandPalette.isPresented { commandPalette.dismiss(); return }
         if (window.firstResponder as? NSTextView)?.hasMarkedText() == true { return }
         folderSearch.cancelQuickOpen()
-        commandPalette.present(menu: NSApp.mainMenu)
+        commandPalette.present(menu: NSApp.mainMenu, preferences: preferences)
     }
 
     func showQuickOpen() {
@@ -2134,6 +2155,10 @@ final class AppState: ObservableObject {
 
     func formatJSON(pretty: Bool = true) {
         guard let document = selectedDocument, document.language == .json else { return }
+        guard !document.isReadingMode else {
+            document.setStatusError(L10n.tr("阅读模式下无法修改"))
+            return
+        }
         let snapshot = document.synchronizedSnapshot()
         let source = snapshot.text
         let revision = snapshot.revision
@@ -2151,12 +2176,12 @@ final class AppState: ObservableObject {
                   self.isTaskResultCurrent(document, revision: revision) else { return }
             switch result {
             case let .success(formatted):
-                self.applyTextUpdate(
+                guard self.applyTextUpdate(
                     formatted,
                     to: document,
                     selectionRange: document.selectionRange,
                     actionName: pretty ? L10n.tr("格式化 JSON") : L10n.tr("压缩 JSON")
-                )
+                ) else { return }
                 document.statusMessage = pretty ? L10n.tr("JSON 已格式化") : L10n.tr("JSON 已压缩")
             case let .failure(error):
                 let message = JSONFormatter.userFacingError(error, in: source)
@@ -2298,6 +2323,8 @@ final class AppState: ObservableObject {
         closeVersionHistory()
         templateTask?.cancel()
         templateTask = nil
+        renameLinkTask?.cancel()
+        renameLinkTask = nil
         markdownLinkTask?.task.cancel()
         markdownLinkTask = nil
         Array(pdfExports.values).forEach { $0.cancel() }
@@ -2412,6 +2439,10 @@ final class AppState: ObservableObject {
 
     func replaceCurrentMatch(keepFocusInBar: Bool = false) {
         guard let document = selectedDocument else { return }
+        guard !document.isReadingMode else {
+            findReplace.show(L10n.tr("阅读模式下无法修改"), kind: .error)
+            return
+        }
         let source = document.synchronizedSnapshot().text
         let query = interpretedSearchQuery()
         guard !query.isEmpty else {
@@ -2444,12 +2475,12 @@ final class AppState: ObservableObject {
             location: originalRange.location,
             length: (replacement as NSString).length
         )
-        applyTextUpdate(
+        guard applyTextUpdate(
             mutable as String,
             to: document,
             selectionRange: nextSelection,
             actionName: L10n.tr("替换")
-        )
+        ) else { return }
         findReplace.show(L10n.tr("已替换 1 处"), kind: .success)
         findNext(keepFocusInBar: keepFocusInBar)
     }
@@ -2568,6 +2599,10 @@ final class AppState: ObservableObject {
 
     func replaceAllMatches() {
         guard let document = selectedDocument else { return }
+        guard !document.isReadingMode else {
+            findReplace.show(L10n.tr("阅读模式下无法修改"), kind: .error)
+            return
+        }
         let snapshot = document.synchronizedSnapshot()
         let source = snapshot.text
         let query = interpretedSearchQuery()
@@ -2615,12 +2650,15 @@ final class AppState: ObservableObject {
                 self.findReplace.show(L10n.tr("未找到匹配内容"), kind: .error)
                 return
             }
-            self.applyTextUpdate(
+            guard self.applyTextUpdate(
                 result.text,
                 to: document,
                 selectionRange: NSRange(location: 0, length: 0),
                 actionName: L10n.tr("全部替换")
-            )
+            ) else {
+                self.findReplace.show(L10n.tr("阅读模式下无法修改"), kind: .error)
+                return
+            }
             self.findReplace.show(L10n.tr("已替换 %@ 处", String(result.count)), kind: .success)
             self.scheduleFindRefresh()
         }
@@ -2799,6 +2837,7 @@ final class AppState: ObservableObject {
         guard folderWorkspace.rootURL == root else { return }
         Task { [weak self, weak manager] in
             guard let self, let manager else { return }
+            let linkPlan = await self.prepareMarkdownLinkUpdate(from: source, to: destination)
             let (succeeded, newIdentity, listChanges) = await manager.moveFolderWorkspaceItem(source, to: destination, root: root, state: self, expectedIdentity: identity)
             guard succeeded else {
                 self.sidebarFeedback.show(L10n.tr("无法移动文件，请检查文件和保存状态"), symbol: "info.circle")
@@ -2806,6 +2845,7 @@ final class AppState: ObservableObject {
             }
             guard let newIdentity, let listChanges else {
                 self.sidebarFeedback.show(L10n.tr("已移动，但无法准备撤销"), symbol: "info.circle")
+                await self.completeMarkdownLinkUpdate(linkPlan)
                 return
             }
             self.sidebarFeedback.showAsyncUndo(L10n.tr("已移动")) { [weak self, weak manager] in
@@ -2814,6 +2854,7 @@ final class AppState: ObservableObject {
                 if restored { manager.restoreMovedFolderWorkspaceLists(listChanges, source: source, destination: destination) }
                 return restored
             }
+            await self.completeMarkdownLinkUpdate(linkPlan)
         }
     }
 
@@ -2956,6 +2997,7 @@ final class AppState: ObservableObject {
             document.$isDirty.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
             document.$isPreviewVisible.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
             document.$isMarkdownFormatted.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            document.$isReadingMode.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
             document.$performanceProfile.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
             document.$featureOverrides.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher(),
             document.$ioState.removeDuplicates().dropFirst().map { _ in () }.eraseToAnyPublisher()
@@ -2978,6 +3020,35 @@ final class AppState: ObservableObject {
         if document.isDirty {
             scheduleRecoverySnapshot(for: document, delay: 0)
         }
+
+        if document.ioState == .idle, document.text.isEmpty {
+            // Пустой документ начинает день с нуля, а не со слов, набранных до первой статистики.
+            preferences.writingGoal.record(words: 0, documentID: document.id)
+        }
+        writingGoalCancellables[document.id] = document.$statistics
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self, weak document] _ in
+                guard let self, let document else { return }
+                self.recordWritingGoal(for: document)
+            }
+    }
+
+    private func recordWritingGoal(for document: EditorDocument) {
+        guard documents.contains(where: { $0 === document }),
+              !openingPlaceholderIDs.contains(document.id),
+              document.ioState == .idle,
+              document.performanceProfile == .standard,
+              document.isWordCountEnabled,
+              !document.statisticsUnavailable,
+              document.selectionRange.length == 0,
+              let statistics = document.statistics else { return }
+        // другой язык считает слова иначе: разница не написана пользователем
+        let previousLanguage = writingGoalLanguages.updateValue(document.language, forKey: document.id)
+        if let previousLanguage, previousLanguage != document.language {
+            preferences.writingGoal.rebase(words: statistics.words, documentID: document.id)
+        } else {
+            preferences.writingGoal.record(words: statistics.words, documentID: document.id)
+        }
     }
 
     private func stopObserving(_ document: EditorDocument) {
@@ -2998,7 +3069,11 @@ final class AppState: ObservableObject {
         aiWriting.invalidate(documentID: document.id)
         documentCancellables.removeValue(forKey: document.id)?.cancel()
         recoveryCancellables.removeValue(forKey: document.id)?.cancel()
+        writingGoalCancellables.removeValue(forKey: document.id)?.cancel()
+        writingGoalLanguages.removeValue(forKey: document.id)
+        preferences.writingGoal.markClosed(documentID: document.id)
         recoveryWorkItems.removeValue(forKey: document.id)?.cancel()
+        recoveryRequestTokens.removeValue(forKey: document.id)
     }
 
     private func scheduleRecoverySnapshot(
@@ -3008,9 +3083,12 @@ final class AppState: ObservableObject {
         guard let recoveryStore, !openingPlaceholderIDs.contains(document.id) else { return }
         recoveryWorkItems.removeValue(forKey: document.id)?.cancel()
         guard document.isDirty else {
+            recoveryRequestTokens[document.id] = nil
+            document.resetRecoveryCopy()
             recoveryStore.discard(documentID: document.id)
             return
         }
+        document.beginRecoveryTracking()
 
         let workItem = DispatchWorkItem { [weak self, weak document] in
             guard let self, let document,
@@ -3022,22 +3100,35 @@ final class AppState: ObservableObject {
             let text = document.synchronizedText()
             self.documentsBeingSnapshotted.remove(document.id)
             guard document.isDirty else {
+                self.recoveryRequestTokens[document.id] = nil
+                document.resetRecoveryCopy()
                 recoveryStore.discard(documentID: document.id)
                 return
             }
+            self.recoveryTokenCounter &+= 1
+            let token = self.recoveryTokenCounter
+            self.recoveryRequestTokens[document.id] = token
+            let revision = document.textRevision
             recoveryStore.persist(DocumentRecoverySnapshot(
                 documentID: document.id,
                 text: text,
                 sourceURL: document.url,
                 language: document.language,
                 encoding: document.fileEncoding,
-                revision: document.textRevision,
+                revision: revision,
                 selectionRange: document.selectionRange,
                 scrollPositionRatio: document.scrollPositionRatio,
                 isPreviewVisible: document.isPreviewVisible,
                 fileRevisionSnapshot: document.fileRevisionSnapshot,
                 capturedAt: Date()
-            ))
+            )) { [weak self, weak document] result in
+                MainActor.assumeIsolated {
+                    guard let self, let document,
+                          self.documents.contains(where: { $0.id == document.id }),
+                          self.recoveryRequestTokens[document.id] == token else { return }
+                    document.acknowledgeRecoveryCopy(revision: revision, result: result)
+                }
+            }
             self.recoveryWorkItems.removeValue(forKey: document.id)
         }
         recoveryWorkItems[document.id] = workItem
@@ -3052,6 +3143,7 @@ final class AppState: ObservableObject {
         let documentIDs = documents.map(\.id)
         recoveryWorkItems.values.forEach { $0.cancel() }
         recoveryWorkItems.removeAll()
+        recoveryRequestTokens.removeAll()
         recoveryStore?.discard(documentIDs: documentIDs)
     }
 
@@ -3063,6 +3155,7 @@ final class AppState: ObservableObject {
         folderTagsStorage?.invalidate()
         folderWorkspace.setRoot(nil)
         isFocusMode = false
+        focusScope = .paragraph
         isTypewriterMode = false
         viewMagnification = 1
         for document in documents { stopObserving(document) }
@@ -4420,6 +4513,69 @@ final class AppState: ObservableObject {
         reveal(NSRange(location: heading.range.location, length: 0), in: document)
     }
 
+    /// Можно ли сдвинуть раздел заголовка на одного соседа (для меню оглавления). Считает по полному списку заголовков.
+    func canMoveMarkdownSection(_ heading: MarkdownHeading, _ direction: MarkdownSectionMoveService.Direction, in document: EditorDocument) -> Bool {
+        guard selectedDocument === document, document.language == .markdown, document.isMarkdownOutlineCurrent,
+              !document.isReadingMode, document.ioState == .idle,
+              let index = document.markdownHeadings.firstIndex(where: { $0.sameSource(as: heading) }) else { return false }
+        return MarkdownSectionMoveService.target(direction, section: index, headings: document.markdownHeadings) != nil
+    }
+
+    /// Перенос раздела кнопкой «Вверх/Вниз».
+    func moveMarkdownSection(_ heading: MarkdownHeading, _ direction: MarkdownSectionMoveService.Direction, in document: EditorDocument) {
+        performMarkdownSectionMove(heading, in: document) { MarkdownSectionMoveService.target(direction, section: $0, headings: $1) }
+    }
+
+    /// Перенос раздела перетаскиванием: `before` — заголовок, перед которым встанет раздел; nil — в конец документа.
+    func moveMarkdownSection(_ heading: MarkdownHeading, before: MarkdownHeading?, in document: EditorDocument) {
+        performMarkdownSectionMove(heading, in: document) { _, headings in
+            guard let before else { return .end }
+            return headings.firstIndex(where: { $0.sameSource(as: before) }).map(MarkdownSectionMoveService.Target.before)
+        }
+    }
+
+    private func performMarkdownSectionMove(
+        _ heading: MarkdownHeading, in document: EditorDocument,
+        target: (Int, [MarkdownHeading]) -> MarkdownSectionMoveService.Target?
+    ) {
+        guard selectedDocument === document, document.language == .markdown, document.ioState == .idle,
+              !openingPlaceholderIDs.contains(document.id) else { return }
+        guard !document.isReadingMode else {
+            document.setStatusError(L10n.tr("阅读模式下无法修改"))
+            return
+        }
+        // сначала перенос ввода из редактора в модель: он же гасит устаревший список заголовков
+        let snapshot = document.synchronizedSnapshot()
+        guard document.isMarkdownOutlineCurrent, !document.hasPendingLiveEdits else {
+            document.statusMessage = L10n.tr("正在更新大纲…")
+            return
+        }
+        let headings = document.markdownHeadings
+        guard let index = headings.firstIndex(where: { $0.sameSource(as: heading) }),
+              let place = target(index, headings) else { return }
+        guard let selection = editableSelection(in: document) else {
+            document.setStatusError(L10n.tr("当前文本无法修改"))
+            return
+        }
+        let source = snapshot.text as NSString
+        switch MarkdownSectionMoveService.move(in: source, headings: headings, section: index, to: place) {
+        case let .failure(failure):
+            switch failure {
+            case .unchanged: break
+            case .insideSelf: document.setStatusError(L10n.tr("无法把章节移入自身"))
+            default: document.setStatusError(L10n.tr("无法移动该章节"))
+            }
+        case let .success(move):
+            let request = EditorRangeReplacementRequest(documentID: document.id, range: move.range,
+                originalText: source.substring(with: move.range), replacementText: move.replacement,
+                expectedEditorRevision: selection.editorRevision, actionName: L10n.tr("移动章节"))
+            request.groupsUndo = true
+            request.resultingSelection = move.selectionRange
+            NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
+            if !request.wasHandled { document.setStatusError(request.failureMessage ?? L10n.tr("当前文本无法修改")) }
+        }
+    }
+
     /// Текущий список файлов для wiki-ссылок документа; nil, пока он не загружен или относится к другой базе.
     func wikiResolver(for document: EditorDocument) -> MarkdownWikiLinkResolver? {
         guard document.language == .markdown, let snapshot = wikiCatalog.snapshot,
@@ -4550,8 +4706,13 @@ final class AppState: ObservableObject {
         to document: EditorDocument,
         selectionRange: NSRange,
         actionName: String
-    ) {
-        guard text != document.synchronizedText() else { return }
+    ) -> Bool {
+        // Запасная запись в модель ниже в режиме чтения изменила бы текст в обход редактора.
+        guard !document.isReadingMode else {
+            document.setStatusError(L10n.tr("阅读模式下无法修改"))
+            return false
+        }
+        guard text != document.synchronizedText() else { return true }
         let textLength = (text as NSString).length
         let safeLocation = min(selectionRange.location, textLength)
         let safeSelection = NSRange(
@@ -4569,11 +4730,12 @@ final class AppState: ObservableObject {
             object: request
         )
 
-        guard !request.wasHandled else { return }
+        guard !request.wasHandled else { return true }
         document.text = text
         document.selectionRange = safeSelection
         document.refreshDirtyState()
         if findReplace.isBarVisible { scheduleFindRefresh() }
+        return true
     }
 
     private func write(
@@ -4663,6 +4825,7 @@ final class AppState: ObservableObject {
                     document.updateFileEncoding(encoding)
                     document.updateFileRevisionSnapshot(fileSnapshot)
                     document.markSaved(snapshot: text, revision: revision)
+                    document.noteSavedToDisk(at: Date())
                     document.ioState = .idle
                     document.statusMessage = document.isDirty
                         ? L10n.tr("已保存先前版本，仍有未保存更改")

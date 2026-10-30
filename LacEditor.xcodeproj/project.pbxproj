@@ -85,6 +85,8 @@
 		D00A00000000000000000005 /* MarkdownPresentationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00A00000000000000000006 /* MarkdownPresentationController.swift */; };
 		D00B00000000000000000001 /* MarkdownFormattingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00B00000000000000000002 /* MarkdownFormattingService.swift */; };
 		D01304000000000000000001 /* LineEditingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01304000000000000000002 /* LineEditingService.swift */; };
+		D01403000000000000000001 /* MarkdownSectionMoveService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01403000000000000000002 /* MarkdownSectionMoveService.swift */; };
+		D01405000000000000000001 /* FocusSentenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01405000000000000000002 /* FocusSentenceService.swift */; };
 		D00B00000000000000000003 /* MarkdownOutlineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00B00000000000000000004 /* MarkdownOutlineView.swift */; };
 		D01310000000000000000005 /* MarkdownBacklinksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01310000000000000000006 /* MarkdownBacklinksView.swift */; };
 		D00C00000000000000000001 /* Mermaid in Resources */ = {isa = PBXBuildFile; fileRef = D00C00000000000000000002 /* Mermaid */; };
@@ -108,6 +110,10 @@
 		D01302000000000000000007 /* VersionHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01302000000000000000008 /* VersionHistoryView.swift */; };
 		D01302000000000000000005 /* VersionHistoryController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01302000000000000000006 /* VersionHistoryController.swift */; };
 		D01302000000000000000001 /* FileVersionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01302000000000000000002 /* FileVersionService.swift */; };
+		D01408000000000000000001 /* WritingGoalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01408000000000000000002 /* WritingGoalStore.swift */; };
+		D01409000000000000000001 /* MarkdownRenameLinkService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01409000000000000000002 /* MarkdownRenameLinkService.swift */; };
+		D01409000000000000000003 /* AppState+RenameLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01409000000000000000004 /* AppState+RenameLinks.swift */; };
+		D01409000000000000000005 /* WindowManager+RenameLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01409000000000000000006 /* WindowManager+RenameLinks.swift */; };
 		D01000000000000000000007 /* AICustomChecksSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01000000000000000000008 /* AICustomChecksSettingsView.swift */; };
 		D01000000000000000000009 /* AIMediaClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0100000000000000000000A /* AIMediaClient.swift */; };
 		D0100000000000000000000B /* AIDocumentToolsController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0100000000000000000000C /* AIDocumentToolsController.swift */; };
@@ -292,6 +298,8 @@
 		D00A00000000000000000006 /* MarkdownPresentationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownPresentationController.swift; sourceTree = "<group>"; };
 		D00B00000000000000000002 /* MarkdownFormattingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFormattingService.swift; sourceTree = "<group>"; };
 		D01304000000000000000002 /* LineEditingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LineEditingService.swift; sourceTree = "<group>"; };
+		D01403000000000000000002 /* MarkdownSectionMoveService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownSectionMoveService.swift; sourceTree = "<group>"; };
+		D01405000000000000000002 /* FocusSentenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusSentenceService.swift; sourceTree = "<group>"; };
 		D00B00000000000000000004 /* MarkdownOutlineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownOutlineView.swift; sourceTree = "<group>"; };
 		D01310000000000000000006 /* MarkdownBacklinksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownBacklinksView.swift; sourceTree = "<group>"; };
 		D00C00000000000000000002 /* Mermaid */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Mermaid; path = Resources/Mermaid; sourceTree = "<group>"; };
@@ -317,6 +325,10 @@
 		D01302000000000000000008 /* VersionHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VersionHistoryView.swift; path = Views/VersionHistoryView.swift; sourceTree = "<group>"; };
 		D01302000000000000000006 /* VersionHistoryController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VersionHistoryController.swift; path = Services/VersionHistoryController.swift; sourceTree = "<group>"; };
 		D01302000000000000000002 /* FileVersionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FileVersionService.swift; path = Services/FileVersionService.swift; sourceTree = "<group>"; };
+		D01408000000000000000002 /* WritingGoalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WritingGoalStore.swift; path = Services/WritingGoalStore.swift; sourceTree = "<group>"; };
+		D01409000000000000000002 /* MarkdownRenameLinkService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MarkdownRenameLinkService.swift; path = Services/MarkdownRenameLinkService.swift; sourceTree = "<group>"; };
+		D01409000000000000000004 /* AppState+RenameLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+RenameLinks.swift"; sourceTree = "<group>"; };
+		D01409000000000000000006 /* WindowManager+RenameLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WindowManager+RenameLinks.swift"; sourceTree = "<group>"; };
 		D01000000000000000000008 /* AICustomChecksSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AICustomChecksSettingsView.swift; path = Views/AICustomChecksSettingsView.swift; sourceTree = "<group>"; };
 		D0100000000000000000000A /* AIMediaClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIMediaClient.swift; path = Services/AIMediaClient.swift; sourceTree = "<group>"; };
 		D0100000000000000000000C /* AIDocumentToolsController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIDocumentToolsController.swift; path = Services/AIDocumentToolsController.swift; sourceTree = "<group>"; };
@@ -481,6 +493,8 @@
 				D01302000000000000000008 /* VersionHistoryView.swift */,
 				D01302000000000000000006 /* VersionHistoryController.swift */,
 				D01302000000000000000002 /* FileVersionService.swift */,
+				D01408000000000000000002 /* WritingGoalStore.swift */,
+				D01409000000000000000002 /* MarkdownRenameLinkService.swift */,
 				D01000000000000000000008 /* AICustomChecksSettingsView.swift */,
 				D0100000000000000000000A /* AIMediaClient.swift */,
 				D0100000000000000000000C /* AIDocumentToolsController.swift */,
@@ -522,6 +536,8 @@
 				A00000000000000000000001 /* LacEditorApp.swift */,
 				A00000000000000000000002 /* AppState.swift */,
 				D01312000000000000000012 /* AppState+Templates.swift */,
+				D01409000000000000000004 /* AppState+RenameLinks.swift */,
+				D01409000000000000000006 /* WindowManager+RenameLinks.swift */,
 				A0000000000000000000002C /* AppPreferences.swift */,
 				A00000000000000000000003 /* LacEditorCommands.swift */,
 				A0000000000000000000001B /* WindowManager.swift */,
@@ -587,6 +603,8 @@
 				D01200000000000000000004 /* MarkdownTableEditingService.swift */,
 				D00B00000000000000000002 /* MarkdownFormattingService.swift */,
 				D01304000000000000000002 /* LineEditingService.swift */,
+				D01403000000000000000002 /* MarkdownSectionMoveService.swift */,
+				D01405000000000000000002 /* FocusSentenceService.swift */,
 				D0090000000000000000000D /* PandocImportService.swift */,
 				D00800000000000000000002 /* PandocExportService.swift */,
 				A00000000000000000000007 /* FileService.swift */,
@@ -917,6 +935,10 @@
 				D01302000000000000000007 /* VersionHistoryView.swift in Sources */,
 				D01302000000000000000005 /* VersionHistoryController.swift in Sources */,
 				D01302000000000000000001 /* FileVersionService.swift in Sources */,
+				D01408000000000000000001 /* WritingGoalStore.swift in Sources */,
+				D01409000000000000000001 /* MarkdownRenameLinkService.swift in Sources */,
+				D01409000000000000000003 /* AppState+RenameLinks.swift in Sources */,
+				D01409000000000000000005 /* WindowManager+RenameLinks.swift in Sources */,
 				D01000000000000000000007 /* AICustomChecksSettingsView.swift in Sources */,
 				D01000000000000000000009 /* AIMediaClient.swift in Sources */,
 				D0100000000000000000000B /* AIDocumentToolsController.swift in Sources */,
@@ -930,6 +952,8 @@
 				D01100000000000000000001 /* Models/AITranslationLanguage.swift in Sources */,
 				D00B00000000000000000001 /* MarkdownFormattingService.swift in Sources */,
 				D01304000000000000000001 /* LineEditingService.swift in Sources */,
+				D01403000000000000000001 /* MarkdownSectionMoveService.swift in Sources */,
+				D01405000000000000000001 /* FocusSentenceService.swift in Sources */,
 				D00B00000000000000000003 /* MarkdownOutlineView.swift in Sources */,
 				D01310000000000000000005 /* MarkdownBacklinksView.swift in Sources */,
 				D00A00000000000000000001 /* MarkdownPresentation.swift in Sources */,

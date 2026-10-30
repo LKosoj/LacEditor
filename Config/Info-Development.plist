@@ -55,6 +55,16 @@
 			<key>UTTypeIdentifier</key>
 			<string>com.laceditor.sidebar-group</string>
 		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>LacEditor Outline Section</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.laceditor.outline-section</string>
+		</dict>
 	</array>
 </dict>
 </plist>

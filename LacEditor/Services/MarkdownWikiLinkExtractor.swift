@@ -53,7 +53,22 @@ enum MarkdownWikiLinkExtractor {
         return NSRange(location: start, length: end - start)
     }
 
+    /// Диапазон цели (до `#`/`|`, без краевых пробелов) подтверждённой ссылки; nil, если текст по `link.range` уже другой.
+    static func targetRange(of link: MarkdownWikiLink, in text: NSString) -> NSRange? {
+        let range = link.range
+        guard range.location >= 0, range.length >= 4, NSMaxRange(range) <= text.length,
+              text.character(at: range.location) == 91, text.character(at: range.location + 1) == 91,
+              text.character(at: NSMaxRange(range) - 2) == 93, text.character(at: NSMaxRange(range) - 1) == 93,
+              let parsed = parsed(text: text, open: range.location, close: NSMaxRange(range) - 2),
+              parsed.link == link, parsed.target.length > 0 else { return nil }
+        return parsed.target
+    }
+
     private static func parse(text: NSString, open: Int, close: Int) -> MarkdownWikiLink? {
+        parsed(text: text, open: open, close: close)?.link
+    }
+
+    private static func parsed(text: NSString, open: Int, close: Int) -> (link: MarkdownWikiLink, target: NSRange)? {
         let innerStart = open + 2
         var pipe: Int?
         var hash: Int?
@@ -83,8 +98,9 @@ enum MarkdownWikiLinkExtractor {
         }
         let opening = NSRange(location: open, length: display.location - open)
         let closing = NSRange(location: NSMaxRange(display), length: close + 2 - NSMaxRange(display))
-        return MarkdownWikiLink(range: NSRange(location: open, length: close + 2 - open), displayRange: display,
-                                target: target, heading: heading, alias: alias, markerRanges: [opening, closing])
+        let link = MarkdownWikiLink(range: NSRange(location: open, length: close + 2 - open), displayRange: display,
+                                    target: target, heading: heading, alias: alias, markerRanges: [opening, closing])
+        return (link, targetRange)
     }
 
     private static func merged(_ ranges: [NSRange]) -> [NSRange] {

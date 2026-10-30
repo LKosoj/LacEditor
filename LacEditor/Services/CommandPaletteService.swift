@@ -60,6 +60,62 @@ enum CommandPaletteService {
         return scored.map(\.0)
     }
 
+    static let recentLimit = 5
+
+    enum Section { case pinned, recent, all }
+
+    /// Строка списка: команда, её секция (nil при поиске или без секций) и признаки для отрисовки.
+    struct Entry: Equatable {
+        let command: PaletteCommand
+        let section: Section?
+        let isPinned: Bool
+        let startsSection: Bool
+    }
+
+    /// Пустой запрос: закреплённые, недавние, остальные (без повторов). Устаревшие пути молча пропускаются.
+    /// Непустой запрос: обычный `ranked` без секций.
+    static func entries(_ commands: [PaletteCommand], query: String, pinned: [[String]], recent: [[String]]) -> [Entry] {
+        let pinnedSet = Set(pinned)
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty else {
+            return ranked(commands, query: query).map {
+                Entry(command: $0, section: nil, isPinned: pinnedSet.contains($0.path), startsSection: false)
+            }
+        }
+        var byPath: [[String]: PaletteCommand] = [:]
+        for command in commands where byPath[command.path] == nil { byPath[command.path] = command }
+        var pinnedCommands: [PaletteCommand] = []
+        var shown = Set<String>()
+        for path in pinned {
+            if let command = byPath[path], shown.insert(command.id).inserted { pinnedCommands.append(command) }
+        }
+        var recentCommands: [PaletteCommand] = []
+        for path in recent where recentCommands.count < recentLimit {
+            if let command = byPath[path], shown.insert(command.id).inserted { recentCommands.append(command) }
+        }
+        let others = commands.filter { !shown.contains($0.id) }
+        let hasHeaders = !pinnedCommands.isEmpty || !recentCommands.isEmpty
+        func make(_ list: [PaletteCommand], _ section: Section) -> [Entry] {
+            list.enumerated().map { index, command in
+                Entry(command: command, section: hasHeaders ? section : nil, isPinned: pinnedSet.contains(command.path),
+                      startsSection: hasHeaders && index == 0)
+            }
+        }
+        return make(pinnedCommands, .pinned) + make(recentCommands, .recent) + make(others, .all)
+    }
+
+    /// Недавние после запуска: закреплённая не записывается, дубль поднимается наверх, не больше `recentLimit`.
+    static func recording(_ path: [String], recent: [[String]], pinned: [[String]]) -> [[String]] {
+        guard !pinned.contains(path) else { return recent }
+        return Array(([path] + recent.filter { $0 != path }).prefix(recentLimit))
+    }
+
+    /// Закрепляет (в конец) либо открепляет; при закреплении убирает запись из недавних.
+    static func togglingPin(_ path: [String], pinned: [[String]], recent: [[String]]) -> (pinned: [[String]], recent: [[String]]) {
+        if pinned.contains(path) { return (pinned.filter { $0 != path }, recent) }
+        return (pinned + [path], recent.filter { $0 != path })
+    }
+
     /// Порядок символов как в меню macOS: ⌃⌥⇧⌘ и клавиша.
     static func shortcutText(for item: NSMenuItem) -> String {
         let key = item.keyEquivalent
@@ -124,11 +180,20 @@ final class CommandPaletteController: ObservableObject {
     @Published var query = ""
     @Published private(set) var commands: [PaletteCommand] = []
     private var pending: PaletteCommand?
+    /// Общие настройки для закреплённых и недавних; при `close()` не сбрасываются, т.к. `performPending` идёт после закрытия.
+    private var preferences: AppPreferences?
 
     var isPresented: Bool { request != nil }
-    var results: [PaletteCommand] { CommandPaletteService.ranked(commands, query: query) }
+    var entries: [CommandPaletteService.Entry] {
+        CommandPaletteService.entries(commands, query: query,
+                                      pinned: preferences?.commandPalettePinned ?? [],
+                                      recent: preferences?.commandPaletteRecent ?? [])
+    }
+    var results: [PaletteCommand] { entries.map(\.command) }
 
-    func present(menu: NSMenu?, excluding: (NSMenuItem) -> Bool = CommandPaletteService.isPaletteItem) {
+    func present(menu: NSMenu?, preferences: AppPreferences? = nil,
+                 excluding: (NSMenuItem) -> Bool = CommandPaletteService.isPaletteItem) {
+        self.preferences = preferences
         commands = CommandPaletteService.collect(from: menu, excluding: excluding)
         query = ""
         pending = nil
@@ -150,7 +215,20 @@ final class CommandPaletteController: ObservableObject {
     func performPending(menu: NSMenu?) -> Bool {
         guard let command = pending else { return false }
         pending = nil
-        return CommandPaletteService.perform(command, menu: menu)
+        guard CommandPaletteService.perform(command, menu: menu) else { return false }
+        if let preferences {
+            preferences.commandPaletteRecent = CommandPaletteService.recording(
+                command.path, recent: preferences.commandPaletteRecent, pinned: preferences.commandPalettePinned)
+        }
+        return true
+    }
+
+    func togglePin(_ command: PaletteCommand) {
+        guard let preferences else { return }
+        let updated = CommandPaletteService.togglingPin(command.path, pinned: preferences.commandPalettePinned,
+                                                        recent: preferences.commandPaletteRecent)
+        preferences.commandPalettePinned = updated.pinned
+        preferences.commandPaletteRecent = updated.recent
     }
 
     private func close() {

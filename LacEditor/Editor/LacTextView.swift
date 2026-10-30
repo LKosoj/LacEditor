@@ -394,6 +394,7 @@ final class LacTextView: NSTextView {
     private var isPairInsertion = false
     private var pairKeyCharacter: String?
     var focusModeEnabled = false { didSet { if focusModeEnabled != oldValue { needsDisplay = true } } }
+    var focusScope: FocusScope = .paragraph { didSet { if focusScope != oldValue && focusModeEnabled { needsDisplay = true } } }
 
     override var rangeForUserCompletion: NSRange { wikiCompletionRange ?? emojiCompletionRange ?? super.rangeForUserCompletion }
 
@@ -449,14 +450,38 @@ final class LacTextView: NSTextView {
               selection.length <= storage.length - selection.location else { return [] }
         let text = storage.mutableString
         let active = text.paragraphRange(for: selection)
+        // Предложение делит строки на куски; таблицы, блочные изображения и вертикальное письмо остаются на области абзаца.
+        var sentence: NSRange?
+        if focusScope == .sentence, layoutOrientation == .horizontal,
+           (layoutManager as? FoldLayoutManager)?.containsAtomicBlock(in: active) != true,
+           let range = FocusSentenceService.activeRange(in: text, selection: selection), range.length > 0 {
+            sentence = range
+        }
+        let target = sentence ?? active
+        let origin = textContainerOrigin
         let visible = dirtyRect.offsetBy(dx: -textContainerOrigin.x, dy: -textContainerOrigin.y)
         let glyphs = layoutManager.glyphRange(forBoundingRect: visible, in: textContainer)
         var rectangles: [NSRect] = []
-        layoutManager.enumerateLineFragments(forGlyphRange: glyphs) { rect, _, _, glyphRange, _ in
+        layoutManager.enumerateLineFragments(forGlyphRange: glyphs) { rect, usedRect, _, glyphRange, _ in
             let characters = layoutManager.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
-            guard NSIntersectionRange(characters, active).length == 0 else { return }
-            let clipped = rect.offsetBy(dx: self.textContainerOrigin.x, dy: self.textContainerOrigin.y).intersection(dirtyRect)
-            if !clipped.isEmpty { rectangles.append(clipped) }
+            func append(_ piece: NSRect) {
+                guard piece.width > 0.5 else { return }
+                let clipped = piece.offsetBy(dx: origin.x, dy: origin.y).intersection(dirtyRect)
+                if !clipped.isEmpty { rectangles.append(clipped) }
+            }
+            let inter = NSIntersectionRange(characters, target)
+            guard inter.length > 0 else {
+                append(rect)
+                return
+            }
+            guard sentence != nil else { return }
+            let used = layoutManager.glyphRange(forCharacterRange: inter, actualCharacterRange: nil)
+            let box = layoutManager.boundingRect(forGlyphRange: used, in: textContainer)
+            // Только скрытые глифы: строку не трогаем.
+            guard box.width > 0 else { return }
+            // Границы по занятой текстом части: поле строки не должно давать лишних полос.
+            append(NSRect(x: usedRect.minX, y: rect.minY, width: max(0, box.minX - usedRect.minX), height: rect.height))
+            append(NSRect(x: box.maxX, y: rect.minY, width: max(0, usedRect.maxX - box.maxX), height: rect.height))
         }
         return rectangles
     }
@@ -492,6 +517,13 @@ final class LacTextView: NSTextView {
         editSource = .pasted
         defer { editSource = previous }
         super.paste(sender)
+    }
+
+    /// Системное «Отменить/Повторить» (⌘Z) в режиме чтения откатывало бы текст в обход isEditable.
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if !isEditable, let action = item.action,
+           action == Selector(("undo:")) || action == Selector(("redo:")) { return false }
+        return super.validateUserInterfaceItem(item)
     }
 
     override func copy(_ sender: Any?) {

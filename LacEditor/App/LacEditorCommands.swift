@@ -12,6 +12,8 @@ struct LacEditorCommands: Commands {
         windowManager.activeState
     }
 
+    private var isReadingMode: Bool { appState?.selectedDocument?.isReadingMode == true }
+
     var body: some Commands {
         CommandGroup(replacing: .appSettings) {
             Button {
@@ -175,6 +177,7 @@ struct LacEditorCommands: Commands {
                 Button(L10n.tr("复制 Markdown")) { appState?.markdownClipboard(.copyMarkdown) }
                 Button(L10n.tr("复制 HTML 代码")) { appState?.markdownClipboard(.copyHTML) }
                 Button(L10n.tr("粘贴为源文本")) { appState?.markdownClipboard(.pasteSource) }
+                    .disabled(isReadingMode)
                 Button(L10n.tr("复制代码块内容")) { appState?.markdownClipboard(.copyCodeBlock) }
             }
             .disabled(appState?.selectedDocument?.language != .markdown || appState?.selectedDocument?.ioState != .idle)
@@ -194,11 +197,11 @@ struct LacEditorCommands: Commands {
                 Button(L10n.tr("升序排序行")) { appState?.editLines(.sortAscending) }
                 Button(L10n.tr("降序排序行")) { appState?.editLines(.sortDescending) }
             }
-            .disabled(appState?.selectedDocument == nil || appState?.selectedDocument?.ioState != .idle)
+            .disabled(appState?.selectedDocument == nil || appState?.selectedDocument?.ioState != .idle || isReadingMode)
             Button(L10n.tr("切换注释")) { appState?.editLines(.toggleComment) }
                 .keyboardShortcut("/", modifiers: .command)
                 .disabled(appState?.selectedDocument?.language.commentSyntax == nil
-                          || appState?.selectedDocument?.ioState != .idle)
+                          || appState?.selectedDocument?.ioState != .idle || isReadingMode)
             Divider()
             Button {
                 appState?.presentFindReplace(mode: .find)
@@ -281,19 +284,19 @@ struct LacEditorCommands: Commands {
                 Label(L10n.tr("格式化 JSON"), systemImage: "text.alignleft")
             }
                 .keyboardShortcut("l", modifiers: [.command, .option])
-                .disabled(appState == nil)
+                .disabled(appState == nil || isReadingMode)
             Button {
                 appState?.formatJSON(pretty: false)
             } label: {
                 Label(L10n.tr("压缩 JSON"), systemImage: "arrow.down.right.and.arrow.up.left")
             }
-                .disabled(appState == nil)
+                .disabled(appState == nil || isReadingMode)
             Menu(L10n.tr("换行符")) {
                 ForEach(LineEnding.allCases) { kind in
                     Button(L10n.tr("转换为 %@", kind.shortName)) { appState?.convertLineEndings(to: kind) }
                 }
             }
-            .disabled(appState?.selectedDocument == nil || appState?.selectedDocument?.ioState != .idle)
+            .disabled(appState?.selectedDocument == nil || appState?.selectedDocument?.ioState != .idle || isReadingMode)
         }
 
         // Suppress SwiftUI's automatic sidebar titlebar control. macOS 26
@@ -389,8 +392,13 @@ struct LacEditorCommands: Commands {
                 .disabled(appState?.hostWindow == nil)
             Divider()
             Toggle(L10n.tr("聚焦当前段落"), isOn: Binding(
-                get: { appState?.isFocusMode ?? false },
-                set: { _ in appState?.toggleFocusMode() }
+                get: { appState?.isFocusMode == true && appState?.focusScope == .paragraph },
+                set: { _ in appState?.toggleFocusScope(.paragraph) }
+            ))
+            .disabled(appState?.hostWindow == nil)
+            Toggle(L10n.tr("聚焦当前句子"), isOn: Binding(
+                get: { appState?.isFocusMode == true && appState?.focusScope == .sentence },
+                set: { _ in appState?.toggleFocusScope(.sentence) }
             ))
             .disabled(appState?.hostWindow == nil)
             Toggle(L10n.tr("打字机模式"), isOn: Binding(
@@ -398,6 +406,12 @@ struct LacEditorCommands: Commands {
                 set: { _ in appState?.toggleTypewriterMode() }
             ))
             .disabled(appState?.hostWindow == nil)
+            Toggle(L10n.tr("阅读模式"), isOn: Binding(
+                get: { isReadingMode },
+                set: { _ in appState?.toggleReadingMode() }
+            ))
+            .keyboardShortcut("r", modifiers: [.command, .option])
+            .disabled(appState?.selectedDocument == nil)
             Divider()
             Picker(L10n.tr("Markdown 编辑方式"), selection: Binding(
                 get: { appState?.selectedDocument?.isMarkdownFormatted ?? false },
@@ -406,7 +420,7 @@ struct LacEditorCommands: Commands {
                 Text(L10n.tr("Markdown 源码")).tag(false)
                 Text(L10n.tr("格式化文本")).tag(true)
             }
-            .disabled(appState?.selectedDocument?.language != .markdown)
+            .disabled(appState?.selectedDocument?.language != .markdown || isReadingMode)
             Button {
                 appState?.togglePreview()
             } label: {
@@ -595,7 +609,7 @@ struct LacEditorCommands: Commands {
                     }
                 }
             }
-            .disabled(appState?.selectedDocument?.language != .markdown || appState?.selectedDocument?.ioState != .idle)
+            .disabled(appState?.selectedDocument?.language != .markdown || appState?.selectedDocument?.ioState != .idle || isReadingMode)
         }
 
         CommandMenu(L10n.tr("标签页")) {

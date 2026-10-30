@@ -466,6 +466,7 @@ private struct DocumentEditorPane: View {
             grammarEnabled: appState.preferences.systemGrammarEnabled,
             aiPreferences: appState.preferences,
             isFocusMode: appState.isFocusMode,
+            focusScope: appState.focusScope,
             isTypewriterMode: appState.isTypewriterMode,
             textFontFamily: appState.preferences.editorTextFontFamily,
             codeFontFamily: appState.preferences.editorCodeFontFamily,

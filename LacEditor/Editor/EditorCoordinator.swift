@@ -136,6 +136,7 @@ extension EditorTextView {
         private var hasAppliedLigatures = false
         private var wordWrap = true
         private var writingFocus = false
+        private var writingFocusScope: FocusScope = .paragraph
         private var writingTypewriter = false
         private var writingBaseInset: CGFloat = 0
         private var pendingTypewriterAfterComposition = false
@@ -1139,7 +1140,8 @@ extension EditorTextView {
                 queue: .main
             ) { [weak self] notification in
                 guard let self,
-                      notification.object as? UUID == document.id else { return }
+                      notification.object as? UUID == document.id,
+                      !document.isReadingMode else { return }
                 textView?.undoManager?.undo()
             })
             observerTokens.append(NotificationCenter.default.addObserver(
@@ -1148,7 +1150,8 @@ extension EditorTextView {
                 queue: .main
             ) { [weak self] notification in
                 guard let self,
-                      notification.object as? UUID == document.id else { return }
+                      notification.object as? UUID == document.id,
+                      !document.isReadingMode else { return }
                 textView?.undoManager?.redo()
             })
             observerTokens.append(NotificationCenter.default.addObserver(
@@ -1232,7 +1235,7 @@ extension EditorTextView {
                     describe.representedObject = resource
                     items.append(describe)
                 }
-                if aiFeatures.contains(.imageEdit), requestAIImageEdit != nil {
+                if aiFeatures.contains(.imageEdit), requestAIImageEdit != nil, textView?.isEditable == true {
                     let edit = NSMenuItem(title: L10n.tr("使用 AI 编辑图片"), action: #selector(editImageWithAI(_:)), keyEquivalent: "")
                     edit.target = self
                     edit.representedObject = resource
@@ -2808,7 +2811,9 @@ extension EditorTextView {
                 return
             }
             guard isActive, textView.isEditable, !textView.hasMarkedText(), moveTableSelectionToParent() else {
-                request.failureMessage = L10n.tr("当前文本无法修改")
+                request.failureMessage = document.isReadingMode
+                    ? L10n.tr("阅读模式下无法修改")
+                    : L10n.tr("当前文本无法修改")
                 return
             }
             guard request.expectedEditorRevision == contentRevision else {
@@ -3324,6 +3329,7 @@ extension EditorTextView {
                 }
             }
             updateSyntaxOptions()
+            markdownPresentation?.setElementPathEnabled(document.language == .markdown && !document.isLargeFileMode)
             markdownPresentation?.update(
                 document: document,
                 enabled: document.language == .markdown && document.isMarkdownFormatted,
@@ -3581,13 +3587,14 @@ extension EditorTextView {
             selectionVisibilityWorkItem?.cancel()
         }
 
-        func updateWritingModes(focus: Bool, typewriter: Bool) {
+        func updateWritingModes(focus: Bool, focusScope: FocusScope = .paragraph, typewriter: Bool) {
             if writingTypewriter && !typewriter {
                 typewriterWorkItem?.cancel()
                 typewriterWorkItem = nil
                 pendingTypewriterAfterComposition = false
             }
             writingFocus = focus
+            writingFocusScope = focusScope
             writingTypewriter = typewriter
             applyWritingModes()
         }
@@ -3600,6 +3607,7 @@ extension EditorTextView {
         private func applyWritingModes() {
             guard let textView, !textView.hasMarkedText() else { return }
             textView.focusModeEnabled = writingFocus
+            textView.focusScope = writingFocusScope
             let extent = markdownVerticalWriting ? (scrollView?.contentView.bounds.width ?? 0) : (scrollView?.contentView.bounds.height ?? 0)
             // The vertical layout keeps its previous geometry; the comfortable top margin is horizontal-only.
             let baseInset = markdownVerticalWriting ? 0 : writingBaseInset

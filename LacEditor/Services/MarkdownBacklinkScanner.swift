@@ -45,7 +45,7 @@ enum MarkdownBacklinkScanner {
     }
 
     /// Файловый адрес без расширения проверяется как `.md` и `.markdown`, как при переходе по ссылке; `#якорь` того же файла не считается.
-    private static func isLink(_ address: String, from documentURL: URL, to target: FolderSearchService.BacklinkTarget) -> Bool {
+    static func isLink(_ address: String, from documentURL: URL, to target: FolderSearchService.BacklinkTarget) -> Bool {
         guard case let .file(url, _)? = try? MarkdownLinkNavigationService.destination(for: address, documentURL: documentURL) else { return false }
         var candidates = [url]
         if url.pathExtension.isEmpty { candidates += [url.appendingPathExtension("md"), url.appendingPathExtension("markdown")] }

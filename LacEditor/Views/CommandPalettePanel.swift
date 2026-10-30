@@ -73,7 +73,8 @@ struct CommandPalettePanel: View {
     @FocusState private var queryFocused: Bool
 
     var body: some View {
-        let results = controller.results
+        let entries = controller.entries
+        let results = entries.map(\.command)
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: "command").foregroundStyle(.secondary).accessibilityHidden(true)
@@ -84,6 +85,12 @@ struct CommandPalettePanel: View {
                     .accessibilityIdentifier("commandPalette.field")
                     .onSubmit { runSelected(in: results) }
                     .onExitCommand { controller.dismiss() }
+                    .onKeyPress(keys: [.return], phases: .down) { press in
+                        // ⌥↩ закрепляет выбранную команду, обычный Return запускает
+                        guard press.modifiers == .option, results.indices.contains(selectedIndex) else { return .ignored }
+                        pin(results[selectedIndex], in: results)
+                        return .handled
+                    }
                     .onKeyPress(.upArrow) { move(-1, count: results.count); return .handled }
                     .onKeyPress(.downArrow) { move(1, count: results.count); return .handled }
                     .onMoveCommand { direction in
@@ -97,7 +104,7 @@ struct CommandPalettePanel: View {
             .padding(.horizontal, 12).frame(height: 40)
             if !results.isEmpty {
                 Divider()
-                list(results)
+                list(entries)
             } else {
                 Divider()
                 Text(L10n.tr("没有匹配的命令")).foregroundStyle(.secondary)
@@ -117,22 +124,36 @@ struct CommandPalettePanel: View {
         }
     }
 
-    private func list(_ results: [PaletteCommand]) -> some View {
-        ScrollViewReader { proxy in
+    private func list(_ entries: [CommandPaletteService.Entry]) -> some View {
+        let results = entries.map(\.command)
+        return ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(results.enumerated()), id: \.element.id) { index, command in
-                        Button { controller.run(command) } label: {
-                            CommandPaletteRow(command: command, query: controller.query, isSelected: index == selectedIndex)
+                    ForEach(Array(entries.enumerated()), id: \.element.command.id) { index, entry in
+                        let command = entry.command
+                        VStack(spacing: 0) {
+                            if entry.startsSection, let section = entry.section {
+                                Text(sectionTitle(section)).font(.caption).foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 2)
+                                    .accessibilityAddTraits(.isHeader)
+                            }
+                            ZStack(alignment: .trailing) {
+                                Button { controller.run(command) } label: {
+                                    CommandPaletteRow(command: command, query: controller.query, isSelected: index == selectedIndex)
+                                }
+                                .buttonStyle(.plain)
+                                .focusable(false)
+                                .accessibilityIdentifier("commandPalette.row.\(command.id)")
+                                .accessibilityLabel(command.fullTitle)
+                                .accessibilityValue(command.shortcut)
+                                .accessibilityAddTraits(index == selectedIndex ? .isSelected : [])
+                                pinButton(entry, isSelected: index == selectedIndex, in: results)
+                            }
+                            .onHover { if $0 { hoverSelect(index) } }
+                            .accessibilityAction(named: pinActionName(entry.isPinned)) { pin(command, in: results) }
                         }
-                        .buttonStyle(.plain)
-                        .onHover { if $0 { hoverSelect(index) } }
-                        .focusable(false)
                         .id(command.id)
-                        .accessibilityIdentifier("commandPalette.row.\(command.id)")
-                        .accessibilityLabel(command.fullTitle)
-                        .accessibilityValue(command.shortcut)
-                        .accessibilityAddTraits(index == selectedIndex ? .isSelected : [])
                     }
                 }
             }
@@ -142,6 +163,53 @@ struct CommandPalettePanel: View {
                 if results.indices.contains(index) { proxy.scrollTo(results[index].id) }
             }
         }
+    }
+
+    private func pinButton(_ entry: CommandPaletteService.Entry, isSelected: Bool, in results: [PaletteCommand]) -> some View {
+        let color: Color = isSelected
+            ? Color(nsColor: .alternateSelectedControlTextColor).opacity(entry.isPinned ? 1 : 0.8)
+            : (entry.isPinned ? Color.primary : Color.secondary)
+        let help: String
+        let label: String
+        if entry.isPinned {
+            help = L10n.tr("取消固定（⌥↩）")
+            label = String(format: L10n.tr("取消固定命令“%@”"), entry.command.fullTitle)
+        } else {
+            help = L10n.tr("固定（⌥↩）")
+            label = String(format: L10n.tr("固定命令“%@”"), entry.command.fullTitle)
+        }
+        return Button { pin(entry.command, in: results) } label: {
+            Image(systemName: entry.isPinned ? "pin.fill" : "pin")
+                .frame(width: 24, height: 24).contentShape(Rectangle())
+                .foregroundStyle(color)
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .padding(.trailing, 8)
+        .help(help)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier("commandPalette.pin.\(entry.command.id)")
+    }
+
+    private func pinActionName(_ isPinned: Bool) -> String {
+        if isPinned { return L10n.tr("取消固定") }
+        return L10n.tr("固定")
+    }
+
+    private func sectionTitle(_ section: CommandPaletteService.Section) -> String {
+        switch section {
+        case .pinned: return L10n.tr("已固定")
+        case .recent: return L10n.tr("最近使用")
+        case .all: return L10n.tr("所有命令")
+        }
+    }
+
+    /// После смены порядка выбор остаётся на той же команде (id — путь индексов меню, он не меняется).
+    private func pin(_ command: PaletteCommand, in results: [PaletteCommand]) {
+        let keptID = results.indices.contains(selectedIndex) ? results[selectedIndex].id : command.id
+        controller.togglePin(command)
+        keyboardMovedAt = Date()
+        selectedIndex = controller.results.firstIndex { $0.id == keptID } ?? 0
     }
 
     /// Наведение меняет выбор без прокрутки; после стрелок 0,3 с игнорируется, как в быстром открытии.
@@ -186,7 +254,7 @@ private struct CommandPaletteRow: View {
                     .lineLimit(1)
             }
         }
-        .padding(.horizontal, 12).padding(.vertical, 5)
+        .padding(.leading, 12).padding(.trailing, 44).padding(.vertical, 5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .background(isSelected ? Color(nsColor: .selectedContentBackgroundColor) : Color.clear)

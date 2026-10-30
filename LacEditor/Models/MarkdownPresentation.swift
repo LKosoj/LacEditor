@@ -68,11 +68,13 @@ struct MarkdownHeading: Identifiable, Equatable, Sendable {
     let number: String?
     let plainTextRange: NSRange?
     let uppercaseRuns: [UppercaseRun]?
+    /// Заголовок лежит прямо в документе: не в цитате, списке и не в определении сноски.
+    let isTopLevel: Bool
     var renderedTitle: String { displayTitle ?? title }
     var numberedTitle: String { (number ?? "") + renderedTitle }
     var id: Int { range.location }
 
-    init(level: Int, title: String, range: NSRange, emoji: [Emoji] = [], displayTitle: String? = nil, number: String? = nil, plainTextRange: NSRange? = nil, uppercaseRuns: [UppercaseRun]? = nil) {
+    init(level: Int, title: String, range: NSRange, emoji: [Emoji] = [], displayTitle: String? = nil, number: String? = nil, plainTextRange: NSRange? = nil, uppercaseRuns: [UppercaseRun]? = nil, isTopLevel: Bool = false) {
         self.level = level
         self.title = title
         self.range = range
@@ -81,6 +83,7 @@ struct MarkdownHeading: Identifiable, Equatable, Sendable {
         self.number = number
         self.plainTextRange = plainTextRange
         self.uppercaseRuns = uppercaseRuns
+        self.isTopLevel = isTopLevel
     }
 
     func sameSource(as other: MarkdownHeading) -> Bool {
@@ -115,7 +118,7 @@ struct MarkdownHeading: Identifiable, Equatable, Sendable {
             return updated
         }
         return MarkdownHeading(level: level, title: title, range: range, emoji: emoji,
-                               displayTitle: changed ? rendered as String : nil, number: number, plainTextRange: plainTextRange, uppercaseRuns: updatedRuns)
+                               displayTitle: changed ? rendered as String : nil, number: number, plainTextRange: plainTextRange, uppercaseRuns: updatedRuns, isTopLevel: isTopLevel)
     }
 }
 
@@ -135,7 +138,7 @@ enum MarkdownHeadingNumbering {
                 number = nil
             }
             return MarkdownHeading(level: heading.level, title: heading.title, range: heading.range,
-                                   emoji: heading.emoji, displayTitle: heading.displayTitle, number: number, plainTextRange: heading.plainTextRange, uppercaseRuns: heading.uppercaseRuns)
+                                   emoji: heading.emoji, displayTitle: heading.displayTitle, number: number, plainTextRange: heading.plainTextRange, uppercaseRuns: heading.uppercaseRuns, isTopLevel: heading.isTopLevel)
         }
     }
 }
@@ -618,6 +621,7 @@ struct MarkdownPresentation: Sendable {
     let fenceContextAvailable: Bool
     let readableText: MarkdownReadableText?
     private(set) var wikiLinks: [MarkdownWikiLink] = []
+    private(set) var elements: MarkdownElementIndex = .empty
 
     init(spans: [MarkdownPresentationSpan], headings: [MarkdownHeading] = [], namedAnchors: [MarkdownNamedAnchor] = [], images: [MarkdownImage] = [], audioBlocks: [MarkdownAudioBlock] = [], iframeBlocks: [MarkdownIframeBlock] = [], detailsBlocks: [MarkdownDetailsBlock] = [], htmlBlocks: [MarkdownHTMLBlock] = [], pageBreaks: [NSRange] = [], ruby: [MarkdownRuby] = [], links: [MarkdownLink] = [], diagrams: [MarkdownDiagram] = [], formulas: [MarkdownFormula] = [], inlineFormulas: [MarkdownFormula] = [], emojiCandidates: [MarkdownEmojiCandidate] = [], emojiCandidatesIncluded: Bool = false, emojiCompletionRanges: [NSRange] = [], smartTextRanges: [NSRange] = [], smartRawHTMLRanges: [NSRange]? = nil, textReplacements: [MarkdownTextReplacement] = [], paragraphs: [MarkdownParagraph] = [], completedTaskRanges: [NSRange] = [], taskCheckboxes: [MarkdownTaskCheckbox] = [], listMarkers: [MarkdownListMarker] = [], looseIndents: [MarkdownLooseIndent] = [], footnotes: [MarkdownFootnote] = [], tableOfContents: [NSRange] = [], tables: [MarkdownTable] = [], codeBlocks: [MarkdownCodeBlock] = [], fenceContainerLines: [MarkdownFenceContainerLine] = [], fenceBlockedRanges: [NSRange] = [], fenceBlockedEOF: Bool = false, fenceContextAvailable: Bool = false, readableText: MarkdownReadableText? = nil) {
         self.spans = spans
@@ -661,13 +665,19 @@ struct MarkdownPresentation: Sendable {
         return copy
     }
 
+    func withElements(_ index: MarkdownElementIndex) -> MarkdownPresentation {
+        var copy = self
+        copy.elements = index
+        return copy
+    }
+
     func resolvingHeadingEmoji(_ values: [String: String], readableText: MarkdownReadableText? = nil) -> MarkdownPresentation {
         MarkdownPresentation(spans: spans, headings: headings.map { $0.resolvingEmoji(values) }, namedAnchors: namedAnchors, images: images,
             audioBlocks: audioBlocks, iframeBlocks: iframeBlocks, detailsBlocks: detailsBlocks, htmlBlocks: htmlBlocks, pageBreaks: pageBreaks, ruby: ruby, links: links, diagrams: diagrams, formulas: formulas, inlineFormulas: inlineFormulas,
             emojiCandidates: emojiCandidates, emojiCandidatesIncluded: emojiCandidatesIncluded, emojiCompletionRanges: emojiCompletionRanges, smartTextRanges: smartTextRanges, smartRawHTMLRanges: smartRawHTMLRanges, textReplacements: textReplacements, paragraphs: paragraphs, completedTaskRanges: completedTaskRanges,
             taskCheckboxes: taskCheckboxes, listMarkers: listMarkers, looseIndents: looseIndents, footnotes: footnotes, tableOfContents: tableOfContents, tables: tables,
             codeBlocks: codeBlocks, fenceContainerLines: fenceContainerLines, fenceBlockedRanges: fenceBlockedRanges, fenceBlockedEOF: fenceBlockedEOF,
-            fenceContextAvailable: fenceContextAvailable, readableText: readableText ?? self.readableText).withWikiLinks(wikiLinks)
+            fenceContextAvailable: fenceContextAvailable, readableText: readableText ?? self.readableText).withWikiLinks(wikiLinks).withElements(elements)
     }
 
     func numberingHeadings(_ enabled: Bool) -> MarkdownPresentation {
@@ -676,7 +686,7 @@ struct MarkdownPresentation: Sendable {
             emojiCandidates: emojiCandidates, emojiCandidatesIncluded: emojiCandidatesIncluded, emojiCompletionRanges: emojiCompletionRanges, smartTextRanges: smartTextRanges, smartRawHTMLRanges: smartRawHTMLRanges, textReplacements: textReplacements, paragraphs: paragraphs, completedTaskRanges: completedTaskRanges,
             taskCheckboxes: taskCheckboxes, listMarkers: listMarkers, looseIndents: looseIndents, footnotes: footnotes, tableOfContents: tableOfContents, tables: tables,
             codeBlocks: codeBlocks, fenceContainerLines: fenceContainerLines, fenceBlockedRanges: fenceBlockedRanges, fenceBlockedEOF: fenceBlockedEOF,
-            fenceContextAvailable: fenceContextAvailable, readableText: readableText).withWikiLinks(wikiLinks)
+            fenceContextAvailable: fenceContextAvailable, readableText: readableText).withWikiLinks(wikiLinks).withElements(elements)
     }
 
     func replacingTable(_ table: MarkdownTable, oldTable: NSRange, edit: NSRange, replacementLength: Int) -> MarkdownPresentation {
@@ -723,7 +733,7 @@ struct MarkdownPresentation: Sendable {
                 return shifted
             }
             return MarkdownHeading(level: heading.level, title: heading.title, range: range, emoji: heading.emoji, displayTitle: heading.displayTitle, number: heading.number,
-                                   plainTextRange: heading.plainTextRange.flatMap(shift), uppercaseRuns: runs)
+                                   plainTextRange: heading.plainTextRange.flatMap(shift), uppercaseRuns: runs, isTopLevel: heading.isTopLevel)
         }
         let newImages = images.compactMap { image -> MarkdownImage? in
             guard let range = shift(image.range), let paragraph = shift(image.paragraphRange) else { return nil }
@@ -848,4 +858,119 @@ struct MarkdownPresentation: Sendable {
                                     tableOfContents: tableOfContents.compactMap(shift), tables: newTables, codeBlocks: newCodeBlocks).withWikiLinks(newWikiLinks)
     }
 
+}
+
+/// Элемент Markdown под курсором для пути в строке состояния.
+struct MarkdownElement: Equatable, Sendable {
+    enum Kind: Equatable, Sendable {
+        case frontMatter, heading(Int), quote, alert, listItem, task
+        case codeBlock(String?), mathBlock, table, footnoteDefinition, htmlBlock
+        case strong, emphasis, strikethrough, code, link, footnoteReference, image, formula
+
+        /// Однородные блоки, идущие подряд, в пути схлопываются в один с уровнем.
+        fileprivate var family: Int? {
+            switch self {
+            case .listItem, .task: return 1
+            case .quote, .alert: return 2
+            default: return nil
+            }
+        }
+    }
+
+    let kind: Kind
+    /// Сколько однородных блоков (пункт списка, цитата) идут подряд; у остальных 1.
+    var level = 1
+}
+
+struct MarkdownElementPath: Equatable, Sendable {
+    let elements: [MarkdownElement]
+    var isEmpty: Bool { elements.isEmpty }
+}
+
+/// Отсортированный индекс элементов одного разбора: поиск по позиции двоичный, без обхода всех элементов.
+struct MarkdownElementIndex: Equatable, Sendable {
+    private struct Entry: Equatable, Sendable {
+        let range: NSRange
+        let kind: MarkdownElement.Kind
+        let parent: Int
+    }
+
+    let textLength: Int
+    private let endsWithLineBreak: Bool
+    private let blocks: [Entry]
+    private let inlines: [Entry]
+
+    static let empty = MarkdownElementIndex(textLength: 0, blocks: [], inlines: [])
+
+    init(textLength: Int, blocks: [(NSRange, MarkdownElement.Kind)], inlines: [(NSRange, MarkdownElement.Kind)],
+         endsWithLineBreak: Bool = false) {
+        self.textLength = textLength
+        self.endsWithLineBreak = endsWithLineBreak
+        self.blocks = Self.nest(blocks, textLength: textLength)
+        self.inlines = Self.nest(inlines, textLength: textLength)
+    }
+
+    /// Порядок «внешний раньше внутреннего»; записи с неверным или пересекающимся без вложенности диапазоном не становятся потомками.
+    private static func nest(_ items: [(NSRange, MarkdownElement.Kind)], textLength: Int) -> [Entry] {
+        var valid: [(offset: Int, range: NSRange, kind: MarkdownElement.Kind)] = []
+        valid.reserveCapacity(items.count)
+        for (offset, item) in items.enumerated() {
+            let range = item.0
+            guard range.location != NSNotFound, range.location >= 0, range.length > 0,
+                  range.location <= textLength, range.length <= textLength - range.location else { continue }
+            valid.append((offset, range, item.1))
+        }
+        valid.sort {
+            if $0.range.location != $1.range.location { return $0.range.location < $1.range.location }
+            if $0.range.length != $1.range.length { return $0.range.length > $1.range.length }
+            return $0.offset < $1.offset
+        }
+        var result: [Entry] = []
+        result.reserveCapacity(valid.count)
+        var stack: [Int] = []
+        for item in valid {
+            let end = NSMaxRange(item.range)
+            while let top = stack.last, NSMaxRange(result[top].range) < end { stack.removeLast() }
+            result.append(Entry(range: item.range, kind: item.kind, parent: stack.last ?? -1))
+            stack.append(result.count - 1)
+        }
+        return result
+    }
+
+    /// Записи, содержащие позицию, от внешней к внутренней.
+    private static func chain(_ entries: [Entry], at location: Int, contains: (NSRange) -> Bool) -> [MarkdownElement.Kind] {
+        var low = 0, high = entries.count
+        while low < high {
+            let middle = (low + high) / 2
+            if entries[middle].range.location <= location { low = middle + 1 } else { high = middle }
+        }
+        var index = low - 1
+        while index >= 0 && !contains(entries[index].range) { index = entries[index].parent }
+        var kinds: [MarkdownElement.Kind] = []
+        while index >= 0 {
+            kinds.append(entries[index].kind)
+            index = entries[index].parent
+        }
+        return kinds.reversed()
+    }
+
+    /// Блоки включают позицию в `[начало, конец)` (в конце текста без перевода строки — и конец), строчные — только строго внутри.
+    func path(at location: Int, blocksOnly: Bool = false) -> MarkdownElementPath {
+        guard textLength > 0, location >= 0, location <= textLength else { return MarkdownElementPath(elements: []) }
+        var kinds = Self.chain(blocks, at: location) { range in
+            range.location <= location && (location < NSMaxRange(range) || (!endsWithLineBreak && location == textLength && NSMaxRange(range) == textLength))
+        }
+        if !blocksOnly {
+            kinds += Self.chain(inlines, at: location) { range in range.location < location && location < NSMaxRange(range) }
+        }
+        var elements: [MarkdownElement] = []
+        for kind in kinds {
+            if let family = kind.family, let last = elements.last, last.kind.family == family {
+                elements[elements.count - 1] = MarkdownElement(kind: kind, level: last.level + 1)
+            } else {
+                elements.append(MarkdownElement(kind: kind))
+            }
+        }
+        return MarkdownElementPath(elements: elements)
+    }
 }

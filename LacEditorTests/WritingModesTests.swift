@@ -176,6 +176,108 @@ final class WritingModesTests: XCTestCase {
         XCTAssertEqual(view.focusDimmedRects(in: view.bounds).count, 1)
     }
 
+    private static let sentenceSource = "Short one. Middle sentence that is deliberately long enough to wrap across several lines in the narrow editor width of four hundred points for sure, and then some more words to be safe. Tail end.\nSecond paragraph stays dimmed."
+
+    func testSentenceFocusRectsSplitLinesAndKeepAttributes() throws {
+        let source = Self.sentenceSource
+        let (_, coordinator, view, _, window) = editor(source)
+        defer { coordinator.updateActivity(false); window.close() }
+        coordinator.updateWritingModes(focus: true, focusScope: .sentence, typewriter: false)
+        XCTAssertEqual(view.focusScope, .sentence)
+        let middle = (source as NSString).range(of: "deliberately")
+        view.setSelectedRange(NSRange(location: middle.location, length: 0))
+        let layout = try XCTUnwrap(view.layoutManager)
+        let container = try XCTUnwrap(view.textContainer)
+        layout.ensureLayout(for: container)
+        let sentence = try XCTUnwrap(FocusSentenceService.activeRange(in: source as NSString, selection: view.selectedRange()))
+        let origin = view.textContainerOrigin
+        let rects = view.focusDimmedRects(in: view.bounds)
+        var firstLine: NSRect?
+        var middleLines: [NSRect] = []
+        layout.enumerateLineFragments(forGlyphRange: layout.glyphRange(for: container)) { rect, _, _, glyphs, _ in
+            let characters = layout.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+            guard NSIntersectionRange(characters, sentence).length > 0 else { return }
+            let shifted = rect.offsetBy(dx: origin.x, dy: origin.y)
+            if firstLine == nil { firstLine = shifted } else { middleLines.append(shifted) }
+        }
+        let lastLine = middleLines.popLast()
+        let first = try XCTUnwrap(firstLine)
+        let last = try XCTUnwrap(lastLine)
+        // Первая строка: кусок слева от предложения и нет куска справа до конца строки.
+        let firstRects = rects.filter { $0.intersects(first) }
+        XCTAssertTrue(firstRects.contains { $0.minX <= origin.x + 1 })
+        XCTAssertFalse(firstRects.contains { $0.maxX >= first.maxX - 1 })
+        // Последняя строка: кусок справа и нет куска слева.
+        let lastRects = rects.filter { $0.intersects(last) }
+        XCTAssertTrue(lastRects.contains { $0.maxX >= last.maxX - 1 })
+        XCTAssertFalse(lastRects.contains { $0.minX <= origin.x + 1 })
+        for line in middleLines { XCTAssertFalse(rects.contains { $0.intersects(line) }) }
+        // Второй абзац приглушён целиком.
+        let second = (source as NSString).range(of: "Second")
+        let secondRect = layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: second.location), effectiveRange: nil)
+            .offsetBy(dx: origin.x, dy: origin.y)
+        XCTAssertTrue(rects.contains { $0.contains(NSPoint(x: secondRect.midX, y: secondRect.midY)) })
+        XCTAssertEqual(view.string, source)
+        XCTAssertEqual(view.textStorage?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor, .systemRed)
+    }
+
+    func testParagraphScopeAfterSentenceRestoresRectsAndSelectionChangesSentence() throws {
+        let source = Self.sentenceSource
+        let (_, coordinator, view, _, window) = editor(source)
+        defer { coordinator.updateActivity(false); window.close() }
+        coordinator.updateWritingModes(focus: true, typewriter: false)
+        view.setSelectedRange(NSRange(location: (source as NSString).range(of: "deliberately").location, length: 0))
+        let paragraphRects = view.focusDimmedRects(in: view.bounds)
+        coordinator.updateWritingModes(focus: true, focusScope: .sentence, typewriter: false)
+        let inMiddle = view.focusDimmedRects(in: view.bounds)
+        view.setSelectedRange(NSRange(location: 2, length: 0))
+        XCTAssertNotEqual(view.focusDimmedRects(in: view.bounds), inMiddle)
+        coordinator.updateWritingModes(focus: true, typewriter: false)
+        XCTAssertEqual(view.focusScope, .paragraph)
+        view.setSelectedRange(NSRange(location: (source as NSString).range(of: "deliberately").location, length: 0))
+        XCTAssertEqual(view.focusDimmedRects(in: view.bounds), paragraphRects)
+    }
+
+    func testSentenceScopeIsDeferredDuringComposition() async throws {
+        let (_, coordinator, view, _, window) = editor("Раз. Два.")
+        defer { coordinator.updateActivity(false); window.close() }
+        view.setSelectedRange(NSRange(location: 0, length: 0))
+        view.setMarkedText("中", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: 0, length: 0))
+        XCTAssertTrue(view.hasMarkedText())
+        coordinator.updateWritingModes(focus: true, focusScope: .sentence, typewriter: false)
+        XCTAssertEqual(view.focusScope, .paragraph)
+        XCTAssertFalse(view.focusModeEnabled)
+        view.unmarkText()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(view.focusModeEnabled)
+        XCTAssertEqual(view.focusScope, .sentence)
+    }
+
+    func testFocusScopeToggleIsPerWindowAndTemporary() throws {
+        let suite = "LacEditorFocusScope.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        let recent = RecentFilesStore(defaults: defaults)
+        let first = AppState(initialDocument: EditorDocument(), recentFiles: recent, preferences: preferences)
+        let second = AppState(initialDocument: EditorDocument(), recentFiles: recent, preferences: preferences)
+        first.toggleFocusScope(.sentence)
+        XCTAssertTrue(first.isFocusMode)
+        XCTAssertEqual(first.focusScope, .sentence)
+        XCTAssertFalse(second.isFocusMode)
+        XCTAssertEqual(second.focusScope, .paragraph)
+        first.toggleFocusScope(.paragraph)
+        XCTAssertTrue(first.isFocusMode)
+        XCTAssertEqual(first.focusScope, .paragraph)
+        first.toggleFocusScope(.sentence)
+        first.toggleFocusScope(.sentence)
+        XCTAssertFalse(first.isFocusMode)
+        first.toggleFocusScope(.sentence)
+        first.resetClosedWindow()
+        XCTAssertFalse(first.isFocusMode)
+        XCTAssertEqual(first.focusScope, .paragraph)
+    }
+
     func testInsetHasSingleOwnerAndDefersDuringComposition() async throws {
         let (_, coordinator, view, scroll, window) = editor("text")
         defer { coordinator.updateActivity(false); window.close() }

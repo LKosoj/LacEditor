@@ -169,4 +169,162 @@ final class CommandPaletteTests: XCTestCase {
         state.showCommandPalette()
         XCTAssertFalse(state.commandPalette.isPresented)
     }
+
+    // MARK: Закреплённые и недавние
+
+    private func cmd(_ title: String, _ index: Int) -> PaletteCommand {
+        PaletteCommand(path: ["Menu", title], indexPath: [0, index], shortcut: "")
+    }
+
+    private func isolatedPreferences() -> (AppPreferences, UserDefaults, String) {
+        let suite = "CommandPaletteTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        return (AppPreferences(defaults: defaults), defaults, suite)
+    }
+
+    func testEntriesWithEmptyQueryOrderPinnedRecentRest() {
+        let all = (0..<6).map { cmd("C\($0)", $0) }
+        let entries = CommandPaletteService.entries(all, query: "", pinned: [all[4].path, all[1].path], recent: [all[3].path, all[0].path])
+        XCTAssertEqual(entries.map(\.command), [all[4], all[1], all[3], all[0], all[2], all[5]])
+        XCTAssertEqual(entries.map(\.section), [.pinned, .pinned, .recent, .recent, .all, .all])
+        XCTAssertEqual(entries.map(\.startsSection), [true, false, true, false, true, false])
+        XCTAssertEqual(entries.map(\.isPinned), [true, true, false, false, false, false])
+    }
+
+    func testEntriesNeverShowCommandTwice() {
+        let all = (0..<4).map { cmd("C\($0)", $0) }
+        let entries = CommandPaletteService.entries(all, query: "", pinned: [all[2].path], recent: [all[2].path, all[1].path])
+        XCTAssertEqual(entries.count, 4)
+        XCTAssertEqual(Set(entries.map(\.command.id)).count, 4)
+        XCTAssertEqual(entries.first?.section, .pinned)
+    }
+
+    func testEntriesWithoutPinsOrRecentsHaveNoSections() {
+        let all = (0..<3).map { cmd("C\($0)", $0) }
+        let entries = CommandPaletteService.entries(all, query: " ", pinned: [], recent: [])
+        XCTAssertEqual(entries.map(\.command), all)
+        XCTAssertTrue(entries.allSatisfy { $0.section == nil && !$0.startsSection })
+    }
+
+    func testEntriesSkipStalePaths() {
+        let all = (0..<3).map { cmd("C\($0)", $0) }
+        let stale = ["Меню", "Нет"]
+        let entries = CommandPaletteService.entries(all, query: "", pinned: [stale], recent: [stale, all[1].path])
+        XCTAssertEqual(entries.map(\.command), [all[1], all[0], all[2]])
+        XCTAssertEqual(entries.map(\.section), [.recent, .all, .all])
+        let (preferences, defaults, suite) = isolatedPreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        preferences.commandPalettePinned = [stale]
+        let controller = CommandPaletteController()
+        let menu = mainMenu([submenu("Menu", [item("C0", Target())])])
+        controller.present(menu: menu, preferences: preferences)
+        XCTAssertEqual(controller.entries.count, 1)
+        XCTAssertEqual(preferences.commandPalettePinned, [stale])
+    }
+
+    func testEntriesRecentLimitKeepsOverflowInRest() {
+        let all = (0..<9).map { cmd("C\($0)", $0) }
+        let entries = CommandPaletteService.entries(all, query: "", pinned: [], recent: (0..<7).map { all[$0].path })
+        XCTAssertEqual(entries.filter { $0.section == .recent }.count, 5)
+        XCTAssertEqual(entries.filter { $0.section == .all }.map(\.command), [all[5], all[6], all[7], all[8]])
+    }
+
+    func testEntriesWithQueryIgnoresSectionsButMarksPins() {
+        let all = [cmd("Save", 0), cmd("Save All", 1), cmd("Print", 2)]
+        let entries = CommandPaletteService.entries(all, query: "save", pinned: [all[1].path], recent: [all[0].path])
+        XCTAssertEqual(entries.map(\.command), CommandPaletteService.ranked(all, query: "save"))
+        XCTAssertTrue(entries.allSatisfy { $0.section == nil && !$0.startsSection })
+        XCTAssertEqual(entries.first { $0.command == all[1] }?.isPinned, true)
+        XCTAssertEqual(entries.first { $0.command == all[0] }?.isPinned, false)
+    }
+
+    func testRecordingMovesDuplicateToFrontAndCapsAtFive() {
+        let paths = (0..<5).map { ["M", "\($0)"] }
+        XCTAssertEqual(CommandPaletteService.recording(paths[3], recent: paths, pinned: []), [paths[3], paths[0], paths[1], paths[2], paths[4]])
+        XCTAssertEqual(CommandPaletteService.recording(["M", "new"], recent: paths, pinned: []), [["M", "new"]] + Array(paths.prefix(4)))
+    }
+
+    func testRecordingSkipsPinned() {
+        let recent = [["M", "a"]]
+        XCTAssertEqual(CommandPaletteService.recording(["M", "p"], recent: recent, pinned: [["M", "p"]]), recent)
+    }
+
+    func testTogglingPinAddsAtEndRemovesFromRecentAndUnpins() {
+        let a = ["M", "a"], b = ["M", "b"]
+        let pinned = CommandPaletteService.togglingPin(b, pinned: [a], recent: [b, a])
+        XCTAssertEqual(pinned.pinned, [a, b])
+        XCTAssertEqual(pinned.recent, [a])
+        let unpinned = CommandPaletteService.togglingPin(a, pinned: [a, b], recent: [])
+        XCTAssertEqual(unpinned.pinned, [b])
+        XCTAssertEqual(unpinned.recent, [])
+    }
+
+    func testPerformPendingRecordsOnlyAfterRun() {
+        let (preferences, defaults, suite) = isolatedPreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let target = Target()
+        let go = item("Go", target)
+        let menu = mainMenu([submenu("View", [go, item("Pinned", target)])])
+        let controller = CommandPaletteController()
+        controller.present(menu: menu, preferences: preferences)
+        let command = controller.commands[0]
+        let pinnedCommand = controller.commands[1]
+        controller.run(command)
+        controller.dismiss()
+        XCTAssertFalse(controller.performPending(menu: menu))
+        XCTAssertEqual(preferences.commandPaletteRecent, [])
+
+        controller.present(menu: menu, preferences: preferences)
+        controller.run(command)
+        go.isEnabled = false
+        XCTAssertFalse(controller.performPending(menu: menu))
+        XCTAssertEqual(preferences.commandPaletteRecent, [])
+        go.isEnabled = true
+
+        controller.present(menu: menu, preferences: preferences)
+        controller.run(command)
+        XCTAssertTrue(controller.performPending(menu: menu))
+        XCTAssertEqual(target.count, 1)
+        XCTAssertEqual(preferences.commandPaletteRecent, [command.path])
+
+        preferences.commandPalettePinned = [pinnedCommand.path]
+        controller.present(menu: menu, preferences: preferences)
+        controller.run(pinnedCommand)
+        XCTAssertTrue(controller.performPending(menu: menu))
+        XCTAssertEqual(preferences.commandPaletteRecent, [command.path])
+    }
+
+    func testPinnedSurvivesNewPreferencesAndStaleAfterRename() {
+        let (preferences, defaults, suite) = isolatedPreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let target = Target()
+        let second = item("Second", target)
+        let menu = mainMenu([submenu("View", [item("First", target), second])])
+        let controller = CommandPaletteController()
+        controller.present(menu: menu, preferences: preferences)
+        controller.togglePin(controller.commands[1])
+        let reloaded = AppPreferences(defaults: defaults)
+        XCTAssertEqual(reloaded.commandPalettePinned, [[AppEnvironment.displayName, "Second"]])
+        second.title = "Renamed"
+        controller.dismiss()
+        controller.present(menu: menu, preferences: reloaded)
+        XCTAssertEqual(controller.entries.count, 2)
+        XCTAssertTrue(controller.entries.allSatisfy { $0.section == nil && !$0.isPinned })
+        XCTAssertEqual(reloaded.commandPalettePinned, [[AppEnvironment.displayName, "Second"]])
+    }
+
+    func testTogglePinViaControllerKeepsPreferencesAfterClose() {
+        let (preferences, defaults, suite) = isolatedPreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let target = Target()
+        let menu = mainMenu([submenu("View", [item("A", target), item("B", target)])])
+        let controller = CommandPaletteController()
+        controller.present(menu: menu, preferences: preferences)
+        let a = controller.commands[0], b = controller.commands[1]
+        controller.run(b)
+        controller.togglePin(a)
+        XCTAssertEqual(preferences.commandPalettePinned, [a.path])
+        XCTAssertTrue(controller.performPending(menu: menu))
+        XCTAssertEqual(preferences.commandPaletteRecent, [b.path])
+    }
 }

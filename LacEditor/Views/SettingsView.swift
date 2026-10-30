@@ -42,7 +42,7 @@ extension SettingsSection {
              "Markdown 文本对齐", "从右向左书写", "划掉已完成的任务", "自动编号标题", "列表标记", "竖排 Markdown", "Markdown 段落间距",
              "输入与显示", "缩进方式", "Tab 宽度", "自动配对括号与引号", "自动配对 Markdown 符号", "智能引号", "智能破折号", "系统文本替换",
              "严格解析 Markdown", "行内公式", "使用旧版行内公式规则", "启用 Physics 数学扩展", "公式自动编号", "大纲最大标题级别",
-             "统计显示单位", "阅读速度", "自动换行", "显示行号"]
+             "统计显示单位", "阅读速度", "每日字数目标", "自动换行", "显示行号"]
         case .images:
             ["图片上传", "上传方式", "插入时上传本地图片", "插入时上传网络图片", "允许文档指定上传", "允许文档指定图片文件夹", "全局图片文件夹",
              "上传地址", "PicList 密钥", "程序路径", "程序参数", "测试图片上传"]
@@ -570,6 +570,14 @@ struct SettingsView: View {
                         TextField(L10n.tr("阅读速度"), value: Binding(get: { appState.preferences.readingWordsPerMinute }, set: { appState.preferences.readingWordsPerMinute = $0 }), format: .number)
                             .labelsHidden().frame(width: 156)
                         Text(L10n.tr("须为大于 0 的整数")).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                rowDivider
+                PreferenceRow(title: L10n.tr("每日字数目标"), detail: L10n.tr("在状态栏显示今天已写的词数。0 表示关闭。")) {
+                    VStack(alignment: .trailing, spacing: 4) {
+                        TextField(L10n.tr("每日字数目标"), value: Binding(get: { appState.preferences.dailyWordGoal }, set: { appState.preferences.dailyWordGoal = $0 }), format: .number)
+                            .labelsHidden().frame(width: 156)
+                        Text(L10n.tr("0 至 1000000 的整数")).font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 rowDivider
