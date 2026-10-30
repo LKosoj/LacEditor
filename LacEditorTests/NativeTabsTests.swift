@@ -3,6 +3,14 @@ import XCTest
 import WebKit
 @testable import LacEditor
 
+private func semaphoreIsSignaled(_ semaphore: DispatchSemaphore) async -> Bool {
+    await withCheckedContinuation { continuation in
+        DispatchQueue.global().async {
+            continuation.resume(returning: semaphore.wait(timeout: .now()) == .success)
+        }
+    }
+}
+
 @MainActor
 final class NativeTabsTests: XCTestCase {
     func testCancelledOpeningCanBeOpenedAgain() async throws {
@@ -70,7 +78,7 @@ final class NativeTabsTests: XCTestCase {
         state.beginOpeningFile(url)
         var readStarted = false
         for _ in 0..<100 {
-            if started.wait(timeout: .now()) == .success { readStarted = true; break }
+            if await semaphoreIsSignaled(started) { readStarted = true; break }
             try await Task.sleep(for: .milliseconds(20))
         }
         XCTAssertTrue(readStarted)
@@ -107,7 +115,7 @@ final class NativeTabsTests: XCTestCase {
         state.reloadFromDisk(document, at: url)
         var readStarted = false
         for _ in 0..<100 {
-            if started.wait(timeout: .now()) == .success { readStarted = true; break }
+            if await semaphoreIsSignaled(started) { readStarted = true; break }
             try await Task.sleep(for: .milliseconds(20))
         }
         XCTAssertTrue(readStarted)
@@ -163,7 +171,7 @@ final class NativeTabsTests: XCTestCase {
         state.reloadFromDisk(document, at: url)
         var readStarted = false
         for _ in 0..<100 {
-            if started.wait(timeout: .now()) == .success { readStarted = true; break }
+            if await semaphoreIsSignaled(started) { readStarted = true; break }
             try await Task.sleep(for: .milliseconds(20))
         }
         XCTAssertTrue(readStarted)

@@ -25,6 +25,7 @@ final class SidebarDragTests: XCTestCase {
         var state: SidebarDragState? = SidebarDragState(mouseLocation: { point }, isDragging: { true })
         weak var released = state
         let attachment = SidebarDragScrollAttachment.Attachment(state: state!)
+        released = state
         document.addSubview(attachment)
         state?.hover(.group(group), placement: .inside, library: library)
         XCTAssertTrue(state?.isTrackingDrag == true)

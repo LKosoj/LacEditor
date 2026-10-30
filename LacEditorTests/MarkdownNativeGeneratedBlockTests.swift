@@ -2,7 +2,6 @@ import AppKit
 import XCTest
 @testable import LacEditor
 
-@MainActor
 private final class InlineMathGlyphProbe: NSObject, NSLayoutManagerDelegate {
     var requestedBounds = false
     func layoutManager(_ manager: NSLayoutManager, shouldGenerateGlyphs glyphs: UnsafePointer<CGGlyph>,

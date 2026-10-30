@@ -1,5 +1,5 @@
 import XCTest
-@testable import LacEditor
+@preconcurrency @testable import LacEditor
 
 final class AIDocumentToolsTests: XCTestCase {
     @MainActor

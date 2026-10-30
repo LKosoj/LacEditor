@@ -1,6 +1,6 @@
 import AppKit
 import XCTest
-@testable import LacEditor
+@preconcurrency @testable import LacEditor
 
 private final class AIWritingKeyWindow: NSWindow {
     override var isKeyWindow: Bool { true }
@@ -41,10 +41,10 @@ final class AIWritingControllerTests: XCTestCase {
         preferences.aiConfiguration = configuration
         let document = EditorDocument(text: "original")
         let state = AppState(initialDocument: document, recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
-        let controller = AIWritingController(appState: state) { _, _, _, _, _, _, _, _, _ in
+        let controller = AIWritingController(appState: state, generate: { _, _, _, _, _, _, _, _, _ in
             try? await Task.sleep(nanoseconds: 20_000_000)
             return AIWritingResult(suggestions: [], report: "stale", image: nil)
-        }
+        })
         controller.didSave(documentID: document.id)
         document.noteLiveEdit(isEmpty: false)
         controller.documentChanged(document.id)
@@ -69,9 +69,9 @@ final class AIWritingControllerTests: XCTestCase {
             request.result = EditorTextSelectionSnapshot(documentID: document.id, range: NSRange(location: 0, length: 8), text: "original", editorRevision: 0, wasExplicitSelection: false)
         }
         defer { NotificationCenter.default.removeObserver(observer) }
-        let controller = AIWritingController(appState: state) { _, _, _, _, _, _, _, _, _ in
+        let controller = AIWritingController(appState: state, generate: { _, _, _, _, _, _, _, _, _ in
             AIWritingResult(suggestions: [], report: "summary", image: nil)
-        }
+        })
         controller.run(.summary)
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(controller.report, "summary")
@@ -113,12 +113,12 @@ final class AIWritingControllerTests: XCTestCase {
         let returned = expectation(description: "cancelled request returned")
         var reply: CheckedContinuation<AIWritingResult, Never>?
         var requestedLanguage = ""
-        let controller = AIWritingController(appState: state, loadKey: { _, _ in nil }) { _, _, option, _, _, _, _, _, _ in
+        let controller = AIWritingController(appState: state, loadKey: { _, _ in nil }, generate: { _, _, option, _, _, _, _, _, _ in
             requestedLanguage = option
             let result = await withCheckedContinuation { continuation in reply = continuation; started.fulfill() }
             returned.fulfill()
             return result
-        }
+        })
         let observer = NotificationCenter.default.addObserver(forName: EditorCommandNotification.extractTextSelection, object: nil, queue: .main) { notification in
             (notification.object as? EditorTextExtractionRequest)?.result = EditorTextSelectionSnapshot(documentID: document.id, range: NSRange(location: 0, length: 8), text: "original", editorRevision: 0, wasExplicitSelection: true)
         }
@@ -155,9 +155,9 @@ final class AIWritingControllerTests: XCTestCase {
             request.result = EditorTextSelectionSnapshot(documentID: document.id, range: NSRange(location: 0, length: 5), text: "claim", editorRevision: 0, wasExplicitSelection: false)
         }
         defer { NotificationCenter.default.removeObserver(observer) }
-        let controller = AIWritingController(appState: state) { _, _, _, _, _, _, _, _, _ in
+        let controller = AIWritingController(appState: state, generate: { _, _, _, _, _, _, _, _, _ in
             AIWritingResult(suggestions: [], report: "candidates", image: nil)
-        }
+        })
         controller.run(.sources)
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(controller.report, "candidates")
@@ -176,10 +176,10 @@ final class AIWritingControllerTests: XCTestCase {
         let document = EditorDocument(text: "prefix 😀乙")
         let state = AppState(initialDocument: document, recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
         let reference = AIWritingReference(id: UUID(), range: NSRange(location: 2, length: 1), quote: "乙")
-        let controller = AIWritingController(appState: state) { feature, _, _, _, _, _, _, _, _ in
+        let controller = AIWritingController(appState: state, generate: { feature, _, _, _, _, _, _, _, _ in
             if feature == .summary { return AIWritingResult(suggestions: [], report: "summary", image: nil) }
             return AIWritingResult(suggestions: [], report: "terms", image: nil, references: [reference])
-        }
+        })
         var revealed: EditorSelectionRequest?
         var replacement: EditorRangeReplacementRequest?
         let center = NotificationCenter.default
@@ -229,13 +229,13 @@ final class AIWritingControllerTests: XCTestCase {
         let started = expectation(description: "second background request")
         var models: [AIFeature: String] = [:]
         var reply: CheckedContinuation<AIWritingResult, Never>?
-        let controller = AIWritingController(appState: state, loadKey: { _, _ in nil }) { feature, _, _, profile, _, _, _, _, _ in
+        let controller = AIWritingController(appState: state, loadKey: { _, _ in nil }, generate: { feature, _, _, profile, _, _, _, _, _ in
             models[feature] = profile.modelID
             if feature == .summary {
                 return await withCheckedContinuation { continuation in reply = continuation; started.fulfill() }
             }
             return AIWritingResult(suggestions: [], report: "first", image: nil)
-        }
+        })
         let observer = NotificationCenter.default.addObserver(forName: EditorCommandNotification.extractTextSelection, object: nil, queue: .main) { notification in
             (notification.object as? EditorTextExtractionRequest)?.result = EditorTextSelectionSnapshot(documentID: document.id, range: NSRange(location: 0, length: 4), text: "text", editorRevision: 0, wasExplicitSelection: false)
         }
@@ -269,10 +269,10 @@ final class AIWritingControllerTests: XCTestCase {
         let started = expectation(description: "metadata request")
         var model = ""
         var reply: CheckedContinuation<AIWritingResult, Never>?
-        let controller = AIWritingController(appState: state, loadKey: { _, _ in nil }) { _, _, _, profile, _, _, _, _, _ in
+        let controller = AIWritingController(appState: state, loadKey: { _, _ in nil }, generate: { _, _, _, profile, _, _, _, _, _ in
             model = profile.modelID
             return await withCheckedContinuation { continuation in reply = continuation; started.fulfill() }
-        }
+        })
         controller.didSave(documentID: document.id)
         await fulfillment(of: [started], timeout: 2)
         XCTAssertEqual(model, "metadata-model")
@@ -298,11 +298,11 @@ final class AIWritingControllerTests: XCTestCase {
         let state = AppState(initialDocument: document, recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
         let started = expectation(description: "manual request")
         var model = ""
-        let controller = AIWritingController(appState: state, loadKey: { _, _ in nil }) { _, _, _, profile, _, _, _, _, _ in
+        let controller = AIWritingController(appState: state, loadKey: { _, _ in nil }, generate: { _, _, _, profile, _, _, _, _, _ in
             model = profile.modelID
             started.fulfill()
             return AIWritingResult(suggestions: [], report: "summary", image: nil)
-        }
+        })
         let observer = NotificationCenter.default.addObserver(forName: EditorCommandNotification.extractTextSelection, object: nil, queue: .main) { notification in
             (notification.object as? EditorTextExtractionRequest)?.result = EditorTextSelectionSnapshot(documentID: document.id, range: NSRange(location: 0, length: 4), text: "text", editorRevision: 0, wasExplicitSelection: false)
         }
@@ -345,11 +345,11 @@ final class AIWritingControllerTests: XCTestCase {
             configuration.text.isEnabled = true
             preferences.aiConfiguration = configuration
             state = AppState(initialDocument: document, recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
-            controller = AIWritingController(appState: state, loadKey: { _, _ in nil }) { feature, input, option, _, _, _, _, _, mode in
+            controller = AIWritingController(appState: state, loadKey: { _, _ in nil }, generate: { feature, input, option, _, _, _, _, _, mode in
                 sink.calls.append((feature, input, option))
                 sink.modes.append(mode)
                 return sink.result
-            }
+            })
             observer = NotificationCenter.default.addObserver(forName: EditorCommandNotification.extractTextSelection, object: nil, queue: .main) { notification in
                 (notification.object as? EditorTextExtractionRequest)?.result = EditorTextSelectionSnapshot(documentID: document.id, range: NSRange(location: 0, length: (text as NSString).length), text: text, editorRevision: sink.revision, wasExplicitSelection: false)
             }

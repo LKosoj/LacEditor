@@ -216,7 +216,8 @@ final class CommandPaletteTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         preferences.commandPalettePinned = [stale]
         let controller = CommandPaletteController()
-        let menu = mainMenu([submenu("Menu", [item("C0", Target())])])
+        let target = Target()
+        let menu = mainMenu([submenu("Menu", [item("C0", target)])])
         controller.present(menu: menu, preferences: preferences)
         XCTAssertEqual(controller.entries.count, 1)
         XCTAssertEqual(preferences.commandPalettePinned, [stale])

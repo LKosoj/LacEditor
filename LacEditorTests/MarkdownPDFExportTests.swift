@@ -1075,6 +1075,7 @@ final class MarkdownPDFExportTests: XCTestCase {
             finished.fulfill()
         }
         weak var weakService = service
+        weakService = service
         service?.start(snapshot: EditorDocument(text: "text").synchronizedSnapshot(), darkMode: false)
         service?.cancel()
         service?.cancel()

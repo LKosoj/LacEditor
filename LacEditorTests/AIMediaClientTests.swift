@@ -108,7 +108,7 @@ final class AIMediaClientTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: file) }
         AIMediaURLProtocol.handler = { _ in (403, Data("secret details".utf8)) }
         do { _ = try await client().transcribe(fileURL: file, profile: profile(.transcriptions), key: "secret"); XCTFail() }
-        catch AIError.http(let status) { XCTAssertEqual(status, 403) }
+        catch AIError.http(let status, _) { XCTAssertEqual(status, 403) }
         AIMediaURLProtocol.handler = { _ in throw URLError(.cancelled) }
         do { _ = try await client().transcribe(fileURL: file, profile: profile(.transcriptions), key: nil); XCTFail() }
         catch is CancellationError {} catch { XCTFail("Unexpected error") }

@@ -414,7 +414,8 @@ final class StabilityTests: XCTestCase {
             textContainerWidth: 656,
             textLength: 12_000,
             layoutGeneration: 7,
-            foldedRange: nil
+            foldedRange: nil,
+            automaticMediaFoldedRanges: []
         )
         XCTAssertEqual(base, base)
 
@@ -425,7 +426,8 @@ final class StabilityTests: XCTestCase {
             textContainerWidth: 676,
             textLength: base.textLength,
             layoutGeneration: base.layoutGeneration,
-            foldedRange: nil
+            foldedRange: nil,
+            automaticMediaFoldedRanges: []
         )
         XCTAssertNotEqual(base, resized)
 
@@ -436,7 +438,8 @@ final class StabilityTests: XCTestCase {
             textContainerWidth: base.textContainerWidth,
             textLength: base.textLength,
             layoutGeneration: base.layoutGeneration + 1,
-            foldedRange: nil
+            foldedRange: nil,
+            automaticMediaFoldedRanges: []
         )
         XCTAssertNotEqual(base, invalidated)
     }

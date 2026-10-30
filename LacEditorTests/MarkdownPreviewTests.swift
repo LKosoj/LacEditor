@@ -700,7 +700,7 @@ final class MarkdownPreviewTests: XCTestCase {
         let gate = RenderGate()
         let started = expectation(description: "first render started")
         let waiting = expectation(description: "second render queued")
-        let rendererActor = MarkdownRenderActor { text, darkMode, _, _ in
+        let rendererActor = MarkdownRenderActor { text, darkMode, _, _, _ in
             gate.render(text, darkMode: darkMode, started: started)
         }
         let firstCoordinator = DocumentTaskCoordinator()

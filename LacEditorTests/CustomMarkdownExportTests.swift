@@ -512,6 +512,7 @@ final class CustomMarkdownExportTests: XCTestCase {
         var document: EditorDocument? = EditorDocument(text: "first", language: .markdown)
         let id = try XCTUnwrap(document?.id)
         weak var releasedDocument = document
+        releasedDocument = document
         let state = AppState(initialDocument: document, recentFiles: RecentFilesStore(defaults: defaults), preferences: AppPreferences(defaults: defaults))
         let marker = directory.appendingPathComponent("started")
         let quoted = "'" + marker.path.replacingOccurrences(of: "'", with: "'\\''") + "'"

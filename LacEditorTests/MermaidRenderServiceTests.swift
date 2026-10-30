@@ -146,6 +146,7 @@ final class MermaidRenderServiceTests: XCTestCase {
             finished.fulfill()
         }
         weak var weakService = service
+        weakService = service
         service?.start()
         service?.cancel()
         service?.cancel()
