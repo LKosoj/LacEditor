@@ -111,13 +111,10 @@
 		D01302000000000000000001 /* FileVersionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01302000000000000000002 /* FileVersionService.swift */; };
 		D01408000000000000000001 /* WritingGoalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01408000000000000000002 /* WritingGoalStore.swift */; };
 		D01410000000000000000001 /* CriticMarkupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01410000000000000000002 /* CriticMarkupService.swift */; };
-		D01407000000000000000007 /* AppState+Manuscript.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01407000000000000000008 /* AppState+Manuscript.swift */; };
 		D01407000000000000000005 /* ManuscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01407000000000000000006 /* ManuscriptView.swift */; };
 		D01407000000000000000003 /* ManuscriptController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01407000000000000000004 /* ManuscriptController.swift */; };
 		D01407000000000000000001 /* ManuscriptService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01407000000000000000002 /* ManuscriptService.swift */; };
 		D01409000000000000000001 /* MarkdownRenameLinkService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01409000000000000000002 /* MarkdownRenameLinkService.swift */; };
-		D01409000000000000000003 /* AppState+RenameLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01409000000000000000004 /* AppState+RenameLinks.swift */; };
-		D01409000000000000000005 /* WindowManager+RenameLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01409000000000000000006 /* WindowManager+RenameLinks.swift */; };
 		D01000000000000000000007 /* AICustomChecksSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01000000000000000000008 /* AICustomChecksSettingsView.swift */; };
 		D01000000000000000000009 /* AIMediaClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0100000000000000000000A /* AIMediaClient.swift */; };
 		D0100000000000000000000B /* AIDocumentToolsController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0100000000000000000000C /* AIDocumentToolsController.swift */; };
@@ -204,7 +201,6 @@
 		D01311000000000000000002 /* FolderTagsController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01311000000000000000001 /* FolderTagsController.swift */; };
 		D01311000000000000000004 /* FolderTagsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01311000000000000000003 /* FolderTagsSection.swift */; };
 		D0131200000000000000000F /* NoteTemplateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01312000000000000000010 /* NoteTemplateService.swift */; };
-		D01312000000000000000011 /* AppState+Templates.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01312000000000000000012 /* AppState+Templates.swift */; };
 		D01400000000000000000001 /* AIQuestionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01400000000000000000002 /* AIQuestionController.swift */; };
 		D01400000000000000000003 /* AIQuestionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01400000000000000000004 /* AIQuestionService.swift */; };
 		D01400000000000000000005 /* AIQuestionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01400000000000000000006 /* AIQuestionView.swift */; };
@@ -335,13 +331,10 @@
 		D01302000000000000000002 /* FileVersionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FileVersionService.swift; path = Services/FileVersionService.swift; sourceTree = "<group>"; };
 		D01408000000000000000002 /* WritingGoalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WritingGoalStore.swift; path = Services/WritingGoalStore.swift; sourceTree = "<group>"; };
 		D01410000000000000000002 /* CriticMarkupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CriticMarkupService.swift; path = Services/CriticMarkupService.swift; sourceTree = "<group>"; };
-		D01407000000000000000008 /* AppState+Manuscript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Manuscript.swift"; sourceTree = "<group>"; };
 		D01407000000000000000006 /* ManuscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ManuscriptView.swift; path = Views/ManuscriptView.swift; sourceTree = "<group>"; };
 		D01407000000000000000004 /* ManuscriptController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ManuscriptController.swift; path = Services/ManuscriptController.swift; sourceTree = "<group>"; };
 		D01407000000000000000002 /* ManuscriptService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ManuscriptService.swift; path = Services/ManuscriptService.swift; sourceTree = "<group>"; };
 		D01409000000000000000002 /* MarkdownRenameLinkService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MarkdownRenameLinkService.swift; path = Services/MarkdownRenameLinkService.swift; sourceTree = "<group>"; };
-		D01409000000000000000004 /* AppState+RenameLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+RenameLinks.swift"; sourceTree = "<group>"; };
-		D01409000000000000000006 /* WindowManager+RenameLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WindowManager+RenameLinks.swift"; sourceTree = "<group>"; };
 		D01000000000000000000008 /* AICustomChecksSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AICustomChecksSettingsView.swift; path = Views/AICustomChecksSettingsView.swift; sourceTree = "<group>"; };
 		D0100000000000000000000A /* AIMediaClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIMediaClient.swift; path = Services/AIMediaClient.swift; sourceTree = "<group>"; };
 		D0100000000000000000000C /* AIDocumentToolsController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIDocumentToolsController.swift; path = Services/AIDocumentToolsController.swift; sourceTree = "<group>"; };
@@ -426,7 +419,6 @@
 		D01311000000000000000001 /* FolderTagsController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderTagsController.swift; sourceTree = "<group>"; };
 		D01311000000000000000003 /* FolderTagsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderTagsSection.swift; sourceTree = "<group>"; };
 		D01312000000000000000010 /* NoteTemplateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteTemplateService.swift; sourceTree = "<group>"; };
-		D01312000000000000000012 /* AppState+Templates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Templates.swift"; sourceTree = "<group>"; };
 		D01400000000000000000002 /* AIQuestionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIQuestionController.swift; path = Services/AIQuestionController.swift; sourceTree = "<group>"; };
 		D01400000000000000000004 /* AIQuestionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIQuestionService.swift; path = Services/AIQuestionService.swift; sourceTree = "<group>"; };
 		D01400000000000000000006 /* AIQuestionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIQuestionView.swift; path = Views/AIQuestionView.swift; sourceTree = "<group>"; };
@@ -557,10 +549,6 @@
 				D00700000000000000000002 /* L10n.swift */,
 				A00000000000000000000001 /* LacEditorApp.swift */,
 				A00000000000000000000002 /* AppState.swift */,
-				D01312000000000000000012 /* AppState+Templates.swift */,
-				D01409000000000000000004 /* AppState+RenameLinks.swift */,
-				D01407000000000000000008 /* AppState+Manuscript.swift */,
-				D01409000000000000000006 /* WindowManager+RenameLinks.swift */,
 				A0000000000000000000002C /* AppPreferences.swift */,
 				A00000000000000000000003 /* LacEditorCommands.swift */,
 				A0000000000000000000001B /* WindowManager.swift */,
@@ -934,7 +922,6 @@
 				D01200000000000000000011 /* MarkdownTableCellEditor.swift in Sources */,
 				D0120000000000000000000F /* FolderSearchService.swift in Sources */,
 				D0131200000000000000000F /* NoteTemplateService.swift in Sources */,
-				D01312000000000000000011 /* AppState+Templates.swift in Sources */,
 				D01307000000000000000002 /* FolderReplaceService.swift in Sources */,
 				D0120000000000000000000D /* MarkdownAutoPairService.swift in Sources */,
 				D01200000000000000000003 /* MarkdownTableEditingService.swift in Sources */,
@@ -960,13 +947,10 @@
 				D01302000000000000000001 /* FileVersionService.swift in Sources */,
 				D01408000000000000000001 /* WritingGoalStore.swift in Sources */,
 				D01410000000000000000001 /* CriticMarkupService.swift in Sources */,
-				D01407000000000000000007 /* AppState+Manuscript.swift in Sources */,
 				D01407000000000000000005 /* ManuscriptView.swift in Sources */,
 				D01407000000000000000003 /* ManuscriptController.swift in Sources */,
 				D01407000000000000000001 /* ManuscriptService.swift in Sources */,
 				D01409000000000000000001 /* MarkdownRenameLinkService.swift in Sources */,
-				D01409000000000000000003 /* AppState+RenameLinks.swift in Sources */,
-				D01409000000000000000005 /* WindowManager+RenameLinks.swift in Sources */,
 				D01000000000000000000007 /* AICustomChecksSettingsView.swift in Sources */,
 				D01000000000000000000009 /* AIMediaClient.swift in Sources */,
 				D0100000000000000000000B /* AIDocumentToolsController.swift in Sources */,
