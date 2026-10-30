@@ -34,6 +34,7 @@ final class LocalizationTests: XCTestCase {
         L10n.configure(defaults: defaults)
         let keys = AIFeature.allCases.flatMap { [$0.title, $0.needs, $0.result] }
             + AIRewriteMode.allCases.flatMap { [$0.title, $0.needs, $0.result] }
+            + [AIError.truncated.errorDescription ?? ""]
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         for language in ["zh-Hans", "en", "ru"] {
             let url = root.appendingPathComponent("LacEditor/\(language).lproj/Localizable.strings")

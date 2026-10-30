@@ -17,6 +17,7 @@ struct AIImageEditRequest {
 final class AIWritingController: ObservableObject {
     let documentTools: AIDocumentToolsController
     let question: AIQuestionController
+    let agent: AIAgentController
     @Published var feature: AIFeature = .clarity
     @Published var requestedFeature: AIFeature = .clarity
     @Published var option = ""
@@ -89,6 +90,7 @@ final class AIWritingController: ObservableObject {
         self.appState = appState
         documentTools = AIDocumentToolsController(appState: appState)
         question = AIQuestionController(appState: appState)
+        agent = AIAgentController(appState: appState)
         self.generate = generate
         self.editImage = editImage
         self.describe = describe
@@ -619,6 +621,9 @@ final class AIWritingController: ObservableObject {
         generatedAt = nil; resultRevision = nil
     }
 
+    /// Окно закрывается: агент не должен работать без окна.
+    func windowClosed() { if agent.hasConversation { agent.stop() } }
+
     func selectedDocumentChanged() {
         documentTools.selectedDocumentChanged()
         question.selectedDocumentChanged()
@@ -706,6 +711,7 @@ final class AIWritingController: ObservableObject {
     private func settingsChanged() {
         documentTools.settingsChanged()
         question.settingsChanged()
+        agent.settingsChanged()
         objectWillChange.send()
         guard let appState else { return }
         objectWillChange.send()

@@ -76,4 +76,58 @@ final class AIQuestionServiceTests: XCTestCase {
         let large = AIQuestionService.sizeBytes(history: [], question: "q", sources: [source("a", String(repeating: "x", count: AIRequestSize.threshold + 1))])
         XCTAssertGreaterThan(large.total, AIRequestSize.threshold)
     }
+
+    private func webTurn(answer: String = "a1", sources: [AIWebSource], citations: [AIWebCitation] = []) -> AIQuestionTurn {
+        var turn = turn("q1", answer)
+        turn.webSources = sources
+        turn.webCitations = citations
+        return turn
+    }
+
+    private func webSource(_ id: Int, title: String = "T", url: String) -> AIWebSource {
+        AIWebSource(id: id, title: title, url: URL(string: url)!, content: "PAGE TEXT \(id)", isVerified: true, readFailed: false)
+    }
+
+    func testAssistantHistoryContainsWebSourcesWithQuotesOnly() throws {
+        let sources = [webSource(0, title: "Первый", url: "https://example.org/a?x=1&y=2"), webSource(1, url: "https://example.org/b")]
+        let citations = [AIWebCitation(id: UUID(), sourceIndex: 0, quote: "цитата"), AIWebCitation(id: UUID(), sourceIndex: 0, quote: "second")]
+        let messages = AIQuestionService.messages(history: [webTurn(sources: sources, citations: citations)], question: "q2", sources: [])
+        guard case .assistant(let text) = messages[1] else { return XCTFail("expected assistant message") }
+        XCTAssertEqual(text, #"{"answer":"a1","webSources":[{"quotes":["цитата","second"],"title":"Первый","url":"https://example.org/a?x=1&y=2"},{"quotes":[],"title":"T","url":"https://example.org/b"}]}"#)
+        XCTAssertFalse(text.contains("PAGE TEXT"))
+        XCTAssertFalse(text.contains("resultIndex"))
+    }
+
+    func testAssistantHistoryWithoutWebSourcesKeepsOnlyAnswer() {
+        let messages = AIQuestionService.messages(history: [turn("q1", "a1")], question: "q2", sources: [])
+        XCTAssertEqual(messages[1], .assistant(#"{"answer":"a1"}"#))
+    }
+
+    func testSizeGrowsByTitleURLAndQuoteBytes() {
+        let plain = AIQuestionService.sizeBytes(history: [turn("q1", "a1")], question: "q", sources: [])
+        let source = webSource(0, title: "你好", url: "https://example.org/z")
+        let quote = AIWebCitation(id: UUID(), sourceIndex: 0, quote: "цитата")
+        let withSource = AIQuestionService.sizeBytes(history: [webTurn(sources: [source])], question: "q", sources: [])
+        XCTAssertEqual(withSource.history - plain.history, 6 + "https://example.org/z".utf8.count)
+        let withQuote = AIQuestionService.sizeBytes(history: [webTurn(sources: [source], citations: [quote])], question: "q", sources: [])
+        XCTAssertEqual(withQuote.history - withSource.history, 12)
+        XCTAssertEqual(withQuote.total - plain.total, withQuote.history - plain.history)
+    }
+
+    func testPlainInstructionsDoNotMentionWebCitationsButMentionHistorySources() {
+        XCTAssertFalse(AIQuestionService.instructions.contains("webCitations"))
+        XCTAssertTrue(AIQuestionService.instructions.contains("webSources"))
+        XCTAssertTrue(AIQuestionService.webInstructions.contains("truncated"))
+    }
+
+    func testModelMarkdownLinksFollowAllowedURLs() {
+        let text = "[a](https://example.org/a) [b](https://evil.example/b) [f](ftp://example.org/f)"
+        func links(_ allowed: Set<URL>?) -> [String] {
+            AttributedString(modelMarkdown: text, allowedURLs: allowed).runs.compactMap { $0.link?.absoluteString }
+        }
+        XCTAssertEqual(links([URL(string: "https://example.org/a")!]), ["https://example.org/a"])
+        XCTAssertEqual(links([]), [])
+        XCTAssertEqual(links(nil), ["https://example.org/a", "https://evil.example/b"])
+        XCTAssertEqual(links([URL(string: "ftp://example.org/f")!]), [])
+    }
 }

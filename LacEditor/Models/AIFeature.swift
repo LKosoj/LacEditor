@@ -2,7 +2,7 @@ import Foundation
 
 enum AIFeature: String, CaseIterable, Identifiable, Codable {
     case clarity, rewrite, completion, consistency, readerReview, structure, summary, sources, metadata, translation, tasksAndDecisions, table, illustration, imageDescription, imageEdit
-    case contextReview, compareVersions, customCheck, recognizeDocument, voiceDraft, mermaid, ask
+    case contextReview, compareVersions, customCheck, recognizeDocument, voiceDraft, mermaid, ask, agent
 
     var id: String { rawValue }
 
@@ -30,6 +30,7 @@ enum AIFeature: String, CaseIterable, Identifiable, Codable {
         case .voiceDraft: L10n.tr("语音草稿")
         case .mermaid: L10n.tr("生成 Mermaid 图表")
         case .ask: L10n.tr("向文档提问")
+        case .agent: L10n.tr("AI 代理")
         }
     }
 
@@ -58,7 +59,7 @@ enum AIFeature: String, CaseIterable, Identifiable, Codable {
 
     var isDocumentTool: Bool {
         switch self {
-        case .contextReview, .compareVersions, .customCheck, .recognizeDocument, .voiceDraft, .mermaid, .ask: true
+        case .contextReview, .compareVersions, .customCheck, .recognizeDocument, .voiceDraft, .mermaid, .ask, .agent: true
         default: false
         }
     }
@@ -80,7 +81,7 @@ enum AIFeature: String, CaseIterable, Identifiable, Codable {
         case .illustration: L10n.tr("描述需要生成的插图；留空则使用所选文本")
         case .imageEdit: L10n.tr("描述需要如何修改图片")
         case .imageDescription: nil
-        case .contextReview, .compareVersions, .customCheck, .recognizeDocument, .voiceDraft, .mermaid, .ask: nil
+        case .contextReview, .compareVersions, .customCheck, .recognizeDocument, .voiceDraft, .mermaid, .ask, .agent: nil
         }
     }
 }
@@ -104,7 +105,7 @@ extension AIFeature {
         switch self {
         case .clarity, .rewrite, .completion, .translation, .table, .summary, .metadata, .tasksAndDecisions: .writing
         case .consistency, .readerReview, .structure, .sources, .contextReview, .compareVersions,
-             .customCheck, .ask: .analysis
+             .customCheck, .ask, .agent: .analysis
         case .illustration, .imageDescription, .imageEdit, .recognizeDocument, .voiceDraft, .mermaid: .media
         }
     }
@@ -130,6 +131,7 @@ extension AIFeature {
         case .voiceDraft: L10n.tr("需要：麦克风录音或音频文件")
         case .mermaid: L10n.tr("需要：选中的文本，并说明要绘制的图表")
         case .ask: L10n.tr("需要：一个问题，以及当前文档（选区或全文）、当前窗口已打开的文档或所选文件")
+        case .agent: L10n.tr("需要：一个任务。代理会自行读取当前窗口已打开的文档和工作文件夹中的文件，读取的内容会发送给 AI 服务器")
         }
     }
 
@@ -147,6 +149,7 @@ extension AIFeature {
         case .translation: L10n.tr("结果：译文，接受前可对比，可撤销")
         case .tasksAndDecisions: L10n.tr("结果：行动项、决策和待解决问题，并附原文依据")
         case .ask: L10n.tr("结果：仅依据所选来源的回答，附可核对、可定位的引用")
+        case .agent: L10n.tr("结果：回答、已读取内容的记录和用量；修改只作为建议，已打开的文档接受后才会修改，未打开的文件只能通过单独的“应用到文件”按钮并确认后写入")
         case .table: L10n.tr("结果：Markdown 表格，接受前可对比，可撤销")
         case .illustration: L10n.tr("结果：生成的图片，可保存或插入文档")
         case .imageDescription: L10n.tr("结果：供屏幕阅读器使用的图片替代文字")

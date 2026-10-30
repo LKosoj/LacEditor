@@ -4,7 +4,7 @@ import ImageIO
 enum AITransportFailure: Equatable { case timedOut, offline, cannotConnect, secureConnection }
 
 enum AIError: LocalizedError {
-    case invalidConfiguration, disabled, keychain, network, transport(AITransportFailure), http(Int, String?), invalidResponse, refused
+    case invalidConfiguration, disabled, keychain, network, transport(AITransportFailure), http(Int, String?), invalidResponse, refused, truncated
 
     var errorDescription: String? {
         switch self {
@@ -24,6 +24,7 @@ enum AIError: LocalizedError {
             return if let detail { summary + "\n" + detail } else { summary }
         case .invalidResponse: return L10n.tr("AI 服务返回了无效或不完整的结果")
         case .refused: return L10n.tr("AI 服务拒绝了请求")
+        case .truncated: return L10n.tr("AI 回复因长度限制被截断，请缩短输入或提高输出上限后重试。")
         }
     }
 
@@ -69,6 +70,65 @@ enum AIError: LocalizedError {
             .joined(separator: " ")
         guard !normalized.isEmpty else { return nil }
         return String(normalized.prefix(500))
+    }
+}
+
+/// Описание функции, которую модель может вызвать; `parameters` — JSON Schema аргументов.
+struct AIToolDefinition: @unchecked Sendable {
+    let name: String
+    let description: String
+    let parameters: [String: Any]
+
+    static let webSearch = AIToolDefinition(
+        name: "web_search",
+        description: "Search the web for current information not present in the documents. Returns result snippets or page text with resultIndex.",
+        parameters: ["type": "object", "properties": ["query": ["type": "string", "description": "Short web search query"]],
+                     "required": ["query"], "additionalProperties": false])
+}
+
+/// Расход токенов одного ответа; сервер без поля usage даёт нули.
+struct AIUsage: Equatable, Sendable {
+    var inputTokens = 0
+    var outputTokens = 0
+
+    init(inputTokens: Int = 0, outputTokens: Int = 0) {
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+    }
+
+    /// Responses отдаёт input_tokens/output_tokens, Chat Completions — prompt_tokens/completion_tokens.
+    init(response: [String: Any]) {
+        let usage = response["usage"] as? [String: Any]
+        inputTokens = (usage?["input_tokens"] as? Int) ?? (usage?["prompt_tokens"] as? Int) ?? 0
+        outputTokens = (usage?["output_tokens"] as? Int) ?? (usage?["completion_tokens"] as? Int) ?? 0
+    }
+
+    static func + (lhs: AIUsage, rhs: AIUsage) -> AIUsage {
+        AIUsage(inputTokens: lhs.inputTokens + rhs.inputTokens, outputTokens: lhs.outputTokens + rhs.outputTokens)
+    }
+}
+
+/// Один шаг цикла: вызовы инструментов (с элементами для возврата модели) либо итоговый текст.
+struct AIAgentStep: @unchecked Sendable {
+    let calls: [AIToolCall]
+    let echoed: [[String: Any]]
+    let text: String?
+    let usage: AIUsage
+}
+
+enum AIToolResultItem {
+    static func toolResult(api: AIAPIProtocol, callID: String, output: String) -> [String: Any] {
+        api == .responses ? ["type": "function_call_output", "call_id": callID, "output": output]
+                          : ["role": "tool", "tool_call_id": callID, "content": output]
+    }
+
+    static func conversationItems(_ messages: [AIConversationMessage]) -> [[String: Any]] {
+        messages.map { message -> [String: Any] in
+            switch message {
+            case .user(let text): ["role": "user", "content": text]
+            case .assistant(let text): ["role": "assistant", "content": text]
+            }
+        }
     }
 }
 
@@ -300,12 +360,7 @@ struct AIClient {
     func generateConversation(messages: [AIConversationMessage], instructions: String, profile: AIModelProfile, key: String?) async throws -> String {
         guard profile.isEnabled else { throw AIError.disabled }
         let model = try model(profile)
-        let items = messages.map { message -> [String: Any] in
-            switch message {
-            case .user(let text): ["role": "user", "content": text]
-            case .assistant(let text): ["role": "assistant", "content": text]
-            }
-        }
+        let items = AIToolResultItem.conversationItems(messages)
         let path: String
         let body: [String: Any]
         switch profile.api {
@@ -321,86 +376,107 @@ struct AIClient {
         return try responseText(result, api: profile.api)
     }
 
-    /// Разговор с инструментом web_search: пока модель просит вызов, результат возвращается ей; на последнем раунде tool_choice = "none".
-    func generateConversation(messages: [AIConversationMessage], instructions: String, profile: AIModelProfile, key: String?,
-                              maxToolRounds: Int = 5, toolHandler: (AIToolCall) async throws -> String) async throws -> String {
+    /// Один запрос цикла инструментов: вызовы модели с элементами для возврата либо итоговый текст. Обрезка ответа проверяется первой.
+    func agentStep(items: [[String: Any]], instructions: String, tools: [AIToolDefinition], toolChoice: String,
+                   profile: AIModelProfile, key: String?) async throws -> AIAgentStep {
         guard profile.isEnabled else { throw AIError.disabled }
         let model = try model(profile)
-        let schema: [String: Any] = ["type": "object", "properties": ["query": ["type": "string", "description": "Short web search query"]],
-                                     "required": ["query"], "additionalProperties": false]
-        let details = "Search the web for current information not present in the documents. Returns result snippets or page text with resultIndex."
-        var items = messages.map { message -> [String: Any] in
-            switch message {
-            case .user(let text): ["role": "user", "content": text]
-            case .assistant(let text): ["role": "assistant", "content": text]
-            }
-        }
         let path: String
+        var body: [String: Any]
         switch profile.api {
-        case .responses: path = "responses"
-        case .chatCompletions: path = "chat/completions"
+        case .responses:
+            path = "responses"
+            body = ["model": model, "input": items, "instructions": instructions, "store": false]
+            if !tools.isEmpty {
+                body["tool_choice"] = toolChoice
+                body["tools"] = tools.map { ["type": "function", "name": $0.name, "description": $0.description, "parameters": $0.parameters, "strict": true] as [String: Any] }
+            }
+        case .chatCompletions:
+            path = "chat/completions"
+            body = ["model": model, "messages": [["role": "system", "content": instructions]] + items]
+            if !tools.isEmpty {
+                body["tool_choice"] = toolChoice
+                body["tools"] = tools.map { ["type": "function", "function": ["name": $0.name, "description": $0.description, "parameters": $0.parameters, "strict": true] as [String: Any]] as [String: Any] }
+            }
         default: throw AIError.invalidConfiguration
         }
-        for round in 0...maxToolRounds {
-            try Task.checkCancellation()
-            let choice = round == maxToolRounds ? "none" : "auto"
-            var body: [String: Any]
-            if profile.api == .responses {
-                body = ["model": model, "input": items, "instructions": instructions, "store": false, "tool_choice": choice,
-                        "tools": [["type": "function", "name": "web_search", "description": details, "parameters": schema, "strict": true]]]
-            } else {
-                body = ["model": model, "messages": [["role": "system", "content": instructions]] + items, "tool_choice": choice,
-                        "tools": [["type": "function", "function": ["name": "web_search", "description": details, "parameters": schema, "strict": true]]]]
+        let result = try object(await fetch(request(profile, path: path, key: key, body: body)))
+        var calls: [AIToolCall] = []
+        var echoed: [[String: Any]] = []
+        if profile.api == .responses {
+            let output = try responsesOutput(result)
+            for item in output where item["type"] as? String == "function_call" {
+                guard let id = item["call_id"] as? String, !id.isEmpty, let name = item["name"] as? String,
+                      let arguments = item["arguments"] as? String else { throw AIError.invalidResponse }
+                calls.append(AIToolCall(id: id, name: name, arguments: arguments))
             }
-            let result = try object(await fetch(request(profile, path: path, key: key, body: body)))
-            var calls: [AIToolCall] = []
-            var echoed: [[String: Any]] = []
-            if profile.api == .responses {
-                guard result["status"] as? String == "completed", let output = result["output"] as? [[String: Any]] else { throw AIError.invalidResponse }
-                for item in output where item["type"] as? String == "function_call" {
-                    guard let id = item["call_id"] as? String, !id.isEmpty, let name = item["name"] as? String,
-                          let arguments = item["arguments"] as? String else { throw AIError.invalidResponse }
+            if !calls.isEmpty {
+                // При store:false сервер не хранит reasoning: без encrypted_content такой элемент вернуть нельзя (404).
+                echoed = output.filter {
+                    guard $0["type"] as? String == "reasoning" else { return true }
+                    return !(($0["encrypted_content"] as? String) ?? "").isEmpty
+                }
+                // Элемент с id требует своего reasoning; без него возвращается по call_id и содержимому.
+                if echoed.count < output.count {
+                    echoed = echoed.map { var item = $0; item.removeValue(forKey: "id"); return item }
+                }
+            }
+        } else {
+            guard let choices = result["choices"] as? [[String: Any]], let choice = choices.first,
+                  let message = choice["message"] as? [String: Any] else { throw AIError.invalidResponse }
+            // Отказ проверяет responseText раньше длины, поэтому здесь обрезка не перекрывает его
+            if choice["finish_reason"] as? String == "length", !(message["refusal"] is String) { throw AIError.truncated }
+            if let rawCalls = message["tool_calls"] as? [[String: Any]], !rawCalls.isEmpty {
+                for raw in rawCalls {
+                    guard let id = raw["id"] as? String, !id.isEmpty, let function = raw["function"] as? [String: Any],
+                          let name = function["name"] as? String, let arguments = function["arguments"] as? String else { throw AIError.invalidResponse }
                     calls.append(AIToolCall(id: id, name: name, arguments: arguments))
                 }
-                if !calls.isEmpty {
-                    // При store:false сервер не хранит reasoning: без encrypted_content такой элемент вернуть нельзя (404).
-                    echoed = output.filter {
-                        guard $0["type"] as? String == "reasoning" else { return true }
-                        return !(($0["encrypted_content"] as? String) ?? "").isEmpty
-                    }
-                    // Элемент с id требует своего reasoning; без него возвращается по call_id и содержимому.
-                    if echoed.count < output.count {
-                        echoed = echoed.map { var item = $0; item.removeValue(forKey: "id"); return item }
-                    }
-                }
-            } else {
-                guard let choices = result["choices"] as? [[String: Any]], let message = choices.first?["message"] as? [String: Any] else { throw AIError.invalidResponse }
-                if let rawCalls = message["tool_calls"] as? [[String: Any]], !rawCalls.isEmpty {
-                    for raw in rawCalls {
-                        guard let id = raw["id"] as? String, !id.isEmpty, let function = raw["function"] as? [String: Any],
-                              let name = function["name"] as? String, let arguments = function["arguments"] as? String else { throw AIError.invalidResponse }
-                        calls.append(AIToolCall(id: id, name: name, arguments: arguments))
-                    }
-                    echoed = [message]
-                }
+                echoed = [message]
             }
-            if calls.isEmpty { return try responseText(result, api: profile.api) }
+        }
+        let text: String? = try calls.isEmpty ? responseText(result, api: profile.api) : nil
+        return AIAgentStep(calls: calls, echoed: echoed, text: text, usage: AIUsage(response: result))
+    }
+
+    /// Разговор с инструментами (по умолчанию web_search): пока модель просит вызов, результат возвращается ей; на последнем раунде tool_choice = "none".
+    func generateConversation(messages: [AIConversationMessage], instructions: String, profile: AIModelProfile, key: String?,
+                              maxToolRounds: Int = 5, tools: [AIToolDefinition] = [.webSearch],
+                              toolHandler: (AIToolCall) async throws -> String) async throws -> String {
+        var items = AIToolResultItem.conversationItems(messages)
+        for round in 0...maxToolRounds {
+            try Task.checkCancellation()
+            let step = try await agentStep(items: items, instructions: instructions, tools: tools,
+                                           toolChoice: round == maxToolRounds ? "none" : "auto", profile: profile, key: key)
+            if step.calls.isEmpty {
+                guard let text = step.text else { throw AIError.invalidResponse }
+                return text
+            }
             guard round < maxToolRounds else { throw AIError.invalidResponse }
-            items += echoed
-            for call in calls {
+            items += step.echoed
+            for call in step.calls {
                 try Task.checkCancellation()
                 let output = try await toolHandler(call)
-                items.append(profile.api == .responses ? ["type": "function_call_output", "call_id": call.id, "output": output]
-                                                       : ["role": "tool", "tool_call_id": call.id, "content": output])
+                items.append(AIToolResultItem.toolResult(api: profile.api, callID: call.id, output: output))
             }
         }
         throw AIError.invalidResponse
     }
 
+    /// Output items ответа Responses: сначала обрезка по длине, затем общая проверка статуса.
+    private func responsesOutput(_ result: [String: Any]) throws -> [[String: Any]] {
+        let status = result["status"] as? String
+        if status == "incomplete", (result["incomplete_details"] as? [String: Any])?["reason"] as? String == "max_output_tokens" {
+            throw AIError.truncated
+        }
+        guard status == "completed", let output = result["output"] as? [[String: Any]] else { throw AIError.invalidResponse }
+        return output
+    }
+
     private func responseText(_ result: [String: Any], api: AIAPIProtocol) throws -> String {
         let text: String
         if api == .responses {
-            guard result["status"] as? String == "completed", let output = result["output"] as? [[String: Any]] else { throw AIError.invalidResponse }
+            let output = try responsesOutput(result)
             var parts: [String] = []
             for item in output where item["type"] as? String == "message" {
                 guard let content = item["content"] as? [[String: Any]] else { throw AIError.invalidResponse }
@@ -417,6 +493,7 @@ struct AIClient {
             guard let choices = result["choices"] as? [[String: Any]], let choice = choices.first,
                   let message = choice["message"] as? [String: Any] else { throw AIError.invalidResponse }
             if message["refusal"] is String { throw AIError.refused }
+            if choice["finish_reason"] as? String == "length" { throw AIError.truncated }
             guard choice["finish_reason"] as? String == "stop", let content = message["content"] as? String else { throw AIError.invalidResponse }
             text = content
         }

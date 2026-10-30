@@ -2328,6 +2328,7 @@ final class AppState: ObservableObject {
     }
 
     func closeAuxiliaryWindows() {
+        aiWriting.windowClosed()
         closeVersionHistory()
         closeManuscript()
         templateTask?.cancel()

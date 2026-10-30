@@ -11,7 +11,7 @@ enum AIMessageAction: Equatable {
         switch error {
         case .disabled, .invalidConfiguration, .keychain: return .openSettings
         case .http(let status, _): return status == 401 || status == 403 ? .openSettings : .retry
-        case .network, .invalidResponse: return .retry
+        case .network, .invalidResponse, .truncated: return .retry
         case .transport(let failure): return failure == .secureConnection ? .openSettings : .retry
         case .refused: return nil
         }

@@ -152,7 +152,7 @@ enum FolderSearchService {
 
     /// Обратные ссылки: разрешённые wiki-ссылки и обычные Markdown-ссылки на `target` в `.md/.markdown` папки.
     static func backlinks(root: URL, target: BacklinkTarget, openDocuments: [OpenDocument],
-                          isCancelled: () -> Bool = { false }) throws -> Result<Match> {
+                          include: (File) -> Bool = { _ in true }, isCancelled: () -> Bool = { false }) throws -> Result<Match> {
         let root = normalized(root)
         try checkCancellation(isCancelled)
         let targetURL = normalized(target.url)
@@ -160,7 +160,7 @@ enum FolderSearchService {
         let needles = MarkdownBacklinkScanner.needles(for: target)
         var prepared: (targetPath: String, resolver: MarkdownWikiLinkResolver)?
         var matches: [Match] = []
-        let problems = try scan(root: root, openDocuments: openDocuments, markdownOnly: true, isCancelled: isCancelled,
+        let problems = try scan(root: root, openDocuments: openDocuments, markdownOnly: true, include: include, isCancelled: isCancelled,
                                 skip: { url, identity in identity?.matches(target.identity) == true || url == targetURL },
                                 prepare: { files in
             // Цель всегда входит в набор путей, даже если файла ещё нет на диске.
@@ -240,7 +240,9 @@ enum FolderSearchService {
     }
 
     /// Общий обход папки: открытые документы приоритетнее диска, символические ссылки и изменившиеся файлы попадают в проблемы.
-    private static func scan(root: URL, openDocuments: [OpenDocument], markdownOnly: Bool, isCancelled: () -> Bool,
+    /// `include` решает по файлу до его чтения: отклонённый файл не читается и не попадает в проблемы.
+    private static func scan(root: URL, openDocuments: [OpenDocument], markdownOnly: Bool, include: (File) -> Bool = { _ in true },
+                             isCancelled: () -> Bool,
                              skip: (URL, DocumentFileIdentity?) -> Bool = { _, _ in false },
                              prepare: ([File]) throws -> Void = { _ in },
                              visit: (String, File, Source) throws -> Void) throws -> [Problem] {
@@ -280,6 +282,7 @@ enum FolderSearchService {
         for file in files {
             try checkCancellation(isCancelled)
             if markdownOnly, !["md", "markdown"].contains(file.url.pathExtension.lowercased()) { continue }
+            if !include(file) { continue }
             let url = normalized(file.url)
             if excluded.contains(url) { continue }
             let identity = try pathIsSafe(url, root: root, isCancelled: isCancelled) ? DocumentFileIdentity.resolve(url) : nil
@@ -327,13 +330,14 @@ enum FolderSearchService {
     }
 
     static func search(root: URL, query: String, caseSensitive: Bool, openDocuments: [OpenDocument], kind: SearchKind = .text,
-                       options: TextSearchService.Options? = nil, isCancelled: () -> Bool = { false }) throws -> Result<Match> {
+                       options: TextSearchService.Options? = nil, include: (File) -> Bool = { _ in true },
+                       isCancelled: () -> Bool = { false }) throws -> Result<Match> {
         let root = normalized(root)
         try checkCancellation(isCancelled)
         guard !query.isEmpty else { return Result(root: root, values: [], problems: []) }
         var matches: [Match] = []
         var tagProblems: [Problem] = []
-        let problems = try scan(root: root, openDocuments: openDocuments, markdownOnly: kind == .tags, isCancelled: isCancelled) { text, file, source in
+        let problems = try scan(root: root, openDocuments: openDocuments, markdownOnly: kind == .tags, include: include, isCancelled: isCancelled) { text, file, source in
             if kind == .text {
                 try appendMatches(text, file: file, source: source, query: query,
                                   options: options ?? TextSearchService.Options(caseSensitive: caseSensitive),
@@ -535,13 +539,13 @@ enum FolderSearchService {
 
     private static func normalized(_ url: URL) -> URL { URL(fileURLWithPath: url.standardizedFileURL.path) }
 
-    private static func relativePath(_ url: URL, root: URL) -> String? {
+    static func relativePath(_ url: URL, root: URL) -> String? {
         let components = url.standardizedFileURL.pathComponents, base = root.standardizedFileURL.pathComponents
         guard components.count > base.count, components.starts(with: base) else { return nil }
         return components.dropFirst(base.count).joined(separator: "/")
     }
 
-    private static func pathIsSafe(_ url: URL, root: URL, isCancelled: () -> Bool) throws -> Bool {
+    static func pathIsSafe(_ url: URL, root: URL, isCancelled: () -> Bool) throws -> Bool {
         let components = url.standardizedFileURL.pathComponents, base = root.standardizedFileURL.pathComponents
         guard components.starts(with: base) else { return false }
         var current = root

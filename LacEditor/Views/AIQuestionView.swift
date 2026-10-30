@@ -92,7 +92,7 @@ struct AIQuestionView: View {
     private func turnView(_ turn: AIQuestionTurn) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(turn.question).font(.headline).textSelection(.enabled)
-            Text(AttributedString(modelMarkdown: turn.answer))
+            Text(AttributedString(modelMarkdown: turn.answer, allowedURLs: Set(turn.webSources.map(\.url))))
                 .textSelection(.enabled)
             ForEach(turn.citations) { citation in
                 let stale = controller.staleCitationIDs.contains(citation.id)
@@ -149,13 +149,13 @@ struct AIQuestionView: View {
 }
 
 extension AttributedString {
-    /// Markdown из ответа модели: кликабельными остаются только http(s)-ссылки.
-    init(modelMarkdown text: String) {
+    /// Markdown из ответа модели: кликабельными остаются только http(s)-ссылки; если задан `allowedURLs`, то только точно совпавшие с ним.
+    init(modelMarkdown text: String, allowedURLs: Set<URL>? = nil) {
         var result = (try? AttributedString(markdown: text, options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
         for run in result.runs {
             guard let url = run.link else { continue }
             let scheme = url.scheme?.lowercased()
-            if scheme != "http" && scheme != "https" { result[run.range].link = nil }
+            if scheme != "http" && scheme != "https" || allowedURLs?.contains(url) == false { result[run.range].link = nil }
         }
         self = result
     }

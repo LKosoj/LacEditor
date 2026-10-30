@@ -343,4 +343,224 @@ final class AIClientTests: XCTestCase {
             XCTFail("Expected refusal")
         } catch AIError.refused {} catch { XCTFail("Unexpected error") }
     }
+
+    // MARK: agentStep
+
+    private func agentStep(_ client: AIClient, _ api: AIAPIProtocol, tools: [AIToolDefinition] = [.webSearch], choice: String = "auto") async throws -> AIAgentStep {
+        try await client.agentStep(items: [["role": "user", "content": "q"]], instructions: "rules", tools: tools, toolChoice: choice,
+                                   profile: profile(api), key: nil)
+    }
+
+    private let responsesCall = #"{"type":"function_call","call_id":"c1","name":"web_search","arguments":"{\"query\":\"x\"}"}"#
+
+    func testAgentStepResponsesReturnsCallsEchoAndSendsTools() async throws {
+        let reply = #"{"status":"completed","usage":{"input_tokens":10,"output_tokens":4},"output":[{"type":"reasoning","id":"rs_1","encrypted_content":"enc"},"# + responsesCall + "]}"
+        AIURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/gateway/v1/responses")
+            let body = try self.body(request)
+            XCTAssertEqual(body["store"] as? Bool, false)
+            XCTAssertEqual(body["tool_choice"] as? String, "none")
+            let tools = try XCTUnwrap(body["tools"] as? [[String: Any]])
+            XCTAssertEqual(tools.count, 1)
+            XCTAssertEqual(tools[0]["type"] as? String, "function")
+            XCTAssertEqual(tools[0]["name"] as? String, "web_search")
+            XCTAssertEqual(tools[0]["strict"] as? Bool, true)
+            XCTAssertNotNil(tools[0]["parameters"] as? [String: Any])
+            return (200, Data(reply.utf8))
+        }
+        let step = try await agentStep(makeClient(), .responses, choice: "none")
+        XCTAssertEqual(step.calls.map(\.id), ["c1"])
+        XCTAssertEqual(step.calls.first?.name, "web_search")
+        XCTAssertEqual(step.calls.first?.arguments, #"{"query":"x"}"#)
+        XCTAssertEqual(step.echoed.count, 2)
+        XCTAssertEqual(step.echoed.first?["id"] as? String, "rs_1")
+        XCTAssertNil(step.text)
+        XCTAssertEqual(step.usage, AIUsage(inputTokens: 10, outputTokens: 4))
+    }
+
+    func testAgentStepDropsReasoningWithoutEncryptedContentAndStripsIDs() async throws {
+        let reply = #"{"status":"completed","output":[{"type":"reasoning","id":"rs_1"},{"type":"reasoning","id":"rs_2","encrypted_content":"enc"},{"type":"function_call","id":"fc_1","call_id":"c1","name":"web_search","arguments":"{}"}]}"#
+        AIURLProtocol.handler = { _ in (200, Data(reply.utf8)) }
+        let step = try await agentStep(makeClient(), .responses)
+        XCTAssertEqual(step.echoed.map { $0["type"] as? String }, ["reasoning", "function_call"])
+        XCTAssertTrue(step.echoed.allSatisfy { $0["id"] == nil })
+        XCTAssertEqual(step.echoed[1]["call_id"] as? String, "c1")
+    }
+
+    func testAgentStepChatReturnsCallsEchoAndSendsTools() async throws {
+        let reply = #"{"usage":{"prompt_tokens":7,"completion_tokens":3},"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":null,"tool_calls":[{"id":"t1","type":"function","function":{"name":"web_search","arguments":"{}"}}]}}]}"#
+        AIURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/gateway/v1/chat/completions")
+            let body = try self.body(request)
+            XCTAssertEqual(body["tool_choice"] as? String, "auto")
+            let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+            XCTAssertEqual(messages.map { $0["role"] as? String }, ["system", "user"])
+            let tools = try XCTUnwrap(body["tools"] as? [[String: Any]])
+            let function = try XCTUnwrap(tools.first?["function"] as? [String: Any])
+            XCTAssertEqual(function["name"] as? String, "web_search")
+            XCTAssertEqual(function["strict"] as? Bool, true)
+            return (200, Data(reply.utf8))
+        }
+        let step = try await agentStep(makeClient(), .chatCompletions)
+        XCTAssertEqual(step.calls.map(\.id), ["t1"])
+        XCTAssertEqual(step.echoed.count, 1)
+        XCTAssertEqual(step.echoed.first?["role"] as? String, "assistant")
+        XCTAssertNil(step.text)
+        XCTAssertEqual(step.usage, AIUsage(inputTokens: 7, outputTokens: 3))
+    }
+
+    func testAgentStepWithoutToolsOmitsToolKeysAndReturnsText() async throws {
+        AIURLProtocol.handler = { request in
+            let body = try self.body(request)
+            XCTAssertNil(body["tools"])
+            XCTAssertNil(body["tool_choice"])
+            return (200, Data(#"{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"done"}]}]}"#.utf8))
+        }
+        let responses = try await agentStep(makeClient(), .responses, tools: [])
+        XCTAssertEqual(responses.text, "done")
+        XCTAssertTrue(responses.calls.isEmpty)
+        XCTAssertEqual(responses.usage, AIUsage())
+        AIURLProtocol.handler = { request in
+            let body = try self.body(request)
+            XCTAssertNil(body["tools"])
+            XCTAssertNil(body["tool_choice"])
+            return (200, Data(#"{"choices":[{"finish_reason":"stop","message":{"content":"done"}}]}"#.utf8))
+        }
+        let chat = try await agentStep(makeClient(), .chatCompletions, tools: [])
+        XCTAssertEqual(chat.text, "done")
+    }
+
+    func testUsageReadsBothFormatsAndAddsUp() {
+        XCTAssertEqual(AIUsage(response: ["usage": ["input_tokens": 5, "output_tokens": 2]]), AIUsage(inputTokens: 5, outputTokens: 2))
+        XCTAssertEqual(AIUsage(response: ["usage": ["prompt_tokens": 6, "completion_tokens": 1]]), AIUsage(inputTokens: 6, outputTokens: 1))
+        XCTAssertEqual(AIUsage(response: [:]), AIUsage())
+        XCTAssertEqual(AIUsage(response: ["usage": ["input_tokens": 3]]), AIUsage(inputTokens: 3, outputTokens: 0))
+        XCTAssertEqual(AIUsage(inputTokens: 1, outputTokens: 2) + AIUsage(inputTokens: 10, outputTokens: 20), AIUsage(inputTokens: 11, outputTokens: 22))
+    }
+
+    func testResponsesTruncationIsDetectedWithAndWithoutToolCalls() async throws {
+        let message = #"{"type":"message","content":[{"type":"output_text","text":"part"}]}"#
+        for output in ["[" + responsesCall + "]", "[" + message + "]"] {
+            AIURLProtocol.handler = { _ in
+                (200, Data((#"{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":"# + output + "}").utf8))
+            }
+            do {
+                _ = try await agentStep(makeClient(), .responses)
+                XCTFail("Expected truncation")
+            } catch AIError.truncated {} catch { XCTFail("Unexpected error") }
+        }
+    }
+
+    func testOtherIncompleteReasonIsInvalidResponse() async throws {
+        for reply in [#"{"status":"incomplete","incomplete_details":{"reason":"content_filter"},"output":[]}"#, #"{"status":"failed","output":[]}"#] {
+            AIURLProtocol.handler = { _ in (200, Data(reply.utf8)) }
+            do {
+                _ = try await agentStep(makeClient(), .responses)
+                XCTFail("Expected invalid response")
+            } catch AIError.invalidResponse {} catch { XCTFail("Unexpected error") }
+        }
+    }
+
+    func testChatLengthIsTruncatedWithAndWithoutToolCalls() async throws {
+        let replies = [
+            #"{"choices":[{"finish_reason":"length","message":{"role":"assistant","tool_calls":[{"id":"t1","type":"function","function":{"name":"web_search","arguments":"{"}}]}}]}"#,
+            #"{"choices":[{"finish_reason":"length","message":{"role":"assistant","content":"part"}}]}"#
+        ]
+        for reply in replies {
+            AIURLProtocol.handler = { _ in (200, Data(reply.utf8)) }
+            do {
+                _ = try await agentStep(makeClient(), .chatCompletions)
+                XCTFail("Expected truncation")
+            } catch AIError.truncated {} catch { XCTFail("Unexpected error") }
+        }
+    }
+
+    func testGenerateTextAndConversationReportTruncation() async throws {
+        let replies: [(AIAPIProtocol, String)] = [
+            (.responses, #"{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[{"type":"message","content":[{"type":"output_text","text":"part"}]}]}"#),
+            (.chatCompletions, #"{"choices":[{"finish_reason":"length","message":{"content":"part"}}]}"#)
+        ]
+        for (api, reply) in replies {
+            AIURLProtocol.handler = { _ in (200, Data(reply.utf8)) }
+            do {
+                _ = try await makeClient().generateText(input: "x", instructions: "q", profile: profile(api), key: nil)
+                XCTFail("Expected truncation")
+            } catch AIError.truncated {} catch { XCTFail("Unexpected error") }
+            do {
+                _ = try await makeClient().generateConversation(messages: [.user("q")], instructions: "i", profile: profile(api), key: nil)
+                XCTFail("Expected truncation")
+            } catch AIError.truncated {} catch { XCTFail("Unexpected error") }
+            do {
+                _ = try await makeClient().generateConversation(messages: [.user("q")], instructions: "i", profile: profile(api), key: nil) { _ in "" }
+                XCTFail("Expected truncation")
+            } catch AIError.truncated {} catch { XCTFail("Unexpected error") }
+        }
+    }
+
+    func testChatRefusalWinsOverLength() async throws {
+        AIURLProtocol.handler = { _ in (200, Data(#"{"choices":[{"finish_reason":"length","message":{"refusal":"no","content":null}}]}"#.utf8)) }
+        do {
+            _ = try await makeClient().generateText(input: "x", instructions: "q", profile: profile(.chatCompletions), key: nil)
+            XCTFail("Expected refusal")
+        } catch AIError.refused {} catch { XCTFail("Unexpected error") }
+    }
+
+    func testTruncatedErrorIsLocalizedAndOffersRetry() {
+        XCTAssertEqual(AIError.truncated.errorDescription, L10n.tr("AI 回复因长度限制被截断，请缩短输入或提高输出上限后重试。"))
+        XCTAssertEqual(AIMessageAction.forError(AIError.truncated), .retry)
+    }
+
+    func testGenerateConversationWithToolsRunsHandlerAndReturnsText() async throws {
+        var requests = 0
+        AIURLProtocol.handler = { request in
+            requests += 1
+            let body = try self.body(request)
+            if requests == 1 {
+                XCTAssertEqual(body["tool_choice"] as? String, "auto")
+                return (200, Data((#"{"status":"completed","output":["# + self.responsesCall + "]}").utf8))
+            }
+            XCTAssertEqual(body["tool_choice"] as? String, "none")
+            let input = try XCTUnwrap(body["input"] as? [[String: Any]])
+            XCTAssertEqual(input.last?["type"] as? String, "function_call_output")
+            XCTAssertEqual(input.last?["output"] as? String, "found")
+            return (200, Data(#"{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"final"}]}]}"#.utf8))
+        }
+        let text = try await makeClient().generateConversation(messages: [.user("q")], instructions: "i", profile: profile(.responses), key: nil,
+                                                               maxToolRounds: 1) { call in
+            XCTAssertEqual(call.id, "c1")
+            return "found"
+        }
+        XCTAssertEqual(text, "final")
+        XCTAssertEqual(requests, 2)
+    }
+
+    func testToolResultItemsForBothProtocols() {
+        let responses = AIToolResultItem.toolResult(api: .responses, callID: "c1", output: "out")
+        XCTAssertEqual(responses["type"] as? String, "function_call_output")
+        XCTAssertEqual(responses["call_id"] as? String, "c1")
+        XCTAssertEqual(responses["output"] as? String, "out")
+        let chat = AIToolResultItem.toolResult(api: .chatCompletions, callID: "t1", output: "out")
+        XCTAssertEqual(chat["role"] as? String, "tool")
+        XCTAssertEqual(chat["tool_call_id"] as? String, "t1")
+        XCTAssertEqual(chat["content"] as? String, "out")
+        let items = AIToolResultItem.conversationItems([.user("a"), .assistant("b")])
+        XCTAssertEqual(items.map { $0["role"] as? String }, ["user", "assistant"])
+        XCTAssertEqual(items.map { $0["content"] as? String }, ["a", "b"])
+    }
+
+    func testAgentStepRejectsOtherProtocolsAndDisabledProfile() async throws {
+        AIURLProtocol.handler = { _ in XCTFail("No request expected"); return (500, Data()) }
+        for api in [AIAPIProtocol.decisions, .images] {
+            do {
+                _ = try await agentStep(makeClient(), api)
+                XCTFail("Expected invalid configuration")
+            } catch AIError.invalidConfiguration {} catch { XCTFail("Unexpected error") }
+        }
+        var disabled = profile(.responses)
+        disabled.isEnabled = false
+        do {
+            _ = try await makeClient().agentStep(items: [], instructions: "i", tools: [], toolChoice: "auto", profile: disabled, key: nil)
+            XCTFail("Expected disabled")
+        } catch AIError.disabled {} catch { XCTFail("Unexpected error") }
+    }
 }

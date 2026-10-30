@@ -151,7 +151,7 @@ final class UIPolishATests: XCTestCase {
             XCTAssertEqual(AIMessageAction.forError(AIError.transport(failure)), .retry)
         }
         XCTAssertEqual(AIMessageAction.forError(AIError.transport(.secureConnection)), .openSettings)
-        let errors: [AIError] = [.invalidConfiguration, .disabled, .keychain, .network, .transport(.timedOut), .http(500, nil), .invalidResponse, .refused]
+        let errors: [AIError] = [.invalidConfiguration, .disabled, .keychain, .network, .transport(.timedOut), .http(500, nil), .invalidResponse, .refused, .truncated]
         for error in errors { XCTAssertNotEqual(AIMessageAction.forError(error), .sendAnyway) }
     }
 

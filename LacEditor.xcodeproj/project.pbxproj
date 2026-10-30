@@ -205,6 +205,12 @@
 		D01400000000000000000003 /* AIQuestionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01400000000000000000004 /* AIQuestionService.swift */; };
 		D01400000000000000000005 /* AIQuestionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01400000000000000000006 /* AIQuestionView.swift */; };
 		D01500000000000000000001 /* AIWebSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01500000000000000000002 /* AIWebSearchService.swift */; };
+		D01600000000000000000001 /* AIAgentTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01600000000000000000002 /* AIAgentTools.swift */; };
+		D01600000000000000000003 /* AIAgentRun.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01600000000000000000004 /* AIAgentRun.swift */; };
+		D01600000000000000000005 /* AIAgentController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01600000000000000000006 /* AIAgentController.swift */; };
+		D01600000000000000000007 /* AIAgentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01600000000000000000008 /* AIAgentView.swift */; };
+		D01600000000000000000009 /* AIAgentEdits.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0160000000000000000000A /* AIAgentEdits.swift */; };
+		D0160000000000000000000B /* AIAgentPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0160000000000000000000C /* AIAgentPreset.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -423,6 +429,12 @@
 		D01400000000000000000004 /* AIQuestionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIQuestionService.swift; path = Services/AIQuestionService.swift; sourceTree = "<group>"; };
 		D01400000000000000000006 /* AIQuestionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIQuestionView.swift; path = Views/AIQuestionView.swift; sourceTree = "<group>"; };
 		D01500000000000000000002 /* AIWebSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIWebSearchService.swift; path = Services/AIWebSearchService.swift; sourceTree = "<group>"; };
+		D01600000000000000000002 /* AIAgentTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIAgentTools.swift; path = Services/AIAgentTools.swift; sourceTree = "<group>"; };
+		D01600000000000000000004 /* AIAgentRun.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIAgentRun.swift; path = Services/AIAgentRun.swift; sourceTree = "<group>"; };
+		D01600000000000000000006 /* AIAgentController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIAgentController.swift; path = Services/AIAgentController.swift; sourceTree = "<group>"; };
+		D01600000000000000000008 /* AIAgentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIAgentView.swift; path = Views/AIAgentView.swift; sourceTree = "<group>"; };
+		D0160000000000000000000A /* AIAgentEdits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIAgentEdits.swift; path = Services/AIAgentEdits.swift; sourceTree = "<group>"; };
+		D0160000000000000000000C /* AIAgentPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIAgentPreset.swift; path = Models/AIAgentPreset.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -488,6 +500,7 @@
 				D00D00000000000000000006 /* AIClient.swift */,
 				D00D00000000000000000008 /* AISettingsView.swift */,
 				D00E00000000000000000002 /* AIFeature.swift */,
+				D0160000000000000000000C /* AIAgentPreset.swift */,
 				D00E00000000000000000004 /* JinaConfiguration.swift */,
 				D00E00000000000000000008 /* AIWritingService.swift */,
 				D00E0000000000000000000A /* AIWritingController.swift */,
@@ -519,6 +532,11 @@
 				D01400000000000000000004 /* AIQuestionService.swift */,
 				D01500000000000000000002 /* AIWebSearchService.swift */,
 				D01400000000000000000006 /* AIQuestionView.swift */,
+				D01600000000000000000002 /* AIAgentTools.swift */,
+				D01600000000000000000004 /* AIAgentRun.swift */,
+				D01600000000000000000006 /* AIAgentController.swift */,
+				D01600000000000000000008 /* AIAgentView.swift */,
+				D0160000000000000000000A /* AIAgentEdits.swift */,
 				D01100000000000000000002 /* Models/AITranslationLanguage.swift */,
 				D00C00000000000000000002 /* Mermaid */,
 				D01200000000000000000022 /* MathJax */,
@@ -958,6 +976,12 @@
 				D0100000000000000000000F /* AIVoiceRecorder.swift in Sources */,
 				D01000000000000000000011 /* AIDocumentToolsView.swift in Sources */,
 				D01400000000000000000001 /* AIQuestionController.swift in Sources */,
+				D01600000000000000000001 /* AIAgentTools.swift in Sources */,
+				D01600000000000000000003 /* AIAgentRun.swift in Sources */,
+				D01600000000000000000005 /* AIAgentController.swift in Sources */,
+				D01600000000000000000007 /* AIAgentView.swift in Sources */,
+				D01600000000000000000009 /* AIAgentEdits.swift in Sources */,
+				D0160000000000000000000B /* AIAgentPreset.swift in Sources */,
 				D01400000000000000000003 /* AIQuestionService.swift in Sources */,
 				D01500000000000000000001 /* AIWebSearchService.swift in Sources */,
 				D01400000000000000000005 /* AIQuestionView.swift in Sources */,

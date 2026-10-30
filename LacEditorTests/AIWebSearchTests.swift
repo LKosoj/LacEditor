@@ -412,4 +412,119 @@ final class AIWebSearchTests: XCTestCase {
         await settle(controller)
         XCTAssertFalse(controller.message.contains(hint))
     }
+
+    // MARK: - Потолки результатов и страниц
+
+    private func installPages(count: Int, content: @escaping (String) -> String) {
+        WebSearchTestProtocol.handler = { request, body in
+            if request.url?.path == "/search" {
+                return (200, self.json(["data": (0..<count).map { ["title": "T\($0)", "url": "https://example.org/\($0)", "description": "snippet \($0)"] }]))
+            }
+            let url = body["url"] as? String ?? ""
+            return (200, self.json(["data": ["title": "T", "url": url, "content": content(url)]]))
+        }
+    }
+
+    private func search(_ web: AIWebSearchSession, _ query: String = "q") async throws -> [String: Any] {
+        let output = try await web.run(AIToolCall(id: "c", name: "web_search", arguments: "{\"query\":\"\(query)\"}"))
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any])
+    }
+
+    func testTruncateKeepsShortTextAndDoesNotSplitComposedCharacters() {
+        XCTAssertEqual(AIWebSearchSession.truncate("abcde", limit: 5).text, "abcde")
+        XCTAssertFalse(AIWebSearchSession.truncate("abcde", limit: 5).truncated)
+        let plain = AIWebSearchSession.truncate("abcdef", limit: 5)
+        XCTAssertEqual(plain.text, "abcde")
+        XCTAssertTrue(plain.truncated)
+        // граница внутри суррогатной пары
+        let pair = AIWebSearchSession.truncate("abcd😀e", limit: 5)
+        XCTAssertEqual(pair.text, "abcd")
+        XCTAssertTrue(pair.truncated)
+        // граница перед комбинирующим знаком
+        let combining = AIWebSearchSession.truncate("abcde\u{301}f", limit: 5)
+        XCTAssertEqual(combining.text, "abcd")
+        XCTAssertTrue(combining.truncated)
+    }
+
+    func testLongPageIsTruncatedAndMarkedOnlyWhenCut() async throws {
+        installPages(count: 2) { $0.hasSuffix("/0") ? String(repeating: "x", count: AIWebSearchSession.maxPageCharacters + 100) : "short page" }
+        let web = webSession(reader: true)
+        let results = try XCTUnwrap(try await search(web)["results"] as? [[String: Any]])
+        XCTAssertEqual((results[0]["text"] as? String)?.utf16.count, AIWebSearchSession.maxPageCharacters)
+        XCTAssertEqual(results[0]["truncated"] as? Bool, true)
+        XCTAssertEqual(results[0]["verified"] as? Bool, true)
+        XCTAssertNil(results[1]["truncated"])
+        XCTAssertEqual(web.sources.map(\.isTruncated), [true, false])
+        XCTAssertEqual(web.sources[0].content.utf16.count, AIWebSearchSession.maxPageCharacters)
+        XCTAssertTrue(web.sources[0].isVerified)
+    }
+
+    func testOwnPageLimitIsApplied() async throws {
+        installPages(count: 1) { _ in String(repeating: "x", count: 500) }
+        let web = AIWebSearchSession(maxPageCharacters: 100, client: JinaClient(session: session()), configuration: jinaConfiguration(reader: true), searchKey: nil, readerKey: nil)
+        let results = try XCTUnwrap(try await search(web)["results"] as? [[String: Any]])
+        XCTAssertEqual((results[0]["text"] as? String)?.utf16.count, 100)
+        XCTAssertEqual(results[0]["truncated"] as? Bool, true)
+        XCTAssertEqual(web.sources[0].content.utf16.count, 100)
+    }
+
+    func testLongSnippetWithoutReaderIsTruncated() async throws {
+        WebSearchTestProtocol.handler = { _, _ in
+            (200, self.json(["data": [["title": "A", "url": "https://example.org/a", "description": String(repeating: "y", count: AIWebSearchSession.maxPageCharacters + 1)]]]))
+        }
+        let web = webSession(reader: false)
+        let results = try XCTUnwrap(try await search(web)["results"] as? [[String: Any]])
+        XCTAssertEqual(results[0]["truncated"] as? Bool, true)
+        XCTAssertEqual(web.sources[0].content.utf16.count, AIWebSearchSession.maxPageCharacters)
+        XCTAssertFalse(web.sources[0].isVerified)
+    }
+
+    func testPageCutOnSurrogatePairBoundaryIsShortened() async throws {
+        let page = String(repeating: "x", count: AIWebSearchSession.maxPageCharacters - 1) + "😀tail"
+        installPages(count: 1) { _ in page }
+        let web = webSession(reader: true)
+        _ = try await search(web)
+        XCTAssertEqual(web.sources[0].content.utf16.count, AIWebSearchSession.maxPageCharacters - 1)
+        XCTAssertTrue(web.sources[0].isTruncated)
+    }
+
+    func testCitationBeyondTruncationIsDroppedAndBeforeIsAccepted() async throws {
+        installPages(count: 1) { _ in "early quote " + String(repeating: "x", count: AIWebSearchSession.maxPageCharacters) + " late quote" }
+        let web = webSession(reader: true)
+        _ = try await search(web)
+        let response = #"{"answer":"a","webCitations":[{"resultIndex":0,"quote":"early quote"},{"resultIndex":0,"quote":"late quote"}]}"#
+        let reply = try AIQuestionService.parse(response, sources: document(), web: web.sources, readerEnabled: true)
+        XCTAssertEqual(reply.webCitations.map(\.quote), ["early quote"])
+        XCTAssertEqual(reply.skipped, 1)
+    }
+
+    func testOnlyFirstFiveResultsAreUsed() async throws {
+        installPages(count: 7) { "full \($0)" }
+        let web = webSession(reader: true)
+        let results = try XCTUnwrap(try await search(web)["results"] as? [[String: Any]])
+        XCTAssertEqual(results.count, AIWebSearchSession.maxResults)
+        XCTAssertEqual(web.sources.count, 5)
+        XCTAssertEqual(jinaRequests.count, 1 + 5)
+    }
+
+    func testCustomSearchLimitIsUsedInCheckAndMessage() async throws {
+        installPages(count: 1) { _ in "page" }
+        let web = AIWebSearchSession(maxSearches: 1, client: JinaClient(session: session()), configuration: jinaConfiguration(reader: false), searchKey: nil, readerKey: nil)
+        _ = try await search(web, "one")
+        let limited = try XCTUnwrap(try await search(web, "two")["error"] as? String)
+        XCTAssertTrue(limited.contains("search limit reached (1)"))
+        XCTAssertEqual(web.searches, 1)
+        XCTAssertEqual(jinaRequests.count, 1)
+    }
+
+    func testRepeatedURLReusesSourceWithoutReadingAgainAndKeepsTruncation() async throws {
+        installPages(count: 1) { _ in String(repeating: "x", count: AIWebSearchSession.maxPageCharacters + 1) }
+        let web = webSession(reader: true)
+        _ = try await search(web, "one")
+        let readsAfterFirst = jinaRequests.count
+        let results = try XCTUnwrap(try await search(web, "two")["results"] as? [[String: Any]])
+        XCTAssertEqual(web.sources.count, 1)
+        XCTAssertEqual(results[0]["truncated"] as? Bool, true)
+        XCTAssertEqual(jinaRequests.count, readsAfterFirst + 1)
+    }
 }

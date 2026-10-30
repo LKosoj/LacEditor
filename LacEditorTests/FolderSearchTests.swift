@@ -152,10 +152,10 @@ final class FolderSearchTests: XCTestCase {
         XCTAssertTrue(result.problems.contains { $0.url.path == file.path && $0.reason == .conflictingOpenDocuments })
         XCTAssertTrue(result.problems.contains { $0.url.path == link.path && $0.reason == .symbolicLink })
         var checks = 0
-        XCTAssertThrowsError(try FolderSearchService.search(root: root, query: "needle", caseSensitive: true, openDocuments: []) {
+        XCTAssertThrowsError(try FolderSearchService.search(root: root, query: "needle", caseSensitive: true, openDocuments: [], isCancelled: {
             checks += 1
             return checks > 3
-        }) { XCTAssertTrue($0 is CancellationError) }
+        })) { XCTAssertTrue($0 is CancellationError) }
     }
 
     func testMarkdownFilesListsOnlyMarkdownAndSkipsSymlinkedDirectories() throws {

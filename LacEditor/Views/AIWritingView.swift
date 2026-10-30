@@ -32,6 +32,8 @@ struct AIWritingView: View {
             }
             if controller.requestedFeature == .ask {
                 AIQuestionView(controller: controller.question, openSettings: openSettings)
+            } else if controller.requestedFeature == .agent {
+                AIAgentView(controller: controller.agent, openSettings: openSettings)
             } else if controller.requestedFeature.isDocumentTool {
                 AIDocumentToolsView(controller: controller.documentTools, feature: controller.requestedFeature, openSettings: openSettings)
             } else {
