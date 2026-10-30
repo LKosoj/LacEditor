@@ -841,7 +841,7 @@ final class UIExperimentTests: XCTestCase {
     }
 
     func testDataNamespacesDoNotOverlap() {
-        XCTAssertEqual(AppEnvironment.dataDirectoryName(for: "com.laceditor.app"), "LacEditor")
+        XCTAssertEqual(AppEnvironment.dataDirectoryName(for: "com.koslaceditor.app"), "LacEditor")
         XCTAssertEqual(AppEnvironment.dataDirectoryName(for: AppEnvironment.experimentIdentifier), "LacEditor-UI-Experiment")
         XCTAssertEqual(AppEnvironment.dataDirectoryName(for: "com.laceditor.acceptance"), "LacEditor-Acceptance")
     }

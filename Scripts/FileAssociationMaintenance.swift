@@ -14,7 +14,7 @@ struct FileAssociationMaintenance {
         init(_ message: String) { description = message }
     }
     static let registrar = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
-    static let identifiers: Set<String> = ["com.laceditor.app", "com.laceditor.acceptance", "com.laceditor.development",
+    static let identifiers: Set<String> = ["com.koslaceditor.app", "com.laceditor.acceptance", "com.laceditor.development",
                                            "com.laceditor.ui-experiment", "com.laceditor.native-tabs-experiment",
                                            "com.laceditor.local-verification"]
     static let installedURL = URL(fileURLWithPath: "/Applications/LacEditor.app")
@@ -67,7 +67,7 @@ struct FileAssociationMaintenance {
     }
 
     static func clean() throws {
-        guard Bundle(url: installedURL)?.bundleIdentifier == "com.laceditor.app" else {
+        guard Bundle(url: installedURL)?.bundleIdentifier == "com.koslaceditor.app" else {
             throw Failure("未找到 /Applications/LacEditor.app 正式 App，停止处理。")
         }
         for entry in try inventory() where entry.path != installedURL.path {
@@ -126,7 +126,7 @@ struct FileAssociationMaintenance {
                   fm.fileExists(atPath: app.path) else { continue }
             guard !((try directory.resourceValues(forKeys: [.isSymbolicLinkKey])).isSymbolicLink ?? false),
                   !((try app.resourceValues(forKeys: [.isSymbolicLinkKey])).isSymbolicLink ?? false),
-                  let bundle = Bundle(url: app), bundle.bundleIdentifier == "com.laceditor.app",
+                  let bundle = Bundle(url: app), bundle.bundleIdentifier == "com.koslaceditor.app",
                   let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
                   let build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
                   version == directory.lastPathComponent,
@@ -165,16 +165,16 @@ struct FileAssociationMaintenance {
         let sample = """
         bundle id: Example (0x1)
         path: /tmp/with spaces/LacEditor.app (0x42)
-        identifier: com.laceditor.app
+        identifier: com.koslaceditor.app
         bundle id: Other (0x2)
         path: /Applications/Other.app (0x43)
         identifier: com.example.other
         bundle id: LacEditor (0x3)
         path: /Applications/LacEditor.app (0x44)
-        identifier: com.laceditor.app
+        identifier: com.koslaceditor.app
         """
-        guard parse(sample) == [Entry(path: "/tmp/with spaces/LacEditor.app", identifier: "com.laceditor.app"),
-                                Entry(path: installedURL.path, identifier: "com.laceditor.app")] else { throw Failure("解析回归失败") }
+        guard parse(sample) == [Entry(path: "/tmp/with spaces/LacEditor.app", identifier: "com.koslaceditor.app"),
+                                Entry(path: installedURL.path, identifier: "com.koslaceditor.app")] else { throw Failure("解析回归失败") }
         print("登记解析和精确身份过滤验证通过。")
     }
 

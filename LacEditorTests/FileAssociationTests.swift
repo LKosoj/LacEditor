@@ -7,7 +7,7 @@ import XCTest
 final class FileAssociationTests: XCTestCase {
     private let installed = FileAssociationService.ApplicationIdentity(
         url: URL(fileURLWithPath: "/Applications/LacEditor.app"),
-        identifier: "com.laceditor.app", declaresAssociations: true)
+        identifier: "com.koslaceditor.app", declaresAssociations: true)
 
     func testCatalogGroupsAliasesAndDoesNotOfferVideoTransportStreams() throws {
         let formats = FileAssociationFormat.catalog()
@@ -53,7 +53,7 @@ final class FileAssociationTests: XCTestCase {
         let otherURL = directory.appendingPathComponent("LacEditor.app")
         let contents = otherURL.appendingPathComponent("Contents")
         try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
-        try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": "com.laceditor.app"],
+        try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": "com.koslaceditor.app"],
                                            format: .xml, options: 0).write(to: contents.appendingPathComponent("Info.plist"))
         let other = FileAssociationService(identity: installed, formats: [service.rows[0].format],
             client: .init(defaultApplication: { _ in otherURL }, setDefault: { _, _ in writes += 1 }))

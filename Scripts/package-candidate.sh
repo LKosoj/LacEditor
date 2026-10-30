@@ -35,7 +35,7 @@ trap cleanup EXIT
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDocumentTypes:0:LSHandlerRank' "$built_app/Contents/Info.plist")" == 'None' ]]
 ditto "$built_app" "$app_path"
 info_plist="$app_path/Contents/Info.plist"
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$info_plist")" == 'com.laceditor.app' ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$info_plist")" == 'com.koslaceditor.app' ]]
 stage="$(/usr/libexec/PlistBuddy -c 'Print :LacEditorReleaseStage' "$info_plist")"
 if $release_package; then
     [[ -z "$stage" ]]
