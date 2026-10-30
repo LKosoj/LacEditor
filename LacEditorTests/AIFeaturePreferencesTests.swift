@@ -272,6 +272,15 @@ final class AIFeaturePreferencesTests: XCTestCase {
         XCTAssertTrue(updated.systemSpellingEnabled)
         XCTAssertFalse(updated.systemGrammarEnabled)
     }
+
+    @MainActor
+    func testRemovedProvenanceFeatureIsIgnoredInSavedSettings() throws {
+        let suite = "LacEditor-AIFeaturesLegacy-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(try JSONEncoder().encode(["provenance", "clarity"]), forKey: "aiFeatures")
+        XCTAssertEqual(AppPreferences(defaults: defaults).aiFeatures, [.clarity])
+    }
     @MainActor
     func testFeatureModelsUseRoleSettingsAndPersistUnknownKeys() throws {
         let suite = "LacEditor-AIModels-\(UUID().uuidString)"
@@ -307,4 +316,63 @@ final class AIFeaturePreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.aiProfile(for: .summary, customCheck: AICustomCheck(modelID: "other")), preferences.aiConfiguration.text)
     }
 
+    @MainActor
+    func testLegacyFeaturesMigrateToMergedOnes() throws {
+        let suite = "LacEditor-Migrate-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(try JSONEncoder().encode(["clarity", "shorten", "audienceReview", "decisions"]), forKey: "aiFeatures")
+        let preferences = AppPreferences(defaults: defaults)
+        XCTAssertEqual(preferences.aiFeatures, [.clarity, .rewrite, .readerReview, .ask])
+        let stored = try JSONDecoder().decode([String].self, from: XCTUnwrap(defaults.data(forKey: "aiFeatures")))
+        XCTAssertEqual(Set(stored), ["clarity", "rewrite", "readerReview", "ask"])
+    }
+
+    @MainActor
+    func testLegacyModelsMigrateByOrder() throws {
+        let suite = "LacEditor-MigrateModels-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(["rephrase": " ", "shorten": "m-short", "expand": "m-exp", "terminology": "m-term", "futureFeature": "future", "toneReview": "  "], forKey: "aiFeatureModelIDs")
+        let preferences = AppPreferences(defaults: defaults)
+        XCTAssertEqual(preferences.aiFeatureModelIDs, ["rewrite": "m-short", "consistency": "m-term", "futureFeature": "future"])
+        XCTAssertEqual(AppPreferences(defaults: defaults).aiFeatureModelIDs, preferences.aiFeatureModelIDs)
+    }
+
+    func testMigrationKeepsExistingNewModelAndIsIdempotent() {
+        let result = AIFeatureMigration.migrate(features: ["expand"], models: ["rewrite": "keep", "rephrase": "old"])
+        XCTAssertEqual(result.models, ["rewrite": "keep"])
+        XCTAssertEqual(result.features, ["rewrite"])
+        XCTAssertTrue(result.changed)
+        XCTAssertFalse(AIFeatureMigration.migrate(features: result.features, models: result.models).changed)
+        XCTAssertEqual(AIFeatureMigration.migrate(features: [], models: ["terminology": "t", "contradictions": "c"]).models, ["consistency": "t"])
+        XCTAssertFalse(AIFeatureMigration.migrate(features: ["clarity"], models: ["futureFeature": "x"]).changed)
+    }
+
+    func testExplainAndDecisionsMigrateToAsk() {
+        for old in [["explain"], ["decisions"], ["explain", "decisions"]] {
+            let result = AIFeatureMigration.migrate(features: old + ["clarity"], models: [:])
+            XCTAssertEqual(Set(result.features), ["ask", "clarity"])
+            XCTAssertTrue(result.changed)
+        }
+        var result = AIFeatureMigration.migrate(features: ["explain", "decisions"], models: ["explain": " ", "decisions": "m-dec", "futureFeature": "x"])
+        XCTAssertEqual(result.models, ["ask": "m-dec", "futureFeature": "x"])
+        result = AIFeatureMigration.migrate(features: [], models: ["explain": "m-exp", "decisions": "m-dec"])
+        XCTAssertEqual(result.models, ["ask": "m-exp"])
+        result = AIFeatureMigration.migrate(features: ["explain"], models: ["ask": "keep", "explain": "old"])
+        XCTAssertEqual(result.models, ["ask": "keep"])
+        let again = AIFeatureMigration.migrate(features: result.features, models: result.models)
+        XCTAssertFalse(again.changed)
+        XCTAssertEqual(again.features, ["ask"])
+    }
+
+    @MainActor
+    func testMigrationWithoutLegacyValuesDoesNotWrite() throws {
+        let suite = "LacEditor-MigrateClean-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        _ = AppPreferences(defaults: defaults)
+        XCTAssertNil(defaults.object(forKey: "aiFeatures"))
+        XCTAssertNil(defaults.object(forKey: "aiFeatureModelIDs"))
+    }
 }

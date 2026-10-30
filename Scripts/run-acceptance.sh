@@ -57,7 +57,6 @@ swiftc -O -parse-as-library \
     LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Models/EditorDocument.swift \
     LacEditor/Services/LineEndingService.swift \
-    LacEditor/Services/DocumentProvenance.swift \
     LacEditor/Services/FileService.swift \
     LacEditor/Services/TextSearchService.swift \
     LacEditor/Editor/ListContinuationService.swift \
@@ -90,7 +89,6 @@ swiftc -O -parse-as-library \
     LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Models/EditorDocument.swift \
     LacEditor/Services/LineEndingService.swift \
-    LacEditor/Services/DocumentProvenance.swift \
     LacEditor/Services/FileService.swift \
     LacEditor/Services/TextSearchService.swift \
     LacEditor/Editor/CodeLexicalScanner.swift \

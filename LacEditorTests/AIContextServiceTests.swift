@@ -75,4 +75,17 @@ final class AIContextServiceTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testAvailableDocumentsSkipOpeningAndFailedAndRevealSelectsDocument() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "AIContextTests.\(UUID().uuidString)"))
+        let first = EditorDocument(text: "a"), second = EditorDocument(text: "b"), third = EditorDocument(text: "c")
+        let state = AppState(initialDocuments: [first, second, third], recentFiles: RecentFilesStore(defaults: defaults), preferences: AppPreferences(defaults: defaults))
+        second.ioState = .opening
+        third.ioState = .saving
+        XCTAssertEqual(AIContextService.availableDocuments(in: state).map(\.id), [first.id, third.id])
+        let snapshot = AIContextSnapshot(input: .document(third.id), name: "c", text: "", document: third, documentRevision: third.textRevision, fileRevision: nil)
+        AIContextService.reveal(snapshot, range: NSRange(location: 0, length: 1), appState: state)
+        XCTAssertEqual(state.selectedDocumentID, third.id)
+        XCTAssertEqual(third.pendingAIContextSelection?.range, NSRange(location: 0, length: 1))
+    }
 }

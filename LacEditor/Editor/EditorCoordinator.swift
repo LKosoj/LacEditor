@@ -113,6 +113,7 @@ extension EditorTextView {
         weak var foldLayoutManager: FoldLayoutManager?
         var magnificationDidChange: ((CGFloat) -> Void)?
         var requestAIImageEdit: ((AIImageEditRequest) -> Void)?
+        var requestAIImageDescription: ((AIImageEditRequest) -> Void)?
         private var pendingMagnification: CGFloat?
         private var applyingMagnification = false
         private var lastObservedMagnification: CGFloat = 1
@@ -224,7 +225,6 @@ extension EditorTextView {
         private var aiCompletionKey: String?
         private var writingSpellingEnabled = false
         private var writingGrammarEnabled = false
-        private var isApplyingAIGenerated = false
         private var pendingFoldSelection: NSRange?
         private var automaticMediaFoldTask: Task<Void, Never>?
         private var highlightedRevision: UInt?
@@ -334,7 +334,6 @@ extension EditorTextView {
             aiFeatures = features
             aiBackgroundEnabled = background
             if let textView {
-                document.provenance.configure(enabled: features.contains(.provenance), length: textView.textStorage?.length ?? 0)
                 textView.acceptAICompletion = { [weak self] in self?.acceptCompletion() ?? false }
                 textView.dismissAICompletion = { [weak self] in self?.cancelAICompletion() }
             }
@@ -406,7 +405,6 @@ extension EditorTextView {
             let request = EditorRangeReplacementRequest(documentID: document.id,
                 range: NSRange(location: caret, length: 0), originalText: "", replacementText: completion,
                 expectedEditorRevision: revision, actionName: AIFeature.completion.title)
-            request.isAIGenerated = true
             cancelAICompletion()
             apply(request, to: textView)
             if request.wasHandled {
@@ -1226,12 +1224,21 @@ extension EditorTextView {
 
         private func diagramMenu(at point: NSPoint) -> [NSMenuItem] {
             guard let controller = markdownPresentation else { return [] }
-            if let resource = controller.imageResource(at: point), controller.isCurrentImageResource(resource),
-               aiFeatures.contains(.imageEdit), requestAIImageEdit != nil {
-                let edit = NSMenuItem(title: L10n.tr("使用 AI 编辑图片"), action: #selector(editImageWithAI(_:)), keyEquivalent: "")
-                edit.target = self
-                edit.representedObject = resource
-                return [edit]
+            if let resource = controller.imageResource(at: point), controller.isCurrentImageResource(resource) {
+                var items: [NSMenuItem] = []
+                if aiFeatures.contains(.imageDescription), requestAIImageDescription != nil {
+                    let describe = NSMenuItem(title: L10n.tr("使用 AI 描述图片"), action: #selector(describeImageWithAI(_:)), keyEquivalent: "")
+                    describe.target = self
+                    describe.representedObject = resource
+                    items.append(describe)
+                }
+                if aiFeatures.contains(.imageEdit), requestAIImageEdit != nil {
+                    let edit = NSMenuItem(title: L10n.tr("使用 AI 编辑图片"), action: #selector(editImageWithAI(_:)), keyEquivalent: "")
+                    edit.target = self
+                    edit.representedObject = resource
+                    items.append(edit)
+                }
+                if !items.isEmpty { return items }
             }
             guard let resource = controller.diagramResource(at: point), controller.isCurrentDiagramResource(resource) else { return [] }
             let copy = NSMenuItem(title: L10n.tr("复制图表为图片"), action: #selector(copyDiagram(_:)), keyEquivalent: "")
@@ -1241,9 +1248,19 @@ extension EditorTextView {
         }
 
         @objc private func editImageWithAI(_ sender: NSMenuItem) {
+            guard let requestAIImageEdit, let request = aiImageRequest(sender) else { return }
+            requestAIImageEdit(request)
+        }
+
+        @objc private func describeImageWithAI(_ sender: NSMenuItem) {
+            guard let requestAIImageDescription, let request = aiImageRequest(sender) else { return }
+            requestAIImageDescription(request)
+        }
+
+        private func aiImageRequest(_ sender: NSMenuItem) -> AIImageEditRequest? {
             guard let resource = sender.representedObject as? MarkdownPresentationController.ImageResource,
                   markdownPresentation?.isCurrentImageResource(resource) == true,
-                  let textView, let storage = textView.textStorage, let requestAIImageEdit else { return }
+                  let textView, let storage = textView.textStorage else { return nil }
             let displayRange = resource.image.range
             let sourceRange = markdownImageProjectionEnabled
                 ? markdownImageProjection.sourceRange(for: displayRange, in: storage.string)
@@ -1251,11 +1268,11 @@ extension EditorTextView {
             let snapshot = document.synchronizedSnapshot()
             let source = snapshot.text as NSString
             guard snapshot.revision == resource.revision, sourceRange.location <= source.length,
-                  sourceRange.length <= source.length - sourceRange.location else { return }
+                  sourceRange.length <= source.length - sourceRange.location else { return nil }
             let address = markdownImageProjection.source(for: resource.image.url) ?? resource.image.url
-            requestAIImageEdit(AIImageEditRequest(documentID: document.id, revision: snapshot.revision,
-                                                   range: sourceRange, originalMarkdown: source.substring(with: sourceRange),
-                                                   address: address, documentURL: document.url))
+            return AIImageEditRequest(documentID: document.id, revision: snapshot.revision,
+                                      range: sourceRange, originalMarkdown: source.substring(with: sourceRange),
+                                      address: address, documentURL: document.url)
         }
 
         private func diagramBitmap(_ resource: MarkdownPresentationController.DiagramResource, type: NSBitmapImageRep.FileType) -> Data? {
@@ -2784,7 +2801,6 @@ extension EditorTextView {
                 forwarded.groupsUndo = request.groupsUndo
                 forwarded.suppressUndoRegistration = request.suppressUndoRegistration
                 forwarded.registerImageFileUndo = request.registerImageFileUndo
-                forwarded.isAIGenerated = request.isAIGenerated
                 forwarded.resultingSelection = request.resultingSelection
                 apply(forwarded, to: textView)
                 request.wasHandled = forwarded.wasHandled
@@ -2824,8 +2840,7 @@ extension EditorTextView {
                 if request.groupsUndo { textView.undoManager?.endUndoGrouping(); textView.breakUndoCoalescing() }
             }
             isApplyingAutomatedEdit = true
-            isApplyingAIGenerated = request.isAIGenerated
-            defer { isApplyingAutomatedEdit = false; isApplyingAIGenerated = false }
+            defer { isApplyingAutomatedEdit = false }
             guard textView.shouldChangeText(
                 in: request.range,
                 replacementString: request.replacementText
@@ -3791,10 +3806,6 @@ extension EditorTextView {
 
         func advanceContentRevision() {
             cancelAICompletion()
-            if document.provenance.isEnabled {
-                document.provenance.configure(enabled: false, length: 0)
-                document.provenance.configure(enabled: true, length: (document.text as NSString).length)
-            }
             contentRevision &+= 1
             markdownPresentation?.edited(revision: contentRevision)
             cancelFoldTask()
@@ -3974,13 +3985,6 @@ extension EditorTextView {
                 return false
             }
             let replacementLength = (replacement as NSString).length
-            func recordProvenance() {
-                let source: DocumentProvenance.Source
-                if isApplyingAIGenerated { source = .generated }
-                else if isApplyingAutomatedEdit || textView.undoManager?.isUndoing == true || textView.undoManager?.isRedoing == true { source = .unknown }
-                else { source = (textView as? LacTextView)?.editSource ?? .unknown }
-                document.provenance.record(editedRange: safeRange, replacementLength: replacementLength, source: source)
-            }
             cancelAICompletion()
             contentRevision &+= 1
             markdownPresentation?.noteFenceContextEdit(range: safeRange, replacement: replacement, in: nsText, revision: contentRevision)
@@ -4026,7 +4030,6 @@ extension EditorTextView {
                     replacement: replacement,
                     in: nsText
                 )
-                recordProvenance()
                 return true
             }
             guard document.language == .markdown else {
@@ -4036,7 +4039,6 @@ extension EditorTextView {
                     replacement: replacement,
                     in: nsText
                 )
-                recordProvenance()
                 return true
             }
 
@@ -4056,7 +4058,6 @@ extension EditorTextView {
                     replacement: replacement,
                     in: nsText
                 )
-                recordProvenance()
                 return true
             }
 
@@ -4073,7 +4074,6 @@ extension EditorTextView {
                     replacement: replacement,
                     in: nsText
                 )
-                recordProvenance()
                 return true
             }
 
@@ -4092,7 +4092,6 @@ extension EditorTextView {
                     replacement: replacement,
                     in: nsText
                 )
-                recordProvenance()
                 return true
             }
 

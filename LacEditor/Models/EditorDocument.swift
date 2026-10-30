@@ -87,6 +87,7 @@ final class DocumentTaskCoordinator: @unchecked Sendable {
         case aiCompletion
         case aiMetadata
         case aiDocumentTools
+        case aiQuestion
         case lineEndings
         case lineEndingConversion
     }
@@ -228,7 +229,6 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     private(set) var fileIdentity: DocumentFileIdentity?
     private(set) var fileRevisionSnapshot: FileRevisionSnapshot?
     let taskCoordinator = DocumentTaskCoordinator()
-    let provenance = DocumentProvenance()
     let previewScrollRelay = MarkdownPreviewScrollRelay()
     var aiMetadata: String?
     @Published var pendingAIContextSelection: (range: NSRange, revision: UInt)? = nil

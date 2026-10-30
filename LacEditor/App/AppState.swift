@@ -56,6 +56,7 @@ private func documentTaskSignpostName(
     case .aiCompletion: "AICompletion"
     case .aiMetadata: "AIMetadata"
     case .aiDocumentTools: "AIDocumentTools"
+    case .aiQuestion: "AIQuestion"
     case .lineEndings: "LineEndings"
     case .lineEndingConversion: "LineEndingConversion"
     }
@@ -239,7 +240,6 @@ final class EditorRangeReplacementRequest {
     let expectedEditorRevision: UInt
     let actionName: String
     var wasHandled = false
-    var isAIGenerated = false
     var failureMessage: String?
     var resultingSelection: NSRange?
     var groupsUndo = false

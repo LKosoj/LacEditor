@@ -44,13 +44,17 @@ struct AIFeatureSettingsView: View {
                 PreferenceGroup(title: group.title) {
                     let features = AIFeature.features(in: group)
                     ForEach(features) { feature in
-                        Toggle(feature.title, isOn: Binding(
-                            get: { preferences.aiFeatures.contains(feature) },
-                            set: { enabled in
-                                if enabled { preferences.aiFeatures.insert(feature) }
-                                else { preferences.aiFeatures.remove(feature) }
-                            }
-                        )).padding(.horizontal, 16).padding(.vertical, 8)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Toggle(feature.title, isOn: Binding(
+                                get: { preferences.aiFeatures.contains(feature) },
+                                set: { enabled in
+                                    if enabled { preferences.aiFeatures.insert(feature) }
+                                    else { preferences.aiFeatures.remove(feature) }
+                                }
+                            )).accessibilityHint(feature.detail)
+                            Text(feature.detail).font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true).accessibilityHidden(true)
+                        }.padding(.horizontal, 16).padding(.vertical, 8)
                         if feature != features.last { Divider().padding(.horizontal, 16).opacity(0.5) }
                     }
                 }
@@ -59,7 +63,7 @@ struct AIFeatureSettingsView: View {
             PreferenceGroup(title: L10n.tr("为功能选择模型")) {
                 PreferenceRow(title: L10n.tr("功能"), detail: "") {
                     Picker(L10n.tr("功能"), selection: $selectedFeature) {
-                        ForEach(AIFeature.allCases.filter { $0 != .provenance }) { feature in
+                        ForEach(AIFeature.allCases) { feature in
                             Text(feature.title).tag(feature)
                         }
                     }.labelsHidden().frame(width: 220)

@@ -35,6 +35,7 @@ final class AICompletionController {
                 try await Task.sleep(nanoseconds: 700_000_000)
                 guard let self, self.generation == current, coordinator.isCurrent(taskGeneration, for: .aiCompletion), isCurrent() else { return }
                 guard let input = inputProvider(), !input.isEmpty else { return }
+                guard AIRequestSize.bytes(input) <= AIRequestSize.threshold else { return }
                 let key = try keyProvider()
                 guard isCurrent() else { return }
                 let result = try await self.generate(input, profile, key)

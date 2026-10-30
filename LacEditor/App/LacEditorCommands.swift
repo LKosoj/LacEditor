@@ -314,22 +314,48 @@ struct LacEditorCommands: Commands {
             }
             .disabled(appState == nil)
             Divider()
+            Button(L10n.tr("向文档提问…")) {
+                showAIPanel()
+                appState?.aiWriting.prepare(.ask)
+            }
+            .help(AIFeature.ask.detail)
+            .disabled(appState?.selectedDocument == nil || appState?.preferences.aiFeatures.contains(.ask) != true)
+            Button(L10n.tr("解释所选内容")) {
+                showAIPanel()
+                appState?.aiWriting.explainSelection()
+            }
+            .help(AIFeature.ask.detail)
+            .disabled(appState?.selectedDocument == nil || appState?.preferences.aiFeatures.contains(.ask) != true)
+            Divider()
             ForEach(AIFeatureGroup.allCases) { group in
                 Menu(group.title) {
-                    ForEach(AIFeature.features(in: group)) { feature in
-                        Button(feature.title) {
-                            if appState?.isDistractionFree == true { appState?.toggleDistractionFree() }
-                            appState?.isAIWritingVisible = true
-                            if feature.isDocumentTool || feature == .translation || feature == .toneRewrite || feature == .audienceReview {
-                                appState?.aiWriting.prepare(feature)
-                            } else if feature == .imageDescription {
-                                appState?.isAIWritingVisible = true
-                                appState?.aiWriting.describeImage()
-                            } else {
-                                appState?.aiWriting.run(feature)
+                    ForEach(AIFeature.features(in: group).filter { $0 != .ask }) { feature in
+                        if feature == .rewrite {
+                            Menu(feature.title) {
+                                ForEach(AIRewriteMode.allCases) { mode in
+                                    Button(mode.title) {
+                                        showAIPanel()
+                                        appState?.aiWriting.selectRewrite(mode)
+                                    }
+                                    .help(mode.detail)
+                                }
                             }
+                            .help(feature.detail)
+                            .disabled(appState?.selectedDocument == nil || appState?.preferences.aiFeatures.contains(feature) != true)
+                        } else {
+                            Button(feature.title) {
+                                showAIPanel()
+                                if feature.opensPanelFirst {
+                                    appState?.aiWriting.prepare(feature)
+                                } else if feature == .imageDescription {
+                                    appState?.aiWriting.describeImage()
+                                } else {
+                                    appState?.aiWriting.run(feature)
+                                }
+                            }
+                            .help(feature.detail)
+                            .disabled(appState?.selectedDocument == nil || appState?.preferences.aiFeatures.contains(feature) != true)
                         }
-                        .disabled(appState?.selectedDocument == nil || appState?.preferences.aiFeatures.contains(feature) != true)
                     }
                 }
             }
@@ -626,6 +652,11 @@ struct LacEditorCommands: Commands {
     private var currentWordWrapEnabled: Bool {
         guard let appState, let document = appState.selectedDocument else { return false }
         return document.effectiveWordWrap(globalDefault: appState.isWordWrapEnabled)
+    }
+
+    private func showAIPanel() {
+        if appState?.isDistractionFree == true { appState?.toggleDistractionFree() }
+        appState?.isAIWritingVisible = true
     }
 
     private func largeFileFeatureItem(

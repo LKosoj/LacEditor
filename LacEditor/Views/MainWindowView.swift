@@ -476,6 +476,7 @@ private struct DocumentEditorPane: View {
             viewMagnification: appState.viewMagnification,
             magnificationDidChange: appState.setViewMagnification,
             requestAIImageEdit: { request in appState.aiWriting.prepareImageEdit(request) },
+            requestAIImageDescription: { request in appState.aiWriting.prepareImageDescription(request) },
             wikiResolver: appState.wikiResolver(for: document),
             requestWikiCatalog: { [weak document] in
                 guard let document else { return }

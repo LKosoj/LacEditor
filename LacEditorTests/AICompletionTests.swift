@@ -34,6 +34,21 @@ final class AICompletionTests: XCTestCase {
     }
 
     @MainActor
+    func testCompletionOverThresholdIsSkipped() async {
+        var calls = 0
+        let controller = AICompletionController { _, _, _ in calls += 1; return "continuation" }
+        let coordinator = DocumentTaskCoordinator()
+        let shown = expectation(description: "large completion")
+        shown.isInverted = true
+        var profile = AIModelProfile.default(for: .text)
+        profile.isEnabled = true
+        controller.schedule(inputProvider: { String(repeating: "a", count: AIRequestSize.threshold + 1) }, keyProvider: { nil }, coordinator: coordinator, profile: profile,
+                            isCurrent: { true }, show: { _, _ in shown.fulfill() })
+        await fulfillment(of: [shown], timeout: 1.5)
+        XCTAssertEqual(calls, 0)
+    }
+
+    @MainActor
     func testShowsOnlyVisibleFirstLine() async {
         let controller = AICompletionController { _, _, _ in " continuation\nhidden" }
         let coordinator = DocumentTaskCoordinator()
@@ -103,23 +118,19 @@ final class AICompletionTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
-        document.provenance.configure(enabled: true, length: storage.length)
         let extraction = EditorTextExtractionRequest(documentID: document.id, allowsTokenAtCaret: false, allowsWholeDocument: true)
         view.setSelectedRange(NSRange(location: storage.length, length: 0))
         NotificationCenter.default.post(name: EditorCommandNotification.extractTextSelection, object: extraction)
         let snapshot = try XCTUnwrap(extraction.result)
         XCTAssertEqual(snapshot.range.length, 4)
         let stale = EditorRangeReplacementRequest(documentID: document.id, range: NSRange(location: 4, length: 0), originalText: "", replacementText: "!", expectedEditorRevision: snapshot.editorRevision + 1, actionName: "AI")
-        stale.isAIGenerated = true
         NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: stale)
         XCTAssertFalse(stale.wasHandled)
         XCTAssertEqual(view.string, "中文😀")
         let request = EditorRangeReplacementRequest(documentID: document.id, range: NSRange(location: 4, length: 0), originalText: "", replacementText: "!", expectedEditorRevision: snapshot.editorRevision, actionName: "AI")
-        request.isAIGenerated = true
         NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
         XCTAssertTrue(request.wasHandled)
         XCTAssertEqual(view.string, "中文😀!")
-        XCTAssertEqual(document.provenance.fragments.last?.source, .generated)
     }
 
     @MainActor

@@ -26,6 +26,24 @@ final class LocalizationTests: XCTestCase {
         XCTAssertNil(defaults.persistentDomain(forName: name)?["AppleLanguages"])
     }
 
+    func testAIFeatureAndRewriteTextsExistInAllCatalogs() throws {
+        let name = "LacEditor.LocalizationTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name); L10n.configure() }
+        defaults.set("zh-Hans", forKey: L10n.languageKey)
+        L10n.configure(defaults: defaults)
+        let keys = AIFeature.allCases.flatMap { [$0.title, $0.needs, $0.result] }
+            + AIRewriteMode.allCases.flatMap { [$0.title, $0.needs, $0.result] }
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        for language in ["zh-Hans", "en", "ru"] {
+            let url = root.appendingPathComponent("LacEditor/\(language).lproj/Localizable.strings")
+            let catalog = try XCTUnwrap(NSDictionary(contentsOf: url) as? [String: String])
+            for key in keys where !key.isEmpty {
+                XCTAssertNotNil(catalog[key], "\(language): \(key)")
+            }
+        }
+    }
+
     func testFormattedStringsAndMessagePrefixes() throws {
         let name = "LacEditor.LocalizationTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))

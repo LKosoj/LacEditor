@@ -50,7 +50,6 @@ swiftc \
     LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Models/EditorDocument.swift \
     LacEditor/Services/LineEndingService.swift \
-    LacEditor/Services/DocumentProvenance.swift \
     LacEditor/Services/FileService.swift \
     LacEditor/Services/JSONFormatter.swift \
     LacEditor/Services/TextSearchService.swift \
@@ -98,7 +97,6 @@ swiftc \
     LacEditor/Editor/FoldLayoutManager.swift \
     LacEditor/Services/MarkdownAutoPairService.swift \
     LacEditor/Editor/LacTextView.swift \
-    LacEditor/Services/DocumentProvenance.swift \
     Verification/EditorInteractionVerification.swift \
     -o .build/editor-interaction-verification
 .build/editor-interaction-verification

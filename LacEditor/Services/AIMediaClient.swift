@@ -13,7 +13,7 @@ private final class AIMediaRedirectDelegate: NSObject, URLSessionTaskDelegate {
 struct AIMediaClient {
     private let session: URLSession
     private let convertDOCX: (URL) throws -> String
-    init(session: URLSession = .shared, convertDOCX: @escaping (URL) throws -> String = { try PandocImportService.convert(source: $0).text }) {
+    init(session: URLSession = AIClient.defaultSession, convertDOCX: @escaping (URL) throws -> String = { try PandocImportService.convert(source: $0).text }) {
         self.session = session
         self.convertDOCX = convertDOCX
     }
@@ -159,6 +159,7 @@ struct AIMediaClient {
         body.append(data)
         append("\r\n--\(boundary)--\r\n")
         var request = URLRequest(url: url)
+        request.timeoutInterval = AIClient.requestTimeout
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         authorize(&request, key: key)
@@ -185,6 +186,6 @@ struct AIMediaClient {
         } catch is CancellationError { throw CancellationError() }
         catch let error as URLError where error.code == .cancelled { throw CancellationError() }
         catch let error as AIError { throw error }
-        catch { throw AIError.network }
+        catch { throw AIError.transportError(error) }
     }
 }

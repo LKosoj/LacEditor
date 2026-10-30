@@ -75,7 +75,7 @@ final class AIDocumentToolsTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let preferences = AppPreferences(defaults: defaults)
-        preferences.aiFeatures = [.explain]
+        preferences.aiFeatures = [.mermaid]
         var configuration = preferences.aiConfiguration
         configuration.text.isEnabled = true
         preferences.aiConfiguration = configuration
@@ -89,7 +89,7 @@ final class AIDocumentToolsTests: XCTestCase {
             (notification.object as? EditorTextExtractionRequest)?.result = EditorTextSelectionSnapshot(documentID: document.id, range: NSRange(location: 0, length: 4), text: "text", editorRevision: 0, wasExplicitSelection: true)
         }
         defer { NotificationCenter.default.removeObserver(observer) }
-        controller.run(.explain)
+        controller.run(.mermaid)
         preferences.aiFeatures = []
         controller.settingsChanged()
         try await Task.sleep(nanoseconds: 70_000_000)
@@ -207,13 +207,121 @@ final class AIDocumentToolsTests: XCTestCase {
         let parsed = try AIDocumentToolsService.parseContextResponse(response(0, "中文"), contexts: [source])
         XCTAssertEqual(parsed.references.first?.range, NSRange(location: 3, length: 2))
         for (index, quote) in [(0, "missing"), (0, "repeated"), (0, ""), (true, "中文"), (-1, "中文"), (1, "中文"), (0.5, "中文")] as [(Any, String)] {
-            XCTAssertThrowsError(try AIDocumentToolsService.parseContextResponse(response(index, quote), contexts: [source]))
+            let result = try AIDocumentToolsService.parseContextResponse(response(index, quote), contexts: [source])
+            XCTAssertTrue(result.references.isEmpty)
+            XCTAssertEqual(result.skipped, 1)
         }
         XCTAssertThrowsError(try AIDocumentToolsService.parseContextResponse("{\"report\":\"review\",\"references\":[]}", contexts: [source]))
         let empty = AIContextSnapshot(input: .file(URL(fileURLWithPath: "/tmp/empty.txt")), name: "empty.txt", text: " \u{2003}\n", document: nil, documentRevision: nil, fileRevision: nil)
         let insufficient = try AIDocumentToolsService.parseContextResponse("{\"report\":\"Not enough context\",\"references\":[]}", contexts: [empty])
         XCTAssertEqual(insufficient.report, "Not enough context")
         XCTAssertTrue(insufficient.references.isEmpty)
+    }
+
+    func testContextSkipsOnlyInvalidReferencesAndAcceptsFence() throws {
+        let source = AIContextSnapshot(input: .file(URL(fileURLWithPath: "/tmp/context.txt")), name: "context.txt", text: "alpha beta", document: nil, documentRevision: nil, fileRevision: nil)
+        let json = "```json\n{\"report\":\"review\",\"references\":[{\"sourceIndex\":0,\"quote\":\"alpha\"},{\"sourceIndex\":0,\"quote\":\"gamma\"}]}\n```"
+        let result = try AIDocumentToolsService.parseContextResponse(json, contexts: [source])
+        XCTAssertEqual(result.references.map(\.quote), ["alpha"])
+        XCTAssertEqual(result.skipped, 1)
+    }
+
+    @MainActor
+    private func largeSendFixture(sourceText: String, calls: @escaping @MainActor () -> Void, response: String = "{\"report\":\"review\",\"references\":[]}") throws -> (AIDocumentToolsController, EditorDocument, EditorDocument, () -> Void) {
+        let suite = "LacEditor-DocumentTools-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.aiFeatures = [.contextReview]
+        var configuration = preferences.aiConfiguration
+        configuration.text.isEnabled = true
+        preferences.aiConfiguration = configuration
+        let target = EditorDocument(text: "target")
+        let source = EditorDocument(text: sourceText)
+        let state = AppState(initialDocuments: [target, source], recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
+        let controller = AIDocumentToolsController(appState: state, generate: { _, _, _, _, _, _, _ in
+            await MainActor.run { calls() }
+            return response
+        }, loadKey: { _, _ in nil })
+        let extraction = NotificationCenter.default.addObserver(forName: EditorCommandNotification.extractTextSelection, object: nil, queue: .main) { notification in
+            (notification.object as? EditorTextExtractionRequest)?.result = EditorTextSelectionSnapshot(documentID: target.id, range: NSRange(location: 0, length: 6), text: "target", editorRevision: 0, wasExplicitSelection: false)
+        }
+        return (controller, target, source, {
+            NotificationCenter.default.removeObserver(extraction)
+            defaults.removePersistentDomain(forName: suite)
+        })
+    }
+
+    @MainActor
+    private func settle(_ controller: AIDocumentToolsController) async {
+        for _ in 0..<2000 where controller.isWorking { await Task.yield() }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+    }
+
+    @MainActor
+    func testLargeContextWarnsThenSendAnywayRuns() async throws {
+        var count = 0
+        let (controller, _, source, cleanup) = try largeSendFixture(sourceText: String(repeating: "a", count: 60 * 1024), calls: { count += 1 })
+        defer { cleanup() }
+        controller.inputs = [.document(source.id)]
+        controller.run(.contextReview)
+        await settle(controller)
+        XCTAssertEqual(count, 0)
+        XCTAssertEqual(controller.messageAction, .sendAnyway)
+        XCTAssertEqual(controller.messageKind, .info)
+        XCTAssertNil(controller.sentSummary)
+        controller.sendAnyway()
+        await settle(controller)
+        XCTAssertEqual(count, 1)
+        XCTAssertEqual(controller.report, "review")
+        let summary = try XCTUnwrap(controller.sentSummary)
+        XCTAssertTrue(summary.contains(AIRequestSize.label(EditorTextSelectionSnapshot(documentID: UUID(), range: NSRange(location: 0, length: 0), text: "", editorRevision: 0, wasExplicitSelection: false), sources: 1)))
+    }
+
+    @MainActor
+    func testSendAnywayAfterOptionChangeIsDropped() async throws {
+        var count = 0
+        let (controller, _, source, cleanup) = try largeSendFixture(sourceText: String(repeating: "a", count: 60 * 1024), calls: { count += 1 })
+        defer { cleanup() }
+        controller.inputs = [.document(source.id)]
+        controller.run(.contextReview)
+        await settle(controller)
+        controller.option = "changed"
+        controller.sendAnyway()
+        await settle(controller)
+        XCTAssertEqual(count, 0)
+        XCTAssertNotEqual(controller.messageAction, .sendAnyway)
+    }
+
+    @MainActor
+    func testSourceGrowthAfterWarningWarnsAgain() async throws {
+        var count = 0
+        let (controller, _, source, cleanup) = try largeSendFixture(sourceText: String(repeating: "a", count: 60 * 1024), calls: { count += 1 })
+        defer { cleanup() }
+        controller.inputs = [.document(source.id)]
+        controller.run(.contextReview)
+        await settle(controller)
+        let first = controller.message
+        source.text += String(repeating: "b", count: 20 * 1024)
+        controller.sendAnyway()
+        await settle(controller)
+        XCTAssertEqual(count, 0)
+        XCTAssertEqual(controller.messageAction, .sendAnyway)
+        XCTAssertNotEqual(controller.message, first)
+    }
+
+    @MainActor
+    func testContextSkippedReferencesPostInfo() async throws {
+        var count = 0
+        let response = "{\"report\":\"review\",\"references\":[{\"sourceIndex\":0,\"quote\":\"source\"},{\"sourceIndex\":0,\"quote\":\"absent\"}]}"
+        let (controller, _, source, cleanup) = try largeSendFixture(sourceText: "source", calls: { count += 1 }, response: response)
+        defer { cleanup() }
+        controller.inputs = [.document(source.id)]
+        controller.run(.contextReview)
+        await settle(controller)
+        XCTAssertEqual(controller.references.count, 1)
+        XCTAssertEqual(controller.message, L10n.tr("已跳过 %lld 个无法核对的条目。", 1))
+        XCTAssertEqual(controller.messageKind, .info)
+        XCTAssertNotNil(controller.sentSummary)
     }
 
     @MainActor
@@ -257,7 +365,7 @@ final class AIDocumentToolsTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let preferences = AppPreferences(defaults: defaults)
-        preferences.aiFeatures = [.explain]
+        preferences.aiFeatures = [.mermaid]
         var configuration = preferences.aiConfiguration
         configuration.text.isEnabled = true
         preferences.aiConfiguration = configuration
@@ -272,7 +380,7 @@ final class AIDocumentToolsTests: XCTestCase {
             (notification.object as? EditorTextExtractionRequest)?.result = EditorTextSelectionSnapshot(documentID: document.id, range: NSRange(location: 0, length: 4), text: "text", editorRevision: 0, wasExplicitSelection: true)
         }
         defer { NotificationCenter.default.removeObserver(observer) }
-        controller.run(.explain)
+        controller.run(.mermaid)
         await fulfillment(of: [started], timeout: 2)
         controller.option = "changed"
         reply?.resume(returning: "old answer")

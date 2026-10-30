@@ -54,4 +54,15 @@ final class SettingsUXTests: XCTestCase {
             }
         }
     }
+
+    func testEveryAIFeatureHasDescription() {
+        var pairs = AIFeature.allCases.map { ($0.title, $0.needs, $0.result, $0.detail) }
+        pairs += AIRewriteMode.allCases.map { ($0.title, $0.needs, $0.result, $0.detail) }
+        for (_, needs, result, detail) in pairs {
+            XCTAssertFalse(needs.isEmpty)
+            XCTAssertFalse(result.isEmpty)
+            XCTAssertNotEqual(needs, result)
+            XCTAssertTrue(detail.contains(needs) && detail.contains(result))
+        }
+    }
 }

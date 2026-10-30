@@ -7,6 +7,7 @@ struct AIPanelMessageView: View {
     let action: AIMessageAction?
     var openSettings: () -> Void
     var retry: () -> Void
+    var sendAnyway: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -14,6 +15,7 @@ struct AIPanelMessageView: View {
             switch action {
             case .openSettings: Button(L10n.tr("打开 AI 设置")) { openSettings() }
             case .retry: Button(L10n.tr("重试")) { retry() }
+            case .sendAnyway: Button(L10n.tr("仍然发送")) { sendAnyway() }
             case nil: EmptyView()
             }
         }
@@ -106,11 +108,13 @@ struct AIDocumentToolsView: View {
             .disabled(!controller.isEnabled(feature))
             if !controller.message.isEmpty {
                 AIPanelMessageView(kind: controller.messageKind, text: controller.message, action: controller.messageAction,
-                                   openSettings: openSettings, retry: { controller.run(feature) })
+                                   openSettings: openSettings, retry: { controller.run(feature) },
+                                   sendAnyway: { controller.sendAnyway() })
             }
             if controller.isResultStale { StatusMessageView(kind: .info, text: L10n.tr("参数已更改，下方结果对应之前的设置。请重新运行。")) }
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
+                    if let sent = controller.sentSummary { Text(sent).font(.caption).foregroundStyle(.secondary) }
                     if !controller.differences.isEmpty {
                         Text(L10n.tr("文本差异")).font(.headline).accessibilityAddTraits(.isHeader)
                         Text(controller.differences).textSelection(.enabled)

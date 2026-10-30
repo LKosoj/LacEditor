@@ -4,7 +4,7 @@ import Foundation
 import UniformTypeIdentifiers
 
 enum AIMessageAction: Equatable {
-    case openSettings, retry
+    case openSettings, retry, sendAnyway
     /// Тип ошибки решает, что предложить; по тексту не определяем.
     static func forError(_ error: Error) -> AIMessageAction? {
         guard let error = error as? AIError else { return nil }
@@ -12,6 +12,7 @@ enum AIMessageAction: Equatable {
         case .disabled, .invalidConfiguration, .keychain: return .openSettings
         case .http(let status, _): return status == 401 || status == 403 ? .openSettings : .retry
         case .network, .invalidResponse: return .retry
+        case .transport(let failure): return failure == .secureConnection ? .openSettings : .retry
         case .refused: return nil
         }
     }
@@ -19,6 +20,7 @@ enum AIMessageAction: Equatable {
 
 @MainActor
 final class AIDocumentToolsController: ObservableObject {
+    private struct PendingSend { let feature: AIFeature; let selection: EditorTextSelectionSnapshot; let bytes: Int }
     @Published var option = ""
     @Published var inputs: [AIContextInput] = []
     @Published var before: AIContextInput?
@@ -32,6 +34,7 @@ final class AIDocumentToolsController: ObservableObject {
     @Published private(set) var messageKind: StatusKind = .error
     @Published private(set) var messageAction: AIMessageAction?
     @Published private(set) var isWorking = false
+    @Published private(set) var sentSummary: String?
     let recorder: AIVoiceRecorder
     private weak var appState: AppState?
     private var task: Task<Void, Never>?
@@ -39,6 +42,7 @@ final class AIDocumentToolsController: ObservableObject {
     private var recordingDocumentID: UUID?
     private var recordingGeneration = 0
     private var generation = 0
+    private var pendingSend: PendingSend?
     private var selection: EditorTextSelectionSnapshot?
     private var sources: [AIContextSnapshot] = []
     private var fileRevision: FileRevisionSnapshot?
@@ -78,10 +82,14 @@ final class AIDocumentToolsController: ObservableObject {
     }
     private func fail(_ error: Error) { post(error.localizedDescription, action: AIMessageAction.forError(error)) }
 
-    static func usesOption(_ feature: AIFeature) -> Bool { [.contextReview, .compareVersions, .customCheck, .mermaid, .explain].contains(feature) }
+    static func usesOption(_ feature: AIFeature) -> Bool { [.contextReview, .compareVersions, .customCheck, .mermaid].contains(feature) }
     /// Показанный результат получен для прежних входов: его можно читать и копировать, но не вставлять.
     var isResultStale: Bool {
-        guard let feature = activeFeature, !report.isEmpty || !differences.isEmpty else { return false }
+        guard activeFeature != nil, !report.isEmpty || !differences.isEmpty else { return false }
+        return activeInputsDiffer
+    }
+    private var activeInputsDiffer: Bool {
+        guard let feature = activeFeature else { return false }
         if Self.usesOption(feature), option != activeOption { return true }
         switch feature {
         case .contextReview: return inputs != activeInputs
@@ -151,7 +159,8 @@ final class AIDocumentToolsController: ObservableObject {
     }
     func hidden() { cancel(); discardRecording() }
 
-    func run(_ feature: AIFeature) {
+    func run(_ feature: AIFeature) { run(feature, approving: nil) }
+    private func run(_ feature: AIFeature, approving: PendingSend?) {
         guard let appState, let document = appState.selectedDocument, document.ioState == .idle, appState.preferences.aiFeatures.contains(feature) else { return }
         let check = feature == .customCheck ? checks.first(where: { $0.id == checkID }) : nil
         if feature == .customCheck && check == nil { post(L10n.tr("请选择已启用的检查。"), kind: .info); return }
@@ -164,6 +173,7 @@ final class AIDocumentToolsController: ObservableObject {
         if feature == .contextReview { guard !inputs.isEmpty else { post(L10n.tr("请至少添加一个来源。"), kind: .info); return }; selectedInputs = inputs }
         else if feature == .compareVersions { guard let before, let after else { post(L10n.tr("请选择两个版本。"), kind: .info); return }; selectedInputs = [before, after] }
         else { selectedInputs = [] }
+        if let approving, !approving.selection.matches(selection) { clearResult(); post(L10n.tr("编辑内容已变化，请重新执行转换"), kind: .info); return }
         let mediaURL = feature == .recognizeDocument || feature == .voiceDraft ? fileURL : nil
         if (feature == .recognizeDocument || feature == .voiceDraft) && (mediaURL == nil || recorder.isRecording) { post(L10n.tr("请选择文件或完成录音。"), kind: .info); return }
         do {
@@ -194,17 +204,29 @@ final class AIDocumentToolsController: ObservableObject {
                             comparison.cancel()
                         }
                         guard self.validate(current, document: document, taskGeneration: taskGeneration) else { return }
-                        self.differences = difference; target = difference
+                        target = difference
                     }
                     let result: String
                     if feature == .recognizeDocument, let mediaURL { result = try await recognize(mediaURL, profile, key) }
                     else if feature == .voiceDraft, let mediaURL { result = try await transcribe(mediaURL, profile, key) }
-                    else { result = try await generate(feature, target, option, snapshots, check, profile, key) }
+                    else {
+                        let size = AIRequestSize.bytes(AIDocumentToolsService.input(target: target, option: option, contexts: snapshots))
+                        let label = AIRequestSize.label(selection, sources: snapshots.count)
+                        if size > max(AIRequestSize.threshold, approving?.bytes ?? 0) {
+                            self.pendingSend = PendingSend(feature: feature, selection: selection, bytes: size)
+                            self.post(AIRequestSize.warning(label: label, bytes: size), kind: .info, action: .sendAnyway)
+                            return
+                        }
+                        self.sentSummary = AIRequestSize.sent(label: label, bytes: size)
+                        if feature == .compareVersions { self.differences = target }
+                        result = try await generate(feature, target, option, snapshots, check, profile, key)
+                    }
                     guard self.validate(current, document: document, taskGeneration: taskGeneration) else { return }
                     if feature == .contextReview {
                         let review = try AIDocumentToolsService.parseContextResponse(result, contexts: snapshots)
                         self.references = review.references
                         self.report = review.report
+                        if review.skipped > 0 { self.post(AIRequestSize.skippedMessage(review.skipped, allDropped: review.references.isEmpty), kind: .info) }
                     } else { self.report = result }
                 } catch {
                     guard let self, self.validate(current, document: document, taskGeneration: taskGeneration) else { return }
@@ -213,6 +235,13 @@ final class AIDocumentToolsController: ObservableObject {
             }
             if let task { document.taskCoordinator.attachTask(task, kind: .aiDocumentTools, generation: taskGeneration) }
         } catch { fail(error) }
+    }
+    func sendAnyway() {
+        guard let pending = pendingSend, let feature = activeFeature, feature == pending.feature, !activeInputsDiffer else {
+            if pendingSend != nil { clearResult(); post(L10n.tr("所选来源已不可用或已更改。"), kind: .info) }
+            return
+        }
+        run(feature, approving: pending)
     }
     private func discardStale(_ current: Int) {
         guard generation == current else { return }
@@ -244,7 +273,6 @@ final class AIDocumentToolsController: ObservableObject {
         guard isCurrent(generation) else { discardStale(generation); return }
         let replacement = feature == .mermaid ? "\n\n```mermaid\n\(report)\n```" : "\n\n" + report
         let request = EditorRangeReplacementRequest(documentID: selection.documentID, range: NSRange(location: NSMaxRange(selection.range), length: 0), originalText: "", replacementText: replacement, expectedEditorRevision: selection.editorRevision, actionName: feature.title)
-        request.isAIGenerated = true
         NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
         if !request.wasHandled { message = request.failureMessage ?? L10n.tr("编辑内容已变化，请重新执行转换") }
     }
@@ -259,22 +287,12 @@ final class AIDocumentToolsController: ObservableObject {
     func openReference(_ reference: AIContextReference) {
         guard references.contains(reference), sources.indices.contains(reference.sourceIndex), let appState else { return }
         guard isCurrent(generation) else { discardStale(generation); return }
-        let source = sources[reference.sourceIndex]
-        if let document = source.document {
-            document.pendingAIContextSelection = (range: reference.range, revision: source.documentRevision ?? document.textRevision)
-            if let manager = appState.windowManager, let state = manager.stateContaining(document) {
-                manager.focus(document, in: state)
-            } else if appState.documents.contains(where: { $0 === document }) {
-                appState.selectedDocumentID = document.id
-            } else { return }
-        } else if case .file(let url) = source.input {
-            appState.openFile(url)
-        }
+        AIContextService.reveal(sources[reference.sourceIndex], range: reference.range, appState: appState)
     }
     /// Остановка по кнопке: только прекращает запрос, входы остаются.
     func stop() { cancel(); if report.isEmpty { differences = "" } }
     func cancel() { generation += 1; task?.cancel(); task = nil; if recordingDocumentID != nil { discardRecording() }; isWorking = false }
-    func clearResult() { cancel(); selection = nil; sources = []; fileRevision = nil; activeFeature = nil; activeProfile = nil; activeKey = nil; activeCheck = nil; activeOption = ""; activeInputs = []; activeFileURL = nil; report = ""; differences = ""; references = []; message = "" }
+    func clearResult() { cancel(); selection = nil; sources = []; fileRevision = nil; activeFeature = nil; activeProfile = nil; activeKey = nil; activeCheck = nil; activeOption = ""; activeInputs = []; activeFileURL = nil; report = ""; differences = ""; references = []; pendingSend = nil; sentSummary = nil; message = "" }
     func invalidate(documentID: UUID) { if recordingDocumentID == documentID || selection?.documentID == documentID || sources.contains(where: { $0.document?.id == documentID }) { clearResult() } }
     func selectedDocumentChanged() { clearResult() }
     func settingsChanged() {

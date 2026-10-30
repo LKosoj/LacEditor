@@ -23,7 +23,16 @@ struct AIWritingView: View {
                     ForEach(controller.enabledFeatures) { feature in Text(feature.title).tag(feature) }
                 }
             }
-            if controller.requestedFeature.isDocumentTool {
+            if controller.enabledFeatures.contains(controller.requestedFeature) {
+                Text(controller.requestedFeature.detail)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLabel(controller.requestedFeature.detail)
+            }
+            if controller.requestedFeature == .ask {
+                AIQuestionView(controller: controller.question, openSettings: openSettings)
+            } else if controller.requestedFeature.isDocumentTool {
                 AIDocumentToolsView(controller: controller.documentTools, feature: controller.requestedFeature, openSettings: openSettings)
             } else {
                 if controller.requestedFeature == .translation {
@@ -35,6 +44,13 @@ struct AIWritingView: View {
                     if controller.translationLanguage == .custom {
                         TextField(L10n.tr("输入目标语言"), text: $controller.customTranslationLanguage).onSubmit { if canRun { runCurrent() } }
                     }
+                } else if controller.requestedFeature == .rewrite {
+                    Picker(L10n.tr("改写方式"), selection: $controller.rewriteMode) {
+                        ForEach(AIRewriteMode.allCases) { Text($0.title).tag($0) }
+                    }
+                    Text(controller.rewriteMode.detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    TextField(controller.rewriteMode.optionPrompt, text: $option)
+                        .onSubmit { if canRun { runCurrent() } }
                 } else if let prompt = controller.requestedFeature.optionPrompt {
                     TextField(prompt, text: $option)
                         .onSubmit { if canRun { runCurrent() } }
@@ -50,7 +66,8 @@ struct AIWritingView: View {
                 }
                 if !controller.message.isEmpty {
                     AIPanelMessageView(kind: controller.messageKind, text: controller.message, action: controller.messageAction,
-                                       openSettings: openSettings, retry: { runCurrent() })
+                                       openSettings: openSettings, retry: { runCurrent() },
+                                       sendAnyway: { controller.sendAnyway() })
                 }
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
@@ -63,7 +80,7 @@ struct AIWritingView: View {
                                 TextEditor(text: $metadataText).frame(minHeight: 100)
                                 Button(L10n.tr("更新元数据")) { controller.updateMetadata(metadataText) }
                             } else {
-                                Text((try? AttributedString(markdown: controller.report)) ?? AttributedString(controller.report)).textSelection(.enabled)
+                                Text(AttributedString(modelMarkdown: controller.report)).textSelection(.enabled)
                             }
                         }
                         if controller.canInsertSummary {
@@ -113,6 +130,7 @@ struct AIWritingView: View {
                                 }
                             }
                         }
+                        if let sent = controller.sentSummary { Text(sent).font(.caption).foregroundStyle(.secondary) }
                         if let date = controller.generatedAt {
                             Text([date.formatted(date: .abbreviated, time: .shortened),
                                   controller.resultRevision.map { L10n.tr("文本版本：%llu", UInt64($0)) }].compactMap { $0 }.joined(separator: " · "))
@@ -132,6 +150,7 @@ struct AIWritingView: View {
         .onChange(of: controller.enabledFeatures) { _, features in
             if !features.contains(controller.requestedFeature), let first = features.first { controller.requestedFeature = first }
         }
+        .onChange(of: controller.rewriteMode) { _, _ in option = "" }
         .onChange(of: controller.requestedFeature) { _, feature in if feature == .imageEdit { option = "" } }
         .onChange(of: controller.imageEditSource) { _, source in if source != nil { option = "" } }
     }
@@ -139,6 +158,7 @@ struct AIWritingView: View {
     private var canRun: Bool {
         controller.enabledFeatures.contains(controller.requestedFeature) && !controller.isWorking &&
             !(controller.requestedFeature == .translation && controller.translationTarget.isEmpty) &&
+            !(controller.requestedFeature == .rewrite && controller.rewriteMode.requiresOption && option.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) &&
             (controller.requestedFeature != .sources || !option.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) &&
             (controller.requestedFeature != .imageEdit || (controller.imageEditSource != nil && !option.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
     }

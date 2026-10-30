@@ -147,6 +147,53 @@ final class AIClientTests: XCTestCase {
         } catch is CancellationError {} catch { XCTFail("Unexpected error") }
     }
 
+    func testRequestTimeoutIs600AndListModelsIs60() async throws {
+        XCTAssertEqual(AIClient.defaultSession.configuration.timeoutIntervalForRequest, 600)
+        XCTAssertEqual(AIClient.defaultSession.configuration.timeoutIntervalForResource, 600)
+        var timeouts: [String: TimeInterval] = [:]
+        AIURLProtocol.handler = { request in
+            timeouts[request.url?.lastPathComponent ?? ""] = request.timeoutInterval
+            return (200, Data(#"{"data":[{"id":"one"}]}"#.utf8))
+        }
+        _ = try await makeClient().listModels(profile: profile(.responses), key: nil)
+        XCTAssertEqual(timeouts["models"], 60)
+        AIURLProtocol.handler = { request in
+            timeouts[request.url?.lastPathComponent ?? ""] = request.timeoutInterval
+            return (200, Data(#"{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}]}"#.utf8))
+        }
+        _ = try await makeClient().generateText(input: "a", instructions: "b", profile: profile(.responses), key: nil)
+        XCTAssertEqual(timeouts["responses"], 600)
+    }
+
+    func testTransportErrorsAreClassified() async throws {
+        let cases: [(URLError.Code, AITransportFailure?)] = [
+            (.timedOut, .timedOut), (.notConnectedToInternet, .offline), (.networkConnectionLost, .offline),
+            (.cannotFindHost, .cannotConnect), (.cannotConnectToHost, .cannotConnect),
+            (.serverCertificateUntrusted, .secureConnection), (.secureConnectionFailed, .secureConnection),
+            (.badServerResponse, nil)
+        ]
+        for (code, expected) in cases {
+            AIURLProtocol.handler = { _ in throw URLError(code) }
+            do {
+                _ = try await makeClient().generateText(input: "a", instructions: "b", profile: profile(.responses), key: nil)
+                XCTFail("Expected error")
+            } catch let error as AIError {
+                switch (error, expected) {
+                case (.transport(let failure), let expected?): XCTAssertEqual(failure, expected)
+                case (.network, nil): break
+                default: XCTFail("Unexpected \(error) for \(code)")
+                }
+            }
+        }
+    }
+
+    func testTransportMessagesAreDistinctAndLocalized() {
+        let messages = [AITransportFailure.timedOut, .offline, .cannotConnect, .secureConnection].map { AIError.transport($0).errorDescription }
+        XCTAssertEqual(Set(messages.compactMap { $0 }).count, 4)
+        XCTAssertEqual(AIError.transport(.offline).errorDescription, L10n.tr("没有网络连接或连接已中断，请检查网络后重试。"))
+        XCTAssertEqual(AIError.transport(.timedOut).errorDescription, L10n.tr("AI 服务在 %lld 分钟内没有响应，请求已中止。", 10))
+    }
+
     func testImageBase64AndInvalidImage() async throws {
         let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a1sAAAAASUVORK5CYII="
         AIURLProtocol.handler = { _ in (200, Data("{\"data\":[{\"b64_json\":\"\(png)\"}]}".utf8)) }
@@ -232,4 +279,53 @@ final class AIClientTests: XCTestCase {
         XCTAssertEqual(result, png)
     }
 
+
+    func testConversationRequestsKeepRolesForBothProtocols() async throws {
+        let messages: [AIConversationMessage] = [.user("q1"), .assistant(#"{"answer":"a1"}"#), .user("Sources: data:image/png;base64,AAAA\nq2")]
+        let reply = #"{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}]}"#
+        AIURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/gateway/v1/responses")
+            let body = try self.body(request)
+            XCTAssertEqual(body["instructions"] as? String, "rules")
+            XCTAssertEqual(body["store"] as? Bool, false)
+            let input = try XCTUnwrap(body["input"] as? [[String: String]])
+            XCTAssertEqual(input.map { $0["role"] }, ["user", "assistant", "user"])
+            XCTAssertEqual(input[1]["content"], #"{"answer":"a1"}"#)
+            XCTAssertEqual(input[2]["content"], "Sources: [media omitted]\nq2")
+            return (200, Data(reply.utf8))
+        }
+        let first = try await makeClient().generateConversation(messages: messages, instructions: "rules", profile: profile(.responses), key: nil)
+        XCTAssertEqual(first, "ok")
+        AIURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/gateway/v1/chat/completions")
+            let sent = try XCTUnwrap(try self.body(request)["messages"] as? [[String: String]])
+            XCTAssertEqual(sent.map { $0["role"] }, ["system", "user", "assistant", "user"])
+            XCTAssertEqual(sent[0]["content"], "rules")
+            XCTAssertEqual(sent[3]["content"], "Sources: [media omitted]\nq2")
+            return (200, Data(#"{"choices":[{"finish_reason":"stop","message":{"content":"ok"}}]}"#.utf8))
+        }
+        let second = try await makeClient().generateConversation(messages: messages, instructions: "rules", profile: profile(.chatCompletions), key: nil)
+        XCTAssertEqual(second, "ok")
+    }
+
+    func testConversationRejectsOtherProtocolsDisabledAndRefusal() async throws {
+        AIURLProtocol.handler = { _ in XCTFail("No request expected"); return (500, Data()) }
+        for api in [AIAPIProtocol.decisions, .images] {
+            do {
+                _ = try await makeClient().generateConversation(messages: [.user("q")], instructions: "i", profile: profile(api), key: nil)
+                XCTFail("Expected invalid configuration")
+            } catch AIError.invalidConfiguration {} catch { XCTFail("Unexpected error") }
+        }
+        var disabled = profile(.responses)
+        disabled.isEnabled = false
+        do {
+            _ = try await makeClient().generateConversation(messages: [.user("q")], instructions: "i", profile: disabled, key: nil)
+            XCTFail("Expected disabled")
+        } catch AIError.disabled {} catch { XCTFail("Unexpected error") }
+        AIURLProtocol.handler = { _ in (200, Data(#"{"status":"completed","output":[{"type":"message","content":[{"type":"refusal","refusal":"no"}]}]}"#.utf8)) }
+        do {
+            _ = try await makeClient().generateConversation(messages: [.user("q")], instructions: "i", profile: profile(.responses), key: nil)
+            XCTFail("Expected refusal")
+        } catch AIError.refused {} catch { XCTFail("Unexpected error") }
+    }
 }

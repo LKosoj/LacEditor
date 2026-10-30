@@ -86,6 +86,26 @@ enum AIContextService {
         }
     }
 
+    /// Документы одного окна, которые можно отправить в запрос (без открывающихся, ошибочных и заглушек).
+    @MainActor
+    static func availableDocuments(in appState: AppState) -> [EditorDocument] {
+        appState.documents.filter { isAvailable($0, appState: appState) }
+    }
+
+    @MainActor
+    static func reveal(_ snapshot: AIContextSnapshot, range: NSRange, appState: AppState) {
+        if let document = snapshot.document {
+            document.pendingAIContextSelection = (range: range, revision: snapshot.documentRevision ?? document.textRevision)
+            if let manager = appState.windowManager, let state = manager.stateContaining(document) {
+                manager.focus(document, in: state)
+            } else if appState.documents.contains(where: { $0 === document }) {
+                appState.selectedDocumentID = document.id
+            }
+        } else if case .file(let url) = snapshot.input {
+            appState.openFile(url)
+        }
+    }
+
     @MainActor
     private static func isAvailable(_ document: EditorDocument, appState: AppState) -> Bool {
         switch document.ioState {

@@ -94,7 +94,6 @@
 		D00D00000000000000000007 /* AISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00D00000000000000000008 /* AISettingsView.swift */; };
 		D00E00000000000000000001 /* AIFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00E00000000000000000002 /* AIFeature.swift */; };
 		D00E00000000000000000003 /* JinaConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00E00000000000000000004 /* JinaConfiguration.swift */; };
-		D00E00000000000000000005 /* DocumentProvenance.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00E00000000000000000006 /* DocumentProvenance.swift */; };
 		D00E00000000000000000007 /* AIWritingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00E00000000000000000008 /* AIWritingService.swift */; };
 		D00E00000000000000000009 /* AIWritingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00E0000000000000000000A /* AIWritingController.swift */; };
 		D00E0000000000000000000B /* AICompletionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00E0000000000000000000C /* AICompletionController.swift */; };
@@ -115,6 +114,10 @@
 		D0100000000000000000000D /* AIDocumentToolsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0100000000000000000000E /* AIDocumentToolsService.swift */; };
 		D0100000000000000000000F /* AIVoiceRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01000000000000000000010 /* AIVoiceRecorder.swift */; };
 		D01000000000000000000011 /* AIDocumentToolsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01000000000000000000012 /* AIDocumentToolsView.swift */; };
+		D01400000000000000000001 /* AIQuestionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01400000000000000000002 /* AIQuestionController.swift */; };
+		D01400000000000000000003 /* AIQuestionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01400000000000000000004 /* AIQuestionService.swift */; };
+		D01400000000000000000005 /* AIQuestionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01400000000000000000006 /* AIQuestionView.swift */; };
+		D01500000000000000000001 /* AIWebSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01500000000000000000002 /* AIWebSearchService.swift */; };
 		D01100000000000000000001 /* Models/AITranslationLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01100000000000000000002 /* Models/AITranslationLanguage.swift */; };
 		D01200000000000000000001 /* DocumentStatistics.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000002 /* DocumentStatistics.swift */; };
 		D01200000000000000000003 /* MarkdownTableEditingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000004 /* MarkdownTableEditingService.swift */; };
@@ -298,7 +301,6 @@
 		D00D00000000000000000008 /* AISettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AISettingsView.swift; path = Views/AISettingsView.swift; sourceTree = "<group>"; };
 		D00E00000000000000000002 /* AIFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIFeature.swift; path = Models/AIFeature.swift; sourceTree = "<group>"; };
 		D00E00000000000000000004 /* JinaConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JinaConfiguration.swift; path = Models/JinaConfiguration.swift; sourceTree = "<group>"; };
-		D00E00000000000000000006 /* DocumentProvenance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DocumentProvenance.swift; path = Services/DocumentProvenance.swift; sourceTree = "<group>"; };
 		D00E00000000000000000008 /* AIWritingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIWritingService.swift; path = Services/AIWritingService.swift; sourceTree = "<group>"; };
 		D00E0000000000000000000A /* AIWritingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIWritingController.swift; path = Services/AIWritingController.swift; sourceTree = "<group>"; };
 		D00E0000000000000000000C /* AICompletionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AICompletionController.swift; path = Services/AICompletionController.swift; sourceTree = "<group>"; };
@@ -321,6 +323,10 @@
 		D0100000000000000000000E /* AIDocumentToolsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIDocumentToolsService.swift; path = Services/AIDocumentToolsService.swift; sourceTree = "<group>"; };
 		D01000000000000000000010 /* AIVoiceRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIVoiceRecorder.swift; path = Services/AIVoiceRecorder.swift; sourceTree = "<group>"; };
 		D01000000000000000000012 /* AIDocumentToolsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIDocumentToolsView.swift; path = Views/AIDocumentToolsView.swift; sourceTree = "<group>"; };
+		D01400000000000000000002 /* AIQuestionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIQuestionController.swift; path = Services/AIQuestionController.swift; sourceTree = "<group>"; };
+		D01400000000000000000004 /* AIQuestionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIQuestionService.swift; path = Services/AIQuestionService.swift; sourceTree = "<group>"; };
+		D01400000000000000000006 /* AIQuestionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIQuestionView.swift; path = Views/AIQuestionView.swift; sourceTree = "<group>"; };
+		D01500000000000000000002 /* AIWebSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIWebSearchService.swift; path = Services/AIWebSearchService.swift; sourceTree = "<group>"; };
 		D01100000000000000000002 /* Models/AITranslationLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/AITranslationLanguage.swift; sourceTree = "<group>"; };
 		D01200000000000000000002 /* DocumentStatistics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStatistics.swift; sourceTree = "<group>"; };
 		D01200000000000000000004 /* MarkdownTableEditingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTableEditingService.swift; sourceTree = "<group>"; };
@@ -461,7 +467,6 @@
 				D00D00000000000000000008 /* AISettingsView.swift */,
 				D00E00000000000000000002 /* AIFeature.swift */,
 				D00E00000000000000000004 /* JinaConfiguration.swift */,
-				D00E00000000000000000006 /* DocumentProvenance.swift */,
 				D00E00000000000000000008 /* AIWritingService.swift */,
 				D00E0000000000000000000A /* AIWritingController.swift */,
 				D00E0000000000000000000C /* AICompletionController.swift */,
@@ -482,6 +487,10 @@
 				D0100000000000000000000E /* AIDocumentToolsService.swift */,
 				D01000000000000000000010 /* AIVoiceRecorder.swift */,
 				D01000000000000000000012 /* AIDocumentToolsView.swift */,
+				D01400000000000000000002 /* AIQuestionController.swift */,
+				D01400000000000000000004 /* AIQuestionService.swift */,
+				D01500000000000000000002 /* AIWebSearchService.swift */,
+				D01400000000000000000006 /* AIQuestionView.swift */,
 				D01100000000000000000002 /* Models/AITranslationLanguage.swift */,
 				D00C00000000000000000002 /* Mermaid */,
 				D01200000000000000000022 /* MathJax */,
@@ -895,7 +904,6 @@
 				D00D00000000000000000007 /* AISettingsView.swift in Sources */,
 				D00E00000000000000000001 /* AIFeature.swift in Sources */,
 				D00E00000000000000000003 /* JinaConfiguration.swift in Sources */,
-				D00E00000000000000000005 /* DocumentProvenance.swift in Sources */,
 				D00E00000000000000000007 /* AIWritingService.swift in Sources */,
 				D00E00000000000000000009 /* AIWritingController.swift in Sources */,
 				D00E0000000000000000000B /* AICompletionController.swift in Sources */,
@@ -915,6 +923,10 @@
 				D0100000000000000000000D /* AIDocumentToolsService.swift in Sources */,
 				D0100000000000000000000F /* AIVoiceRecorder.swift in Sources */,
 				D01000000000000000000011 /* AIDocumentToolsView.swift in Sources */,
+				D01400000000000000000001 /* AIQuestionController.swift in Sources */,
+				D01400000000000000000003 /* AIQuestionService.swift in Sources */,
+				D01500000000000000000001 /* AIWebSearchService.swift in Sources */,
+				D01400000000000000000005 /* AIQuestionView.swift in Sources */,
 				D01100000000000000000001 /* Models/AITranslationLanguage.swift in Sources */,
 				D00B00000000000000000001 /* MarkdownFormattingService.swift in Sources */,
 				D01304000000000000000001 /* LineEditingService.swift in Sources */,

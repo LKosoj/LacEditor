@@ -67,13 +67,13 @@ final class UIPolishATests: XCTestCase {
         let document = EditorDocument(text: "text")
         let started = expectation(description: "request")
         var reply: CheckedContinuation<String, Never>?
-        let (controller, state) = makeTools(features: [.explain], documents: [document], defaults: defaults) { _, _, _, _, _, _, _ in
+        let (controller, state) = makeTools(features: [.mermaid], documents: [document], defaults: defaults) { _, _, _, _, _, _, _ in
             await withCheckedContinuation { continuation in reply = continuation; started.fulfill() }
         }
         let observer = observeSelection(document)
         defer { NotificationCenter.default.removeObserver(observer) }
         controller.option = "keep me"
-        controller.run(.explain)
+        controller.run(.mermaid)
         await fulfillment(of: [started], timeout: 2)
         controller.stop()
         XCTAssertFalse(controller.isWorking)
@@ -116,23 +116,23 @@ final class UIPolishATests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let document = EditorDocument(text: "text")
         var failure: AIError = .network
-        let (controller, state) = makeTools(features: [.explain], documents: [document], defaults: defaults) { _, _, _, _, _, _, _ in throw failure }
+        let (controller, state) = makeTools(features: [.mermaid], documents: [document], defaults: defaults) { _, _, _, _, _, _, _ in throw failure }
         // нет выделения: уведомление, без действия
-        controller.run(.explain)
+        controller.run(.mermaid)
         XCTAssertEqual(controller.messageKind, .info)
         XCTAssertNil(controller.messageAction)
         let observer = observeSelection(document)
         defer { NotificationCenter.default.removeObserver(observer) }
-        controller.run(.explain)
+        controller.run(.mermaid)
         for _ in 0..<1000 where controller.isWorking { await Task.yield() }
         XCTAssertEqual(controller.messageKind, .error)
         XCTAssertEqual(controller.messageAction, .retry)
         failure = .http(401)
-        controller.run(.explain)
+        controller.run(.mermaid)
         for _ in 0..<1000 where controller.isWorking { await Task.yield() }
         XCTAssertEqual(controller.messageAction, .openSettings)
         failure = .http(503)
-        controller.run(.explain)
+        controller.run(.mermaid)
         for _ in 0..<1000 where controller.isWorking { await Task.yield() }
         XCTAssertEqual(controller.messageAction, .retry)
         XCTAssertNil(AIMessageAction.forError(AIError.refused))
@@ -140,10 +140,19 @@ final class UIPolishATests: XCTestCase {
         var configuration = state.preferences.aiConfiguration
         configuration.text.isEnabled = false
         state.preferences.aiConfiguration = configuration
-        controller.run(.explain)
+        controller.run(.mermaid)
         XCTAssertEqual(controller.messageKind, .error)
         XCTAssertEqual(controller.messageAction, .openSettings)
         withExtendedLifetime(state) {}
+    }
+
+    func testTransportErrorsOfferRetryOrSettings() {
+        for failure in [AITransportFailure.timedOut, .offline, .cannotConnect] {
+            XCTAssertEqual(AIMessageAction.forError(AIError.transport(failure)), .retry)
+        }
+        XCTAssertEqual(AIMessageAction.forError(AIError.transport(.secureConnection)), .openSettings)
+        let errors: [AIError] = [.invalidConfiguration, .disabled, .keychain, .network, .transport(.timedOut), .http(500, nil), .invalidResponse, .refused]
+        for error in errors { XCTAssertNotEqual(AIMessageAction.forError(error), .sendAnyway) }
     }
 
     // MARK: AIWritingController
@@ -156,7 +165,7 @@ final class UIPolishATests: XCTestCase {
         configuration.text.isEnabled = true
         preferences.aiConfiguration = configuration
         let state = AppState(initialDocument: document, recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
-        let controller = AIWritingController(appState: state, loadKey: { _, _ in nil }) { _, _, _, _, _, _, _, _ in
+        let controller = AIWritingController(appState: state, loadKey: { _, _ in nil }) { _, _, _, _, _, _, _, _, _ in
             AIWritingResult(suggestions: suggestions, report: "", image: nil)
         }
         controller.run(.clarity)
@@ -196,7 +205,6 @@ final class UIPolishATests: XCTestCase {
         XCTAssertEqual(request.originalText, "one two three")
         XCTAssertEqual(request.replacementText, "1 two 3")
         XCTAssertTrue(request.groupsUndo)
-        XCTAssertTrue(request.isAIGenerated)
         XCTAssertTrue(controller.suggestions.isEmpty)
         withExtendedLifetime(state) {}
     }

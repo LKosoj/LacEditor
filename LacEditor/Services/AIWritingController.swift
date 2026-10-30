@@ -16,6 +16,7 @@ struct AIImageEditRequest {
 @MainActor
 final class AIWritingController: ObservableObject {
     let documentTools: AIDocumentToolsController
+    let question: AIQuestionController
     @Published var feature: AIFeature = .clarity
     @Published var requestedFeature: AIFeature = .clarity
     @Published var option = ""
@@ -24,6 +25,9 @@ final class AIWritingController: ObservableObject {
     }
     @Published var customTranslationLanguage = "" {
         didSet { if oldValue != customTranslationLanguage, translationLanguage == .custom { translationTargetChanged() } }
+    }
+    @Published var rewriteMode: AIRewriteMode = .rephrase {
+        didSet { if oldValue != rewriteMode { clearResultIfCurrent(.rewrite) } }
     }
     @Published private(set) var isWorking = false
     @Published private(set) var report = ""
@@ -41,9 +45,12 @@ final class AIWritingController: ObservableObject {
     @Published private(set) var messageAction: AIMessageAction?
     @Published private(set) var generatedAt: Date?
     @Published private(set) var resultRevision: UInt?
+    @Published private(set) var sentSummary: String?
 
+    private struct PendingSend { let feature: AIFeature; let option: String; let snapshot: EditorTextSelectionSnapshot; let bytes: Int }
+    private var pendingSend: PendingSend?
     private weak var appState: AppState?
-    private let generate: (AIFeature, String, String, AIModelProfile, String?, JinaConfiguration?, String?, String?) async throws -> AIWritingResult
+    private let generate: (AIFeature, String, String, AIModelProfile, String?, JinaConfiguration?, String?, String?, AIRewriteMode?) async throws -> AIWritingResult
     private let loadKey: (AIRole, String) throws -> String?
     private struct Credentials {
         let profile: AIModelProfile
@@ -69,16 +76,22 @@ final class AIWritingController: ObservableObject {
     private var diffCache: [UUID: (original: AttributedString, replacement: AttributedString)] = [:]
     private var imageEditRequest: AIImageEditRequest?
     private let editImage: (Data, String, AIModelProfile, String?) async throws -> Data
+    private let describe: (Data, AIModelProfile, String?) async throws -> String
+    private var imageDescriptionRequest: AIImageEditRequest?
 
-    init(appState: AppState, loadKey: @escaping (AIRole, String) throws -> String? = { try AIKeychainStore().load(for: $0, baseURL: $1) }, generate: @escaping (AIFeature, String, String, AIModelProfile, String?, JinaConfiguration?, String?, String?) async throws -> AIWritingResult = { feature, input, option, profile, key, jina, searchKey, readerKey in
-        try await AIWritingService.generate(feature: feature, input: input, option: option, profile: profile, key: key, jinaConfiguration: jina ?? JinaConfiguration(), jinaSearchKey: searchKey, jinaReaderKey: readerKey)
+    init(appState: AppState, loadKey: @escaping (AIRole, String) throws -> String? = { try AIKeychainStore().load(for: $0, baseURL: $1) }, generate: @escaping (AIFeature, String, String, AIModelProfile, String?, JinaConfiguration?, String?, String?, AIRewriteMode?) async throws -> AIWritingResult = { feature, input, option, profile, key, jina, searchKey, readerKey, mode in
+        try await AIWritingService.generate(feature: feature, input: input, option: option, profile: profile, key: key, jinaConfiguration: jina ?? JinaConfiguration(), jinaSearchKey: searchKey, jinaReaderKey: readerKey, rewriteMode: mode)
     }, editImage: @escaping (Data, String, AIModelProfile, String?) async throws -> Data = {
         try await AIClient().editImage(data: $0, prompt: $1, profile: $2, key: $3)
+    }, describe: @escaping (Data, AIModelProfile, String?) async throws -> String = {
+        try await AIWritingService.describeImage(data: $0, profile: $1, key: $2)
     }) {
         self.appState = appState
         documentTools = AIDocumentToolsController(appState: appState)
+        question = AIQuestionController(appState: appState)
         self.generate = generate
         self.editImage = editImage
+        self.describe = describe
         self.loadKey = loadKey
         settingsObserver = appState.preferences.objectWillChange.sink { [weak self] in
             DispatchQueue.main.async { [weak self] in self?.settingsChanged() }
@@ -110,10 +123,13 @@ final class AIWritingController: ObservableObject {
         return value
     }
 
-    private func translationTargetChanged() {
-        guard feature == .translation else { return }
+    private func translationTargetChanged() { clearResultIfCurrent(.translation) }
+
+    private func clearResultIfCurrent(_ target: AIFeature) {
+        if pendingSend?.feature == target { pendingSend = nil; message = "" }
+        guard feature == target else { return }
         cancel()
-        snapshot = nil; suggestions = []; references = []; report = ""; image = nil; message = ""
+        snapshot = nil; suggestions = []; references = []; report = ""; image = nil; message = ""; sentSummary = nil
         generatedAt = nil; resultRevision = nil
     }
 
@@ -123,13 +139,24 @@ final class AIWritingController: ObservableObject {
         appState.isAIWritingVisible = true
     }
 
+    func explainSelection() {
+        prepare(.ask)
+        question.askAboutSelection()
+    }
+
+    func selectRewrite(_ mode: AIRewriteMode) {
+        guard let appState, appState.preferences.aiFeatures.contains(.rewrite) else { return }
+        rewriteMode = mode
+        if mode.requiresOption { prepare(.rewrite) } else { run(.rewrite) }
+    }
+
     func prepareImageEdit(_ request: AIImageEditRequest) {
         guard let appState, appState.selectedDocumentID == request.documentID,
               appState.preferences.aiFeatures.contains(.imageEdit),
               let document = appState.selectedDocument, document.ioState == .idle else { return }
         cancel()
         requestedFeature = .imageEdit; feature = .imageEdit
-        imageEditRequest = request; imageEditSource = nil; image = nil; report = ""; suggestions = []; references = []; message = ""
+        imageEditRequest = request; imageDescriptionRequest = nil; imageEditSource = nil; image = nil; report = ""; suggestions = []; references = []; message = ""
         generatedAt = nil; resultRevision = nil; isWorking = true; reportIsBackground = false
         appState.isAIWritingVisible = true
         let current = generation
@@ -140,6 +167,41 @@ final class AIWritingController: ObservableObject {
                 guard let self, !Task.isCancelled, self.generation == current,
                       self.currentImageEditRequest() != nil else { return }
                 self.imageEditSource = data
+            } catch {
+                guard let self, !Task.isCancelled, self.generation == current else { return }
+                self.fail(error)
+            }
+        }
+    }
+
+    func prepareImageDescription(_ request: AIImageEditRequest) {
+        guard let appState, appState.selectedDocumentID == request.documentID,
+              appState.preferences.aiFeatures.contains(.imageDescription),
+              let document = appState.selectedDocument, document.ioState == .idle else { return }
+        let profile = appState.preferences.aiProfile(for: .imageDescription)
+        guard profile.isEnabled else { post(L10n.tr("AI 功能已关闭"), action: .openSettings); return }
+        let key: String?
+        do { key = try loadKey(.text, profile.baseURL) } catch { fail(error); return }
+        cancel()
+        requestedFeature = .imageDescription; feature = .imageDescription
+        imageEditRequest = nil; imageDescriptionRequest = request; imageEditSource = nil
+        report = ""; suggestions = []; references = []; image = nil; message = ""
+        sentSummary = nil; snapshot = nil; pendingSend = nil
+        generatedAt = nil; resultRevision = nil
+        activeProfile = profile; activeKey = key; activeNeedsKey = true; activeFeatures = [.imageDescription]
+        isWorking = true; reportIsBackground = false
+        appState.isAIWritingVisible = true
+        let current = generation, describe = self.describe
+        task = Task { [weak self, weak document] in
+            defer { if let self, self.generation == current { self.isWorking = false } }
+            do {
+                let data = try await Self.loadImage(for: request, document: document)
+                let text = try await describe(data, profile, key)
+                guard let self, !Task.isCancelled, self.generation == current,
+                      self.currentImageRequest(self.imageDescriptionRequest, feature: .imageDescription) != nil,
+                      self.appState?.preferences.aiProfile(for: .imageDescription) == profile,
+                      self.keyIsCurrent(key, profile: profile, role: .text, required: true) else { return }
+                self.report = text; self.generatedAt = Date(); self.resultRevision = request.revision
             } catch {
                 guard let self, !Task.isCancelled, self.generation == current else { return }
                 self.fail(error)
@@ -184,10 +246,12 @@ final class AIWritingController: ObservableObject {
         }
     }
 
-    private func currentImageEditRequest() -> AIImageEditRequest? {
-        guard let request = imageEditRequest, let appState,
+    private func currentImageEditRequest() -> AIImageEditRequest? { currentImageRequest(imageEditRequest, feature: .imageEdit) }
+
+    private func currentImageRequest(_ request: AIImageEditRequest?, feature: AIFeature) -> AIImageEditRequest? {
+        guard let request, let appState,
               appState.selectedDocumentID == request.documentID,
-              appState.preferences.aiFeatures.contains(.imageEdit),
+              appState.preferences.aiFeatures.contains(feature),
               let document = appState.selectedDocument, document.ioState == .idle else { return nil }
         let snapshot = document.synchronizedSnapshot(), text = snapshot.text as NSString
         guard snapshot.revision == request.revision, request.range.location <= text.length,
@@ -226,7 +290,6 @@ final class AIWritingController: ObservableObject {
             let apply = EditorRangeReplacementRequest(documentID: request.documentID, range: request.range,
                 originalText: request.originalMarkdown, replacementText: replacement,
                 expectedEditorRevision: request.revision, actionName: AIFeature.imageEdit.title)
-            apply.isAIGenerated = true
             NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: apply)
             if apply.wasHandled { imageEditRequest = nil; imageEditSource = nil; image = nil }
             else { post(apply.failureMessage ?? L10n.tr("编辑内容已变化，请重新执行转换")) }
@@ -246,26 +309,24 @@ final class AIWritingController: ObservableObject {
     func run(_ feature: AIFeature, option: String = "") {
         if feature.isDocumentTool { prepare(feature); return }
         requestedFeature = feature
-        if [.translation, .toneRewrite, .audienceReview].contains(feature),
+        if let pending = pendingSend, pending.feature != feature { pendingSend = nil; message = "" }
+        if (feature == .translation || (feature == .rewrite && rewriteMode.requiresOption)),
            option.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            post(L10n.tr("请输入目标语言、语气或读者"), kind: .info)
+            post(L10n.tr("请输入目标语言或语气"), kind: .info)
             return
         }
         start(feature, option: option, background: false)
     }
 
-    private func start(_ feature: AIFeature, option: String, background: Bool, backgroundFeatures: [AIFeature] = []) {
+    func sendAnyway() {
+        guard let pending = pendingSend else { return }
+        start(pending.feature, option: pending.option, background: false, approving: pending)
+    }
+
+    private func start(_ feature: AIFeature, option: String, background: Bool, backgroundFeatures: [AIFeature] = [], approving: PendingSend? = nil) {
         guard let appState, let document = appState.selectedDocument,
               document.ioState == .idle,
               appState.preferences.aiFeatures.contains(feature) else { return }
-        if feature == .provenance {
-            reportIsBackground = false
-            cancel(); self.feature = feature; self.option = option; suggestions = []; references = []; image = nil; message = ""
-            document.provenance.configure(enabled: true, length: (document.synchronizedText() as NSString).length)
-            report = document.provenance.report()
-            generatedAt = Date(); resultRevision = document.textRevision
-            return
-        }
         let profile = appState.preferences.aiProfile(for: feature)
         let jina = feature == .sources ? appState.preferences.jinaConfiguration : nil
         let needsKey = feature != .sources || jina?.readerEnabled == true
@@ -276,6 +337,20 @@ final class AIWritingController: ObservableObject {
             if !background { post(L10n.tr("请先选择需要处理的文本"), kind: .info) }
             return
         }
+        if let approving, !approving.snapshot.matches(snapshot) {
+            pendingSend = nil
+            post(L10n.tr("编辑内容已变化，请重新执行转换"), kind: .info)
+            return
+        }
+        let measured = feature != .illustration
+        let bytes = !measured ? 0 : (needsKey ? AIRequestSize.bytes(snapshot.text, option) : AIRequestSize.bytes(option.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? snapshot.text : option))
+        if bytes > max(AIRequestSize.threshold, approving?.bytes ?? 0) {
+            if background { return }
+            pendingSend = PendingSend(feature: feature, option: option, snapshot: snapshot, bytes: bytes)
+            post(AIRequestSize.warning(label: AIRequestSize.label(snapshot), bytes: bytes), kind: .info, action: .sendAnyway)
+            return
+        }
+        pendingSend = nil
         let key: String?
         let features = background ? backgroundFeatures : [feature]
         var credentials: [AIFeature: Credentials] = [:]
@@ -297,9 +372,11 @@ final class AIWritingController: ObservableObject {
         cancel()
         self.snapshot = snapshot
         self.feature = feature
+        imageDescriptionRequest = nil
         self.option = option
         report = ""; suggestions = []; references = []; image = nil; message = ""
         generatedAt = nil; resultRevision = nil
+        sentSummary = measured ? AIRequestSize.sent(label: AIRequestSize.label(snapshot), bytes: bytes) : nil
         isWorking = true
         activeProfile = profile
         batchCredentials = credentials
@@ -312,20 +389,23 @@ final class AIWritingController: ObservableObject {
         let current = generation
         let taskGeneration = document.taskCoordinator.begin(.aiWriting)
         let generate = self.generate
+        let mode = rewriteMode
         task = Task { [weak self] in
             defer {
                 document.taskCoordinator.finish(.aiWriting, generation: taskGeneration)
                 if let self, self.generation == current { self.isWorking = false }
             }
             do {
+                var skipped = 0
+                var accepted = 0
                 for currentFeature in features {
                     try Task.checkCancellation()
                     guard let item = credentials[currentFeature] else { return }
-                    let result = try await generate(currentFeature, snapshot.text, option, item.profile, item.key, jina, searchKey, readerKey)
+                    let result = try await generate(currentFeature, snapshot.text, option, item.profile, item.key, jina, searchKey, readerKey, currentFeature == .rewrite ? mode : nil)
                     guard let self, !Task.isCancelled, self.isCurrent(current, snapshot: snapshot, feature: currentFeature, profile: item.profile),
                           self.activeCredentialsAreCurrent(),
                           document.taskCoordinator.isCurrent(taskGeneration, for: .aiWriting),
-                          self.jinaIsCurrent(jina, searchKey: searchKey, readerKey: readerKey),
+                          AIJinaCredentials.isCurrent(jina, searchKey: searchKey, readerKey: readerKey, preferences: self.appState?.preferences),
                           self.keyIsCurrent(item.key, profile: item.profile, role: currentFeature.role, required: item.required),
                           !background || self.appState?.preferences.aiBackgroundEnabled == true else { return }
                     self.suggestions.append(contentsOf: result.suggestions)
@@ -337,6 +417,12 @@ final class AIWritingController: ObservableObject {
                     self.image = result.image
                     self.generatedAt = Date(); self.resultRevision = snapshot.editorRevision
                     if currentFeature == .metadata { document.aiMetadata = result.report }
+                    skipped += result.skipped
+                    accepted += result.accepted
+                }
+                if skipped > 0, let self, !background {
+                    let allDropped = self.suggestions.isEmpty && self.references.isEmpty && (self.report.isEmpty || (feature == .sources && accepted == 0))
+                    self.post(AIRequestSize.skippedMessage(skipped, allDropped: allDropped), kind: .info)
                 }
             } catch {
                 guard let self, !Task.isCancelled, self.isCurrent(current, snapshot: snapshot, feature: feature, profile: profile) && document.taskCoordinator.isCurrent(taskGeneration, for: .aiWriting) else { return }
@@ -372,17 +458,6 @@ final class AIWritingController: ObservableObject {
         }
     }
 
-    private func jinaIsCurrent(_ configuration: JinaConfiguration?, searchKey: String?, readerKey: String?) -> Bool {
-        guard let configuration else { return true }
-        guard appState?.preferences.jinaConfiguration == configuration else { return false }
-        let store = AIKeychainStore()
-        do {
-            let currentSearchKey = try configuration.searchEnabled ? store.load(for: JinaServiceKind.search, baseURL: configuration.searchEndpoint) : nil
-            let currentReaderKey = try configuration.readerEnabled ? store.load(for: JinaServiceKind.reader, baseURL: configuration.readerEndpoint) : nil
-            return currentSearchKey == searchKey && currentReaderKey == readerKey
-        } catch { return false }
-    }
-
     func accept(_ suggestion: AIWritingSuggestion) {
         guard let snapshot, let appState,
               appState.selectedDocumentID == snapshot.documentID,
@@ -393,7 +468,6 @@ final class AIWritingController: ObservableObject {
               suggestion.range.length <= (snapshot.text as NSString).length - suggestion.range.location else { return }
         let range = NSRange(location: snapshot.range.location + suggestion.range.location, length: suggestion.range.length)
         let request = EditorRangeReplacementRequest(documentID: snapshot.documentID, range: range, originalText: suggestion.original, replacementText: suggestion.replacement, expectedEditorRevision: snapshot.editorRevision, actionName: feature.title)
-        request.isAIGenerated = true
         NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
         if !request.wasHandled { message = request.failureMessage ?? L10n.tr("编辑内容已变化，请重新执行转换") }
     }
@@ -421,7 +495,6 @@ final class AIWritingController: ObservableObject {
         }
         let span = NSRange(location: first.range.location, length: cursor - first.range.location)
         let request = EditorRangeReplacementRequest(documentID: snapshot.documentID, range: NSRange(location: snapshot.range.location + span.location, length: span.length), originalText: text.substring(with: span), replacementText: composed, expectedEditorRevision: snapshot.editorRevision, actionName: feature.title)
-        request.isAIGenerated = true
         request.groupsUndo = true
         NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
         if request.wasHandled { suggestions = [] }
@@ -500,13 +573,13 @@ final class AIWritingController: ObservableObject {
         do {
             let data = try Data(contentsOf: url)
             let key = try loadKey(.text, profile.baseURL)
-            cancel(); feature = .imageDescription; activeProfile = profile; activeKey = key; activeNeedsKey = true; activeFeatures = [.imageDescription]; report = ""; suggestions = []; references = []; image = nil; message = ""; isWorking = true
+            cancel(); feature = .imageDescription; imageDescriptionRequest = nil; activeProfile = profile; activeKey = key; activeNeedsKey = true; activeFeatures = [.imageDescription]; report = ""; suggestions = []; references = []; image = nil; message = ""; isWorking = true
             reportIsBackground = false
-            let current = generation
+            let current = generation, describe = self.describe
             task = Task { [weak self] in
                 defer { if let self, self.generation == current { self.isWorking = false } }
                 do {
-                    let text = try await AIWritingService.describeImage(data: data, profile: profile, key: key)
+                    let text = try await describe(data, profile, key)
                     guard let self, !Task.isCancelled, self.generation == current,
                           self.appState?.selectedDocumentID == document.id,
                           self.appState?.preferences.aiFeatures.contains(.imageDescription) == true,
@@ -536,8 +609,10 @@ final class AIWritingController: ObservableObject {
 
     func invalidate(documentID: UUID) {
         documentTools.invalidate(documentID: documentID)
-        if snapshot?.documentID == documentID || imageEditRequest?.documentID == documentID || appState?.selectedDocumentID == documentID {
-            cancel(); snapshot = nil; suggestions = []; references = []; report = ""; image = nil; imageEditSource = nil; imageEditRequest = nil
+        question.invalidate(documentID: documentID)
+        if snapshot?.documentID == documentID || imageEditRequest?.documentID == documentID || imageDescriptionRequest?.documentID == documentID || appState?.selectedDocumentID == documentID {
+            if pendingSend != nil { pendingSend = nil; message = "" }
+            cancel(); snapshot = nil; suggestions = []; references = []; report = ""; image = nil; imageEditSource = nil; imageEditRequest = nil; imageDescriptionRequest = nil; sentSummary = nil
         }
         debounce?.cancel(); debounce = nil
         cancelMetadata()
@@ -546,7 +621,10 @@ final class AIWritingController: ObservableObject {
 
     func selectedDocumentChanged() {
         documentTools.selectedDocumentChanged()
-        cancel(); cancelMetadata(); debounce?.cancel(); snapshot = nil; suggestions = []; references = []; report = ""; image = nil; imageEditSource = nil; imageEditRequest = nil
+        question.selectedDocumentChanged()
+        cancel(); cancelMetadata(); debounce?.cancel(); snapshot = nil; suggestions = []; references = []; report = ""; image = nil; imageEditSource = nil; imageEditRequest = nil; imageDescriptionRequest = nil
+        if pendingSend != nil { pendingSend = nil; message = "" }
+        sentSummary = nil
         generatedAt = nil; resultRevision = nil
     }
 
@@ -579,6 +657,7 @@ final class AIWritingController: ObservableObject {
         do { key = try loadKey(.text, profile.baseURL) }
         catch { return }
         let snapshot = document.synchronizedSnapshot()
+        guard AIRequestSize.bytes(snapshot.text) <= AIRequestSize.threshold else { return }
         cancelMetadata()
         metadataProfile = profile
         let current = metadataGeneration
@@ -586,7 +665,7 @@ final class AIWritingController: ObservableObject {
         let generate = self.generate
         metadataTask = Task { [weak self, weak document] in
             do {
-                let result = try await generate(.metadata, snapshot.text, "", profile, key, nil, nil, nil)
+                let result = try await generate(.metadata, snapshot.text, "", profile, key, nil, nil, nil, nil)
                 guard let self, let document, let appState = self.appState,
                       !Task.isCancelled, self.metadataGeneration == current,
                       document.taskCoordinator.isCurrent(taskGeneration, for: .aiMetadata),
@@ -626,12 +705,15 @@ final class AIWritingController: ObservableObject {
 
     private func settingsChanged() {
         documentTools.settingsChanged()
+        question.settingsChanged()
         objectWillChange.send()
         guard let appState else { return }
         objectWillChange.send()
         if metadataProfile != nil && (!appState.preferences.aiBackgroundEnabled || !appState.preferences.aiFeatures.contains(.metadata) || metadataProfile != appState.preferences.aiProfile(for: .metadata)) { cancelMetadata() }
         if ((!report.isEmpty || snapshot != nil || image != nil || imageEditRequest != nil) && !appState.preferences.aiFeatures.contains(feature)) || !activeFeatures.isSubset(of: appState.preferences.aiFeatures) || (activeProfile != nil && !activeCredentialsAreCurrent()) || (activeJinaConfiguration != nil && activeJinaConfiguration != appState.preferences.jinaConfiguration) || (reportIsBackground && !appState.preferences.aiBackgroundEnabled) {
-            cancel(); debounce?.cancel(); snapshot = nil; suggestions = []; references = []; report = ""; image = nil; imageEditSource = nil; imageEditRequest = nil
+            cancel(); debounce?.cancel(); snapshot = nil; suggestions = []; references = []; report = ""; image = nil; imageEditSource = nil; imageEditRequest = nil; imageDescriptionRequest = nil
+            if pendingSend != nil { pendingSend = nil; message = "" }
+            sentSummary = nil
         }
     }
 }

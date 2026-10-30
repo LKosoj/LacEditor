@@ -37,6 +37,7 @@ struct EditorTextView: NSViewRepresentable {
     var viewMagnification: CGFloat = 1
     var magnificationDidChange: ((CGFloat) -> Void)? = nil
     var requestAIImageEdit: ((AIImageEditRequest) -> Void)? = nil
+    var requestAIImageDescription: ((AIImageEditRequest) -> Void)? = nil
     var wikiResolver: MarkdownWikiLinkResolver? = nil
     var requestWikiCatalog: (() -> Void)? = nil
     var wikiSource: (() -> MarkdownWikiLinkSource)? = nil
@@ -68,6 +69,7 @@ struct EditorTextView: NSViewRepresentable {
         context.coordinator.updateMathOptions(.init(physics: aiPreferences?.mathPhysicsEnabled ?? true,
                                                     numbering: aiPreferences?.mathNumbering ?? .none))
         context.coordinator.requestAIImageEdit = requestAIImageEdit
+        context.coordinator.requestAIImageDescription = requestAIImageDescription
         if let cachedView = sessionStore.cachedView(for: document.id) {
             context.coordinator.configureWritingChecks(spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
             context.coordinator.configureAIAssistance(preferences: aiPreferences)
@@ -269,6 +271,7 @@ struct EditorTextView: NSViewRepresentable {
         coordinator.textView?.paragraphStylesChangedHandler = nil
         coordinator.textView?.diagramMenuHandler = nil
         coordinator.requestAIImageEdit = nil
+        coordinator.requestAIImageDescription = nil
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
@@ -276,6 +279,7 @@ struct EditorTextView: NSViewRepresentable {
                                                     numbering: aiPreferences?.mathNumbering ?? .none))
         guard let textView = context.coordinator.textView else { return }
         context.coordinator.requestAIImageEdit = requestAIImageEdit
+        context.coordinator.requestAIImageDescription = requestAIImageDescription
         context.coordinator.magnificationDidChange = magnificationDidChange
         context.coordinator.updateViewMagnification(viewMagnification)
         textView.remoteImageTransferEnabled = remoteImageTransferEnabled

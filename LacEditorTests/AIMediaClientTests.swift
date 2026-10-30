@@ -117,6 +117,21 @@ final class AIMediaClientTests: XCTestCase {
         catch AIError.invalidResponse {} catch { XCTFail("Unexpected error") }
     }
 
+    func testMediaTransportErrorsAreClassified() async throws {
+        let file = try temporaryFile(Data("audio".utf8), extension: "wav")
+        defer { try? FileManager.default.removeItem(at: file) }
+        var timeout: TimeInterval?
+        AIMediaURLProtocol.handler = { request in timeout = request.timeoutInterval; throw URLError(.timedOut) }
+        do { _ = try await client().transcribe(fileURL: file, profile: profile(.transcriptions), key: nil); XCTFail() }
+        catch AIError.transport(let failure) { XCTAssertEqual(failure, .timedOut) }
+        catch { XCTFail("Unexpected error") }
+        XCTAssertEqual(timeout, 600)
+        AIMediaURLProtocol.handler = { _ in throw URLError(.notConnectedToInternet) }
+        do { _ = try await client().transcribe(fileURL: file, profile: profile(.transcriptions), key: nil); XCTFail() }
+        catch AIError.transport(let failure) { XCTAssertEqual(failure, .offline) }
+        catch { XCTFail("Unexpected error") }
+    }
+
     func testInvalidPDFConversionResponse() async throws {
         let document = PDFDocument()
         document.insert(try pdfPage(), at: 0)

@@ -125,6 +125,8 @@ extension NSColor {
     }
 }
 
+enum EditSource { case unknown, typed, pasted }
+
 final class LacTextView: NSTextView {
     func placeMarkdownSubview(_ child: NSView, in rect: NSRect) {
         guard layoutOrientation == .vertical, child.superview === self, let clip = enclosingScrollView?.contentView else {
@@ -383,7 +385,7 @@ final class LacTextView: NSTextView {
     var wikiCompletionValues: [String] = []
     var acceptWikiCompletion: ((String, NSRange) -> Bool)?
     var dismissWikiCompletion: (() -> Void)?
-    var editSource: DocumentProvenance.Source = .unknown
+    var editSource: EditSource = .unknown
     var autoPairBracketsEnabled = false
     var autoPairMarkdownEnabled = false
     var autoPairAllowed: (() -> Bool)?

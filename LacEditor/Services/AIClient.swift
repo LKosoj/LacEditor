@@ -1,8 +1,10 @@
 import Foundation
 import ImageIO
 
+enum AITransportFailure: Equatable { case timedOut, offline, cannotConnect, secureConnection }
+
 enum AIError: LocalizedError {
-    case invalidConfiguration, disabled, keychain, network, http(Int, String?), invalidResponse, refused
+    case invalidConfiguration, disabled, keychain, network, transport(AITransportFailure), http(Int, String?), invalidResponse, refused
 
     var errorDescription: String? {
         switch self {
@@ -10,11 +12,33 @@ enum AIError: LocalizedError {
         case .disabled: return L10n.tr("AI 功能已关闭")
         case .keychain: return L10n.tr("无法访问 AI 密钥")
         case .network: return L10n.tr("AI 网络请求失败")
+        case .transport(let failure):
+            switch failure {
+            case .timedOut: return L10n.tr("AI 服务在 %lld 分钟内没有响应，请求已中止。", Int(AIClient.requestTimeout / 60))
+            case .offline: return L10n.tr("没有网络连接或连接已中断，请检查网络后重试。")
+            case .cannotConnect: return L10n.tr("无法找到或连接 AI 服务器，请检查服务地址。")
+            case .secureConnection: return L10n.tr("与 AI 服务器的安全连接失败（证书或 TLS），请检查服务地址和证书。")
+            }
         case .http(let status, let detail):
             let summary = L10n.tr("AI 服务返回错误（HTTP %d）", status)
             return if let detail { summary + "\n" + detail } else { summary }
         case .invalidResponse: return L10n.tr("AI 服务返回了无效或不完整的结果")
         case .refused: return L10n.tr("AI 服务拒绝了请求")
+        }
+    }
+
+    static func transportError(_ error: Error) -> AIError {
+        guard let error = error as? URLError else { return .network }
+        switch error.code {
+        case .timedOut: return .transport(.timedOut)
+        case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed, .internationalRoamingOff, .callIsActive:
+            return .transport(.offline)
+        case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed: return .transport(.cannotConnect)
+        case .secureConnectionFailed, .serverCertificateHasBadDate, .serverCertificateUntrusted,
+             .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid, .clientCertificateRejected,
+             .clientCertificateRequired, .appTransportSecurityRequiresSecureConnection:
+            return .transport(.secureConnection)
+        default: return .network
         }
     }
 
@@ -104,10 +128,72 @@ enum AIRequestMediaSanitizer {
     }
 }
 
+enum AIResponseJSON {
+    static func unwrap(_ response: String) -> String {
+        let text = response.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.hasPrefix("```") else { return text }
+        var lines = text.components(separatedBy: .newlines)
+        if lines.count == 1 {
+            guard text.count >= 6, text.hasSuffix("```") else { return text }
+            var inner = String(text.dropFirst(3).dropLast(3))
+            if inner.lowercased().hasPrefix("json") { inner = String(inner.dropFirst(4)) }
+            return inner.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let opening = lines.removeFirst().trimmingCharacters(in: .whitespaces).lowercased()
+        guard opening == "```" || opening == "```json",
+              lines.removeLast().trimmingCharacters(in: .whitespaces) == "```" else { return text }
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func object(_ response: String) throws -> [String: Any] {
+        guard let data = unwrap(response).data(using: .utf8),
+              let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw AIError.invalidResponse }
+        return value
+    }
+}
+
+enum AIRequestSize {
+    static let threshold = 50 * 1024
+
+    static func bytes(_ parts: String...) -> Int {
+        parts.reduce(0) { $0 + AIRequestMediaSanitizer.sanitize($1).utf8.count }
+    }
+
+    static func text(_ bytes: Int) -> String {
+        // Порог задан как 50 × 1024 байт: показываем двоичные КБ, чтобы он не выглядел как 51 КБ
+        ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .memory)
+    }
+
+    static func warning(label: String, bytes: Int) -> String {
+        L10n.tr("即将发送的内容较大：%@，共 %@（建议不超过 %@）。确认后才会发送。", label, text(bytes), text(threshold))
+    }
+
+    static func sent(label: String, bytes: Int) -> String {
+        L10n.tr("已发送：%@，%@", label, text(bytes))
+    }
+
+    static func label(_ selection: EditorTextSelectionSnapshot, sources: Int = 0) -> String {
+        let base = selection.wasExplicitSelection ? L10n.tr("所选文本") : L10n.tr("整个文档")
+        return sources > 0 ? L10n.tr("%@ + %lld 个来源", base, sources) : base
+    }
+
+    static func skippedMessage(_ count: Int, allDropped: Bool) -> String {
+        allDropped ? L10n.tr("模型返回的 %lld 个条目均无法核对，已全部跳过。", count) : L10n.tr("已跳过 %lld 个无法核对的条目。", count)
+    }
+}
+
 struct AIClient {
+    static let requestTimeout: TimeInterval = 600
+    static let defaultSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = requestTimeout
+        configuration.timeoutIntervalForResource = requestTimeout
+        return URLSession(configuration: configuration)
+    }()
+
     private let session: URLSession
 
-    init(session: URLSession = .shared) { self.session = session }
+    init(session: URLSession = AIClient.defaultSession) { self.session = session }
 
     private func endpoint(_ profile: AIModelProfile, path: String) throws -> URL {
         let baseURL = try AIModelProfile.normalizedBaseURL(profile.baseURL)
@@ -118,8 +204,9 @@ struct AIClient {
     }
 
     private func request(_ profile: AIModelProfile, path: String, key: String?, body: [String: Any]? = nil,
-                         allowsMediaData: Bool = false) throws -> URLRequest {
+                         allowsMediaData: Bool = false, timeout: TimeInterval = AIClient.requestTimeout) throws -> URLRequest {
         var request = URLRequest(url: try endpoint(profile, path: path))
+        request.timeoutInterval = timeout
         if let key, !key.isEmpty { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
         if let body {
             request.httpMethod = "POST"
@@ -148,6 +235,7 @@ struct AIClient {
         body.append(data)
         append("\r\n--\(boundary)--\r\n")
         var request = URLRequest(url: try endpoint(profile, path: "images/edits"))
+        request.timeoutInterval = AIClient.requestTimeout
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         if let key, !key.isEmpty { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
@@ -169,7 +257,7 @@ struct AIClient {
         } catch let error as AIError {
             throw error
         } catch {
-            throw AIError.network
+            throw AIError.transportError(error)
         }
     }
 
@@ -185,7 +273,7 @@ struct AIClient {
     }
 
     func listModels(profile: AIModelProfile, key: String?) async throws -> [String] {
-        let result = try object(await fetch(request(profile, path: "models", key: key)))
+        let result = try object(await fetch(request(profile, path: "models", key: key, timeout: 60)))
         guard let data = result["data"] as? [[String: Any]] else { throw AIError.invalidResponse }
         return data.compactMap { $0["id"] as? String }
     }
@@ -206,6 +294,107 @@ struct AIClient {
         }
         let result = try object(await fetch(request(profile, path: path, key: key, body: body)))
         return try responseText(result, api: profile.api)
+    }
+
+    /// Один шаг разговора: единственное место, где вопрос к документу обращается к модели (вариант без инструментов).
+    func generateConversation(messages: [AIConversationMessage], instructions: String, profile: AIModelProfile, key: String?) async throws -> String {
+        guard profile.isEnabled else { throw AIError.disabled }
+        let model = try model(profile)
+        let items = messages.map { message -> [String: Any] in
+            switch message {
+            case .user(let text): ["role": "user", "content": text]
+            case .assistant(let text): ["role": "assistant", "content": text]
+            }
+        }
+        let path: String
+        let body: [String: Any]
+        switch profile.api {
+        case .responses:
+            path = "responses"
+            body = ["model": model, "input": items, "instructions": instructions, "store": false]
+        case .chatCompletions:
+            path = "chat/completions"
+            body = ["model": model, "messages": [["role": "system", "content": instructions]] + items]
+        default: throw AIError.invalidConfiguration
+        }
+        let result = try object(await fetch(request(profile, path: path, key: key, body: body)))
+        return try responseText(result, api: profile.api)
+    }
+
+    /// Разговор с инструментом web_search: пока модель просит вызов, результат возвращается ей; на последнем раунде tool_choice = "none".
+    func generateConversation(messages: [AIConversationMessage], instructions: String, profile: AIModelProfile, key: String?,
+                              maxToolRounds: Int = 5, toolHandler: (AIToolCall) async throws -> String) async throws -> String {
+        guard profile.isEnabled else { throw AIError.disabled }
+        let model = try model(profile)
+        let schema: [String: Any] = ["type": "object", "properties": ["query": ["type": "string", "description": "Short web search query"]],
+                                     "required": ["query"], "additionalProperties": false]
+        let details = "Search the web for current information not present in the documents. Returns result snippets or page text with resultIndex."
+        var items = messages.map { message -> [String: Any] in
+            switch message {
+            case .user(let text): ["role": "user", "content": text]
+            case .assistant(let text): ["role": "assistant", "content": text]
+            }
+        }
+        let path: String
+        switch profile.api {
+        case .responses: path = "responses"
+        case .chatCompletions: path = "chat/completions"
+        default: throw AIError.invalidConfiguration
+        }
+        for round in 0...maxToolRounds {
+            try Task.checkCancellation()
+            let choice = round == maxToolRounds ? "none" : "auto"
+            var body: [String: Any]
+            if profile.api == .responses {
+                body = ["model": model, "input": items, "instructions": instructions, "store": false, "tool_choice": choice,
+                        "tools": [["type": "function", "name": "web_search", "description": details, "parameters": schema, "strict": true]]]
+            } else {
+                body = ["model": model, "messages": [["role": "system", "content": instructions]] + items, "tool_choice": choice,
+                        "tools": [["type": "function", "function": ["name": "web_search", "description": details, "parameters": schema, "strict": true]]]]
+            }
+            let result = try object(await fetch(request(profile, path: path, key: key, body: body)))
+            var calls: [AIToolCall] = []
+            var echoed: [[String: Any]] = []
+            if profile.api == .responses {
+                guard result["status"] as? String == "completed", let output = result["output"] as? [[String: Any]] else { throw AIError.invalidResponse }
+                for item in output where item["type"] as? String == "function_call" {
+                    guard let id = item["call_id"] as? String, !id.isEmpty, let name = item["name"] as? String,
+                          let arguments = item["arguments"] as? String else { throw AIError.invalidResponse }
+                    calls.append(AIToolCall(id: id, name: name, arguments: arguments))
+                }
+                if !calls.isEmpty {
+                    // При store:false сервер не хранит reasoning: без encrypted_content такой элемент вернуть нельзя (404).
+                    echoed = output.filter {
+                        guard $0["type"] as? String == "reasoning" else { return true }
+                        return !(($0["encrypted_content"] as? String) ?? "").isEmpty
+                    }
+                    // Элемент с id требует своего reasoning; без него возвращается по call_id и содержимому.
+                    if echoed.count < output.count {
+                        echoed = echoed.map { var item = $0; item.removeValue(forKey: "id"); return item }
+                    }
+                }
+            } else {
+                guard let choices = result["choices"] as? [[String: Any]], let message = choices.first?["message"] as? [String: Any] else { throw AIError.invalidResponse }
+                if let rawCalls = message["tool_calls"] as? [[String: Any]], !rawCalls.isEmpty {
+                    for raw in rawCalls {
+                        guard let id = raw["id"] as? String, !id.isEmpty, let function = raw["function"] as? [String: Any],
+                              let name = function["name"] as? String, let arguments = function["arguments"] as? String else { throw AIError.invalidResponse }
+                        calls.append(AIToolCall(id: id, name: name, arguments: arguments))
+                    }
+                    echoed = [message]
+                }
+            }
+            if calls.isEmpty { return try responseText(result, api: profile.api) }
+            guard round < maxToolRounds else { throw AIError.invalidResponse }
+            items += echoed
+            for call in calls {
+                try Task.checkCancellation()
+                let output = try await toolHandler(call)
+                items.append(profile.api == .responses ? ["type": "function_call_output", "call_id": call.id, "output": output]
+                                                       : ["role": "tool", "tool_call_id": call.id, "content": output])
+            }
+        }
+        throw AIError.invalidResponse
     }
 
     private func responseText(_ result: [String: Any], api: AIAPIProtocol) throws -> String {
@@ -305,7 +494,9 @@ struct AIClient {
         } else if let value = image["url"] as? String, let url = URL(string: value),
                   let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
                   url.host != nil, url.user == nil, url.password == nil {
-            data = try await fetch(URLRequest(url: url))
+            var imageRequest = URLRequest(url: url)
+            imageRequest.timeoutInterval = AIClient.requestTimeout
+            data = try await fetch(imageRequest)
         } else { throw AIError.invalidResponse }
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               CGImageSourceGetCount(source) > 0,

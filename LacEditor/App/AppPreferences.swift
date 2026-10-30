@@ -589,10 +589,16 @@ final class AppPreferences: ObservableObject {
         jinaConfiguration = defaults.data(forKey: Keys.jinaConfiguration)
             .flatMap { try? JSONDecoder().decode(JinaConfiguration.self, from: $0) }
             ?? JinaConfiguration()
-        let features = defaults.data(forKey: Keys.aiFeatures)
+        let storedFeatures = defaults.data(forKey: Keys.aiFeatures)
             .flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? []
-        aiFeatures = Set(features.compactMap(AIFeature.init(rawValue:)))
-        aiFeatureModelIDs = defaults.dictionary(forKey: Keys.aiFeatureModelIDs) as? [String: String] ?? [:]
+        let storedModels = defaults.dictionary(forKey: Keys.aiFeatureModelIDs) as? [String: String] ?? [:]
+        let migrated = AIFeatureMigration.migrate(features: storedFeatures, models: storedModels)
+        if migrated.changed {
+            if let data = try? JSONEncoder().encode(migrated.features.sorted()) { defaults.set(data, forKey: Keys.aiFeatures) }
+            defaults.set(migrated.models, forKey: Keys.aiFeatureModelIDs)
+        }
+        aiFeatures = Set(migrated.features.compactMap(AIFeature.init(rawValue:)))
+        aiFeatureModelIDs = migrated.models
         aiCustomChecks = defaults.data(forKey: Keys.aiCustomChecks)
             .flatMap { try? JSONDecoder().decode([AICustomCheck].self, from: $0) } ?? []
         aiBackgroundEnabled = defaults.bool(forKey: Keys.aiBackgroundEnabled)
