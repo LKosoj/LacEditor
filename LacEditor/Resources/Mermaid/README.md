@@ -1,20 +1,15 @@
-# Mermaid 12.2.0
+# Mermaid 12.2.0 with DOMPurify 3.4.17
 
-Unmodified `dist/mermaid.min.js` and `LICENSE` from the official npm package:
-https://registry.npmjs.org/mermaid/-/mermaid-12.2.0.tgz
+The self-contained IIFE bundle is built from official `mermaid@12.2.0` source at commit `1fb7869866dd619168d840291c9c54b4f129758b`, with only the existing pnpm override changed from DOMPurify 3.4.12 to 3.4.17. It is not the byte-identical npm 12.2.0 bundle and was not edited manually after the official build. The exact author process, toolchain, package manifest, and lockfile are in `Vendor/Mermaid`.
 
-The package integrity was checked against the registry metadata:
-`sha512-w7nr/SFrLO7BaVTs3dQTvYSV6nYSBj0Yy9DjBhsIJtAcHqRzXSq4Pg32ujHZ/AdWsAMNEvvhbm5dt9E2tOiHzw==`.
+Official npm 12.2.0 baseline: https://registry.npmjs.org/mermaid/-/mermaid-12.2.0.tgz
+Integrity: `sha512-w7nr/SFrLO7BaVTs3dQTvYSV6nYSBj0Yy9DjBhsIJtAcHqRzXSq4Pg32ujHZ/AdWsAMNEvvhbm5dt9E2tOiHzw==`.
 Package SHA-256: `071914164d0f6d53e5c26a10a220230d4ae8d37ed0f2263fbf072266f0af3a0a`.
-Bundle SHA-256: `a8a6a6f805b074a8261a2825c86f99c8054acb3b35f50bb7e24a4f9f2c3c3b9f`.
+Rebuilt bundle SHA-256: `c7aa95815786d2f43c235632f84d978dab71fca9f7c67e639a4bd74727f63ece`.
 
-This is the self-contained IIFE build. It does not need ESM chunks or downloads
-while the app runs. Preserve its bundled third-party license comments.
-The library is MIT licensed; the original license is included in this folder.
-The bundle's source map identifies its included `elkjs` as version 0.9.3.
-Its EPL-2.0 license is also included (`ELK-LICENSE.md`); corresponding source:
-https://github.com/kieler/elkjs/tree/v0.9.3 and
-https://registry.npmjs.org/elkjs/-/elkjs-0.9.3.tgz.
+DOMPurify 3.4.17 is the latest npm release and returns no OSV vulnerabilities. Its package integrity is `sha512-B/pSlYVHQ58kqISD/yDjuJ1yfzI34m1gF4lAod2bwSRhiN4K5Cl3H8Af7hqB2PmTL911tdEudnnXn5FnhRoz0w==`. Its dual Apache-2.0/MPL-2.0 licenses are included as `DOMPURIFY-LICENSE.txt` and `DOMPURIFY-LICENSE-MPL.txt`.
+
+The bundle needs no ESM chunks or downloads while the app runs. Preserve its bundled third-party license comments. Mermaid is MIT licensed; its original `LICENSE` is unchanged. The bundle's source map identifies `elkjs` 0.9.3, whose EPL-2.0 license is included (`ELK-LICENSE.md`); corresponding source: https://github.com/kieler/elkjs/tree/v0.9.3 and https://registry.npmjs.org/elkjs/-/elkjs-0.9.3.tgz.
 
 `render.js` is LacEditor's own preview integration, executed in WebKit's
 isolated client world. Diagram source is data, not JavaScript. Document scripts
