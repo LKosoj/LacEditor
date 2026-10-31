@@ -1907,7 +1907,17 @@ final class MarkdownPresentationController {
         // при попадании курсора внутрь диаграммы они должны перейти в текстовый вид.
         if selectionTouchesOpaqueMedia(selection) { return nil }
         let length = min(selection.length, text.length - selection.location)
-        return text.lineRange(for: NSRange(location: selection.location, length: length))
+        let line = text.lineRange(for: NSRange(location: selection.location, length: length))
+        // Курсор может стоять перед блочным медиа в той же строке. В этом
+        // случае раскрытие строки всё равно показывало бы полный Markdown-код
+        // картинки, хотя курсор не находится внутри её диапазона.
+        if presentation?.images.contains(where: { image in
+            let range = image.isInline ? image.range : image.paragraphRange
+            return NSIntersectionRange(line, range).length > 0
+        }) == true {
+            return nil
+        }
+        return line
     }
 
     private func selectionTouchesImage(_ selection: NSRange) -> Bool {
@@ -3610,6 +3620,11 @@ final class MarkdownPresentationController {
                 if let view = animatedImages.removeValue(forKey: key) { view.animates = false; view.removeFromSuperview() }
             }
             guard !loadedImageRanges.contains(key), imageOperations[key] == nil, svgImageJobs[key] == nil else { continue }
+            // Reserve the media placement before starting an asynchronous load.
+            // Without a placeholder FoldLayoutManager draws the full source line
+            // during the cache miss, which looks like the image is раскрывается
+            // while scrolling. The real resource replaces this placeholder.
+            installImagePlaceholder(for: image, key: key, layout: layout)
             if let url = URL(string: image.url), ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil {
                 guard remoteImageJobs[key] == nil else { continue }
                 let token = UUID(), generation = self.generation, revision = self.revision, baseURL = document.url
@@ -3682,6 +3697,16 @@ final class MarkdownPresentationController {
             }
             imageOperations[key] = operation
             queue.addOperation(operation)
+        }
+    }
+
+    private func installImagePlaceholder(for image: MarkdownImage, key: NSRange, layout: FoldLayoutManager) {
+        guard !loadedImageRanges.contains(key), imageOperations[key] == nil, svgImageJobs[key] == nil else { return }
+        let placeholder = NSImage(size: NSSize(width: 1, height: 1))
+        if image.isInline {
+            _ = layout.setMarkdownInlineImage(placeholder, for: image.range)
+        } else {
+            layout.setMarkdownImage(placeholder, for: image.paragraphRange)
         }
     }
 
