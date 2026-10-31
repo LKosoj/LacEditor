@@ -9,6 +9,8 @@ Rebuilt bundle SHA-256: `c7aa95815786d2f43c235632f84d978dab71fca9f7c67e639a4bd74
 
 DOMPurify 3.4.17 is the latest npm release and returns no OSV vulnerabilities. Its package integrity is `sha512-B/pSlYVHQ58kqISD/yDjuJ1yfzI34m1gF4lAod2bwSRhiN4K5Cl3H8Af7hqB2PmTL911tdEudnnXn5FnhRoz0w==`. Its dual Apache-2.0/MPL-2.0 licenses are included as `DOMPURIFY-LICENSE.txt` and `DOMPURIFY-LICENSE-MPL.txt`.
 
+The bundled regenerator-runtime notice refers to Babel helpers. The full MIT license from official Babel v7.29.7 `packages/babel-helpers/LICENSE` is included as `REGENERATOR-RUNTIME-LICENSE.txt`; the v7.28.4 file is byte-identical.
+
 The bundle needs no ESM chunks or downloads while the app runs. Preserve its bundled third-party license comments. Mermaid is MIT licensed; its original `LICENSE` is unchanged. The bundle's source map identifies `elkjs` 0.9.3, whose EPL-2.0 license is included (`ELK-LICENSE.md`); corresponding source: https://github.com/kieler/elkjs/tree/v0.9.3 and https://registry.npmjs.org/elkjs/-/elkjs-0.9.3.tgz.
 
 `render.js` is LacEditor's own preview integration, executed in WebKit's

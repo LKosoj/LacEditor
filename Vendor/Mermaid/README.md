@@ -11,6 +11,10 @@ This is a one-time author build process, not an Xcode phase or part of the appli
 
 DOMPurify 3.4.17 fixes the five advisories present in the bundled 3.4.12: `GHSA-55q2-fjhq-7xh7`, `GHSA-6688-9rhm-gjv2`, `GHSA-c6gr-qvv4-5v3f`, `GHSA-cg2g-xh64-v4q7`, and `GHSA-mrv2-3pqr-j5jr`.
 
+## Bundled license notices
+
+The regenerator-runtime notice in `mermaid.min.js` points to `packages/babel-helpers/LICENSE`. `REGENERATOR-RUNTIME-LICENSE.txt` is the unchanged official file from Babel v7.29.7, commit `4fba7541180bf5f58256d8e358b544e3831ad090`; the v7.28.4 file is byte-identical. SHA256: `4be9d87b56a306293223b490c0d0b245e9e94f39884147bf051a6c7b825aeb30`.
+
 ## Toolchain and author process
 
 Verified with Node.js 24.21.0, upstream-pinned pnpm 10.30.3, and esbuild 0.25.12 from the lockfile. From a checkout of the tag above, copy this directory's `package.json` and `pnpm-lock.yaml` to its root, then run with local Corepack/pnpm caches:
