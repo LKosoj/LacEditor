@@ -1709,6 +1709,7 @@
 "联网搜索“%@”" = "Web search “%@”";
 "网页 %@" = "Web page %@";
 "已拒绝联网搜索“%@”" = "Web search declined “%@”";
+"已拒绝访问文档“%@”" = "Access to document “%@” declined";
 "无效的工具调用：%@" = "Invalid tool call: %@";
 "未保存的文本" = "unsaved text";
 "已截断" = "truncated";
