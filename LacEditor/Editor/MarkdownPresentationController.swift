@@ -916,10 +916,7 @@ final class MarkdownPresentationController {
         // Прошлая правка сдвинула оформление, но текст так и не изменился: сдвиг ничем не подтверждён.
         if keptEdit != nil {
             keptEdit = nil
-            // Следующая клавиша подтверждает, что ввод продолжается. Не сбрасываем
-            // готовые медиа между клавишами: их диапазоны будут сдвинуты ещё раз,
-            // а новый разбор позже заменит только действительно изменившиеся блоки.
-            deferredReadyClear = true
+            dropKeptPresentation()
         }
         document?.invalidateMarkdownReadableText()
         if document?.isMarkdownOutlineCurrent == true { document?.isMarkdownOutlineCurrent = false }
@@ -929,47 +926,31 @@ final class MarkdownPresentationController {
         // показано, незавершённые загрузки неизменившихся картинок должны
         // пережить эту клавишу; их ключи будут перенесены в `shiftInstalledMedia`.
         deferredReadyClear = isActive && !hasMarkedText && (presentation != nil || !styledRanges.isEmpty)
-        cancelPending(preservingMedia: deferredReadyClear)
+        cancelPending(preservingMedia: deferredReadyClear && !isContinuation)
         if isActive && !hasMarkedText {
+            if isContinuation {
+                // После первой безопасной правки новый разбор ещё не готов.
+                // Снимаем старые текстовые диапазоны один раз и не сдвигаем
+                // всю Markdown-модель на каждой следующей клавише.
+                clear()
+                deferredReadyClear = false
+                return
+            }
             if presentation != nil || !styledRanges.isEmpty {
                 if let replacement, let edit = presentationAfterEdit(range: range, replacement: replacement, replacementLength: replacementLength) {
                     lastRevealedRange = lastRevealedRange.flatMap { shifted([$0]).first }
-                    if isContinuation {
-                        presentation?.shiftMediaOnly(edit)
-                        shiftInstalledMedia(edit)
-                        shiftDiagrams(edit)
-                        layout?.shiftMarkdownMediaOnly(edit)
-                    } else {
-                        shiftPresentation(edit)
-                    }
+                    shiftPresentation(edit)
                     keptEdit = (currentRevision?() ?? 0, (textView?.textStorage?.length ?? 0) - range.length + replacementLength,
                                 NSRange(location: range.location, length: replacementLength))
                     deferredReadyClear = true
                 } else {
-                    // Полный разбор всё равно понадобится, но готовые медиа оставляем на экране
-                    // до его завершения. Даже при структурно небезопасной правке переносим
-                    // старые диапазоны механически: иначе FoldLayoutManager сразу показывает
-                    // исходный Markdown вместо ещё актуальных вставок.
-                    let edit = MarkdownTextEdit(range: range, replacementLength: replacementLength,
-                                                textLength: textView?.textStorage?.length ?? 0)
-                    let editingDiagram = presentation?.diagrams.contains { diagram in
-                        if range.length > 0 {
-                            return NSIntersectionRange(range, diagram.range).length > 0
-                        }
-                        return diagram.range.location <= range.location && range.location <= NSMaxRange(diagram.range)
-                    } == true
-                    // Внутри диаграммы показывается исходный текст. Не тратим
-                    // O(N)-сдвиг всей Markdown-модели на каждую букву: новый
-                    // результат будет установлен после выхода из блока.
-                    if editingDiagram || isContinuation {
-                        presentation?.shiftMediaOnly(edit)
-                        shiftInstalledMedia(edit)
-                        shiftDiagrams(edit)
-                        layout?.shiftMarkdownMediaOnly(edit)
-                    } else {
-                        shiftPresentation(edit)
-                    }
-                    deferredReadyClear = true
+                    // Небезопасную правку нельзя переносить по старым диапазонам:
+                    // на границе скрытой замены или Markdown-маркера новый пробел
+                    // иначе временно получает старый нулевой glyph. Полный разбор
+                    // всё равно будет запланирован ниже, поэтому сразу убираем
+                    // устаревшее текстовое оформление и не делаем O(N)-сдвиг.
+                    clear()
+                    deferredReadyClear = false
                 }
             } else {
                 clearReady()
@@ -1014,6 +995,7 @@ final class MarkdownPresentationController {
         parsedResult = nil
         parsedSource = nil
         let kept = keptEdit?.revision == revision && keptEdit?.length == textView?.textStorage?.length && !hasMarkedText && isActive
+        if !kept { deferredReadyClear = false }
         // Открытые details переезжают вместе с блоками (`shiftMedia`): очищаются только на старом пути.
         if self.revision != revision && !kept { expandedDetails.removeAll() }
         self.revision = revision
