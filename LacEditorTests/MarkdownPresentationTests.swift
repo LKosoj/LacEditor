@@ -411,6 +411,98 @@ final class MarkdownPresentationTests: XCTestCase {
         XCTAssertGreaterThan(checked, 25)
     }
 
+    /// Снятие смотрит только окно возле правки: вне окна не должно оставаться задетого, а концы списков совпадают с полным пересчётом.
+    func testRemoveTouchedLeavesNothingTouchedOutsideWindow() {
+        var checked = 0
+        for source in Self.elementSources {
+            let raw = source as NSString
+            for location in stride(from: 0, through: raw.length, by: 3) {
+                let edit = NSRange(location: location, length: 0)
+                var presentation = parsedForShift(source)
+                guard presentation.isReadyForShift else { continue }
+                let change = MarkdownTextEdit(range: edit, replacementLength: 1, textLength: raw.length)
+                let touched = presentation.removeTouched(by: change)
+                XCTAssertTrue(presentation.links.allSatisfy { change.away($0.range) != nil }, "\(location) \(source)")
+                XCTAssertTrue(presentation.textReplacements.allSatisfy { change.away($0.range) != nil }, "\(location) \(source)")
+                XCTAssertTrue(presentation.formulas.allSatisfy { change.away($0.range) != nil }, "\(location) \(source)")
+                XCTAssertTrue(presentation.audioBlocks.allSatisfy { change.spaced($0.range) != nil }, "\(location) \(source)")
+                XCTAssertTrue(presentation.spans.allSatisfy { $0.markerRanges.allSatisfy { change.away($0) != nil } }, "\(location) \(source)")
+                var prepared = presentation
+                prepared.prepareForEditing()
+                XCTAssertEqual(prepared.isReadyForShift, presentation.isReadyForShift, "\(location) \(source)")
+                XCTAssertEqual(prepared.canShift(change), presentation.canShift(change), "\(location) \(source)")
+                if touched.range != nil { checked += 1 }
+            }
+        }
+        XCTAssertGreaterThan(checked, 25)
+    }
+
+    func testOrderedRangesMatchFullPass() {
+        var seed: UInt64 = 42
+        func next(_ bound: Int) -> Int {
+            seed = seed &* 6364136223846793005 &+ 1442695040888963407
+            return Int((seed >> 33) % UInt64(bound))
+        }
+        func ordered() -> [NSRange] {
+            var result: [NSRange] = [], position = next(4)
+            for _ in 0..<next(9) {
+                let length = 1 + next(6)
+                result.append(NSRange(location: position, length: length))
+                position += length + 1 + next(5)
+            }
+            return result
+        }
+        for _ in 0..<5000 {
+            let ranges = ordered()
+            let target = NSRange(location: next(50), length: next(12))
+            // Правка, вырезание и поиск сверяются с проходом по всему списку.
+            var edited = ranges
+            let replacement = next(4)
+            MarkdownOrderedRanges.applyEdit(range: target, replacementLength: replacement, to: &edited)
+            XCTAssertEqual(edited, ranges.compactMap { current -> NSRange? in
+                let start = current.location <= target.location ? current.location
+                    : (current.location >= NSMaxRange(target) ? current.location + replacement - target.length : target.location)
+                let end = NSMaxRange(current) <= target.location ? NSMaxRange(current)
+                    : (NSMaxRange(current) >= NSMaxRange(target) ? NSMaxRange(current) + replacement - target.length : target.location + replacement)
+                return end > start ? NSRange(location: start, length: end - start) : nil
+            })
+            let window = MarkdownOrderedRanges.window(of: target, in: ranges)
+            for (index, range) in ranges.enumerated() where NSIntersectionRange(range, target).length > 0 {
+                XCTAssertTrue(window.contains(index))
+            }
+            var cut = ranges
+            MarkdownOrderedRanges.subtract(target, from: &cut)
+            XCTAssertEqual(cut, ranges.flatMap { range -> [NSRange] in
+                let overlap = NSIntersectionRange(range, target)
+                guard overlap.length > 0 else { return [range] }
+                var remaining: [NSRange] = []
+                if range.location < overlap.location { remaining.append(NSRange(location: range.location, length: overlap.location - range.location)) }
+                if NSMaxRange(overlap) < NSMaxRange(range) { remaining.append(NSRange(location: NSMaxRange(overlap), length: NSMaxRange(range) - NSMaxRange(overlap))) }
+                return remaining
+            })
+            var merged = ranges
+            MarkdownOrderedRanges.merge(target, into: &merged)
+            var expected = target
+            var full = ranges.filter { range in
+                if NSMaxRange(range) < expected.location || NSMaxRange(expected) < range.location { return true }
+                let start = min(range.location, expected.location)
+                expected = NSRange(location: start, length: max(NSMaxRange(range), NSMaxRange(expected)) - start)
+                return false
+            }
+            full.insert(expected, at: full.firstIndex { $0.location > expected.location } ?? full.count)
+            XCTAssertEqual(merged, full)
+            var start = target.location, gap: NSRange? = nil
+            let end = NSMaxRange(target)
+            for range in ranges {
+                guard range.location <= start else { break }
+                start = max(start, min(NSMaxRange(range), end))
+                if start >= end { break }
+            }
+            if start < end || target.length == 0 && !ranges.contains(where: { $0.location <= start && NSMaxRange($0) > start }) { gap = NSRange(location: start, length: end - start) }
+            if target.length > 0 { XCTAssertEqual(MarkdownOrderedRanges.firstGap(in: target, ranges: ranges), gap) }
+        }
+    }
+
     func testShiftChainWithElements() {
         let source = Self.elementSources[3]
         var text = source as NSString

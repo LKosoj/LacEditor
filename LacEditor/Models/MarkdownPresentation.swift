@@ -718,6 +718,90 @@ struct MarkdownTextEdit: Sendable {
     }
 }
 
+/// Операции над упорядоченным списком непересекающихся диапазонов: левая часть не читается и не меняется.
+enum MarkdownOrderedRanges {
+    /// Первый диапазон, кончающийся позже `location`; все левее кончаются не позже.
+    private static func firstIndex(endingAfter location: Int, in ranges: [NSRange]) -> Int {
+        var low = 0, high = ranges.count
+        while low < high {
+            let middle = (low + high) / 2
+            if NSMaxRange(ranges[middle]) <= location { low = middle + 1 } else { high = middle }
+        }
+        return low
+    }
+
+    /// Индексы диапазонов, которые могут пересекать `target`.
+    static func window(of target: NSRange, in ranges: [NSRange]) -> Range<Int> {
+        let start = firstIndex(endingAfter: target.location, in: ranges)
+        var low = start, high = ranges.count
+        while low < high {
+            let middle = (low + high) / 2
+            if ranges[middle].location < NSMaxRange(target) { low = middle + 1 } else { high = middle }
+        }
+        return start..<low
+    }
+
+    /// Первый участок `visible`, не покрытый списком; nil, если покрыт весь.
+    static func firstGap(in visible: NSRange, ranges: [NSRange]) -> NSRange? {
+        var start = visible.location
+        let end = NSMaxRange(visible)
+        for index in firstIndex(endingAfter: start, in: ranges)..<ranges.count {
+            let range = ranges[index]
+            guard range.location <= start else { break }
+            start = max(start, min(NSMaxRange(range), end))
+            if start >= end { return nil }
+        }
+        return NSRange(location: start, length: end - start)
+    }
+
+    /// Добавляет диапазон, сливая его с пересекающими и соседними вплотную.
+    static func merge(_ range: NSRange, into ranges: inout [NSRange]) {
+        var low = 0, high = ranges.count
+        while low < high {
+            let middle = (low + high) / 2
+            if NSMaxRange(ranges[middle]) < range.location { low = middle + 1 } else { high = middle }
+        }
+        var merged = range, tail = low
+        while tail < ranges.count && ranges[tail].location <= NSMaxRange(merged) {
+            merged = NSUnionRange(merged, ranges[tail])
+            tail += 1
+        }
+        ranges.replaceSubrange(low..<tail, with: [merged])
+    }
+
+    /// Вырезает `target`: от задетых диапазонов остаются их края.
+    static func subtract(_ target: NSRange, from ranges: inout [NSRange]) {
+        let window = window(of: target, in: ranges)
+        guard !window.isEmpty else { return }
+        var remaining: [NSRange] = []
+        for range in ranges[window] {
+            let overlap = NSIntersectionRange(range, target)
+            guard overlap.length > 0 else { remaining.append(range); continue }
+            if range.location < overlap.location { remaining.append(NSRange(location: range.location, length: overlap.location - range.location)) }
+            if NSMaxRange(overlap) < NSMaxRange(range) { remaining.append(NSRange(location: NSMaxRange(overlap), length: NSMaxRange(range) - NSMaxRange(overlap))) }
+        }
+        ranges.replaceSubrange(window, with: remaining)
+    }
+
+    /// Переносит список через правку на месте. В конце документа хвост пуст и запись не нужна; в середине новый массив не создаётся, левая часть остаётся как есть.
+    static func applyEdit(range edited: NSRange, replacementLength: Int, to ranges: inout [NSRange]) {
+        let first = firstIndex(endingAfter: edited.location, in: ranges)
+        guard first < ranges.count else { return }
+        let oldEnd = NSMaxRange(edited), change = replacementLength - edited.length
+        var kept = first
+        for index in first..<ranges.count {
+            let current = ranges[index]
+            let start = current.location <= edited.location ? current.location
+                : (current.location >= oldEnd ? current.location + change : edited.location)
+            let end = NSMaxRange(current) >= oldEnd ? NSMaxRange(current) + change : edited.location + replacementLength
+            guard end > start else { continue }
+            ranges[kept] = NSRange(location: start, length: end - start)
+            kept += 1
+        }
+        ranges.removeSubrange(kept..<ranges.count)
+    }
+}
+
 /// Что снял `MarkdownPresentation.removeTouched`: по этому списку контроллер убирает готовые ресурсы снятых элементов.
 struct MarkdownTouchedElements: Sendable {
     /// Объединение снятых диапазонов в координатах до правки; nil, если правка ничего не задела.
@@ -1297,18 +1381,26 @@ struct MarkdownPresentation: Sendable {
     /// Вызывается для правки, которую `canShift` не пропустил, но которая не портит диапазоны вне себя.
     mutating func removeTouched(by edit: MarkdownTextEdit) -> MarkdownTouchedElements {
         var touched = MarkdownTouchedElements()
+        // Смотрит то же окно, что и `canShiftElements`: вне его правила сдвига заведомо пропускают элемент.
+        let ordered = isReadyForShift
         @discardableResult
-        func remove<T>(_ items: inout [T], extent: (T) -> NSRange, keeps: (T) -> Bool) -> [T] {
-            let removed = items.filter { !keeps($0) }
+        func remove<T>(_ items: inout [T], in window: Range<Int>, extent: (T) -> NSRange, keeps: (T) -> Bool) -> [T] {
+            let removed = items[window].filter { !keeps($0) }
             guard !removed.isEmpty else { return [] }
-            items.removeAll { !keeps($0) }
+            items.replaceSubrange(window, with: items[window].filter(keeps))
             for item in removed {
                 let range = extent(item)
                 touched.range = touched.range.map { NSUnionRange($0, range) } ?? range
             }
             return removed
         }
-        remove(&spans, extent: { $0.range }) { span in
+        @discardableResult
+        func remove<T>(_ items: inout [T], reach: MarkdownTextEdit? = nil, extent: (T) -> NSRange, keeps: (T) -> Bool) -> [T] {
+            remove(&items, in: ordered ? (reach ?? edit).window(items, extent: extent) : items.indices, extent: extent, keeps: keeps)
+        }
+        let spanWindow = ordered ? edit.window(spans, ends: spanEnds, location: { $0.range.location }) : spans.indices
+        let completedWindow = ordered ? edit.window(completedTaskRanges, ends: completedEnds, location: { $0.location }) : completedTaskRanges.indices
+        remove(&spans, in: spanWindow, extent: { $0.range }) { span in
             Self.shiftedRange(of: span, edit) != nil && span.markerRanges.allSatisfy { edit.away($0) != nil }
         }
         remove(&paragraphs, extent: { $0.extent }) { item in
@@ -1321,7 +1413,7 @@ struct MarkdownPresentation: Sendable {
         }
         remove(&emojiCompletionRanges, extent: { $0 }) { edit.block($0) != nil }
         remove(&textReplacements, extent: { $0.range }) { edit.away($0.range) != nil }
-        remove(&completedTaskRanges, extent: { $0 }) { edit.block($0) != nil }
+        remove(&completedTaskRanges, in: completedWindow, extent: { $0 }) { edit.block($0) != nil }
         remove(&taskCheckboxes, extent: { NSUnionRange($0.markerRange, $0.stateRange) }) { edit.away($0.markerRange) != nil && edit.away($0.stateRange) != nil }
         remove(&looseIndents, extent: { $0.range }) { edit.away($0.range) != nil }
         remove(&tables, extent: { $0.range }) { edit.away($0.range) != nil }
@@ -1343,16 +1435,35 @@ struct MarkdownPresentation: Sendable {
         remove(&namedAnchors, extent: { $0.range }) { edit.away($0.range) != nil }
         remove(&pageBreaks, extent: { $0 }) { edit.away($0) != nil }
         remove(&tableOfContents, extent: { $0 }) { edit.away($0) != nil }
-        let audio = remove(&audioBlocks, extent: { $0.range }) { edit.spaced($0.range) != nil }
-        let iframes = remove(&iframeBlocks, extent: { $0.range }) { edit.spaced($0.range) != nil }
-        let details = remove(&detailsBlocks, extent: { $0.range }) { edit.spaced($0.range) != nil }
-        let html = remove(&htmlBlocks, extent: { $0.range }) { edit.spaced($0.range) != nil }
+        let reach = edit.reaching(1)
+        let audio = remove(&audioBlocks, reach: reach, extent: { $0.range }) { edit.spaced($0.range) != nil }
+        let iframes = remove(&iframeBlocks, reach: reach, extent: { $0.range }) { edit.spaced($0.range) != nil }
+        let details = remove(&detailsBlocks, reach: reach, extent: { $0.range }) { edit.spaced($0.range) != nil }
+        let html = remove(&htmlBlocks, reach: reach, extent: { $0.range }) { edit.spaced($0.range) != nil }
         touched.hasInserts = !audio.isEmpty || !iframes.isEmpty || !details.isEmpty || !html.isEmpty
-        // Определение сноски может стоять далеко от ссылки: в итог идёт только та часть, которую правка задела.
-        remove(&footnotes, extent: { edit.away($0.referenceRange) == nil ? $0.referenceRange : $0.definitionRange }) { note in
+        // Определение сноски может стоять далеко от ссылки, порядок не гарантирован: проход по всем. В итог идёт только та часть, которую правка задела.
+        remove(&footnotes, in: footnotes.indices, extent: { edit.away($0.referenceRange) == nil ? $0.referenceRange : $0.definitionRange }) { note in
             edit.away(note.referenceRange) != nil && edit.away(note.definitionRange) != nil
         }
-        if touched.range != nil { prepareForEditing() }
+        guard touched.range != nil else { return touched }
+        guard ordered else {
+            prepareForEditing()
+            return touched
+        }
+        // Снятие не меняет порядок: пересчитывается только то, что от него зависит.
+        isTextStructureOnly = hasOnlyTextStructure
+        spanEnds.removeSubrange(spanWindow.lowerBound...)
+        var peak = spanEnds.last ?? 0
+        for span in spans[spanWindow.lowerBound...] {
+            peak = max(peak, NSMaxRange(span.range))
+            spanEnds.append(peak)
+        }
+        completedEnds.removeSubrange(completedWindow.lowerBound...)
+        peak = completedEnds.last ?? 0
+        for range in completedTaskRanges[completedWindow.lowerBound...] {
+            peak = max(peak, NSMaxRange(range))
+            completedEnds.append(peak)
+        }
         return touched
     }
 

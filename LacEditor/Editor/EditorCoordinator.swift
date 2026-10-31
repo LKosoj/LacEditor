@@ -264,6 +264,9 @@ extension EditorTextView {
         private var rulerRefreshWorkItem: DispatchWorkItem?
         private var rulerRefreshNeedsLayout = false
         private var selectionVisibilityWorkItem: DispatchWorkItem?
+        /// Идёт набор символа: до следующего прохода главного потока выделение сдвигается вместе с текстом, и отдельная синхронная отрисовка линейки не нужна.
+        private var typedEditInProgress = false
+        private var selectionUpdateDeferred = false
         private var textCodecSuggestionWorkItem: DispatchWorkItem?
         private var textCodecSuggestionGeneration: UInt = 0
         private var modelSyncWorkItem: DispatchWorkItem?
@@ -3879,6 +3882,7 @@ extension EditorTextView {
                lineIndex.textLength != text.length {
                 lineIndex.reset(with: text)
             }
+            let offscreenEdit = pendingOffscreenEditAnchor != nil
             restorePendingOffscreenEdit(in: textView)
             document.noteLiveEdit(isEmpty: textView.textStorage?.length == 0)
             markdownPresentation?.edited(revision: contentRevision)
@@ -3896,7 +3900,7 @@ extension EditorTextView {
             // перерисовка линейки использует актуальную геометрию.
             scheduleRulerRefresh(ensureLayout: false)
             scheduleDelimiterMatch()
-            scheduleSelectionVisibilitySync()
+            scheduleSelectionVisibilitySync(afterTypedEdit: !offscreenEdit && !isApplyingAutomatedEdit && textView.editSource == .typed)
             if !isApplyingAutomatedEdit { scheduleTypewriterCentering() }
             scheduleModelSync()
             scheduleHighlight()
@@ -3964,7 +3968,8 @@ extension EditorTextView {
             cancelDelimiterMatch(clearHighlight: true)
         }
 
-        private func scheduleSelectionVisibilitySync() {
+        /// Набранный символ стоит в строке каретки: TextKit уже сбросил её раскладку, а линейку планирует `textDidChange`.
+        private func scheduleSelectionVisibilitySync(afterTypedEdit: Bool) {
             selectionVisibilityWorkItem?.cancel()
             let workItem = DispatchWorkItem { [weak self] in
                 guard let self, let textView else { return }
@@ -3975,18 +3980,34 @@ extension EditorTextView {
                     let lineRange = text.lineRange(
                         for: NSRange(location: anchor, length: 0)
                     )
-                    layoutManager.invalidateLayout(
-                        forCharacterRange: lineRange,
-                        actualCharacterRange: nil
-                    )
+                    if !afterTypedEdit {
+                        layoutManager.invalidateLayout(
+                            forCharacterRange: lineRange,
+                            actualCharacterRange: nil
+                        )
+                    }
                     layoutManager.ensureLayout(forCharacterRange: lineRange)
                 }
                 textView.scrollRangeToVisible(selection)
                 updateCursor()
-                refreshRuler()
+                if !afterTypedEdit { refreshRuler() }
             }
             selectionVisibilityWorkItem = workItem
             DispatchQueue.main.async(execute: workItem)
+        }
+
+        /// Положение курсора и линейка обновляются один раз на набранный символ, после всех изменений выделения этой правки.
+        private func deferSelectionUpdateForTypedEdit() {
+            guard !typedEditInProgress else { return }
+            typedEditInProgress = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                typedEditInProgress = false
+                guard selectionUpdateDeferred else { return }
+                selectionUpdateDeferred = false
+                updateCursor()
+                scheduleRulerRefresh(ensureLayout: false)
+            }
         }
 
         private func captureOffscreenSelectionPosition(
@@ -4128,11 +4149,13 @@ extension EditorTextView {
                     nsText.length - safeLocation
                 )
             )
-            if markdownImageProjectionEnabled,
+            // Без больших data:image проекция пуста: копия всего текста не нужна.
+            if markdownImageProjectionEnabled, !markdownImageProjection.entries.isEmpty,
                markdownImageProjection.intersectsToken(safeRange, in: nsText as String) {
                 NSSound.beep()
                 return false
             }
+            if !isApplyingAutomatedEdit, (textView as? LacTextView)?.editSource == .typed { deferSelectionUpdateForTypedEdit() }
             let replacementLength = (replacement as NSString).length
             cancelAICompletion()
             contentRevision &+= 1
@@ -4351,11 +4374,15 @@ extension EditorTextView {
             if let selection = textView?.selectedRange() { clearFoldIfNeeded(toReveal: selection) }
             markdownPresentation?.selectionChanged()
             textView?.needsDisplay = true
-            invalidateEntireRuler(
-                displayImmediately: true,
-                invalidateLineMap: false
-            )
-            updateCursor()
+            if typedEditInProgress {
+                selectionUpdateDeferred = true
+            } else {
+                invalidateEntireRuler(
+                    displayImmediately: true,
+                    invalidateLineMap: false
+                )
+                updateCursor()
+            }
             scheduleDelimiterMatch()
             scheduleTextCodecSuggestion()
         }
@@ -4899,7 +4926,7 @@ extension EditorTextView {
             guard let textView,
                   let text = textView.textStorage?.mutableString else { return }
             let selection = textView.selectedRange()
-            let sourceSelection = markdownImageProjectionEnabled
+            let sourceSelection = markdownImageProjectionEnabled && !markdownImageProjection.entries.isEmpty
                 ? markdownImageProjection.sourceRange(for: selection, in: text as String)
                 : selection
             if document.selectionRange != sourceSelection {
@@ -5190,9 +5217,9 @@ extension EditorTextView {
             clearFold()
         }
 
-        private func refreshFoldLayout() {
+        private func refreshFoldLayout(fullLayout: Bool = true) {
             guard let textView else { return }
-            if let textContainer = textView.textContainer {
+            if fullLayout, let textContainer = textView.textContainer {
                 foldLayoutManager?.ensureLayout(for: textContainer)
             }
             textView.needsLayout = true
@@ -5233,8 +5260,11 @@ extension EditorTextView {
                     guard let selection else { return true }
                     return !(selection.location >= range.location && selection.location <= NSMaxRange(range))
                 }
-                self.foldLayoutManager?.setAutomaticMediaFoldedRanges(visibleRanges)
-                self.refreshFoldLayout()
+                let previous = self.foldLayoutManager?.automaticMediaFoldedRanges ?? []
+                guard self.foldLayoutManager?.setAutomaticMediaFoldedRanges(visibleRanges) == true else { return }
+                // Те же сворачивания на новых местах (набор выше) общую геометрию не меняют: полная раскладка нужна только при другом их наборе.
+                let current = self.foldLayoutManager?.automaticMediaFoldedRanges ?? []
+                self.refreshFoldLayout(fullLayout: previous != current)
             }
         }
     }

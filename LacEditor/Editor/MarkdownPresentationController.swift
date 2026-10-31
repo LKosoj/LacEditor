@@ -975,7 +975,7 @@ final class MarkdownPresentationController {
                 return end > start ? NSRange(location: start, length: end - start) : nil
             }
         }
-        styledRanges = shifted(styledRanges)
+        MarkdownOrderedRanges.applyEdit(range: range, replacementLength: replacementLength, to: &styledRanges)
         let inheritedAlignment = alignedRanges.first { $0.value.contains(range.location) }?.key
             ?? (range.location > 0 ? alignedRanges.first { $0.value.contains(range.location - 1) }?.key : nil)
         for key in Array(alignedRanges.keys) {
@@ -986,7 +986,7 @@ final class MarkdownPresentationController {
             alignedRanges[inheritedAlignment, default: IndexSet()].insert(integersIn: range.location..<(range.location + replacementLength))
         }
         backgroundRanges = shifted(backgroundRanges)
-        inlineForegroundRanges = shifted(inlineForegroundRanges)
+        MarkdownOrderedRanges.applyEdit(range: range, replacementLength: replacementLength, to: &inlineForegroundRanges)
         lastVisibleRange = nil
     }
 
@@ -1974,9 +1974,16 @@ final class MarkdownPresentationController {
 
     /// Каретка у картинки не раскрывает маркеры, но скрытые или схлопнутые пробелы рядом с ней обязаны остаться видимыми: иначе набранный пробел пропадает до ухода каретки.
     private func selectionTouchesSpaces(_ selection: NSRange) -> Bool {
-        presentation?.textReplacements.contains {
+        guard let presentation else { return false }
+        return nearby(presentation.textReplacements, selection, presentation, extent: { $0.range }).contains {
             $0.kind == .spaces && selection.location <= NSMaxRange($0.range) && NSMaxRange(selection) >= $0.range.location
-        } == true
+        }
+    }
+
+    /// Элементы рядом с `range`: списки готового к сдвигу оформления упорядочены (`prepareForEditing`), иначе просматривается весь список.
+    private func nearby<T>(_ items: [T], _ range: NSRange, _ presentation: MarkdownPresentation, extent: (T) -> NSRange) -> ArraySlice<T> {
+        guard presentation.isReadyForShift else { return items[...] }
+        return items[MarkdownTextEdit(range: range, replacementLength: range.length, textLength: 0).window(items, extent: extent)]
     }
 
     private func revealedRange() -> NSRange? {
@@ -1994,23 +2001,24 @@ final class MarkdownPresentationController {
         // Курсор может стоять перед блочным медиа в той же строке. В этом
         // случае раскрытие строки всё равно показывало бы полный Markdown-код
         // картинки, хотя курсор не находится внутри её диапазона.
-        if presentation?.images.contains(where: { image in
+        if let presentation, nearby(presentation.images, line, presentation, extent: { $0.paragraphRange }).contains(where: { image in
             let range = image.isInline ? image.range : image.paragraphRange
             return NSIntersectionRange(line, range).length > 0
-        }) == true {
+        }) {
             return nil
         }
         return line
     }
 
     private func selectionTouchesImage(_ selection: NSRange) -> Bool {
-        presentation?.images.contains { image in
+        guard let presentation else { return false }
+        return nearby(presentation.images, selection, presentation, extent: { $0.paragraphRange }).contains { image in
             let range = image.isInline ? image.range : image.paragraphRange
             if selection.length == 0 {
                 return selection.location >= range.location && selection.location <= NSMaxRange(range)
             }
             return NSIntersectionRange(selection, range).length > 0
-        } == true
+        }
     }
 
     private func selectionTouchesOpaqueMedia(_ selection: NSRange) -> Bool {
@@ -2021,13 +2029,13 @@ final class MarkdownPresentationController {
             }
             return NSIntersectionRange(selection, range).length > 0
         }
-        return presentation.images.contains { touches($0.isInline ? $0.range : $0.paragraphRange) }
-            || presentation.audioBlocks.contains { touches($0.range) }
-            || presentation.iframeBlocks.contains { touches($0.range) }
-            || presentation.detailsBlocks.contains { touches($0.range) }
-            || presentation.htmlBlocks.contains { touches($0.range) }
-            || presentation.formulas.contains { touches($0.range) }
-            || presentation.inlineFormulas.contains { touches($0.range) }
+        return nearby(presentation.images, selection, presentation, extent: { $0.paragraphRange }).contains { touches($0.isInline ? $0.range : $0.paragraphRange) }
+            || nearby(presentation.audioBlocks, selection, presentation, extent: { $0.range }).contains { touches($0.range) }
+            || nearby(presentation.iframeBlocks, selection, presentation, extent: { $0.range }).contains { touches($0.range) }
+            || nearby(presentation.detailsBlocks, selection, presentation, extent: { $0.range }).contains { touches($0.range) }
+            || nearby(presentation.htmlBlocks, selection, presentation, extent: { $0.range }).contains { touches($0.range) }
+            || nearby(presentation.formulas, selection, presentation, extent: { $0.range }).contains { touches($0.range) }
+            || nearby(presentation.inlineFormulas, selection, presentation, extent: { $0.range }).contains { touches($0.range) }
     }
 
     private func intersecting(_ range: NSRange) -> [MarkdownPresentationSpan] {
@@ -2185,15 +2193,8 @@ final class MarkdownPresentationController {
             }
         }
         applyInlineTagColors(in: styleRange, layout: layout)
-        var merged = styleRange
-        styledRanges = styledRanges.filter { range in
-            if NSMaxRange(range) < merged.location || NSMaxRange(merged) < range.location { return true }
-            let start = min(range.location, merged.location)
-            merged = NSRange(location: start, length: max(NSMaxRange(range), NSMaxRange(merged)) - start)
-            return false
-        }
-        // Список остаётся упорядоченным: на этом держится проход без сортировки в `unstyledRange`.
-        styledRanges.insert(merged, at: styledRanges.firstIndex { $0.location > merged.location } ?? styledRanges.count)
+        // Список остаётся упорядоченным: на этом держатся двоичные поиски в `unstyledRange` и `restoreStyles`.
+        MarkdownOrderedRanges.merge(styleRange, into: &styledRanges)
         loadVisibleEmoji(in: styleRange)
         updateUppercaseHeadings(spans: matches)
         layout.invalidateMarkdownLayout(in: styleRange)
@@ -2230,14 +2231,7 @@ final class MarkdownPresentationController {
     }
 
     private func unstyledRange(in visible: NSRange) -> NSRange? {
-        var start = visible.location
-        let end = NSMaxRange(visible)
-        for range in styledRanges {
-            guard range.location <= start else { break }
-            start = max(start, min(NSMaxRange(range), end))
-            if start >= end { return nil }
-        }
-        return NSRange(location: start, length: end - start)
+        MarkdownOrderedRanges.firstGap(in: visible, ranges: styledRanges)
     }
 
     private func updateUppercaseHeadings(spans: [MarkdownPresentationSpan]) {
@@ -3893,20 +3887,22 @@ final class MarkdownPresentationController {
         let typing = textView.typingAttributes
         let whole = NSRange(location: 0, length: storage.length)
         let target = requested.map { NSIntersectionRange($0, whole) } ?? whole
+        // Оба списка упорядочены: читается только то, что лежит в `target`.
+        let styled = Array(styledRanges[MarkdownOrderedRanges.window(of: target, in: styledRanges)])
         var foregroundRanges: [NSRange] = []
-        for current in inlineForegroundRanges {
+        for current in inlineForegroundRanges[MarkdownOrderedRanges.window(of: target, in: inlineForegroundRanges)] {
             let range = NSIntersectionRange(current, target)
             if range.length > 0 { foregroundRanges.append(range); layout.removeTemporaryAttribute(.foregroundColor, forCharacterRange: range) }
         }
         storage.beginEditing()
-        for range in styledRanges {
+        for range in styled {
             let safe = NSIntersectionRange(range, target)
             guard safe.length > 0 else { continue }
             storage.addAttribute(.font, value: layout.textFont, range: safe)
             storage.removeAttribute(.baselineOffset, range: safe)
         }
         storage.endEditing()
-        for range in styledRanges {
+        for range in styled {
             let safe = NSIntersectionRange(range, target)
             guard safe.length > 0 else { continue }
             layout.removeTemporaryAttribute(.strikethroughStyle, forCharacterRange: safe)
@@ -3925,14 +3921,7 @@ final class MarkdownPresentationController {
             backgroundRanges.removeAll()
             inlineForegroundRanges.removeAll()
         } else {
-            inlineForegroundRanges = inlineForegroundRanges.flatMap { range -> [NSRange] in
-                let overlap = NSIntersectionRange(range, target)
-                guard overlap.length > 0 else { return [range] }
-                var remaining: [NSRange] = []
-                if range.location < overlap.location { remaining.append(NSRange(location: range.location, length: overlap.location - range.location)) }
-                if NSMaxRange(overlap) < NSMaxRange(range) { remaining.append(NSRange(location: NSMaxRange(overlap), length: NSMaxRange(range) - NSMaxRange(overlap))) }
-                return remaining
-            }
+            MarkdownOrderedRanges.subtract(target, from: &inlineForegroundRanges)
             backgroundRanges = backgroundRanges.flatMap { range -> [NSRange] in
                 let overlap = NSIntersectionRange(range, target)
                 guard overlap.length > 0 else { return [range] }
@@ -3945,18 +3934,7 @@ final class MarkdownPresentationController {
                 }
                 return remaining
             }
-            styledRanges = styledRanges.flatMap { range -> [NSRange] in
-                let overlap = NSIntersectionRange(range, target)
-                guard overlap.length > 0 else { return [range] }
-                var remaining: [NSRange] = []
-                if range.location < overlap.location {
-                    remaining.append(NSRange(location: range.location, length: overlap.location - range.location))
-                }
-                if NSMaxRange(overlap) < NSMaxRange(range) {
-                    remaining.append(NSRange(location: NSMaxRange(overlap), length: NSMaxRange(range) - NSMaxRange(overlap)))
-                }
-                return remaining
-            }
+            MarkdownOrderedRanges.subtract(target, from: &styledRanges)
         }
         restoreDelimiterHighlight?()
     }

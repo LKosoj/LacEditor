@@ -2190,13 +2190,16 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         }
     }
 
-    func setAutomaticMediaFoldedRanges(_ ranges: [NSRange]) {
+    /// Возвращает, изменился ли список: без изменений раскладку обновлять не нужно.
+    @discardableResult
+    func setAutomaticMediaFoldedRanges(_ ranges: [NSRange]) -> Bool {
         let safeRanges = ranges.compactMap(clampedRange).sorted { $0.location < $1.location }
-        guard automaticMediaFoldedRanges != safeRanges else { return }
+        guard automaticMediaFoldedRanges != safeRanges else { return false }
         let previous = automaticMediaFoldedRanges
         automaticMediaFoldedRanges = safeRanges
         for range in previous { invalidateFoldGlyphs(in: range) }
         for range in safeRanges { invalidateFoldGlyphs(in: range) }
+        return true
     }
 
     func removeAutomaticMediaFold(containing location: Int) -> Bool {
@@ -2235,6 +2238,22 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         return automaticMediaFoldedRanges.contains {
             NSIntersectionRange($0, characterRange).length == characterRange.length
         }
+    }
+
+    /// Есть ли в пакете символов то, что могут скрыть или заменить проверки `shouldGenerateGlyphs`. Списки упорядочены и читаются двоичным поиском, как и в посимвольных проверках.
+    private func batchTouchesHiddenElements(from first: Int, through last: Int) -> Bool {
+        if intersectsFoldedRange(NSRange(location: first, length: last - first + 1)) { return true }
+        func reaches(_ count: Int, location: (Int) -> Int, end: (Int) -> Int) -> Bool {
+            let index = upperBound(last, count: count, location: location)
+            return index > 0 && end(index - 1) > first
+        }
+        return reaches(markdownMarkers.count, location: { markdownMarkers[$0].range.location }, end: { markdownMarkerEnds[$0] })
+            || reaches(markdownTextReplacements.count, location: { markdownTextReplacements[$0].range.location }, end: { NSMaxRange(markdownTextReplacements[$0].range) })
+            || reaches(markdownListMarkers.count, location: { markdownListMarkers[$0].range.location }, end: { NSMaxRange(markdownListMarkers[$0].range) })
+            || reaches(markdownInlineImages.count, location: { markdownInlineImages[$0].range.location }, end: { NSMaxRange(markdownInlineImages[$0].range) })
+            || reaches(markdownTOCRanges.count, location: { markdownTOCRanges[$0].location }, end: { NSMaxRange(markdownTOCRanges[$0]) })
+            || reaches(markdownPageBreaks.count, location: { markdownPageBreaks[$0].location }, end: { NSMaxRange(markdownPageBreaks[$0]) })
+            || reaches(tableLines.count, location: { tableLines.location(at: $0) }, end: { NSMaxRange(tableLines.range(at: $0)) })
     }
 
     func layoutManager(
@@ -2297,6 +2316,8 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
                 && NSMaxRange(entry.range) > firstBatchCharacter && imageIsVisible(entry.range) {
                 visibleImageRanges.append(entry.range)
             }
+            // В пакете обычного текста нет ни одного элемента: посимвольные проверки ниже ничего не изменят.
+            if visibleImageRanges.isEmpty, !batchTouchesHiddenElements(from: firstBatchCharacter, through: lastBatchCharacter) { return 0 }
         }
 
         var adjustedProperties = Array(
