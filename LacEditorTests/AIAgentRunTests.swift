@@ -92,10 +92,16 @@ private final class AgentScript: @unchecked Sendable {
         limits.maxContextBytes = maxContextBytes
         limits.keepRecentResults = keepRecentResults
         limits.maxSummaryBytes = maxSummaryBytes
+        let condense: (@Sendable ([[String: Any]]) async throws -> AIAgentStep)?
+        if withCondense {
+            condense = { try await self.condense($0) }
+        } else {
+            condense = nil
+        }
         return AIAgentRun(limits: limits, api: api, task: task,
                           step: { try await self.step($0, $1) }, handler: { try await self.handle($0) },
                           onProgress: { self.record($0) }, planReminder: planReminder,
-                          condense: withCondense ? { try await self.condense($0) } : nil,
+                          condense: condense,
                           notice: { self.note($0) })
     }
 }

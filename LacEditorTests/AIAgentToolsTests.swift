@@ -384,7 +384,7 @@ final class AIAgentToolsTests: XCTestCase {
             withUnsafeCurrentTask { $0?.cancel() }
             return try await self.call(tools, "update_plan", ["items": self.items(1)])
         }
-        do { _ = try await task.value; XCTFail("expected cancellation") } catch is CancellationError {}
+        do { _ = try await task.value; XCTFail("expected cancellation") } catch is CancellationError {} catch { XCTFail("Unexpected error") }
         XCTAssertTrue(store.current.isEmpty)
     }
 
