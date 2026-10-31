@@ -1695,6 +1695,11 @@
 "允许" = "Allow";
 "本次运行内允许" = "Allow for this run";
 "代理请求联网搜索：%@" = "The agent requests a web search: %@";
+"AI 想要联网搜索：" = "AI wants to search the web:";
+"AI 请求联网搜索：%@" = "AI requests a web search: %@";
+"代理想要访问文档：" = "The agent wants to access a document:";
+"文档内容将发送给 AI 服务器。允许后，本次对话可访问此文档。" = "The document content will be sent to the AI server. If you allow it, the agent can access this document for the rest of this conversation.";
+"代理请求访问文档：%@" = "The agent requests access to the document: %@";
 "列出文件" = "Listed files";
 "列出文件：%@" = "Listed files: %@";
 "搜索“%@”" = "Searched “%@”";

@@ -131,7 +131,14 @@ final class AIAgentControllerTests: XCTestCase {
     private func send(_ controller: AIAgentController, _ text: String) async {
         controller.draft = text
         controller.send()
-        _ = await waitFor { !controller.isWorking || controller.approval != nil }
+        for _ in 0..<1000 {
+            _ = await waitFor { !controller.isWorking || controller.approval != nil }
+            guard controller.isWorking, let approval = controller.approval else { return }
+            switch approval.content {
+            case .document: controller.resolve(.allowOnce)
+            case .webSearch: return
+            }
+        }
     }
 
     @MainActor
@@ -194,6 +201,128 @@ final class AIAgentControllerTests: XCTestCase {
         XCTAssertEqual(entry.files.first?.source, .unsaved)
         XCTAssertTrue(setup.script.serialized(1).contains("unsaved-beta"))
         XCTAssertTrue(setup.script.serialized(0).contains("open:\(document.id.uuidString)"))
+    }
+
+    @MainActor
+    func testExternalDocumentConsentIsPerDocumentAndNotRepeated() async throws {
+        let first = EditorDocument(text: "FIRST-SECRET"), second = EditorDocument(text: "SECOND-SECRET")
+        func read(_ document: EditorDocument) -> AgentStepScript.Reply {
+            call("read_document", #"{"path":"open:\#(document.id.uuidString)"}"#)
+        }
+        let setup = try make([read(first), read(first), read(second), .text("done"), read(first), .text("after")], documents: [first, second])
+        setup.controller.draft = "Read"; setup.controller.send()
+        _ = await waitFor { setup.controller.approval != nil }
+        guard case .document(let firstID, _, _) = try XCTUnwrap(setup.controller.approval).content else { return XCTFail("Expected document approval") }
+        XCTAssertEqual(firstID, first.id)
+        setup.controller.resolve(.allowOnce)
+        _ = await waitFor { setup.controller.approval != nil }
+        guard case .document(let secondID, _, _) = try XCTUnwrap(setup.controller.approval).content else { return XCTFail("Expected second document approval") }
+        XCTAssertEqual(secondID, second.id)
+        XCTAssertEqual(setup.script.requests.count, 3, "The second read of the approved document must not prompt")
+        setup.controller.resolve(.allowOnce)
+        await settle(setup.controller)
+        XCTAssertEqual(setup.controller.turns.first?.status, .answered)
+        XCTAssertEqual(setup.controller.turns.first?.journal.map(\.kind), [.readDocument, .readDocument, .readDocument])
+        XCTAssertTrue(setup.script.serialized(3).contains("FIRST-SECRET"))
+        XCTAssertTrue(setup.script.serialized(3).contains("SECOND-SECRET"))
+        setup.controller.draft = "Follow up"; setup.controller.send()
+        await settle(setup.controller)
+        XCTAssertNil(setup.controller.approval, "Consent lasts for the whole conversation")
+        XCTAssertEqual(setup.controller.turns.last?.answer, "after")
+        XCTAssertEqual(setup.script.requests.count, 6)
+    }
+
+    @MainActor
+    func testDeniedExternalDocumentSendsNoSecret() async throws {
+        let document = EditorDocument(text: "DO-NOT-SEND-THIS-SECRET")
+        let setup = try make([call("read_document", #"{"path":"open:\#(document.id.uuidString)"}"#), .text("without document")], documents: [document])
+        setup.controller.draft = "Read"; setup.controller.send()
+        _ = await waitFor { setup.controller.approval != nil }
+        setup.controller.resolve(.deny)
+        await settle(setup.controller)
+        XCTAssertEqual(setup.script.requests.count, 2)
+        XCTAssertFalse(setup.script.serialized(1).contains("DO-NOT-SEND-THIS-SECRET"))
+        XCTAssertTrue(setup.script.serialized(1).contains("access was declined"))
+        let entry = try XCTUnwrap(setup.controller.turns.first?.journal.first)
+        XCTAssertEqual(entry.kind, .rejected)
+        XCTAssertTrue(entry.files.isEmpty)
+        XCTAssertNil(entry.fileBytes)
+        XCTAssertEqual(setup.controller.turns.first?.status, .answered)
+    }
+
+    @MainActor
+    func testWorkspaceOpenDocumentDoesNotNeedConsent() async throws {
+        let root = try temporaryDirectory()
+        let document = EditorDocument(text: "workspace text")
+        document.url = root.appendingPathComponent("note.md")
+        let setup = try make([call("read_document", #"{"path":"open:\#(document.id.uuidString)"}"#), .text("done")], documents: [document])
+        setup.state.folderWorkspace.setRoot(root)
+        setup.controller.draft = "Read"; setup.controller.send()
+        await settle(setup.controller)
+        XCTAssertNil(setup.controller.approval)
+        XCTAssertEqual(setup.controller.turns.first?.status, .answered)
+        XCTAssertTrue(setup.script.serialized(1).contains("workspace text"))
+    }
+
+    @MainActor
+    func testDocumentConsentResetsAfterStopNewConversationAndRootChange() async throws {
+        let document = EditorDocument(text: "secret")
+        let read = call("read_document", #"{"path":"open:\#(document.id.uuidString)"}"#)
+        let setup = try make([read, .text("one"), read, .text("two"), read, .text("three"), read, .text("four")], documents: [document])
+
+        func beginAndWaitForApproval() async {
+            setup.controller.draft = "Read"; setup.controller.send()
+            _ = await waitFor { setup.controller.approval != nil }
+        }
+        await beginAndWaitForApproval()
+        setup.controller.resolve(.allowOnce)
+        await settle(setup.controller)
+        setup.controller.stop()
+
+        await beginAndWaitForApproval()
+        XCTAssertNotNil(setup.controller.approval, "A new run after Stop must ask again")
+        setup.controller.resolve(.allowOnce)
+        await settle(setup.controller)
+        setup.controller.newConversation()
+
+        await beginAndWaitForApproval()
+        XCTAssertNotNil(setup.controller.approval, "A new conversation must ask again")
+        setup.controller.resolve(.allowOnce)
+        await settle(setup.controller)
+        setup.state.folderWorkspace.setRoot(try temporaryDirectory())
+
+        await beginAndWaitForApproval()
+        XCTAssertNotNil(setup.controller.approval, "A root change must ask again")
+        setup.controller.stop()
+        await settle(setup.controller)
+    }
+
+    @MainActor
+    func testStopAndSettingsChangeReleaseDocumentApproval() async throws {
+        let document = EditorDocument(text: "SECRET-WAITING")
+        let read = call("read_document", #"{"path":"open:\#(document.id.uuidString)"}"#)
+        let stopped = try make([read, .text("late")], documents: [document])
+        stopped.controller.draft = "Read"; stopped.controller.send()
+        _ = await waitFor { stopped.controller.approval != nil }
+        stopped.controller.stop()
+        XCTAssertNil(stopped.controller.approval)
+        stopped.controller.resolve(.allowOnce)
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(stopped.script.requests.count, 1)
+        XCTAssertFalse(stopped.script.serialized(0).contains("SECRET-WAITING"))
+
+        let other = EditorDocument(text: "SECRET-SETTINGS")
+        let otherRead = call("read_document", #"{"path":"open:\#(other.id.uuidString)"}"#)
+        let changed = try make([otherRead, .text("late")], documents: [other])
+        changed.controller.draft = "Read"; changed.controller.send()
+        _ = await waitFor { changed.controller.approval != nil }
+        changed.preferences.aiFeatureModelIDs = ["agent": "other"]
+        changed.controller.settingsChanged()
+        XCTAssertNil(changed.controller.approval)
+        XCTAssertFalse(changed.controller.isWorking)
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(changed.script.requests.count, 1)
+        XCTAssertFalse(changed.script.serialized(0).contains("SECRET-SETTINGS"))
     }
 
     @MainActor
@@ -679,6 +808,8 @@ final class AIAgentControllerTests: XCTestCase {
         let gate = hold(setup.script, at: 3)
         setup.controller.draft = "q"
         setup.controller.send()
+        _ = await waitFor { setup.controller.approval != nil }
+        setup.controller.resolve(.allowOnce)
         _ = await waitFor { setup.script.requests.count == 4 }
         setup.controller.stop()
         gate.yield()

@@ -1,6 +1,11 @@
 import AppKit
 import Foundation
 
+struct AIQuestionWebApproval: Equatable, Identifiable {
+    let id: UUID
+    let query: String
+}
+
 @MainActor
 final class AIQuestionController: ObservableObject {
     private struct Pending {
@@ -19,7 +24,8 @@ final class AIQuestionController: ObservableObject {
     @Published private(set) var staleCitationIDs: Set<UUID> = []
     @Published private(set) var isWorking = false
     /// Временная настройка окна: не пишется в сессию, не сбрасывается «Новым разговором».
-    @Published var webSearchEnabled = true
+    @Published var webSearchEnabled = false
+    @Published private(set) var approval: AIQuestionWebApproval?
     /// Номер текущего веб-поиска в ответе; 0 — поиска нет.
     @Published private(set) var searchProgress = 0
     @Published private(set) var message = "" { didSet { messageKind = .error; messageAction = nil } }
@@ -28,6 +34,7 @@ final class AIQuestionController: ObservableObject {
     private weak var appState: AppState?
     private var task: Task<Void, Never>?
     private var generation = 0
+    private var approvalContinuation: CheckedContinuation<Bool, Never>?
     private var pending: Pending?
     private var lastRequest: (question: String, usesDraft: Bool, selectionOnly: Bool)?
     private var activeDocumentID: UUID?
@@ -216,6 +223,7 @@ final class AIQuestionController: ObservableObject {
                 if let webJina {
                     let session = AIWebSearchSession(client: jinaClient, configuration: webJina, searchKey: webSearchKey, readerKey: webReaderKey,
                                                      isCurrent: { [weak self] in await self?.isCurrent(current) ?? false },
+                                                     approve: { [weak self] query in await self?.requestWebApproval(query: query) ?? false },
                                                      onSearch: { [weak self] count in await self?.setSearchProgress(count, generation: current) })
                     web = session
                     text = try await converseWeb(messages, profile, key, session)
@@ -245,6 +253,28 @@ final class AIQuestionController: ObservableObject {
 
     private func setSearchProgress(_ count: Int, generation: Int) {
         if self.generation == generation { searchProgress = count }
+    }
+
+    private func requestWebApproval(query: String) async -> Bool {
+        if Task.isCancelled { return false }
+        let current = generation
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                approval = AIQuestionWebApproval(id: UUID(), query: query)
+                approvalContinuation = continuation
+            }
+        } onCancel: {
+            Task { @MainActor in
+                if self.generation == current { self.resolveWebApproval(false) }
+            }
+        }
+    }
+
+    func resolveWebApproval(_ allowed: Bool) {
+        guard let continuation = approvalContinuation else { return }
+        approvalContinuation = nil
+        approval = nil
+        continuation.resume(returning: allowed)
     }
 
     func openWebSource(_ source: AIWebSource) {
@@ -284,6 +314,7 @@ final class AIQuestionController: ObservableObject {
     func cancel() {
         generation += 1
         task?.cancel(); task = nil
+        resolveWebApproval(false)
         isWorking = false
         activeDocumentID = nil; activeProfile = nil; activeKey = nil; activeSelection = nil; activeSources = []
         activeJina = nil; activeSearchKey = nil; activeReaderKey = nil; searchProgress = 0

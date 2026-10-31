@@ -19,9 +19,20 @@ struct AIAgentCounters: Equatable {
     var usage = AIUsage()
 }
 
-struct AIAgentWebApproval: Equatable, Identifiable {
+struct AIAgentApproval: Equatable, Identifiable {
+    enum Content: Equatable {
+        case webSearch(query: String)
+        case document(id: UUID, name: String, path: String)
+    }
+
     let id: UUID
-    let query: String
+    let content: Content
+    var query: String {
+        switch content {
+        case .webSearch(let query): query
+        case .document(_, _, let path): path
+        }
+    }
 }
 
 enum AIAgentWebDecision { case allowOnce, allowInRun, deny }
@@ -107,7 +118,7 @@ final class AIAgentController: ObservableObject {
     @Published private(set) var isApplyingFiles = false
     @Published private(set) var fileReport: AIAgentFileReport?
     @Published private(set) var canResume = false
-    @Published private(set) var approval: AIAgentWebApproval?
+    @Published private(set) var approval: AIAgentApproval?
     /// Номер текущего веб-поиска; 0 — поиска нет.
     @Published private(set) var searchProgress = 0
     @Published private(set) var message = "" { didSet { messageKind = .error; messageAction = nil } }
@@ -121,6 +132,7 @@ final class AIAgentController: ObservableObject {
     private var toolsBox: AIAgentToolsBox?
     private var session: AIWebSearchSession?
     private var webAllowedInRun = false
+    private var approvedDocumentIDs: Set<UUID> = []
     private var approvalContinuation: CheckedContinuation<AIAgentWebDecision, Never>?
     private var activeProfile: AIModelProfile?
     private var activeKey: String?
@@ -276,8 +288,9 @@ final class AIAgentController: ObservableObject {
                 return try await step(items, choice, tools, profile, key)
             },
             handler: { [weak self] call in
-                // Файлы читаются вне главного актора; на него заходим только за веб-поиском
+                // Файлы читаются вне главного актора; на него заходим только за подтверждениями
                 if call.name == "web_search", let self, let web = try await self.handleWeb(call, generation: current) { return web }
+                if let self, let denied = try await self.handleDocumentAccess(call, tools: box.tools, generation: current) { return denied }
                 let outcome = try await box.tools.run(call)
                 return (outcome.output, [outcome.journal])
             },
@@ -420,7 +433,25 @@ final class AIAgentController: ObservableObject {
         if self.generation == generation { searchProgress = count }
     }
 
-    // MARK: - Веб-поиск и подтверждение
+    // MARK: - Подтверждение доступа
+
+    /// nil — доступ уже разрешён либо инструмент не читает открытый документ вне рабочей папки.
+    private func handleDocumentAccess(_ call: AIToolCall, tools: AIAgentTools, generation current: Int) async throws -> (output: String, journal: [AIAgentJournalEntry])? {
+        guard generation == current else { throw CancellationError() }
+        guard let document = tools.documentRequiringConsent(for: call), !approvedDocumentIDs.contains(document.id) else { return nil }
+        let path = "open:\(document.id.uuidString)"
+        let decision = await requestApproval(.document(id: document.id, name: document.name, path: path))
+        try Task.checkCancellation()
+        guard generation == current else { throw CancellationError() }
+        guard decision != .deny else {
+            let output = #"{"error":"document access was denied by the user. Do not retry; answer without this document and say that access was declined."}"#
+            let entry = AIAgentJournalEntry(id: UUID(), kind: .rejected, tool: call.name, subject: path, documentName: document.name, files: [],
+                                            sentBytes: output.utf8.count, fileBytes: nil, errorCode: nil, truncated: false)
+            return (output, [entry])
+        }
+        approvedDocumentIDs.insert(document.id)
+        return nil
+    }
 
     /// nil — веб-инструмент не выдавался, вызов идёт обычным путём (unknownTool).
     private func handleWeb(_ call: AIToolCall, generation current: Int) async throws -> (output: String, journal: [AIAgentJournalEntry])? {
@@ -434,7 +465,7 @@ final class AIAgentController: ObservableObject {
                                             sentBytes: output.utf8.count, fileBytes: nil, errorCode: query == nil ? .badArguments : .limitReached, truncated: false)
             return (output, [entry])
         }
-        let decision = await requestApproval(query: query)
+        let decision = await requestApproval(.webSearch(query: query))
         try Task.checkCancellation()
         guard generation == current else { throw CancellationError() }
         if decision == .deny {
@@ -466,22 +497,25 @@ final class AIAgentController: ObservableObject {
         return query
     }
 
-    private func requestApproval(query: String) async -> AIAgentWebDecision {
-        if webAllowedInRun { return .allowOnce }
+    private func requestApproval(_ content: AIAgentApproval.Content) async -> AIAgentWebDecision {
+        if webAllowedInRun, case .webSearch = content { return .allowOnce }
         if Task.isCancelled { return .deny }
+        let current = generation
         return await withTaskCancellationHandler {
             await withCheckedContinuation { (continuation: CheckedContinuation<AIAgentWebDecision, Never>) in
-                approval = AIAgentWebApproval(id: UUID(), query: query)
+                approval = AIAgentApproval(id: UUID(), content: content)
                 approvalContinuation = continuation
             }
         } onCancel: {
-            Task { @MainActor in self.resolveApproval(.deny) }
+            Task { @MainActor in
+                if self.generation == current { self.resolveApproval(.deny) }
+            }
         }
     }
 
     /// Кнопки карточки подтверждения.
     func resolve(_ decision: AIAgentWebDecision) {
-        if decision == .allowInRun { webAllowedInRun = true }
+        if decision == .allowInRun, case .webSearch? = approval?.content { webAllowedInRun = true }
         resolveApproval(decision)
     }
 
@@ -705,6 +739,7 @@ final class AIAgentController: ObservableObject {
         isApplyingFiles = false
         searchProgress = 0
         resolveApproval(.deny)
+        approvedDocumentIDs.removeAll()
         activeProfile = nil; activeKey = nil; activeRoot = nil
         activeJina = nil; activeSearchKey = nil; activeReaderKey = nil
     }

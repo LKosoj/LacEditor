@@ -143,6 +143,16 @@ final class AIAgentTools: @unchecked Sendable {
         draftEpoch = draft.epoch
     }
 
+    func documentRequiringConsent(for call: AIToolCall) -> AIAgentOpenDocument? {
+        guard ["read_document", "document_outline", "document_links", "propose_edit"].contains(call.name),
+              let data = call.arguments.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let path = object["path"] as? String, path.hasPrefix("open:"),
+              let id = UUID(uuidString: String(path.dropFirst(5))),
+              let document = scope.openDocuments.first(where: { $0.id == id }), document.relativePath == nil else { return nil }
+        return document
+    }
+
     static let definitions: [AIToolDefinition] = [
         AIToolDefinition(
             name: "list_documents",

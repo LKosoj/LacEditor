@@ -464,7 +464,11 @@ final class AIAgentEditsTests: XCTestCase {
     private func send(_ controller: AIAgentController, _ text: String) async {
         controller.draft = text
         controller.send()
-        _ = await waitFor { !controller.isWorking }
+        for _ in 0..<1000 {
+            _ = await waitFor { !controller.isWorking || controller.approval != nil }
+            guard controller.isWorking, controller.approval != nil else { return }
+            controller.resolve(.allowOnce)
+        }
     }
 
     private func reply(_ calls: [(String, String)]) -> EditScript.Reply { .calls(calls.map { (name: "propose_edit", arguments: $0.1) }) }
@@ -531,6 +535,8 @@ final class AIAgentEditsTests: XCTestCase {
         let gate = hold(setup.script, at: 1)
         setup.controller.draft = "Edit"
         setup.controller.send()
+        _ = await waitFor { setup.controller.approval != nil }
+        setup.controller.resolve(.allowOnce)
         _ = await waitFor { setup.controller.editGroups.first?.edits.count == 2 }
         document.text = "alpha one beta TWO gamma"
         setup.controller.acceptAllEdits(in: document.id)
@@ -609,6 +615,8 @@ final class AIAgentEditsTests: XCTestCase {
         let gate = hold(setup.script, at: 1)
         setup.controller.draft = "Edit"
         setup.controller.send()
+        _ = await waitFor { setup.controller.approval != nil }
+        setup.controller.resolve(.allowOnce)
         _ = await waitFor { setup.controller.editGroups.first?.edits.count == 1 }
         setup.controller.acceptAllEdits(in: document.id)
         XCTAssertEqual(document.text, "alpha 1 beta two gamma")
