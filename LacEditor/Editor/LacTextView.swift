@@ -924,13 +924,7 @@ final class LacTextView: NSTextView {
             ? "\t"
             : String(repeating: " ", count: tabWidth)
         let range = selectedRange()
-        // Replace directly instead of routing through AppKit's tab command,
-        // which may briefly apply its own paragraph indentation at column 0.
-        replaceCharacters(in: range, with: indentation)
-        setSelectedRange(NSRange(
-            location: range.location + (indentation as NSString).length,
-            length: 0
-        ))
+        insertText(indentation, replacementRange: range)
     }
 
     override func doCommand(by selector: Selector) {
