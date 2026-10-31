@@ -60,6 +60,13 @@
         },
         {
           "package": {
+            "name": "dompurify",
+            "version": "3.4.17",
+            "ecosystem": "npm"
+          }
+        },
+        {
+          "package": {
             "name": "elkjs",
             "version": "0.9.3",
             "ecosystem": "npm"
