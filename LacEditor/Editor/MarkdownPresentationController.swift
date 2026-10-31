@@ -27,6 +27,9 @@ private final class MarkdownDetailsView: NSView {
     var openLink: ((String) -> Void)?
     var canInteract: (() -> Bool)?
     private var confirmedOpen = false
+    /// Всё, от чего зависит показ, и итоговый размер: при тех же входных данных разбор HTML и перекладка не повторяются.
+    private var configured: (width: CGFloat, font: NSFont, foreground: NSColor, linkColor: NSColor,
+                             codeFont: NSFont?, paragraphStyle: NSParagraphStyle?, open: Bool, size: NSSize)?
     override var isFlipped: Bool { true }
 
     init(block: MarkdownDetailsBlock) {
@@ -72,6 +75,10 @@ private final class MarkdownDetailsView: NSView {
 
     func configure(width: CGFloat, font: NSFont, foreground: NSColor, linkColor: NSColor,
                    codeFont: NSFont?, paragraphStyle: NSParagraphStyle?, open: Bool) -> NSSize? {
+        // Содержимое блока в виде не меняется (`block` постоянный), поэтому сравниваются только остальные входные данные.
+        if let last = configured, last.width == width, last.font == font, last.foreground == foreground, last.linkColor == linkColor,
+           last.codeFont == codeFont, last.paragraphStyle == paragraphStyle, last.open == open { return last.size }
+        configured = nil
         let inset: CGFloat = 22
         let textWidth = max(1, width - inset)
         let rich = block.summaryHTML != nil && block.bodyHTML != nil
@@ -101,7 +108,9 @@ private final class MarkdownDetailsView: NSView {
         richSummary.frame = summary.frame; richBody.frame = body.frame
         summary.isHidden = rich; body.isHidden = rich || !open
         richSummary.isHidden = !rich; richBody.isHidden = !rich || !open
-        return NSSize(width: width, height: summaryHeight + bodyHeight)
+        let size = NSSize(width: width, height: summaryHeight + bodyHeight)
+        configured = (width, font, foreground, linkColor, codeFont, paragraphStyle, open, size)
+        return size
     }
 }
 
@@ -184,6 +193,7 @@ final class MarkdownPresentationController {
     var audioJobDidFinish: ((NSRange) -> Void)?
     var audioAssetIsPlayable: @MainActor (AVURLAsset) async -> Bool = { (try? await $0.load(.isPlayable)) == true }
     private var codeJobs: [NSRange: (UUID, BlockOperation)] = [:]
+    /// Позиции токенов и `prefixEnds` отсчитываются от начала тела блока (`bodyRange.location`): сдвиг блока их не трогает.
     private struct CodeResult {
         let tokens: [SyntaxHighlighter.Token]
         let prefixEnds: [Int]
@@ -251,17 +261,15 @@ final class MarkdownPresentationController {
     private var pendingSyntaxOptions: MarkdownSyntaxOptions?
     private var mathOptionsNeedRefresh = false
     private struct IframeView {
-        let block: MarkdownIframeBlock
+        var block: MarkdownIframeBlock
         let view: WKWebView
         let navigation: MarkdownIframeNavigation
         var height: CGFloat
     }
     private var iframeViews: [NSRange: IframeView] = [:]
     private struct HTMLBlockView {
-        let block: MarkdownHTMLBlock
+        var block: MarkdownHTMLBlock
         let view: MarkdownHTMLBlockView
-        let generation: UInt
-        let revision: UInt
         let font: NSFont
         let codeFont: NSFont?
         let paragraphStyle: NSParagraphStyle?
@@ -273,7 +281,7 @@ final class MarkdownPresentationController {
     var htmlBlockLink: ((String, NSRange) -> Void)?
     private var detailsViews: [NSRange: MarkdownDetailsView] = [:]
     private struct RubyKey: Equatable {
-        let item: MarkdownRuby
+        var item: MarkdownRuby
         let font: NSFont
         let color: NSColor
         let parentFont: NSFont
@@ -290,7 +298,8 @@ final class MarkdownPresentationController {
     private var audioViews: [NSRange: AVPlayerView] = [:]
     private var audioCompleted: Set<NSRange> = []
     private var diagramGeometry: (CGFloat, Bool)?
-    private var footnoteTooltips: [(tag: NSView.ToolTipTag, owner: NSString)] = []
+    private var footnoteTooltips: [(tag: NSView.ToolTipTag, rect: NSRect, owner: NSString)] = []
+    var footnoteTooltipRects: [NSRect] { footnoteTooltips.map(\.rect) }
     private var lastFootnote: MarkdownFootnote?
     private var presentation: MarkdownPresentation?
     private var parsedResult: MarkdownPresentation?
@@ -336,9 +345,9 @@ final class MarkdownPresentationController {
     private var parsedRevision: UInt?
     private var parsedSource: String?
     private var outlineVisible = false
-    private var spans: [MarkdownPresentationSpan] = []
-    private var prefixEnds: [Int] = []
-    private var completedTaskPrefixEnds: [Int] = []
+    private var spans: [MarkdownPresentationSpan] { presentation?.spans ?? [] }
+    private var prefixEnds: [Int] { presentation?.spanEnds ?? [] }
+    private var completedTaskPrefixEnds: [Int] { presentation?.completedEnds ?? [] }
     private var strikeCompletedTasks = false
     private var headingNumbering = false
     private var uppercaseHeadingLevels: Set<Int> = []
@@ -356,6 +365,11 @@ final class MarkdownPresentationController {
     private var backgroundRanges: [NSRange] = []
     private var inlineForegroundRanges: [NSRange] = []
     private var lastVisibleRange: NSRange?
+    /// Ревизия, итоговая длина текста и вставка правки, под которую `beforeEdit` сдвинул оформление; `edited` забирает её один раз.
+    private var keptEdit: (revision: UInt, length: Int, inserted: NSRange)?
+    /// На экране сдвинутое оформление предыдущего разбора: при установке нового разбора стили видимой области снимаются.
+    private var presentationKept = false
+    private var mediaPlacementPending = false
     private var lastRevealedRange: NSRange?
     var emojiCompletionReady: (() -> Void)?
     var parsedResultDidChange: (() -> Void)?
@@ -846,21 +860,39 @@ final class MarkdownPresentationController {
         return !fenceLineBlocked(lineRange.location, in: context)
     }
 
-    func beforeEdit(range: NSRange, replacementLength: Int) {
+    func beforeEdit(range: NSRange, replacementLength: Int, replacement: String? = nil) {
         guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled || presentation != nil || parsedResult != nil else { return }
+        // Прошлая правка сдвинула оформление, но текст так и не изменился: сдвиг ничем не подтверждён.
+        if keptEdit != nil {
+            keptEdit = nil
+            dropKeptPresentation()
+        }
         document?.invalidateMarkdownReadableText()
         if document?.isMarkdownOutlineCurrent == true { document?.isMarkdownOutlineCurrent = false }
         parsedResult = nil
         parsedSource = nil
-        cancel()
+        cancelPending()
         if isActive && !hasMarkedText {
             if presentation != nil || !styledRanges.isEmpty {
-                if let visible = visibleRange() { restoreStyles(in: visible) }
-                invalidatePresentation(in: visibleRange())
+                if let replacement, let edit = presentationAfterEdit(range: range, replacement: replacement, replacementLength: replacementLength) {
+                    lastRevealedRange = lastRevealedRange.flatMap { shifted([$0]).first }
+                    shiftPresentation(edit)
+                    keptEdit = (currentRevision?() ?? 0, (textView?.textStorage?.length ?? 0) - range.length + replacementLength,
+                                NSRange(location: range.location, length: replacementLength))
+                } else {
+                    // Очистка раньше сброса оформления: cancelDiagrams читает presentation.images.
+                    clearReady()
+                    if let visible = visibleRange() { restoreStyles(in: visible) }
+                    invalidatePresentation(in: visibleRange())
+                }
+            } else {
+                clearReady()
             }
         } else if hasMarkedText {
+            clearReady()
             needsCompositionRefresh = true
         } else {
+            clearReady()
             needsRefresh = true
         }
         func shifted(_ ranges: [NSRange]) -> [NSRange] {
@@ -895,12 +927,26 @@ final class MarkdownPresentationController {
         if document?.isMarkdownOutlineCurrent == true { document?.isMarkdownOutlineCurrent = false }
         parsedResult = nil
         parsedSource = nil
-        if self.revision != revision { expandedDetails.removeAll() }
+        let kept = keptEdit?.revision == revision && keptEdit?.length == textView?.textStorage?.length && !hasMarkedText && isActive
+        // Открытые details переезжают вместе с блоками (`shiftMedia`): очищаются только на старом пути.
+        if self.revision != revision && !kept { expandedDetails.removeAll() }
         self.revision = revision
-        cancel()
+        cancelPending()
+        let inserted = keptEdit?.inserted
+        keptEdit = nil
+        if !kept {
+            clearReady()
+            dropKeptPresentation()
+        }
         guard !hasMarkedText else { return }
         guard isActive else { needsRefresh = true; return }
-        invalidatePresentation(in: visibleRange())
+        if !kept { invalidatePresentation(in: visibleRange()) }
+        else {
+            if let inserted { matchInsertedStyle(inserted) }
+            // Анимированные картинки лежат отдельными видами: на сдвинутое место их ставит только пересчёт рамок.
+            if !animatedImages.isEmpty { notifyGeometryChanged() }
+            placeMediaAfterEdit()
+        }
         if enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || elementPathEnabled || (mathPairEnabled && mathPairContext?.revision != revision) { schedule(revision: revision) }
     }
 
@@ -938,17 +984,27 @@ final class MarkdownPresentationController {
         footnoteTooltips.removeAll()
     }
 
+    /// Подсказка на прежнем месте с прежним текстом остаётся: снимаются и добавляются только изменившиеся.
     private func updateFootnoteTooltips(in visible: NSRange) {
-        clearFootnoteTooltips()
-        guard let textView, let layout, let container = textView.textContainer, let presentation else { return }
+        guard let textView, let layout, let container = textView.textContainer, let presentation else {
+            clearFootnoteTooltips()
+            return
+        }
+        var stale = footnoteTooltips
+        footnoteTooltips.removeAll()
         for footnote in presentation.footnotes where NSIntersectionRange(footnote.referenceRange, visible).length > 0 {
             let glyphs = layout.glyphRange(forCharacterRange: footnote.referenceRange, actualCharacterRange: nil)
             let rect = layout.boundingRect(forGlyphRange: glyphs, in: container).offsetBy(dx: textView.textContainerOrigin.x, dy: textView.textContainerOrigin.y)
             guard !rect.isEmpty else { continue }
             let owner = footnote.text as NSString
+            if let same = stale.firstIndex(where: { $0.rect == rect && $0.owner == owner }) {
+                footnoteTooltips.append(stale.remove(at: same))
+                continue
+            }
             let tag = textView.addToolTip(rect, owner: owner, userData: nil)
-            footnoteTooltips.append((tag, owner))
+            footnoteTooltips.append((tag, rect, owner))
         }
+        for tooltip in stale { textView.removeToolTip(tooltip.tag) }
     }
 
     func footnoteTarget(at point: NSPoint, document: EditorDocument, revision: UInt) -> NSRange? {
@@ -1018,8 +1074,9 @@ final class MarkdownPresentationController {
     }
 
     func currentTablePresentation(document: EditorDocument, revision: UInt) -> MarkdownPresentation? {
+        // Сдвинутое на месте оформление неполное (заголовки, элементы очищены): ячейке нужен свежий разбор.
         guard isActive, enabled, self.document === document, self.revision == revision,
-              currentRevision?() == revision else { return nil }
+              currentRevision?() == revision, !presentationKept else { return nil }
         return presentation
     }
 
@@ -1307,15 +1364,30 @@ final class MarkdownPresentationController {
         mathOptionsNeedRefresh = false
     }
 
+    /// Старый путь: отмена незавершённого и очистка готового.
     func cancel() {
-        cancelCodeHighlighting()
+        clearReady()
+        cancelPending()
+    }
+
+    /// Останавливает то, что ещё считается; поздние результаты отбрасываются по поколению. Готовое не трогает.
+    private func cancelPending() {
+        cancelCodeJobs()
+        cancelDiagramJobs()
+        cancelMediaJobs()
         emojiOperation?.cancel()
         emojiOperation = nil
-        emojiValues = nil
-        if !hasMarkedText { emojiRanges.removeAll() }
-        emojiFonts.removeAll()
-        clearFootnoteTooltips()
-        lastFootnote = nil
+        cancelImageJobs()
+        work?.cancel()
+        work = nil
+        operation?.cancel()
+        operation = nil
+        generation &+= 1
+        document?.taskCoordinator.cancel(.markdownPresentation)
+    }
+
+    /// Отменяет незавершённые загрузки картинок: ключи у них позиционные, после расхождения разбора они устарели.
+    private func cancelImageJobs() {
         for operation in imageOperations.values { operation.cancel() }
         imageOperations.removeAll()
         for (_, task) in remoteImageJobs.values { task.cancel() }
@@ -1323,6 +1395,16 @@ final class MarkdownPresentationController {
         let svgJobs = svgImageJobs.values.map { $0.2 }
         svgImageJobs.removeAll()
         for job in svgJobs { job.cancel() }
+    }
+
+    /// Убирает готовое: оформление, привязанное к позициям, нельзя оставлять там, где оно уже не соответствует тексту.
+    private func clearReady() {
+        cancelCodeHighlighting()
+        emojiValues = nil
+        if !hasMarkedText { emojiRanges.removeAll() }
+        emojiFonts.removeAll()
+        clearFootnoteTooltips()
+        lastFootnote = nil
         imagePresentationWidths.removeAll()
         if !hasMarkedText { clearAnimatedImages() }
         loadedImageRanges.removeAll()
@@ -1330,12 +1412,6 @@ final class MarkdownPresentationController {
         clearAudio()
         lastVisibleRange = nil
         if !hasMarkedText { layout?.clearMarkdownImages() }
-        work?.cancel()
-        work = nil
-        operation?.cancel()
-        operation = nil
-        generation &+= 1
-        document?.taskCoordinator.cancel(.markdownPresentation)
     }
 
     private func schedule(revision: UInt) {
@@ -1476,12 +1552,22 @@ final class MarkdownPresentationController {
         uppercaseHeadings = uppercaseSnapshotReady && !uppercaseHeadingLevels.isEmpty
             ? Dictionary(result.headings.map { ($0.range.location, $0) }, uniquingKeysWith: { first, _ in first }) : [:]
         lastVisibleRange = nil
-        presentation = result
-        spans = result.spans.sorted { $0.range.location < $1.range.location }
-        var end = 0
-        prefixEnds = spans.map { end = max(end, NSMaxRange($0.range)); return end }
-        end = 0
-        completedTaskPrefixEnds = result.completedTaskRanges.map { end = max(end, NSMaxRange($0)); return end }
+        if presentationKept {
+            // Сдвинутые картинки, формулы, эмодзи, диаграммы, вставки и ruby могли разойтись с разбором: тогда готовое снимается, как на старом пути.
+            if let kept = presentation, kept.images != result.images || kept.formulas != result.formulas
+                || kept.inlineFormulas != result.inlineFormulas || kept.emojiCandidates != result.emojiCandidates
+                || kept.diagrams != result.diagrams || kept.audioBlocks != result.audioBlocks || kept.iframeBlocks != result.iframeBlocks
+                || kept.detailsBlocks != result.detailsBlocks || kept.htmlBlocks != result.htmlBlocks || kept.ruby != result.ruby {
+                clearReady()
+                expandedDetails.removeAll()
+                // Незавершённые загрузки заново запустит applyVisible ниже, уже по ключам свежего разбора.
+                cancelImageJobs()
+            }
+            presentationKept = false
+            if let visible = visibleRange() { restoreStyles(in: visible) }
+        }
+        adopt(result)
+        pruneCodeHighlighting(keeping: result.codeBlocks)
         lastRevealedRange = revealedRange()
         layout?.setMarkdownPresentation(result, revealedRange: lastRevealedRange, inlineSelection: inlineSelection(), invalidating: visibleRange() ?? NSRange(location: 0, length: 0))
         if visibleRange() == nil { notifyGeometryChanged() }
@@ -1489,7 +1575,14 @@ final class MarkdownPresentationController {
         applyVisible()
     }
 
+    private func adopt(_ result: MarkdownPresentation) {
+        presentation = result
+        presentation?.prepareForEditing()
+    }
+
     private func clear() {
+        keptEdit = nil
+        presentationKept = false
         clearUppercaseHeadings()
         uppercaseHeadings.removeAll()
         emojiOperation?.cancel()
@@ -1514,8 +1607,6 @@ final class MarkdownPresentationController {
             textView.typingAttributes = typing
         }
         presentation = nil
-        spans = []
-        prefixEnds = []
         lastVisibleRange = nil
         lastRevealedRange = nil
         layout?.setMarkdownPresentation(nil, revealedRange: nil)
@@ -1523,6 +1614,7 @@ final class MarkdownPresentationController {
     }
 
     private func invalidatePresentation(in range: NSRange?) {
+        presentationKept = false
         clearUppercaseHeadings()
         uppercaseHeadings.removeAll()
         clearAudio()
@@ -1534,17 +1626,71 @@ final class MarkdownPresentationController {
         emojiFonts.removeAll()
         guard presentation != nil else { return }
         presentation = nil
-        spans = []
-        prefixEnds = []
         lastVisibleRange = nil
         lastRevealedRange = nil
         layout?.setMarkdownPresentation(nil, revealedRange: nil, invalidating: range ?? NSRange(location: 0, length: 0))
         notifyGeometryChanged()
     }
 
+    /// Оформление остаётся на экране до результата нового разбора; диапазоны сдвигаются на месте под правку, без копий и сортировок.
+    private func shiftPresentation(_ edit: MarkdownTextEdit) {
+        guard let spanStart = presentation?.firstAffectedLocation(edit) else { return }
+        // Выделение ещё в старых координатах: сверять его с картинками надо до их сдвига.
+        let selection = inlineSelection()
+        presentation?.shift(edit)
+        presentationKept = true
+        // Возврат по Cmd-клику с определения после правки не обещаем (как в `clearReady`): сноски уже сдвинуты.
+        lastFootnote = nil
+        layout?.shiftMarkdownPresentation(edit, spanStart: spanStart, revealedRange: lastRevealedRange, inlineSelection: selection)
+        shiftCodeHighlighting(edit)
+        shiftInstalledMedia(edit)
+        shiftDiagrams(edit)
+        shiftMedia(edit)
+    }
+
+    /// Простой текст вводится базовым шрифтом: до нового разбора вставка берёт оформление соседнего символа: слева, а после переноса строки и в начале текста справа.
+    private func matchInsertedStyle(_ inserted: NSRange) {
+        guard inserted.length > 0, let textView, let storage = textView.textStorage,
+              NSMaxRange(inserted) <= storage.length else { return }
+        // Сразу после переноса строки (и в начале текста) стиль берётся справа: слева он принадлежит предыдущей строке.
+        let breaks: Set<unichar> = [10, 13]
+        let source = inserted.location > 0 && !breaks.contains(storage.mutableString.character(at: inserted.location - 1))
+            ? inserted.location - 1 : NSMaxRange(inserted)
+        guard source < storage.length else { return }
+        let neighbour = storage.attributes(at: source, effectiveRange: nil)
+        guard neighbour[.font] as? NSFont != storage.attribute(.font, at: inserted.location, effectiveRange: nil) as? NSFont else { return }
+        let typing = textView.typingAttributes
+        storage.setAttributes(neighbour, range: inserted)
+        textView.typingAttributes = typing
+    }
+
+    /// Правка обычного текста внутри одной строки, которую можно провести сдвигом оформления на месте; nil, если вести надо прежним путём.
+    private func presentationAfterEdit(range: NSRange, replacement: String, replacementLength: Int) -> MarkdownTextEdit? {
+        guard enabled, !hasMarkedText, uppercaseHeadingLevels.isEmpty, !headingNumbering, uppercaseHeadings.isEmpty, uppercaseInstalled.isEmpty,
+              let presentation, layout?.hasActiveTable != true,
+              let text = textView?.textStorage?.mutableString else { return nil }
+        // Enter: правка берётся в позиции после уже стоящего перевода строки (`paragraphBreakEdit` сам вызывает `canShift`).
+        if replacement == "\n" {
+            return range.length == 0 ? presentation.paragraphBreakEdit(in: text, at: range.location) : nil
+        }
+        guard MarkdownPresentation.allowsTypingEdit(in: text, range: range, replacement: replacement) else { return nil }
+        let edit = MarkdownTextEdit(range: range, replacementLength: replacementLength, textLength: text.length)
+        return presentation.canShift(edit) ? edit : nil
+    }
+
+    /// Оставленное при правке оформление снимается как раньше: стили экрана возвращаются, разбор сбрасывается.
+    private func dropKeptPresentation() {
+        guard presentationKept else { return }
+        // Ключи готового (подсветка кода, картинки, формулы, эмодзи, диаграммы, вставки) уже сдвинуты, а сдвиг не подтверждён: готовое снимается.
+        clearReady()
+        expandedDetails.removeAll()
+        if let visible = visibleRange() { restoreStyles(in: visible) }
+        invalidatePresentation(in: visibleRange())
+    }
+
     private func inlineSelection() -> NSRange? {
         guard document?.isReadingMode != true else { return nil }
-        guard let textView, let text = textView.textStorage?.string as NSString? else { return nil }
+        guard let textView, let text = textView.textStorage?.mutableString else { return nil }
         let selection = textView.selectedRange()
         guard selection.location <= text.length else { return nil }
         if selectionTouchesImage(selection) { return nil }
@@ -1553,7 +1699,7 @@ final class MarkdownPresentationController {
 
     private func revealedRange() -> NSRange? {
         guard document?.isReadingMode != true else { return nil }
-        guard let textView, let text = textView.textStorage?.string as NSString? else { return nil }
+        guard let textView, let text = textView.textStorage?.mutableString else { return nil }
         let selection = textView.selectedRange()
         guard selection.location <= text.length else { return nil }
         if selectionTouchesImage(selection) { return nil }
@@ -1572,6 +1718,7 @@ final class MarkdownPresentationController {
     }
 
     private func intersecting(_ range: NSRange) -> [MarkdownPresentationSpan] {
+        let spans = self.spans, prefixEnds = self.prefixEnds
         var low = 0
         var high = prefixEnds.count
         while low < high {
@@ -1627,7 +1774,10 @@ final class MarkdownPresentationController {
         loadVisibleFormulas(in: visible)
         startEmojiResolution()
         loadVisibleCode(in: visible)
-        guard let styleRange = unstyledRange(in: visible) else { return }
+        guard let styleRange = unstyledRange(in: visible) else {
+            updateFootnoteTooltips(in: visible)
+            return
+        }
         restoreStyles(in: styleRange)
         applyParagraphAlignment(in: styleRange)
         let matches = intersecting(styleRange)
@@ -1706,10 +1856,11 @@ final class MarkdownPresentationController {
         storage.endEditing()
         textView.typingAttributes = typing
         if strikeCompletedTasks, let tasks = presentation?.completedTaskRanges {
-            var low = 0, high = completedTaskPrefixEnds.count
+            let prefixEnds = completedTaskPrefixEnds
+            var low = 0, high = prefixEnds.count
             while low < high {
                 let middle = (low + high) / 2
-                if completedTaskPrefixEnds[middle] <= styleRange.location { low = middle + 1 } else { high = middle }
+                if prefixEnds[middle] <= styleRange.location { low = middle + 1 } else { high = middle }
             }
             while low < tasks.count && tasks[low].location < NSMaxRange(styleRange) {
                 let part = NSIntersectionRange(tasks[low], styleRange)
@@ -1731,7 +1882,7 @@ final class MarkdownPresentationController {
         layout.invalidateMarkdownLayout(in: styleRange)
         restoreDelimiterHighlight?()
         notifyGeometryChanged()
-        updateFootnoteTooltips(in: styleRange)
+        updateFootnoteTooltips(in: visible)
         reapplyLinkColors(in: styleRange)
     }
 
@@ -2009,6 +2160,14 @@ final class MarkdownPresentationController {
         animatedImages.removeAll()
     }
 
+    /// Останавливает загрузки аудио и отрисовку ruby, которые ещё идут; готовые плееры, вью и картинки не трогает.
+    private func cancelMediaJobs() {
+        for (_, job) in rubyJobs { job.2.cancel() }
+        rubyJobs.removeAll()
+        for job in audioJobs.values { job.1.cancel() }
+        audioJobs.removeAll()
+    }
+
     private func clearAudio() {
         clearRuby()
         clearIframes()
@@ -2189,39 +2348,41 @@ final class MarkdownPresentationController {
                 }
                 continue
             }
-            if let old = htmlBlockViews[block.range], old.block != block || old.generation != generation || old.revision != revision ||
+            if let old = htmlBlockViews[block.range], old.block != block ||
                 old.font != font || old.codeFont != codeFont || old.paragraphStyle != paragraphStyle ||
                 old.foreground != foreground || old.linkColor != linkColor || old.vertical != vertical {
                 old.view.invalidate(); old.view.removeFromSuperview(); clearMediaGeometry(block.range, layout: layout)
                 htmlBlockViews.removeValue(forKey: block.range)
             }
             if htmlBlockViews[block.range] == nil {
-                let view = MarkdownHTMLBlockView(frame: .zero), generation = self.generation, revision = self.revision
+                let view = MarkdownHTMLBlockView(frame: .zero)
                 guard view.configure(confirmedHTML: block.html, font: font, foreground: foreground, linkColor: linkColor,
                                      codeFont: codeFont, paragraphStyle: paragraphStyle),
                       let size = view.measuredSize(width: width),
                       let rect = mediaRect(for: block.range, size: size, inline: false, layout: layout, container: container) else {
                     clearMediaGeometry(block.range, layout: layout); continue
                 }
-                htmlBlockViews[block.range] = HTMLBlockView(block: block, view: view, generation: generation, revision: revision,
+                htmlBlockViews[block.range] = HTMLBlockView(block: block, view: view,
                                                            font: font, codeFont: codeFont, paragraphStyle: paragraphStyle,
                                                            foreground: foreground, linkColor: linkColor, vertical: vertical)
-                let current = { [weak self, weak document, weak view, weak layout] () -> Bool in
+                // Вью переживает правки выше него: блок и позицию берём из записи по самому вью, а не из запомненных значений.
+                let current = { [weak self, weak document, weak view, weak layout] () -> NSRange? in
                     guard let self, let document, let view, let layout,
                           self.document === document, self.enabled, self.isActive, !self.hasMarkedText,
-                          self.generation == generation, self.currentRevision?() == revision,
-                          self.presentation?.htmlBlocks.contains(block) == true,
-                          self.htmlBlockViews[block.range]?.view === view else { return false }
-                    return layout.canDisplayMarkdownMedia(block.range)
+                          self.currentRevision?() == self.revision,
+                          let (range, entry) = self.htmlBlockViews.first(where: { $0.value.view === view }),
+                          self.presentation?.htmlBlocks.contains(entry.block) == true,
+                          layout.canDisplayMarkdownMedia(range) else { return nil }
+                    return range
                 }
-                view.canInteract = current
+                view.canInteract = { current() != nil }
                 view.revealSource = { [weak self, weak textView] in
-                    guard let self, let textView, current() else { return }
-                    textView.setSelectedRange(block.range); textView.scrollRangeToVisible(block.range)
+                    guard let self, let textView, let range = current() else { return }
+                    textView.setSelectedRange(range); textView.scrollRangeToVisible(range)
                     textView.window?.makeFirstResponder(textView)
-                    self.updateHTMLBlocks(in: visible)
+                    if let visible = self.visibleRange() { self.updateHTMLBlocks(in: visible) }
                 }
-                view.openLink = { [weak self] address in guard let self, current() else { return }; self.htmlBlockLink?(address, block.range) }
+                view.openLink = { [weak self] address in guard let self, let range = current() else { return }; self.htmlBlockLink?(address, range) }
                 textView.addSubview(view)
                 textView.placeMarkdownSubview(view, in: rect.offsetBy(dx: textView.textContainerOrigin.x, dy: textView.textContainerOrigin.y))
                 geometryDidChange?()
@@ -2367,26 +2528,35 @@ final class MarkdownPresentationController {
             guard let requestedWidth = iframeDimension(block.width, available: widthAvailable, fallback: block.isInline || indent > 0 ? min(560, widthAvailable) : 560),
                   let height = iframeDimension(block.height, available: availableHeight, fallback: 315) else { continue }
             let width = block.isInline ? min(requestedWidth, widthAvailable) : requestedWidth
+            // Разбор вернул на этот ключ другой iframe: старый снимается, ниже создаётся новый.
+            if let old = iframeViews[block.range], old.block != block {
+                old.view.stopLoading()
+                old.view.navigationDelegate = nil
+                old.view.removeFromSuperview()
+                clearMediaGeometry(block.range, layout: layout)
+                iframeViews.removeValue(forKey: block.range)
+            }
             if iframeViews[block.range] == nil {
-                let generation = self.generation, revision = self.revision
                 let configuration = WKWebViewConfiguration()
                 configuration.websiteDataStore = .nonPersistent()
                 configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
                 let view = WKWebView(frame: NSRect(x: 0, y: 0, width: width, height: height), configuration: configuration)
+                // Вью переживает правки выше него: запись ищем по самому вью, запомненные блок и позиция устарели бы после первого сдвига.
                 let navigation = MarkdownIframeNavigation { [weak self, weak document, weak view] in
-                    guard let self, let document, let view else { return false }
-                    return self.document === document && self.enabled && self.isActive && self.generation == generation &&
-                        self.currentRevision?() == revision && !self.hasMarkedText && self.iframeViews[block.range]?.view === view &&
-                        self.presentation?.iframeBlocks.contains(block) == true
+                    guard let self, let document, let view, let entry = self.iframeViews.values.first(where: { $0.view === view }) else { return false }
+                    return self.document === document && self.enabled && self.isActive &&
+                        self.currentRevision?() == self.revision && !self.hasMarkedText &&
+                        self.presentation?.iframeBlocks.contains(entry.block) == true
                 }
                 view.navigationDelegate = navigation
                 view.setAccessibilityLabel(block.title ?? L10n.tr("嵌入内容"))
-                view.setAccessibilityCustomActions([NSAccessibilityCustomAction(name: L10n.tr("编辑源代码")) { [weak self, weak document] in
-                    guard let self, let document, self.document === document, self.generation == generation,
-                          self.currentRevision?() == revision, self.enabled, self.isActive, !self.hasMarkedText,
-                          self.presentation?.iframeBlocks.contains(block) == true, let textView = self.textView else { return false }
-                    textView.setSelectedRange(block.range)
-                    textView.scrollRangeToVisible(block.range)
+                view.setAccessibilityCustomActions([NSAccessibilityCustomAction(name: L10n.tr("编辑源代码")) { [weak self, weak document, weak view] in
+                    guard let self, let document, let view, self.document === document,
+                          self.currentRevision?() == self.revision, self.enabled, self.isActive, !self.hasMarkedText,
+                          let (range, entry) = self.iframeViews.first(where: { $0.value.view === view }),
+                          self.presentation?.iframeBlocks.contains(entry.block) == true, let textView = self.textView else { return false }
+                    textView.setSelectedRange(range)
+                    textView.scrollRangeToVisible(range)
                     textView.window?.makeFirstResponder(textView)
                     return true
                 }])
@@ -2471,13 +2641,15 @@ final class MarkdownPresentationController {
                 let view = AVPlayerView(frame: NSRect(x: 0, y: 0, width: width, height: height))
                 view.controlsStyle = block.media.controls ? .inline : .none
                 view.player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
-                view.setAccessibilityCustomActions([NSAccessibilityCustomAction(name: L10n.tr("编辑源代码")) { [weak self, weak document] in
-                    guard let self, let document, self.document === document, self.generation == generation,
-                          self.currentRevision?() == revision, self.enabled, self.isActive,
-                          !self.hasMarkedText, self.presentation?.audioBlocks.contains(block) == true,
+                // Плеер переживает правки выше него: позицию ищем по самому вью, запомненные блок и поколение устарели бы после первого сдвига.
+                view.setAccessibilityCustomActions([NSAccessibilityCustomAction(name: L10n.tr("编辑源代码")) { [weak self, weak document, weak view] in
+                    guard let self, let document, let view, self.document === document,
+                          self.currentRevision?() == self.revision, self.enabled, self.isActive, !self.hasMarkedText,
+                          let range = self.audioViews.first(where: { $0.value === view })?.key,
+                          self.presentation?.audioBlocks.contains(where: { $0.range == range }) == true,
                           let textView = self.textView else { return false }
-                    textView.setSelectedRange(block.range)
-                    textView.scrollRangeToVisible(block.range)
+                    textView.setSelectedRange(range)
+                    textView.scrollRangeToVisible(range)
                     textView.window?.makeFirstResponder(textView)
                     return true
                 }])
@@ -2513,14 +2685,141 @@ final class MarkdownPresentationController {
         return result
     }
 
-    private func cancelCodeHighlighting() {
+    private func cancelCodeJobs() {
         for job in codeJobs.values { job.1.cancel() }
         codeJobs.removeAll()
+    }
+
+    private func cancelCodeHighlighting() {
+        cancelCodeJobs()
         codeResults.removeAll()
         codeFailed.removeAll()
         let ranges = Array(codeColoredRanges)
         codeColoredRanges.removeAll()
         if !ranges.isEmpty { restoreCodeColors?(ranges) }
+    }
+
+    /// Готовая подсветка блоков кода переезжает вместе с блоками: меняются только ключи, токены лежат от начала тела блока.
+    /// Незавершённые задания уже отменены (`cancelPending`): они заново запустятся на блоках без результата.
+    private func shiftCodeHighlighting(_ edit: MarkdownTextEdit) {
+        let right = { (range: NSRange) in range.location > edit.range.location }
+        guard edit.delta != 0, codeResults.keys.contains(where: right) || codeFailed.contains(where: right) || codeColoredRanges.contains(where: right) else { return }
+        codeResults = Dictionary(codeResults.compactMap { range, result in edit.away(range).map { ($0, result) } }, uniquingKeysWith: { first, _ in first })
+        codeFailed = Set(codeFailed.compactMap(edit.away))
+        codeColoredRanges = Set(codeColoredRanges.compactMap(edit.away))
+    }
+
+    /// Готовые картинки, формулы и эмодзи переезжают вместе с элементами: меняются только ключи, объекты слоя сдвигает `shiftMarkdownMedia`.
+    /// Незавершённые загрузки уже отменены (`cancelPending`): после разбора они запустятся заново только для пропущенных ключей.
+    private func shiftInstalledMedia(_ edit: MarkdownTextEdit) {
+        // Значения эмодзи разбираются заново после разбора: заголовки и читаемый текст должны получить замену.
+        emojiValues = nil
+        // Идущее вычисление формул отменяется: его ответ отбросит поколение, а занятая служба не дала бы запустить новое.
+        if formulaJob?.busy == true {
+            let service = formulaJob?.service
+            formulaJob = nil
+            service?.cancel()
+        }
+        guard edit.delta != 0 else { return }
+        let right = { (range: NSRange) in range.location > edit.range.location }
+        // Ключ блочной картинки — абзац, он растёт вместе с абзацем (`block`); остальные ключи — неделимые диапазоны (`canShift` не пускает правку в них).
+        if loadedImageRanges.contains(where: { NSMaxRange($0) >= edit.range.location }) {
+            loadedImageRanges = Set(loadedImageRanges.compactMap(edit.block))
+        }
+        if imagePresentationWidths.keys.contains(where: { NSMaxRange($0) >= edit.range.location }) {
+            imagePresentationWidths = Dictionary(imagePresentationWidths.compactMap { key, width in edit.block(key).map { ($0, width) } },
+                                                 uniquingKeysWith: { first, _ in first })
+        }
+        if animatedImages.keys.contains(where: { NSMaxRange($0) >= edit.range.location }) {
+            animatedImages = Dictionary(animatedImages.compactMap { key, view in edit.block(key).map { ($0, view) } },
+                                        uniquingKeysWith: { first, _ in first })
+        }
+        if emojiRanges.contains(where: right) || emojiFonts.keys.contains(where: right) {
+            emojiRanges = Set(emojiRanges.compactMap(edit.away))
+            emojiFonts = Dictionary(emojiFonts.compactMap { key, font in edit.away(key).map { ($0, font) } },
+                                    uniquingKeysWith: { first, _ in first })
+        }
+        if formulaCompleted.contains(where: right) {
+            formulaCompleted = Set(formulaCompleted.compactMap(edit.away))
+        }
+        // Ссылка хранит ключ, место ссылки в исходнике и целевую формулу: правее правки может быть любое из трёх.
+        if sourceMathReferences.contains(where: { entry in right(entry.key) || entry.value.contains { right($0.0) || right($0.1) } }) {
+            sourceMathReferences = Dictionary(sourceMathReferences.compactMap { key, references in
+                edit.away(key).map { moved in
+                    (moved, references.map { reference in (edit.away(reference.0) ?? reference.0, edit.away(reference.1) ?? reference.1) })
+                }
+            }, uniquingKeysWith: { first, _ in first })
+        }
+        if let job = formulaJob, job.formulas.contains(where: { right($0.0.range) }) {
+            for index in job.formulas.indices {
+                if let range = edit.away(job.formulas[index].0.range) { formulaJob?.formulas[index].0.range = range }
+            }
+        }
+    }
+
+    /// Живые вставки переезжают вместе со своими блоками: вью, плееры и веб-вью те же, меняются ключи, блок в записи и рамка (её считает `notifyGeometryChanged`).
+    /// Идущие загрузки аудио и отрисовка ruby уже отменены (`cancelPending`), их ключей в словарях нет. `baseRuns` у ruby лежат от начала подписи и не двигаются.
+    private func shiftMedia(_ edit: MarkdownTextEdit) {
+        guard edit.delta != 0 else { return }
+        func moved<Value>(_ items: [NSRange: Value]) -> [NSRange: Value] {
+            Dictionary(items.compactMap { range, value in edit.away(range).map { ($0, value) } }, uniquingKeysWith: { first, _ in first })
+        }
+        if !audioViews.isEmpty { audioViews = moved(audioViews) }
+        if !audioCompleted.isEmpty { audioCompleted = Set(audioCompleted.compactMap(edit.away)) }
+        if !detailsViews.isEmpty { detailsViews = moved(detailsViews) }
+        if !expandedDetails.isEmpty { expandedDetails = moved(expandedDetails) }
+        if !iframeViews.isEmpty {
+            iframeViews = Dictionary(iframeViews.compactMap { range, entry -> (NSRange, IframeView)? in
+                guard let to = edit.away(range) else { return nil }
+                var entry = entry
+                entry.block.range = to
+                return (to, entry)
+            }, uniquingKeysWith: { first, _ in first })
+        }
+        if !htmlBlockViews.isEmpty {
+            htmlBlockViews = Dictionary(htmlBlockViews.compactMap { range, entry -> (NSRange, HTMLBlockView)? in
+                guard let to = edit.away(range) else { return nil }
+                var entry = entry
+                entry.block.range = to
+                return (to, entry)
+            }, uniquingKeysWith: { first, _ in first })
+        }
+        if !rubyRendered.isEmpty {
+            rubyRendered = Dictionary(rubyRendered.compactMap { range, key -> (NSRange, RubyKey)? in
+                guard let to = edit.away(range), let base = edit.away(key.item.baseRange), let reading = edit.away(key.item.readingRange) else { return nil }
+                var key = key
+                key.item.range = to
+                key.item.baseRange = base
+                key.item.readingRange = reading
+                return (to, key)
+            }, uniquingKeysWith: { first, _ in first })
+        }
+    }
+
+    /// После подтверждённого сдвига живые вставки стоят на новых ключах, но рамки старые. Пересчёт через `notifyGeometryChanged` идёт на следующем
+    /// проходе главного потока, когда раскладка строки с правкой дописана; одна проверка на пачку правок и только при живых вью.
+    private func placeMediaAfterEdit() {
+        guard !mediaPlacementPending,
+              !(audioViews.isEmpty && iframeViews.isEmpty && detailsViews.isEmpty && htmlBlockViews.isEmpty) else { return }
+        mediaPlacementPending = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.mediaPlacementPending = false
+            guard self.isActive, self.enabled, !self.hasMarkedText else { return }
+            self.notifyGeometryChanged()
+        }
+    }
+
+    /// После разбора снимает результаты, ключ которых не совпал ни с одним блоком, и просит перекрасить их строки.
+    private func pruneCodeHighlighting(keeping blocks: [MarkdownCodeBlock]) {
+        guard !codeResults.isEmpty || !codeFailed.isEmpty else { return }
+        let live = Set(blocks.map(\.range))
+        let stale = codeResults.keys.filter { !live.contains($0) } + codeFailed.filter { !live.contains($0) }
+        guard !stale.isEmpty else { return }
+        for key in stale { codeResults.removeValue(forKey: key); codeFailed.remove(key) }
+        let colored = codeColoredRanges.filter { segment in stale.contains { NSIntersectionRange($0, segment).length > 0 } }
+        codeColoredRanges.subtract(colored)
+        if !colored.isEmpty { restoreCodeColors?(Array(colored)) }
     }
 
     func reapplyCodeColors(in range: NSRange) {
@@ -2529,6 +2828,7 @@ final class MarkdownPresentationController {
         for block in codeBlocks(intersecting: range) {
             guard let result = codeResults[block.range] else { continue }
             let tokens = result.tokens
+            let base = block.bodyRange.location
             var low = 0, high = block.bodySegments.count
             while low < high {
                 let middle = (low + high) / 2
@@ -2542,11 +2842,12 @@ final class MarkdownPresentationController {
                 var first = 0, last = tokens.count
                 while first < last {
                     let middle = (first + last) / 2
-                    if result.prefixEnds[middle] <= part.location { first = middle + 1 } else { last = middle }
+                    if result.prefixEnds[middle] <= part.location - base { first = middle + 1 } else { last = middle }
                 }
                 var end = first
-                while end < tokens.count && tokens[end].range.location < NSMaxRange(part) { end += 1 }
-                SyntaxHighlighter.apply(tokens: Array(tokens[first..<end]), to: layout, range: part)
+                while end < tokens.count && tokens[end].range.location < NSMaxRange(part) - base { end += 1 }
+                SyntaxHighlighter.apply(tokens: tokens[first..<end].map { SyntaxHighlighter.Token(range: NSRange(location: $0.range.location + base, length: $0.range.length), kind: $0.kind) },
+                                        to: layout, range: part)
                 codeColoredRanges.insert(segment)
             }
         }
@@ -2575,7 +2876,9 @@ final class MarkdownPresentationController {
                 guard let operation, !operation.isCancelled else { return }
                 let tokens = highlighter(segments, block.literal, block.info, block.bodyRange, operation)
                 guard !operation.isCancelled else { return }
+                let base = block.bodyRange.location
                 let sorted = (tokens ?? []).sorted { $0.range.location < $1.range.location }
+                    .map { SyntaxHighlighter.Token(range: NSRange(location: $0.range.location - base, length: $0.range.length), kind: $0.kind) }
                 var maximumEnd = 0
                 let prefixEnds = sorted.map { maximumEnd = max(maximumEnd, NSMaxRange($0.range)); return maximumEnd }
                 guard !operation.isCancelled else { return }
@@ -2596,10 +2899,25 @@ final class MarkdownPresentationController {
         reapplyCodeColors(in: visible)
     }
 
-    private func cancelDiagrams() {
+    /// Останавливает идущую отрисовку диаграмм; готовые картинки не трогает. Поздние ответы отбрасывает сверка по `diagramJobs`.
+    private func cancelDiagramJobs() {
         let jobs = diagramJobs.values.map { $0.1 }
-        let formula = formulaJob?.service
         diagramJobs.removeAll()
+        for job in jobs { job.cancel() }
+    }
+
+    /// Готовые диаграммы переезжают вместе со своими блоками: меняются только ключи, картинка и SVG те же.
+    /// Идущие отрисовки уже отменены (`cancelPending`) и заново пойдут по видимым диаграммам без результата.
+    private func shiftDiagrams(_ edit: MarkdownTextEdit) {
+        guard edit.delta != 0, !diagramCompleted.isEmpty else { return }
+        diagramCompleted = Set(diagramCompleted.compactMap(edit.away))
+        diagramResources = Dictionary(diagramResources.compactMap { range, value in edit.away(range).map { ($0, value) } },
+                                      uniquingKeysWith: { first, _ in first })
+    }
+
+    private func cancelDiagrams() {
+        cancelDiagramJobs()
+        let formula = formulaJob?.service
         formulaJob = nil
         diagramCompleted.removeAll()
         diagramResources.removeAll()
@@ -2607,7 +2925,6 @@ final class MarkdownPresentationController {
         sourceMathReferences.removeAll()
         formulaFontSize = nil
         diagramGeometry = nil
-        for job in jobs { job.cancel() }
         formula?.cancel()
         if !hasMarkedText {
             layout?.clearMarkdownBlockImages()
@@ -2789,7 +3106,7 @@ final class MarkdownPresentationController {
                 self.uppercaseEmojiResolutionFailed = resolved == nil
                 self.parsedResult = updated
                 self.publishReadableTextIfNeeded()
-                if self.presentation != nil { self.presentation = updated }
+                if self.presentation != nil { self.adopt(updated) }
                 if headingChanged {
                     if self.presentation != nil {
                         self.layout?.updateMarkdownTOCHeadings(updated.headings)
@@ -3188,6 +3505,18 @@ final class MarkdownPresentationController {
                 return remaining
             }
             backgroundRanges = backgroundRanges.flatMap { range -> [NSRange] in
+                let overlap = NSIntersectionRange(range, target)
+                guard overlap.length > 0 else { return [range] }
+                var remaining: [NSRange] = []
+                if range.location < overlap.location {
+                    remaining.append(NSRange(location: range.location, length: overlap.location - range.location))
+                }
+                if NSMaxRange(overlap) < NSMaxRange(range) {
+                    remaining.append(NSRange(location: NSMaxRange(overlap), length: NSMaxRange(range) - NSMaxRange(overlap)))
+                }
+                return remaining
+            }
+            styledRanges = styledRanges.flatMap { range -> [NSRange] in
                 let overlap = NSIntersectionRange(range, target)
                 guard overlap.length > 0 else { return [range] }
                 var remaining: [NSRange] = []

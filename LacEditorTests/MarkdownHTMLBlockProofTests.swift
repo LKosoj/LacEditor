@@ -116,4 +116,163 @@ final class MarkdownHTMLBlockProofTests: XCTestCase {
         XCTAssertEqual(storage.string, source)
         XCTAssertFalse(document.isDirty)
     }
+
+    /// Редактор в окне: живые вью вставок после набора вне их должны остаться теми же объектами.
+    @MainActor
+    final class InsertShiftFixture {
+        let storage: NSTextStorage
+        let layout = FoldLayoutManager()
+        let container: NSTextContainer
+        let view: LacTextView
+        let scroll: NSScrollView
+        let window: NSWindow
+        let controller: MarkdownPresentationController
+        let document: EditorDocument
+        var revision: UInt = 0
+
+        init(_ source: String, url: URL? = nil, selecting marker: String) {
+            _ = NSApplication.shared
+            document = EditorDocument(text: source, url: url, language: .markdown)
+            storage = NSTextStorage(string: source)
+            storage.addLayoutManager(layout)
+            container = NSTextContainer(containerSize: NSSize(width: 500, height: 800))
+            layout.addTextContainer(container)
+            view = LacTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 800), textContainer: container)
+            scroll = NSScrollView(frame: view.frame)
+            scroll.documentView = view
+            window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentView = scroll
+            window.makeKeyAndOrderFront(nil)
+            controller = MarkdownPresentationController(textView: view, layout: layout)
+            view.setSelectedRange((source as NSString).range(of: marker))
+            controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { [unowned self] in revision })
+        }
+
+        func close() { controller.cancel(); window.close() }
+
+        /// Печатает один символ после `marker` так же, как редактор: `beforeEdit`, правка текста, `edited`.
+        func type(after marker: String, _ text: String = "x") {
+            let edit = NSRange(location: NSMaxRange(storage.mutableString.range(of: marker)), length: 0)
+            revision += 1
+            controller.beforeEdit(range: edit, replacementLength: (text as NSString).length, replacement: text)
+            storage.replaceCharacters(in: edit, with: text)
+            controller.edited(revision: revision)
+        }
+
+        func wait(_ condition: () -> Bool) async throws {
+            for _ in 0..<200 where !condition() { try await Task.sleep(for: .milliseconds(20)) }
+        }
+
+        /// Даёт отложенному пересчёту рамок и разбору отработать.
+        func settle() async throws { try await Task.sleep(for: .milliseconds(500)) }
+
+        /// Раскрывает details нажатием на стрелку (сама вью закрытая, находим её по имени класса).
+        func openDetails() -> Bool {
+            guard let button = detailsButton() else { return false }
+            button.performClick(nil)
+            return true
+        }
+
+        func detailsView() -> NSView? {
+            view.subviews.first(where: { String(describing: type(of: $0)).hasSuffix("MarkdownDetailsView") })
+        }
+
+        /// Стрелка раскрытия: её состояние показывает, открыт ли блок на экране.
+        func detailsButton() -> NSButton? { detailsView()?.subviews.compactMap { $0 as? NSButton }.first }
+
+        func htmlViews() -> [MarkdownHTMLBlockView] { view.subviews.compactMap { $0 as? MarkdownHTMLBlockView }.filter { $0.alphaValue == 1 } }
+    }
+
+    @MainActor
+    func testTypingOutsideKeepsHTMLBlockView() async throws {
+        let fixture = InsertShiftFixture("intro words\n\n<div><p>中文 😀</p><p>second</p></div>\n\nend words\n", selecting: "end words")
+        defer { fixture.close() }
+        try await fixture.wait { !fixture.htmlViews().isEmpty }
+        let before = try XCTUnwrap(fixture.htmlViews().first)
+        for marker in ["intro wor", "end wor"] {
+            fixture.type(after: marker)
+            try await fixture.settle()
+            let after = try XCTUnwrap(fixture.htmlViews().first, marker)
+            XCTAssertTrue(after === before, marker)
+            XCTAssertNotNil(before.superview, marker)
+        }
+        // Вью следует за блоком: рамка совпадает с местом блока в слое.
+        let range = (fixture.storage.string as NSString).range(of: "<div><p>")
+        XCTAssertNotNil(fixture.layout.markdownMediaRect(for: NSRange(location: range.location, length: ("<div><p>中文 😀</p><p>second</p></div>" as NSString).length), in: fixture.container))
+    }
+
+    @MainActor
+    func testTypingOutsideKeepsDetailsOpenState() async throws {
+        let source = "intro words\n\n<details>\n<summary>Sum</summary>\n\nbody words\n</details>\n\nend words\n"
+        let fixture = InsertShiftFixture(source, selecting: "end words")
+        defer { fixture.close() }
+        let raw = source as NSString
+        let block = raw.range(of: "<details>\n<summary>Sum</summary>\n\nbody words\n</details>")
+        try await fixture.wait { fixture.layout.canDisplayMarkdownMedia(block) && fixture.controller.detailsOpenOverrides.isEmpty }
+        XCTAssertTrue(fixture.openDetails())
+        XCTAssertEqual(fixture.controller.detailsOpenOverrides, [block: true])
+        let before = try XCTUnwrap(fixture.detailsView())
+        XCTAssertEqual(fixture.detailsButton()?.state, .on)
+        fixture.type(after: "intro wor")
+        try await fixture.settle()
+        let moved = NSRange(location: block.location + 1, length: block.length)
+        XCTAssertEqual(fixture.controller.detailsOpenOverrides, [moved: true])
+        // Вью та же, а не созданная заново закрытой.
+        XCTAssertTrue(try XCTUnwrap(fixture.detailsView()) === before)
+        XCTAssertEqual(fixture.detailsButton()?.state, .on)
+    }
+
+    @MainActor
+    func testUnconfirmedEditDropsInsertsAndDetailsState() async throws {
+        let source = "intro words\n\n<details>\n<summary>Sum</summary>\n\nbody words\n</details>\n\n<div><p>中文</p></div>\n\nend words\n"
+        let fixture = InsertShiftFixture(source, selecting: "end words")
+        defer { fixture.close() }
+        try await fixture.wait { !fixture.htmlViews().isEmpty }
+        let htmlView = try XCTUnwrap(fixture.htmlViews().first)
+        XCTAssertTrue(fixture.openDetails())
+        // Правка внутри блока HTML быстрым путём не принимается: готовое снимается, состояние details сбрасывается.
+        fixture.type(after: "<div><p>中")
+        XCTAssertNil(htmlView.superview)
+        XCTAssertTrue(fixture.controller.detailsOpenOverrides.isEmpty)
+    }
+
+    @MainActor
+    func testTypingOutsideKeepsRenderedDiagram() async throws {
+        let source = "intro words\n\n```flow\ns=>start: Start\ne=>end: End\ns->e\n```\n\nend words\n"
+        let fixture = InsertShiftFixture(source, selecting: "end words")
+        defer { fixture.close() }
+        func resource() -> MarkdownPresentationController.DiagramResource? {
+            let text = fixture.storage.string as NSString
+            let block = text.range(of: "```flow\ns=>start: Start\ne=>end: End\ns->e\n```")
+            fixture.layout.ensureLayout(for: fixture.container)
+            guard let rect = fixture.layout.markdownRenderedImageRects(for: [block], in: fixture.container)[block] else { return nil }
+            let origin = fixture.view.textContainerOrigin
+            return fixture.controller.diagramResource(at: NSPoint(x: rect.midX + origin.x, y: rect.midY + origin.y))
+        }
+        try await fixture.wait { resource() != nil }
+        let before = try XCTUnwrap(resource())
+        for marker in ["intro wor", "end wor"] {
+            fixture.type(after: marker)
+            try await fixture.settle()
+            let after = try XCTUnwrap(resource(), marker)
+            XCTAssertTrue(after.image === before.image, marker)
+        }
+    }
+
+    @MainActor
+    func testTypingOutsideKeepsRubyImage() async throws {
+        let source = "intro words\n\nRuby <ruby>漢字<rt>kanji</rt></ruby> end\n\nend words\n"
+        let fixture = InsertShiftFixture(source, selecting: "end words")
+        defer { fixture.close() }
+        try await fixture.wait { !(fixture.layout.markdownListsSnapshot["inlineImages"] ?? []).isEmpty }
+        let before = try XCTUnwrap(fixture.layout.markdownListsSnapshot["inlineImages"])
+        XCTAssertFalse(before.isEmpty)
+        fixture.type(after: "intro wor")
+        let shifted = try XCTUnwrap(fixture.layout.markdownListsSnapshot["inlineImages"])
+        XCTAssertEqual(shifted, [before[0] + 1, before[1]])
+        try await fixture.settle()
+        XCTAssertEqual(fixture.layout.markdownListsSnapshot["inlineImages"], shifted)
+        XCTAssertEqual(fixture.layout.markdownListsSnapshot["rubyBaselines"]?.first, shifted.first)
+    }
 }

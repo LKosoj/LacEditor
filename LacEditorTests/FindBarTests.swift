@@ -155,4 +155,12 @@ final class FindBarTests: XCTestCase {
         document.statusMessage = "ok"
         XCTAssertFalse(document.statusMessageIsError)
     }
+
+    func testClearingStatusMessageKeepsErrorFlagInvariant() {
+        let document = EditorDocument(text: "", language: .plainText)
+        document.setStatusError("bad")
+        if document.statusMessage != nil { document.statusMessage = nil }
+        XCTAssertNil(document.statusMessage)
+        XCTAssertFalse(document.statusMessageIsError)
+    }
 }

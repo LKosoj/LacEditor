@@ -1049,4 +1049,105 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         XCTAssertEqual(linkedPresentation.links.count, 1)
     }
 
+
+    /// Каталог с настоящим wav: плеер должен реально играть.
+    private func makeSoundFolder() throws -> URL {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var sound = Data("RIFF".utf8)
+        func word(_ value: UInt32) { var value = value.littleEndian; withUnsafeBytes(of: &value) { sound.append(contentsOf: $0) } }
+        func half(_ value: UInt16) { var value = value.littleEndian; withUnsafeBytes(of: &value) { sound.append(contentsOf: $0) } }
+        word(24036); sound.append(Data("WAVEfmt ".utf8)); word(16)
+        half(1); half(1); word(8000); word(8000); half(1); half(8)
+        sound.append(Data("data".utf8)); word(24000); sound.append(Data(repeating: 128, count: 24000))
+        try sound.write(to: folder.appendingPathComponent("sound.wav"))
+        return folder
+    }
+
+    @MainActor
+    func testTypingOutsideKeepsPlayingAudio() async throws {
+        let folder = try makeSoundFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let fixture = MarkdownHTMLBlockProofTests.InsertShiftFixture("intro words\n\n<audio src='sound.wav' />\n\nend words\n",
+                                                                     url: folder.appendingPathComponent("note.md"), selecting: "end words")
+        defer { fixture.close() }
+        try await fixture.wait { !fixture.view.subviews.compactMap { $0 as? AVPlayerView }.isEmpty }
+        let playerView = try XCTUnwrap(fixture.view.subviews.compactMap { $0 as? AVPlayerView }.first)
+        let player = try XCTUnwrap(playerView.player)
+        player.play()
+        try await fixture.wait { player.rate > 0 }
+        var completions = 0
+        fixture.controller.audioLoadDidComplete = { _, _ in completions += 1 }
+        for marker in ["intro wor", "end wor"] {
+            fixture.type(after: marker)
+            try await fixture.settle()
+            let current = try XCTUnwrap(fixture.view.subviews.compactMap { $0 as? AVPlayerView }.first, marker)
+            XCTAssertTrue(current === playerView, marker)
+            XCTAssertTrue(current.player === player, marker)
+            XCTAssertGreaterThan(player.rate, 0, marker)
+        }
+        XCTAssertEqual(completions, 0)
+        XCTAssertEqual(fixture.view.subviews.compactMap { $0 as? AVPlayerView }.count, 1)
+    }
+
+    @MainActor
+    func testTypingOutsideCancelsPendingAudioLoadAndStartsOnePlayer() async throws {
+        let folder = try makeSoundFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = "intro words\n\n<audio src='sound.wav' />\n\nend words\n"
+        let document = EditorDocument(text: source, url: folder.appendingPathComponent("note.md"), language: .markdown)
+        let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
+        storage.addLayoutManager(layout)
+        let container = NSTextContainer(containerSize: NSSize(width: 500, height: 800)); layout.addTextContainer(container)
+        let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 800), textContainer: container)
+        let scroll = NSScrollView(frame: view.frame); scroll.documentView = view
+        let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false; window.contentView = scroll; window.makeKeyAndOrderFront(nil)
+        view.setSelectedRange((source as NSString).range(of: "end words"))
+        let controller = MarkdownPresentationController(textView: view, layout: layout)
+        defer { controller.cancel(); window.close() }
+        let started = expectation(description: "audio check started")
+        var pending: CheckedContinuation<Bool, Never>?
+        defer { pending?.resume(returning: false) }
+        controller.audioAssetIsPlayable = { _ in await withCheckedContinuation { pending = $0; started.fulfill() } }
+        var revision: UInt = 0
+        controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { revision })
+        await fulfillment(of: [started], timeout: 10)
+        // Правка вне блока: идущая загрузка отменяется, а не доживает со старым диапазоном.
+        let finished = expectation(description: "old audio job finished")
+        finished.assertForOverFulfill = false
+        controller.audioJobDidFinish = { _ in finished.fulfill() }
+        let edit = NSRange(location: NSMaxRange((source as NSString).range(of: "intro wor")), length: 0)
+        revision += 1
+        controller.beforeEdit(range: edit, replacementLength: 1, replacement: "x")
+        storage.replaceCharacters(in: edit, with: "x")
+        controller.edited(revision: revision)
+        let old = try XCTUnwrap(pending); pending = nil; old.resume(returning: true)
+        await fulfillment(of: [finished], timeout: 10)
+        XCTAssertTrue(view.subviews.compactMap { $0 as? AVPlayerView }.isEmpty)
+        // Загрузка запускается заново по новому диапазону, плеер появляется один.
+        controller.audioAssetIsPlayable = { _ in true }
+        controller.viewportChanged()
+        for _ in 0..<100 where view.subviews.compactMap({ $0 as? AVPlayerView }).isEmpty { try await Task.sleep(for: .milliseconds(50)) }
+        XCTAssertEqual(view.subviews.compactMap { $0 as? AVPlayerView }.count, 1)
+        XCTAssertEqual(storage.string, source.replacingOccurrences(of: "intro wor", with: "intro worx"))
+        withExtendedLifetime(scroll) {}
+    }
+
+    @MainActor
+    func testTypingOutsideKeepsIframeWebView() async throws {
+        let fixture = MarkdownHTMLBlockProofTests.InsertShiftFixture(
+            "intro words\n\n<iframe src='https://example.invalid' width='50%' height='60'>fallback</iframe>\n\nend words\n", selecting: "end words")
+        defer { fixture.close() }
+        try await fixture.wait { !fixture.view.subviews.compactMap { $0 as? WKWebView }.isEmpty }
+        let web = try XCTUnwrap(fixture.view.subviews.compactMap { $0 as? WKWebView }.first)
+        for marker in ["intro wor", "end wor"] {
+            fixture.type(after: marker)
+            try await fixture.settle()
+            let current = try XCTUnwrap(fixture.view.subviews.compactMap { $0 as? WKWebView }.first, marker)
+            XCTAssertTrue(current === web, marker)
+            XCTAssertNotNil(web.superview, marker)
+        }
+        XCTAssertEqual(fixture.view.subviews.compactMap { $0 as? WKWebView }.count, 1)
+    }
 }

@@ -1825,6 +1825,56 @@ final class MarkdownLayoutTests: XCTestCase {
         XCTAssertEqual(storage.string, source)
     }
 
+    func testHeadingFontCacheInvalidatesWithTextFontAndSmallCaps() throws {
+        _ = NSApplication.shared
+        let (_, layout, _) = makeLayout("# a")
+        let first = layout.markdownHeadingFont(level: 1)
+        XCTAssertTrue(first === layout.markdownHeadingFont(level: 1))
+        XCTAssertEqual(first.pointSize, layout.textFont.pointSize * 1.6, accuracy: 0.01)
+        XCTAssertEqual(layout.markdownHeadingFont(level: 4).pointSize, layout.textFont.pointSize, accuracy: 0.01)
+        layout.textFont = lacEditorFont(size: 20)
+        XCTAssertEqual(layout.markdownHeadingFont(level: 1).pointSize, 20 * 1.6, accuracy: 0.01)
+        let supported = NSFontManager.shared.availableFonts.lazy.compactMap { NSFont(name: $0, size: 14) }
+            .first { FoldLayoutManager.supportsSmallCaps(NSFontManager.shared.convert($0, toHaveTrait: .boldFontMask)) }
+        guard let supported else { throw XCTSkip("No installed font advertises small caps") }
+        layout.textFont = supported
+        XCTAssertNil(layout.markdownHeadingFont(level: 1).fontDescriptor.object(forKey: .featureSettings))
+        layout.markdownSmallCapsLevels = [1]
+        XCTAssertNotNil(layout.markdownHeadingFont(level: 1).fontDescriptor.object(forKey: .featureSettings))
+        XCTAssertNil(layout.markdownHeadingFont(level: 2).fontDescriptor.object(forKey: .featureSettings))
+        layout.markdownSmallCapsLevels = []
+        XCTAssertNil(layout.markdownHeadingFont(level: 1).fontDescriptor.object(forKey: .featureSettings))
+    }
+
+    func testGlyphGenerationHidesOnlyVisibleImageRangesInsideBatch() {
+        _ = NSApplication.shared
+        let source = "start IMG one MEDIA two BLOCK end"
+        let raw = source as NSString
+        let (_, layout, container) = makeLayout(source)
+        let image = raw.range(of: "IMG"), media = raw.range(of: "MEDIA"), block = raw.range(of: "BLOCK")
+        layout.setMarkdownImage(NSImage(size: NSSize(width: 10, height: 10)), for: image)
+        layout.setMarkdownMediaSize(NSSize(width: 10, height: 10), for: media)
+        layout.setMarkdownBlockImage(NSImage(size: NSSize(width: 10, height: 10)), for: block)
+        layout.ensureLayout(for: container)
+        func isNull(_ location: Int) -> Bool {
+            layout.propertyForGlyph(at: layout.glyphIndexForCharacter(at: location)).contains(.null)
+        }
+        for range in [image, media, block] {
+            for location in range.location..<NSMaxRange(range) { XCTAssertTrue(isNull(location)) }
+        }
+        for location in 0..<image.location { XCTAssertFalse(isNull(location)) }
+        for location in NSMaxRange(image)..<media.location { XCTAssertFalse(isNull(location)) }
+        for location in NSMaxRange(media)..<block.location { XCTAssertFalse(isNull(location)) }
+        for range in [image, media, block] {
+            layout.updateMarkdownRevealedRange(range)
+            layout.ensureLayout(for: container)
+            for location in range.location..<NSMaxRange(range) { XCTAssertFalse(isNull(location)) }
+            layout.updateMarkdownRevealedRange(nil)
+            layout.ensureLayout(for: container)
+            for location in range.location..<NSMaxRange(range) { XCTAssertTrue(isNull(location)) }
+        }
+    }
+
     func testSmartQuoteAtConfirmedBlankLineExcludesOpaqueContexts() async throws {
         _ = NSApplication.shared
         for (source, allowed) in [("", true), ("text\n\n", true), ("text\r\n\r\n", true), ("   ", true),
@@ -2193,6 +2243,149 @@ final class MarkdownLayoutTests: XCTestCase {
         let count = lock.withLock { attempts }
         XCTAssertEqual(count, 1)
         withExtendedLifetime((scroll, storage)) {}
+    }
+
+    private final class CodeShiftFixture {
+        let storage: NSTextStorage
+        let layout: FoldLayoutManager
+        let view: LacTextView
+        let scroll: NSScrollView
+        let controller: MarkdownPresentationController
+        let document: EditorDocument
+        let lock = NSLock()
+        var revision: UInt = 0
+        private var calls = 0
+        init(storage: NSTextStorage, layout: FoldLayoutManager, view: LacTextView, scroll: NSScrollView,
+             controller: MarkdownPresentationController, document: EditorDocument) {
+            self.storage = storage
+            self.layout = layout
+            self.view = view
+            self.scroll = scroll
+            self.controller = controller
+            self.document = document
+        }
+        var callCount: Int { lock.withLock { calls } }
+        func countCall() -> Int { lock.withLock { calls += 1; return calls } }
+
+        /// Печатает один символ после `marker` так же, как редактор: `beforeEdit`, правка текста, `edited`.
+        func type(after marker: String, _ text: String = "x") {
+            let edit = NSRange(location: NSMaxRange(storage.mutableString.range(of: marker)), length: 0)
+            revision += 1
+            controller.beforeEdit(range: edit, replacementLength: (text as NSString).length, replacement: text)
+            storage.replaceCharacters(in: edit, with: text)
+            controller.edited(revision: revision)
+        }
+
+        func hasColor(at index: Int) -> Bool {
+            layout.temporaryAttributes(atCharacterIndex: index, effectiveRange: nil)[.foregroundColor] != nil
+        }
+    }
+
+    /// Редактор с блоком кода; `highlighter` nil: настоящая подсветка с подсчётом вызовов.
+    private func makeCodeShiftFixture(_ source: String, highlighter: ((CodeShiftFixture, [MarkdownCodeHighlightService.Segment], String, String, NSRange, BlockOperation) -> [SyntaxHighlighter.Token]?)? = nil) -> CodeShiftFixture {
+        _ = NSApplication.shared
+        let document = EditorDocument(text: source, language: .markdown)
+        let (storage, layout, container) = makeLayout(source)
+        let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 400), textContainer: container)
+        let scroll = NSScrollView(frame: view.frame)
+        scroll.documentView = view
+        view.setSelectedRange(NSRange(location: (source as NSString).length, length: 0))
+        let controller = MarkdownPresentationController(textView: view, layout: layout)
+        let fixture = CodeShiftFixture(storage: storage, layout: layout, view: view, scroll: scroll, controller: controller, document: document)
+        controller.codeHighlighter = { [unowned fixture] segments, literal, info, visible, operation in
+            if let highlighter { return highlighter(fixture, segments, literal, info, visible, operation) }
+            _ = fixture.countCall()
+            return MarkdownCodeHighlightService.tokens(segments: segments, literal: literal, info: info, visible: visible, isCancelled: { operation.isCancelled })
+        }
+        controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { [unowned fixture] in fixture.revision })
+        return fixture
+    }
+
+    private func waitUntil(_ condition: () -> Bool) async throws {
+        for _ in 0..<200 where !condition() { try await Task.sleep(for: .milliseconds(50)) }
+    }
+
+    func testTypingAboveCodeBlockKeepsHighlightWithoutNewJob() async throws {
+        let fixture = makeCodeShiftFixture("intro text\n\n```js\nlet x = 42;\n```\n\nafter")
+        defer { fixture.controller.cancel() }
+        try await waitUntil { fixture.hasColor(at: (fixture.storage.string as NSString).range(of: "42").location) }
+        XCTAssertEqual(fixture.callCount, 1)
+        fixture.type(after: "intro")
+        let moved = (fixture.storage.string as NSString).range(of: "42")
+        fixture.controller.reapplyCodeColors(in: NSRange(location: 0, length: fixture.storage.length))
+        XCTAssertTrue(fixture.hasColor(at: moved.location))
+        try await Task.sleep(for: .milliseconds(500))
+        fixture.controller.reapplyCodeColors(in: NSRange(location: 0, length: fixture.storage.length))
+        XCTAssertTrue(fixture.hasColor(at: moved.location))
+        XCTAssertEqual(fixture.callCount, 1)
+        withExtendedLifetime(fixture) {}
+    }
+
+    func testTypingInsideCodeBlockRehighlights() async throws {
+        let fixture = makeCodeShiftFixture("intro text\n\n```js\nlet x = 42;\n```\n\nafter")
+        defer { fixture.controller.cancel() }
+        try await waitUntil { fixture.hasColor(at: (fixture.storage.string as NSString).range(of: "42").location) }
+        XCTAssertEqual(fixture.callCount, 1)
+        fixture.type(after: "let ")
+        try await waitUntil { fixture.callCount == 2 }
+        let moved = (fixture.storage.string as NSString).range(of: "42")
+        try await waitUntil { fixture.hasColor(at: moved.location) }
+        XCTAssertEqual(fixture.callCount, 2)
+        XCTAssertTrue(fixture.hasColor(at: moved.location))
+        withExtendedLifetime(fixture) {}
+    }
+
+    func testPendingCodeJobIsCancelledAndRestartedAfterShift() async throws {
+        let started = expectation(description: "first code job started")
+        let gate = DispatchSemaphore(value: 0)
+        let fixture = makeCodeShiftFixture("intro text\n\n```js\nlet x = 42;\n```\n\nafter") { fixture, segments, literal, info, visible, operation in
+            let number = fixture.countCall()
+            if number == 1 { started.fulfill(); gate.wait() }
+            return MarkdownCodeHighlightService.tokens(segments: segments, literal: literal, info: info, visible: visible, isCancelled: { operation.isCancelled })
+        }
+        defer { gate.signal(); fixture.controller.cancel() }
+        await fulfillment(of: [started], timeout: 10)
+        let old = (fixture.storage.string as NSString).range(of: "42").location
+        fixture.type(after: "intro")
+        gate.signal()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertFalse(fixture.hasColor(at: old))
+        XCTAssertFalse(fixture.hasColor(at: old + 1))
+        try await waitUntil { fixture.callCount == 2 && fixture.hasColor(at: old + 1) }
+        XCTAssertEqual(fixture.callCount, 2)
+        XCTAssertTrue(fixture.hasColor(at: old + 1))
+        withExtendedLifetime(fixture) {}
+    }
+
+    func testFailedCodeHighlightStaysFailedAfterShift() async throws {
+        let completed = expectation(description: "unsuccessful highlight completed")
+        let fixture = makeCodeShiftFixture("intro text\n\n```js\nlet x = 42;\n```\n\nafter") { fixture, _, _, _, _, _ in
+            _ = fixture.countCall()
+            return nil
+        }
+        defer { fixture.controller.cancel() }
+        fixture.controller.codeHighlightDidComplete = { _ in completed.fulfill() }
+        await fulfillment(of: [completed], timeout: 10)
+        fixture.type(after: "intro")
+        try await Task.sleep(for: .milliseconds(700))
+        fixture.controller.viewportChanged()
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(fixture.callCount, 1)
+        withExtendedLifetime(fixture) {}
+    }
+
+    func testCodeBlockStyleKeptAfterShift() async throws {
+        let fixture = makeCodeShiftFixture("intro text\n\n```js\nlet x = 42;\n```\n\nafter")
+        defer { fixture.controller.cancel() }
+        let isMonospaced = { (index: Int) -> Bool in
+            (fixture.storage.attribute(.font, at: index, effectiveRange: nil) as? NSFont)?.fontDescriptor.symbolicTraits.contains(.monoSpace) == true
+        }
+        try await waitUntil { isMonospaced((fixture.storage.string as NSString).range(of: "42").location) }
+        XCTAssertTrue(isMonospaced((fixture.storage.string as NSString).range(of: "42").location))
+        fixture.type(after: "intro")
+        XCTAssertNotNil(fixture.controller.work)
+        XCTAssertTrue(isMonospaced((fixture.storage.string as NSString).range(of: "42").location))
+        withExtendedLifetime(fixture) {}
     }
 
     func testNestedCodeHighlightKeepsContainerPrefixColors() async throws {
@@ -2678,6 +2871,149 @@ final class MarkdownLayoutTests: XCTestCase {
         XCTAssertEqual(storage.string, source)
     }
 
+    func testTableGeometryCacheReusesRowForSameInputs() throws {
+        let source = "| A | B |\n| --- | --- |\n| short | a long cell that wraps across several lines |"
+        let presentation = MarkdownPresentationParser.parse(source)
+        let cell = try XCTUnwrap(presentation.tables.first?.rows.last?.cells.last)
+        let (_, layout, container) = makeLayout(source)
+        layout.setMarkdownPresentation(presentation, revealedRange: nil)
+        layout.ensureLayout(for: container)
+        let first = try XCTUnwrap(layout.markdownTableFrame(for: cell, in: container))
+        let misses = layout.tableGeometryMisses
+        XCTAssertGreaterThan(misses, 0)
+        let second = try XCTUnwrap(layout.markdownTableFrame(for: cell, in: container))
+        XCTAssertEqual(layout.tableGeometryMisses, misses)
+        XCTAssertEqual(first, second)
+    }
+
+    func testTableGeometryCacheRecomputesOnWidthChange() throws {
+        let source = "| A | B |\n| --- | --- |\n| short | a long cell that wraps across several lines |"
+        let presentation = MarkdownPresentationParser.parse(source)
+        let cell = try XCTUnwrap(presentation.tables.first?.rows.last?.cells.last)
+        let (_, layout, container) = makeLayout(source)
+        layout.setMarkdownPresentation(presentation, revealedRange: nil)
+        layout.ensureLayout(for: container)
+        let wide = try XCTUnwrap(layout.markdownTableFrame(for: cell, in: container))
+        let misses = layout.tableGeometryMisses
+        container.containerSize = NSSize(width: 150, height: 2_000)
+        layout.ensureLayout(for: container)
+        let narrow = try XCTUnwrap(layout.markdownTableFrame(for: cell, in: container))
+        XCTAssertGreaterThan(layout.tableGeometryMisses, misses)
+        XCTAssertGreaterThan(narrow.height, wide.height)
+    }
+
+    func testTableGeometryCacheResetsOnFontSpacingAndRTL() throws {
+        let source = "| العربية | English |\n|---|---|\n| مرحبا | hello world |"
+        let presentation = MarkdownPresentationParser.parse(source)
+        let row = try XCTUnwrap(presentation.tables.first?.rows.last)
+        let first = try XCTUnwrap(row.cells.first)
+        let second = try XCTUnwrap(row.cells.last)
+        let (_, layout, container) = makeLayout(source)
+        layout.setMarkdownPresentation(presentation, revealedRange: nil)
+        layout.ensureLayout(for: container)
+        let small = try XCTUnwrap(layout.markdownTableFrame(for: second, in: container))
+        var misses = layout.tableGeometryMisses
+        layout.textFont = NSFont.monospacedSystemFont(ofSize: 28, weight: .regular)
+        layout.ensureLayout(for: container)
+        let large = try XCTUnwrap(layout.markdownTableFrame(for: second, in: container))
+        XCTAssertGreaterThan(layout.tableGeometryMisses, misses)
+        XCTAssertGreaterThan(large.height, small.height)
+        misses = layout.tableGeometryMisses
+        layout.editorLineSpacing += 10
+        layout.ensureLayout(for: container)
+        _ = layout.markdownTableFrame(for: second, in: container)
+        XCTAssertGreaterThan(layout.tableGeometryMisses, misses)
+        misses = layout.tableGeometryMisses
+        layout.markdownRightToLeft = true
+        layout.ensureLayout(for: container)
+        let firstRTL = try XCTUnwrap(layout.markdownTableFrame(for: first, in: container))
+        let secondRTL = try XCTUnwrap(layout.markdownTableFrame(for: second, in: container))
+        XCTAssertGreaterThan(layout.tableGeometryMisses, misses)
+        XCTAssertGreaterThan(firstRTL.minX, secondRTL.minX)
+    }
+
+    func testTableGeometryCacheDoesNotReturnStaleRowAfterEdit() throws {
+        let source = "| A | B |\n| --- | --- |\n| x | y |"
+        let (storage, layout, container) = makeLayout(source)
+        layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: nil)
+        layout.ensureLayout(for: container)
+        let oldCell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.last)
+        let before = try XCTUnwrap(layout.markdownTableFrame(for: oldCell, in: container))
+        let edited = "| A | B |\n| --- | --- |\n| x | a long cell that wraps across several lines and more and more words here to wrap again |"
+        storage.replaceCharacters(in: NSRange(location: 0, length: (source as NSString).length), with: edited)
+        let presentation = MarkdownPresentationParser.parse(edited)
+        let misses = layout.tableGeometryMisses
+        layout.setMarkdownPresentation(presentation, revealedRange: nil)
+        layout.ensureLayout(for: container)
+        let newCell = try XCTUnwrap(presentation.tables.first?.rows.last?.cells.last)
+        let after = try XCTUnwrap(layout.markdownTableFrame(for: newCell, in: container))
+        XCTAssertGreaterThan(layout.tableGeometryMisses, misses)
+        XCTAssertGreaterThan(after.height, before.height)
+    }
+
+    func testTableGeometryCacheResetsOnTableImageChange() throws {
+        let source = "| $x$ | B |\n| --- | --- |\n| a | b |"
+        let presentation = MarkdownPresentationParser.parse(source)
+        let cell = try XCTUnwrap(presentation.tables.first?.rows.first?.cells.first)
+        let formula = try XCTUnwrap(presentation.inlineFormulas.first)
+        let (_, layout, container) = makeLayout(source)
+        layout.setMarkdownPresentation(presentation, revealedRange: nil)
+        layout.ensureLayout(for: container)
+        let plain = try XCTUnwrap(layout.markdownTableFrame(for: cell, in: container))
+        XCTAssertTrue(layout.setMarkdownInlineImage(NSImage(size: NSSize(width: 80, height: 60)), for: formula.range))
+        let withImage = try XCTUnwrap(layout.markdownTableFrame(for: cell, in: container))
+        XCTAssertGreaterThan(withImage.height, plain.height)
+        layout.removeMarkdownInlineImage(for: formula.range)
+        let restored = try XCTUnwrap(layout.markdownTableFrame(for: cell, in: container))
+        XCTAssertEqual(restored.height, plain.height, accuracy: 0.5)
+    }
+
+    /// Абзац над таблицей и таблица под ним: строка таблицы прочитана до сдвига, затем вставка в абзац сдвигает таблицу на месте.
+    private func shiftedTableFixture() throws -> (layout: FoldLayoutManager, container: NSTextContainer, storage: NSTextStorage,
+                                                   before: NSRect, misses: Int, shifted: MarkdownTableCell, oldLocation: Int) {
+        let source = "Intro words\n\n| A | B |\n| --- | --- |\n| short | a long cell that wraps across several lines |"
+        let raw = source as NSString
+        var presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
+        let cell = try XCTUnwrap(presentation.tables.first?.rows.last?.cells.last)
+        let (storage, layout, container) = makeLayout(source)
+        layout.setMarkdownPresentation(presentation, revealedRange: nil)
+        layout.ensureLayout(for: container)
+        let before = try XCTUnwrap(layout.markdownTableFrame(for: cell, in: container))
+        let misses = layout.tableGeometryMisses
+        presentation.prepareForEditing()
+        let edit = NSRange(location: NSMaxRange(raw.range(of: "Intro")), length: 0)
+        let change = MarkdownTextEdit(range: edit, replacementLength: 1, textLength: raw.length)
+        XCTAssertTrue(presentation.canShift(change))
+        let spanStart = presentation.firstAffectedLocation(change)
+        presentation.shift(change)
+        layout.shiftMarkdownPresentation(change, spanStart: spanStart, revealedRange: nil, inlineSelection: nil)
+        storage.replaceCharacters(in: edit, with: "x")
+        let shifted = try XCTUnwrap(presentation.tables.first?.rows.last?.cells.last)
+        return (layout, container, storage, before, misses, shifted, cell.range.location)
+    }
+
+    func testTableGeometryCacheSurvivesShift() throws {
+        let fixture = try shiftedTableFixture()
+        XCTAssertGreaterThan(fixture.misses, 0)
+        let after = try XCTUnwrap(fixture.layout.markdownTableFrame(for: fixture.shifted, in: fixture.container))
+        XCTAssertEqual(fixture.layout.tableGeometryMisses, fixture.misses)
+        XCTAssertEqual(after.size, fixture.before.size)
+        XCTAssertEqual(fixture.shifted.range.location, fixture.oldLocation + 1)
+    }
+
+    func testTableGeometryCacheMissesWhenRowContentChanges() throws {
+        let fixture = try shiftedTableFixture()
+        let edited = "Ixntro words\n\n| A | B |\n| --- | --- |\n| short | a long cell that wraps across several lines and more and more words here to wrap again |"
+        fixture.storage.replaceCharacters(in: NSRange(location: 0, length: fixture.storage.length), with: edited)
+        let presentation = MarkdownPresentationParser.parse(edited)
+        fixture.layout.setMarkdownPresentation(presentation, revealedRange: nil)
+        fixture.layout.ensureLayout(for: fixture.container)
+        let cell = try XCTUnwrap(presentation.tables.first?.rows.last?.cells.last)
+        let after = try XCTUnwrap(fixture.layout.markdownTableFrame(for: cell, in: fixture.container))
+        XCTAssertGreaterThan(fixture.layout.tableGeometryMisses, fixture.misses)
+        XCTAssertGreaterThan(after.height, fixture.before.height)
+    }
+
     func testVerticalTOCAndListMarkerHitUsingPhysicalCoordinates() throws {
         _ = NSApplication.shared
         let source = "[toc]\n\n# 标题\n\n9. one\n1. two\n\nend"
@@ -2760,6 +3096,32 @@ final class MarkdownLayoutTests: XCTestCase {
         XCTAssertEqual(storage.string, source)
         withExtendedLifetime(scroll) {}
     }
+    func testInlineSelectionOverPlainTextKeepsLayoutAndOverMarkerInvalidatesIt() throws {
+        let source = "plain one\n\nplain **bold** end", raw = source as NSString
+        let (storage, layout, container) = makeLayout(source)
+        layout.backgroundLayoutEnabled = false
+        layout.allowsNonContiguousLayout = false
+        let parsed = MarkdownPresentationParser.parse(source)
+        let strong = try XCTUnwrap(parsed.spans.first { $0.kind == .strong }), marker = try XCTUnwrap(strong.markerRanges.first)
+        let plain = NSRange(location: 2, length: 0)
+        layout.setMarkdownPresentation(parsed, revealedRange: nil, inlineSelection: nil)
+        layout.ensureLayout(for: container)
+        XCTAssertEqual(layout.firstUnlaidCharacterIndex(), raw.length)
+        XCTAssertTrue(layout.isMarkdownMarkerHidden(at: marker.location))
+        layout.updateMarkdownInlineSelection(plain)
+        XCTAssertEqual(layout.firstUnlaidCharacterIndex(), raw.length)
+        XCTAssertTrue(layout.isMarkdownMarkerHidden(at: marker.location))
+        layout.updateMarkdownInlineSelection(NSRange(location: strong.range.location + 3, length: 0))
+        XCTAssertLessThan(layout.firstUnlaidCharacterIndex(), raw.length)
+        layout.ensureLayout(for: container)
+        XCTAssertFalse(layout.isMarkdownMarkerHidden(at: marker.location))
+        layout.updateMarkdownInlineSelection(plain)
+        XCTAssertLessThan(layout.firstUnlaidCharacterIndex(), raw.length)
+        layout.ensureLayout(for: container)
+        XCTAssertTrue(layout.isMarkdownMarkerHidden(at: marker.location))
+        XCTAssertEqual(storage.string, source)
+    }
+
     private func makeLayout(_ source: String) -> (NSTextStorage, FoldLayoutManager, NSTextContainer) {
         let storage = NSTextStorage(string: source, attributes: [.font: lacEditorFont(size: 14)])
         let layout = FoldLayoutManager()
@@ -2767,6 +3129,142 @@ final class MarkdownLayoutTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 600, height: 2_000))
         layout.addTextContainer(container)
         return (storage, layout, container)
+    }
+
+    func testShiftInPlaceMatchesNewPresentation() throws {
+        _ = NSApplication.shared
+        let source = "# Title\n\nSome **bold** text and ~~gone~~ words\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n> quote words\n> second line\n\n- item one\n- [x] done task\n  - [x] inner done\n- [ ] open task\n\nLast paragraph, with text\n"
+        let raw = source as NSString
+        var checked = 0
+        for (marker, insert, remove) in [("Some **bol", "x", 0), ("~~go", "k", 0), ("quote", "s", 0), ("second", "", 1), ("item on", "e", 0), ("done tas", "k", 0),
+                                         ("inner don", "e", 0), ("open ta", "", 2), ("Last paragraph, wi", "x", 0), ("\n\nLast", "я", 0), ("one\n", "x", 0), ("| 1 | 2 |\n\n> ", "x", 0), ("| 1", "z", 0), ("words\n\n", "x", 0)] {
+            let edit = NSRange(location: NSMaxRange(raw.range(of: marker)), length: remove)
+            let length = (insert as NSString).length
+            var presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
+            let (shiftedStorage, shiftedLayout, _) = makeLayout(source)
+            shiftedLayout.setMarkdownPresentation(presentation, revealedRange: nil)
+            presentation.prepareForEditing()
+            let change = MarkdownTextEdit(range: edit, replacementLength: length, textLength: raw.length)
+            guard presentation.canShift(change) else { continue }
+            checked += 1
+            let spanStart = presentation.firstAffectedLocation(change)
+            presentation.shift(change)
+            shiftedLayout.shiftMarkdownPresentation(change, spanStart: spanStart, revealedRange: nil, inlineSelection: nil)
+            let changed = raw.replacingCharacters(in: edit, with: insert)
+            let (freshStorage, freshLayout, _) = makeLayout(changed)
+            freshLayout.setMarkdownPresentation(MarkdownPresentationParser.parse(changed, includeEmojiCandidates: true, includeWikiLinks: true), revealedRange: nil)
+            // Заголовки после сдвига сброшены, как и у прежнего пути с сдвинутым оформлением.
+            let expected = freshLayout.markdownListsSnapshot.filter { $0.key != "tocHeadings" }
+            XCTAssertEqual(shiftedLayout.markdownListsSnapshot.filter { $0.key != "tocHeadings" }, expected, "\(edit) \(insert)")
+            for location in 0..<(changed as NSString).length {
+                XCTAssertEqual(shiftedLayout.isMarkdownMarkerHidden(at: location), freshLayout.isMarkdownMarkerHidden(at: location), "\(edit) at \(location)")
+            }
+            withExtendedLifetime((shiftedStorage, freshStorage)) {}
+        }
+        XCTAssertGreaterThan(checked, 6)
+    }
+
+    /// Ставит на слой то, что ставит контроллер для диаграмм и вставок: картинки блоков, размеры вставок, образ ruby с базовой линией.
+    private func installDiagramsAndInserts(_ layout: FoldLayoutManager, _ presentation: MarkdownPresentation) {
+        for diagram in presentation.diagrams { layout.setMarkdownBlockImage(NSImage(size: NSSize(width: 40, height: 20)), for: diagram.range) }
+        let blocks = presentation.audioBlocks.filter { !$0.isInline }.map(\.range) + presentation.iframeBlocks.filter { !$0.isInline }.map(\.range)
+            + presentation.detailsBlocks.map(\.range) + presentation.htmlBlocks.map(\.range)
+        for (index, range) in blocks.enumerated() { layout.setMarkdownMediaSize(NSSize(width: 100, height: CGFloat(30 + index)), for: range) }
+        for ruby in presentation.ruby {
+            _ = layout.setMarkdownInlineImage(NSImage(size: NSSize(width: 1, height: 1)), for: ruby.range, rubyBaseline: NSPoint(x: 0, y: 3))
+        }
+    }
+
+    func testShiftInPlaceMovesDiagramsAndInserts() throws {
+        _ = NSApplication.shared
+        let source = "Intro words\n\n```mermaid\ngraph TD; A-->B\n```\n\nBetween words\n\n<audio src=\"a.mp3\" controls></audio>\n\nAudio tail words\n\n<iframe src=\"https://example.invalid\" width=\"50%\" height=\"60\"></iframe>\n\nFrame tail words\n\n<details>\n<summary>Sum</summary>\n\nbody words\n</details>\n\nDetails tail words\n\n<div>\nraw html\n</div>\n\nHtml tail words\n\nRuby <ruby>漢字<rt>kanji</rt></ruby> end\n\nTail words\n"
+        let raw = source as NSString
+        var checked = 0, shiftedRuby = 0
+        for (marker, insert, remove) in [("Intro wor", "x", 0), ("Between wor", "я", 0), ("Audio tail wor", "x", 0), ("Frame tail wor", "", 1),
+                                         ("Details tail wor", "x", 0), ("Html tail wor", "x", 0), ("Ruby ", "x", 0), ("Tail wor", "x", 0)] {
+            let edit = NSRange(location: NSMaxRange(raw.range(of: marker)), length: remove)
+            var presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
+            let (shiftedStorage, shiftedLayout, _) = makeLayout(source)
+            shiftedLayout.setMarkdownPresentation(presentation, revealedRange: nil)
+            installDiagramsAndInserts(shiftedLayout, presentation)
+            presentation.prepareForEditing()
+            let change = MarkdownTextEdit(range: edit, replacementLength: (insert as NSString).length, textLength: raw.length)
+            guard presentation.canShift(change) else { continue }
+            checked += 1
+            let ruby = try XCTUnwrap(presentation.ruby.first).range
+            let spanStart = presentation.firstAffectedLocation(change)
+            presentation.shift(change)
+            shiftedLayout.shiftMarkdownPresentation(change, spanStart: spanStart, revealedRange: nil, inlineSelection: nil)
+            let changed = raw.replacingCharacters(in: edit, with: insert)
+            let (freshStorage, freshLayout, _) = makeLayout(changed)
+            let reparsed = MarkdownPresentationParser.parse(changed, includeEmojiCandidates: true, includeWikiLinks: true)
+            freshLayout.setMarkdownPresentation(reparsed, revealedRange: nil)
+            installDiagramsAndInserts(freshLayout, reparsed)
+            let expected = freshLayout.markdownListsSnapshot.filter { $0.key != "tocHeadings" }
+            XCTAssertEqual(shiftedLayout.markdownListsSnapshot.filter { $0.key != "tocHeadings" }, expected, "\(edit) \(insert)")
+            // Базовая линия ruby едет вместе с ним: правка перед ним сдвигает ключ на длину вставки, правка после его не трогает.
+            let rubyKey = edit.location < ruby.location ? NSRange(location: ruby.location + change.delta, length: ruby.length) : ruby
+            XCTAssertEqual(shiftedLayout.markdownListsSnapshot["rubyBaselines"], [rubyKey.location, rubyKey.length, 0, 3], "\(edit) \(insert)")
+            if edit.location < ruby.location { shiftedRuby += 1 }
+            withExtendedLifetime((shiftedStorage, freshStorage)) {}
+        }
+        XCTAssertGreaterThan(checked, 5)
+        XCTAssertGreaterThan(shiftedRuby, 3)
+    }
+
+    func testShiftInPlaceMovesImagesFormulasAndEmoji() throws {
+        _ = NSApplication.shared
+        let source = "Intro words\n\n![block](a.png)\n\nMiddle words with ![inline](b.png) image and $y^2$ math :smile: end\n\n| a | b |\n|---|---|\n| ![cell](c.png) | $z$ :heart: |\n\nTail words\n"
+        let raw = source as NSString
+        var checked = 0
+        for (marker, insert) in [("Intro word", "x"), ("Intro word", "😀"), ("Middle word", "x"), ("image and", "x"), ("math :smile: en", "x"), ("Tail word", "x"), ("Tail", "я")] {
+            let edit = NSRange(location: NSMaxRange(raw.range(of: marker)), length: 0)
+            var presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
+            let (shiftedStorage, shiftedLayout, _) = makeLayout(source)
+            shiftedLayout.setMarkdownPresentation(presentation, revealedRange: nil)
+            presentation.prepareForEditing()
+            let change = MarkdownTextEdit(range: edit, replacementLength: (insert as NSString).length, textLength: raw.length)
+            guard presentation.canShift(change) else { continue }
+            checked += 1
+            let spanStart = presentation.firstAffectedLocation(change)
+            presentation.shift(change)
+            shiftedLayout.shiftMarkdownPresentation(change, spanStart: spanStart, revealedRange: nil, inlineSelection: nil)
+            let changed = raw.replacingCharacters(in: edit, with: insert)
+            let (freshStorage, freshLayout, _) = makeLayout(changed)
+            freshLayout.setMarkdownPresentation(MarkdownPresentationParser.parse(changed, includeEmojiCandidates: true, includeWikiLinks: true), revealedRange: nil)
+            XCTAssertEqual(shiftedLayout.markdownListsSnapshot.filter { $0.key != "tocHeadings" }, freshLayout.markdownListsSnapshot.filter { $0.key != "tocHeadings" }, "\(marker) \(insert)")
+            withExtendedLifetime((shiftedStorage, freshStorage)) {}
+        }
+        XCTAssertGreaterThan(checked, 4)
+    }
+
+    func testParagraphBreakShiftMatchesNewPresentation() throws {
+        _ = NSApplication.shared
+        let source = "First para\n\nSecond para\n\n- item\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```swift\nlet x = 1\n```\n\nLast paragraph"
+        let raw = source as NSString
+        var checked = 0
+        for marker in ["First para", "Second para", "Last paragraph"] {
+            let location = NSMaxRange(raw.range(of: marker))
+            var presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
+            let (shiftedStorage, shiftedLayout, _) = makeLayout(source)
+            shiftedLayout.setMarkdownPresentation(presentation, revealedRange: nil)
+            presentation.prepareForEditing()
+            guard let change = presentation.paragraphBreakEdit(in: raw, at: location) else { continue }
+            checked += 1
+            let spanStart = presentation.firstAffectedLocation(change)
+            presentation.shift(change)
+            shiftedLayout.shiftMarkdownPresentation(change, spanStart: spanStart, revealedRange: nil, inlineSelection: nil)
+            let changed = raw.replacingCharacters(in: NSRange(location: location, length: 0), with: "\n")
+            let (freshStorage, freshLayout, _) = makeLayout(changed)
+            freshLayout.setMarkdownPresentation(MarkdownPresentationParser.parse(changed, includeEmojiCandidates: true, includeWikiLinks: true), revealedRange: nil)
+            XCTAssertEqual(shiftedLayout.markdownListsSnapshot.filter { $0.key != "tocHeadings" }, freshLayout.markdownListsSnapshot.filter { $0.key != "tocHeadings" }, marker)
+            for index in 0..<(changed as NSString).length {
+                XCTAssertEqual(shiftedLayout.isMarkdownMarkerHidden(at: index), freshLayout.isMarkdownMarkerHidden(at: index), "\(marker) at \(index)")
+            }
+            withExtendedLifetime((shiftedStorage, freshStorage)) {}
+        }
+        // Перед списком Enter идёт прежним путём: принимаются первый и последний абзацы.
+        XCTAssertEqual(checked, 2)
     }
 
     func testMarkersHaveNoWidthAndRevealWithoutChangingSource() {

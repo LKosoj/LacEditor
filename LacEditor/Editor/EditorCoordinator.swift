@@ -559,6 +559,8 @@ extension EditorTextView {
             }
         }
 
+        // `isolated deinit` есть только в Swift 6.2+: условие даёт разобрать файл более старым компилятором, сборка на Mac не меняется.
+#if compiler(>=6.2)
         isolated deinit {
             markdownLinkTask?.cancel()
 #if canImport(SwiftTreeSitter) && canImport(TreeSitterJavaScript) && canImport(TreeSitterTypeScript) && canImport(TreeSitterPython) && canImport(TreeSitterCSS) && canImport(TreeSitterHTML)
@@ -588,6 +590,7 @@ extension EditorTextView {
             clearFindHighlights()
             observerTokens.forEach(NotificationCenter.default.removeObserver)
         }
+#endif
 
         private func cancelMarkdownLinkNavigation() {
             markdownLinkTask?.cancel()
@@ -3859,7 +3862,7 @@ extension EditorTextView {
                 name: EditorCommandNotification.documentContentDidChange,
                 object: document.id
             )
-            document.statusMessage = nil
+            if document.statusMessage != nil { document.statusMessage = nil }
             clearFold()
             scheduleAutomaticMediaFolds()
             refreshRuler()
@@ -4170,7 +4173,7 @@ extension EditorTextView {
                     range: safeRange,
                     replacement: replacement
                   ) else {
-                markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength)
+                markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength, replacement: replacement)
                 lineIndex.applyEdit(
                     range: safeRange,
                     replacement: replacement,
@@ -4186,7 +4189,7 @@ extension EditorTextView {
                 aroundUTF16Location: safeRange.location
             ) {
                 pendingListNormalizationLocation = intendedCaretLocation
-                markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength)
+                markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength, replacement: replacement)
                 lineIndex.applyEdit(
                     range: safeRange,
                     replacement: replacement,
@@ -4204,7 +4207,7 @@ extension EditorTextView {
                 from: textView.string,
                 to: normalization.text
             ) else {
-                markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength)
+                markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength, replacement: replacement)
                 lineIndex.applyEdit(
                     range: safeRange,
                     replacement: replacement,
@@ -4797,7 +4800,7 @@ extension EditorTextView {
                 requested,
                 NSRange(location: 0, length: textLength)
             )
-            guard let text = textView?.string as NSString? else { return bounded }
+            guard let text = textView?.textStorage?.mutableString else { return bounded }
             let seed = bounded.length > 0
                 ? bounded
                 : NSRange(

@@ -31,6 +31,8 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         ?? NSFont.monospacedSystemFont(ofSize: 14, weight: .regular) {
         didSet {
             guard textFont != oldValue else { return }
+            clearTableGeometryCache()
+            headingFonts.removeAll()
             updateFontMetrics()
             invalidateEditorLayout()
         }
@@ -39,6 +41,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     var editorLineSpacing = FoldLayoutManager.defaultLineSpacing {
         didSet {
             guard editorLineSpacing != oldValue else { return }
+            clearTableGeometryCache()
             invalidateEditorLayout()
         }
     }
@@ -46,6 +49,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     var markdownCodeFont: NSFont? {
         didSet {
             guard markdownCodeFont != oldValue else { return }
+            clearTableGeometryCache()
             for table in tableLines.tables { invalidateMarkdownLayout(in: table.range) }
         }
     }
@@ -53,14 +57,22 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     var markdownLigatures: Int? {
         didSet {
             guard markdownLigatures != oldValue else { return }
+            clearTableGeometryCache()
             for table in tableLines.tables { invalidateMarkdownLayout(in: table.range) }
         }
     }
 
-    var markdownSmallCapsLevels: Set<Int> = []
+    var markdownSmallCapsLevels: Set<Int> = [] {
+        didSet { headingFonts.removeAll() }
+    }
     var markdownParagraphSpacing: CGFloat?
     var markdownTextAlignment: NSTextAlignment?
-    var markdownRightToLeft = false
+    var markdownRightToLeft = false {
+        didSet {
+            guard oldValue != markdownRightToLeft else { return }
+            clearTableGeometryCache()
+        }
+    }
     var markdownStrikeCompletedTasks = false
     var markdownListStyles = MarkdownListStyles() {
         didSet { resolvedListStyles = MarkdownResolvedListStyles(markdownListStyles) }
@@ -68,6 +80,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     private var resolvedListStyles = MarkdownResolvedListStyles(.init())
     var markdownCenteredHeadingLevels: Set<Int> = []
     private var smallCapsFonts: [NSFont: NSFont] = [:]
+    private var headingFonts: [Int: NSFont] = [:]
     private var fontsWithoutSmallCaps: Set<NSFont> = []
 
     static func supportsSmallCaps(_ font: NSFont) -> Bool {
@@ -112,8 +125,8 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     private(set) var foldedRange: NSRange?
     private(set) var automaticMediaFoldedRanges: [NSRange] = []
     private struct MarkdownMarker {
-        let range: NSRange
-        let owner: NSRange
+        var range: NSRange
+        var owner: NSRange
         let inline: Bool
     }
     private var markdownMarkers: [MarkdownMarker] = []
@@ -172,9 +185,11 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         let tableRange: NSRange
         let rowIndex: Int
         let rowCount: Int
+        /// Номер строки среди строк всех таблиц: от позиции в тексте не зависит.
+        let lineIndex: Int
     }
     private struct TableLines: RandomAccessCollection {
-        let tables: [MarkdownTable]
+        private(set) var tables: [MarkdownTable]
         let ends: [Int]
         init(_ tables: [MarkdownTable] = []) {
             let sorted = tables.sorted { $0.range.location < $1.range.location }
@@ -192,9 +207,11 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             }
             return (tables[low], index - (low == 0 ? 0 : ends[low - 1]))
         }
-        func location(at index: Int) -> Int {
+        func location(at index: Int) -> Int { range(at: index).location }
+        /// Диапазон строки без чтения её ячеек: сдвинутая строка при чтении собирается заново.
+        func range(at index: Int) -> NSRange {
             let (table, local) = item(index)
-            return local == 1 ? table.delimiterRange.location : table.rows.range(at: local == 0 ? 0 : local - 1).location
+            return local == 1 ? table.delimiterRange : table.rows.range(at: local == 0 ? 0 : local - 1)
         }
         subscript(index: Int) -> TableLine {
             let (table, local) = item(index)
@@ -202,7 +219,12 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             let row = rowIndex < 0 ? nil : table.rows[rowIndex]
             return TableLine(range: row?.range ?? table.delimiterRange, row: row, columns: table.alignments.count,
                              containerPrefix: table.containerPrefix, tableRange: table.range,
-                             rowIndex: rowIndex, rowCount: table.rows.count)
+                             rowIndex: rowIndex, rowCount: table.rows.count, lineIndex: index)
+        }
+        /// Таблицы правее правки сдвигаются, число строк не меняется: `ends` остаются.
+        mutating func shift(_ edit: MarkdownTextEdit) {
+            guard edit.delta != 0 else { return }
+            for index in edit.window(tables, extent: { $0.range }).upperBound..<tables.count { tables[index].shift(by: edit.delta) }
         }
     }
     private var tableLines = TableLines()
@@ -210,6 +232,16 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         tableLines.tables.first { $0.range == range }
     }
     private var activeTableRange: NSRange?
+    private struct TableGeometryEntry {
+        let row: MarkdownTableRow
+        let columns: Int
+        let width: CGFloat
+        let vertical: Bool
+        let cells: [TableCellGeometry]
+    }
+    private var tableGeometryCache: [Int: TableGeometryEntry] = [:]
+    private(set) var tableGeometryMisses = 0
+    private func clearTableGeometryCache() { tableGeometryCache.removeAll() }
 
     enum TableDragAxis: Equatable { case row, column }
     struct TableDragHandle {
@@ -241,7 +273,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             index += 1
             if line.range.location >= NSMaxRange(visible) { break }
             guard line.row != nil, NSIntersectionRange(line.range, visible).length > 0,
-                  tableLine(at: line.range.location) != nil else { continue }
+                  tableLineIndex(at: line.range.location) != nil else { continue }
             let fragment = lineFragmentRect(forGlyphAt: glyphIndexForCharacter(at: line.range.location), effectiveRange: nil)
             let (indent, width) = tableHorizontalGeometry(line, container: container)
             for item in tableLineGeometry(line, width: width) {
@@ -253,6 +285,9 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         }
         return result
     }
+
+    /// Открыта таблица (ячейка правится): позиции Coordinator по таблице не сдвигаются, поэтому быстрый путь не используется.
+    var hasActiveTable: Bool { activeTableRange != nil }
 
     func setActiveTableRange(_ range: NSRange?) {
         activeTableRange = range
@@ -269,14 +304,18 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         return false
     }
 
-    private func tableLine(at location: Int) -> TableLine? {
+    private func tableLineIndex(at location: Int) -> Int? {
         let index = upperBound(location, count: tableLines.count) { tableLines.location(at: $0) }
         guard index > 0 else { return nil }
-        let line = tableLines[index - 1]
-        guard NSLocationInRange(location, line.range),
-              !intersectsFoldedRange(line.range),
+        let range = tableLines.range(at: index - 1)
+        guard NSLocationInRange(location, range),
+              !intersectsFoldedRange(range),
               textContainers.first?.textView?.hasMarkedText() != true else { return nil }
-        return line
+        return index - 1
+    }
+
+    private func tableLine(at location: Int) -> TableLine? {
+        tableLineIndex(at: location).map { tableLines[$0] }
     }
 
     private func tableLine(intersecting range: NSRange) -> TableLine? {
@@ -332,11 +371,33 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
 
     private func tableLineGeometry(_ line: TableLine, width: CGFloat) -> [TableCellGeometry] {
         guard let row = line.row, line.columns > 0, let text = textStorage?.mutableString else { return [] }
-        let table = MarkdownTable(range: line.range, delimiterRange: NSRange(location: 0, length: 0),
-            alignments: Array(repeating: .unspecified, count: line.columns), rows: [row])
-        return markdownTableGeometry(table, text: text, width: width).map { item in
-            TableCellGeometry(cell: item.cell, rect: item.rect.offsetBy(dx: 0, dy: line.rowIndex == 0 ? 12 : 0))
+        let vertical = textContainers.first?.layoutOrientation == .vertical
+        let key = line.lineIndex
+        let cells: [TableCellGeometry]
+        let end = row.cells.map { NSMaxRange($0.range) }.max() ?? 0
+        if let hit = tableGeometryCache[key], hit.columns == line.columns, hit.width == width,
+           hit.vertical == vertical, end <= text.length, hit.row.sameContent(as: row) {
+            if hit.row.range.location == row.range.location {
+                cells = hit.cells
+            } else {
+                // Строка сдвинута: размеры берутся из кэша, ячейки из текущей строки, старые позиции в результат не попадают.
+                cells = zip(hit.cells, row.cells).map { TableCellGeometry(cell: $1, rect: $0.rect) }
+                tableGeometryCache[key] = TableGeometryEntry(row: row, columns: hit.columns, width: hit.width, vertical: hit.vertical,
+                    cells: cells)
+            }
+        } else {
+            tableGeometryMisses += 1
+            let table = MarkdownTable(range: line.range, delimiterRange: NSRange(location: 0, length: 0),
+                alignments: Array(repeating: .unspecified, count: line.columns), rows: [row])
+            cells = markdownTableGeometry(table, text: text, width: width)
+            if !cells.isEmpty, row.cells.allSatisfy({ $0.displayText != nil }) {
+                if tableGeometryCache.count > tableLines.count { tableGeometryCache.removeAll() }
+                tableGeometryCache[key] = TableGeometryEntry(row: row, columns: line.columns, width: width, vertical: vertical,
+                    cells: cells)
+            }
         }
+        guard line.rowIndex == 0 else { return cells }
+        return cells.map { TableCellGeometry(cell: $0.cell, rect: $0.rect.offsetBy(dx: 0, dy: 12)) }
     }
 
     func markdownTableCell(at point: NSPoint, in container: NSTextContainer) -> (NSRange, NSRect)? {
@@ -355,7 +416,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             let line = tableLines[index]
             index += 1
             if line.range.location >= NSMaxRange(visible) { break }
-            guard NSIntersectionRange(line.range, visible).length > 0, tableLine(at: line.range.location) != nil,
+            guard NSIntersectionRange(line.range, visible).length > 0, tableLineIndex(at: line.range.location) != nil,
                   line.row != nil, line.range.location < (textStorage?.length ?? 0) else { continue }
             let fragment = lineFragmentRect(forGlyphAt: glyphIndexForCharacter(at: line.range.location), effectiveRange: nil)
             let (indent, width) = tableHorizontalGeometry(line, container: container)
@@ -416,7 +477,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             index += 1
             if line.range.location >= NSMaxRange(visible) { break }
             guard line.tableRange == activeTableRange, line.row != nil,
-                  NSIntersectionRange(line.range, visible).length > 0, tableLine(at: line.range.location) != nil else { continue }
+                  NSIntersectionRange(line.range, visible).length > 0, tableLineIndex(at: line.range.location) != nil else { continue }
             let fragment = lineFragmentRect(forGlyphAt: glyphIndexForCharacter(at: line.range.location), effectiveRange: nil)
             let (indent, width) = tableHorizontalGeometry(line, container: container)
             for item in tableLineGeometry(line, width: width) {
@@ -960,7 +1021,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         for range in ranges { invalidateMarkdownLayout(in: range) }
     }
 
-    func isMarkdownTablePosition(_ location: Int) -> Bool { tableLine(at: location) != nil }
+    func isMarkdownTablePosition(_ location: Int) -> Bool { tableLineIndex(at: location) != nil }
 
     @discardableResult
     func setMarkdownInlineImage(_ image: NSImage, for range: NSRange, rubyBaseline: NSPoint? = nil) -> Bool {
@@ -970,6 +1031,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         if isMarkdownTablePosition(range.location) {
             guard !isCharacterFolded(range.location) else { return false }
             markdownTableMathImages[range] = image
+            clearTableGeometryCache()
             invalidateMarkdownLayout(in: range)
             return true
         }
@@ -991,7 +1053,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
 
     func removeMarkdownInlineImage(for range: NSRange) {
         markdownInlineImages.removeAll { $0.range == range }
-        markdownTableMathImages.removeValue(forKey: range)
+        if markdownTableMathImages.removeValue(forKey: range) != nil { clearTableGeometryCache() }
         markdownEmojiAccessibility.removeValue(forKey: range)
         markdownRubyBaselines.removeValue(forKey: range)
         markdownMathReferences.removeValue(forKey: range)
@@ -1002,6 +1064,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         let ranges = markdownInlineImages.map(\.range) + Array(markdownTableMathImages.keys)
         markdownInlineImages.removeAll()
         markdownTableMathImages.removeAll()
+        clearTableGeometryCache()
         markdownEmojiAccessibility.removeAll()
         markdownRubyBaselines.removeAll()
         for range in ranges { markdownMathReferences.removeValue(forKey: range) }
@@ -1432,12 +1495,15 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             if container.layoutOrientation == .vertical { attributes[.verticalGlyphForm] = 1 }
             (listMarkerText(marker) as NSString).draw(in: rect, withAttributes: attributes)
         }
+        var checkboxCurrentLine: (view: LacTextView, line: NSRange)?
+        if !markdownTaskCheckboxes.isEmpty, let view = container.textView as? LacTextView, let text = textStorage?.mutableString {
+            let location = min(view.selectedRange().location, text.length)
+            checkboxCurrentLine = (view, text.lineRange(for: NSRange(location: location, length: 0)))
+        }
         for checkbox in markdownTaskCheckboxes where NSIntersectionRange(checkbox.markerRange, visible).length > 0 {
             guard let bounds = checkboxRect(checkbox, in: container)?.offsetBy(dx: origin.x, dy: origin.y) else { continue }
-            if let view = container.textView as? LacTextView, let text = textStorage?.string as NSString? {
-                let location = min(view.selectedRange().location, text.length)
-                let line = text.lineRange(for: NSRange(location: location, length: 0))
-                (NSLocationInRange(checkbox.markerRange.location, line) ? view.currentLineColor : view.backgroundColor).setFill()
+            if let current = checkboxCurrentLine {
+                (NSLocationInRange(checkbox.markerRange.location, current.line) ? current.view.currentLineColor : current.view.backgroundColor).setFill()
             } else {
                 NSColor.lacEditorBackground.setFill()
             }
@@ -1481,7 +1547,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             let line = tableLines[tableIndex]
             tableIndex += 1
             if line.range.location >= NSMaxRange(visible) { break }
-            guard NSIntersectionRange(line.range, visible).length > 0, tableLine(at: line.range.location) != nil,
+            guard NSIntersectionRange(line.range, visible).length > 0, tableLineIndex(at: line.range.location) != nil,
                   line.row != nil, let text = textStorage?.mutableString,
                   line.range.location < text.length else { continue }
             let fragment = lineFragmentRect(forGlyphAt: glyphIndexForCharacter(at: line.range.location), effectiveRange: nil)
@@ -1627,6 +1693,164 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         invalidateMarkdownLayout(in: range ?? NSRange(location: 0, length: textStorage?.length ?? 0))
     }
 
+    /// Списки слоя в виде чисел: тесты сверяют сдвиг на месте с установкой нового разбора.
+    var markdownListsSnapshot: [String: [Int]] {
+        func flat(_ ranges: [NSRange]) -> [Int] { ranges.flatMap { [$0.location, $0.length] } }
+        func flatSpans(_ spans: [MarkdownPresentationSpan]) -> [Int] { spans.flatMap { flat([$0.range] + $0.markerRanges) + [-1] } }
+        var result: [String: [Int]] = [:]
+        result["markers"] = markdownMarkers.flatMap { flat([$0.range, $0.owner]) + [$0.inline ? 1 : 0] }
+        result["markerEnds"] = markdownMarkerEnds
+        result["containers"] = flat(markdownContainers)
+        result["containerEnds"] = markdownContainerEnds
+        result["headings"] = flatSpans(markdownHeadings)
+        result["alerts"] = flatSpans(markdownAlerts)
+        result["replacements"] = flat(markdownTextReplacements.map(\.range))
+        result["listMarkers"] = markdownListMarkers.flatMap { flat([$0.range, $0.line]) }
+        result["paragraphs"] = markdownParagraphs.flatMap { flat([$0.range, $0.lastLine] + ($0.separatorAfter.map { [$0] } ?? [])) + [-1] }
+        result["separators"] = markdownParagraphSeparators.flatMap { flat([$0.range, $0.owner]) }
+        result["completed"] = flat(markdownCompletedTasks)
+        result["completedEnds"] = markdownCompletedTaskEnds
+        result["checkboxes"] = markdownTaskCheckboxes.flatMap { flat([$0.markerRange, $0.stateRange]) }
+        result["tocHeadings"] = markdownTOCHeadings.map { $0.range.location }
+        result["tables"] = tableLines.tables.flatMap { flat([$0.range, $0.delimiterRange]) + $0.rows.flatMap { flat([$0.range] + $0.cells.map(\.range)) } + [-1] }
+        result["revealed"] = flat(markdownRevealedRange.map { [$0] } ?? [])
+        result["images"] = markdownImages.flatMap { flat([$0.range]) }
+        result["blockImages"] = markdownBlockImages.flatMap { flat([$0.range]) }
+        result["inlineImages"] = markdownInlineImages.flatMap { flat([$0.range]) }
+        result["media"] = markdownMedia.sorted { $0.range.location < $1.range.location }.flatMap { flat([$0.range]) + [Int($0.size.width), Int($0.size.height)] }
+        result["rubyBaselines"] = markdownRubyBaselines.sorted { $0.key.location < $1.key.location }.flatMap { flat([$0.key]) + [Int($0.value.x), Int($0.value.y)] }
+        result["tableImages"] = flat(markdownTableMathImages.keys.sorted { $0.location < $1.location })
+        result["emojiAccessibility"] = markdownEmojiAccessibility.sorted { $0.key.location < $1.key.location }.flatMap { flat([$0.key]) + $0.value.utf16.map { Int($0) } + [-1] }
+        result["mathReferences"] = markdownMathReferences.sorted { $0.key.location < $1.key.location }.flatMap { flat([$0.key]) + flat($0.value.map { $0.target }) + [-1] }
+        return result
+    }
+
+    /// Сдвигает списки слоя под правку на месте, без разбора, копий и сортировок: итог тот же, что у `setMarkdownPresentation`
+    /// для оформления, сдвинутого `MarkdownPresentation.shift`. Условие: `canShift` разрешил правку. Таблицы вне правки сдвигает
+    /// `tableLines.shift`; оглавлений и разрывов страниц в оформлении нет (их списки пусты и остаются пустыми), готовые картинки сдвигает `shiftMarkdownMedia`.
+    /// `spanStart` — `MarkdownPresentation.firstAffectedLocation`: левее него оформление правку не охватывает.
+    func shiftMarkdownPresentation(_ edit: MarkdownTextEdit, spanStart: Int, revealedRange: NSRange?, inlineSelection: NSRange?) {
+        func move(_ range: inout NSRange, _ rule: (NSRange) -> NSRange?) {
+            if let value = rule(range) { range = value }
+        }
+        func firstLocated<T>(_ items: [T], from start: Int, location: (T) -> Int) -> Int {
+            upperBound(start - 1, count: items.count) { location(items[$0]) }
+        }
+        // Пункт, чья строка кончается на правке, и владелец разделителя абзацев, кончающийся на ней, правка не растягивает.
+        var unchanged: [NSRange] = []
+        if edit.range.length == 0 {
+            for index in edit.window(markdownListMarkers, extent: { $0.line }) where edit.startsNextLine(markdownListMarkers[index].line) {
+                unchanged.append(markdownListMarkers[index].line)
+            }
+            for index in edit.window(markdownParagraphSeparators, extent: { $0.owner }) where NSMaxRange(markdownParagraphSeparators[index].owner) == edit.range.location {
+                unchanged.append(markdownParagraphSeparators[index].owner)
+            }
+        }
+        markdownTOCHeadings = []
+        markdownNumberedHeadingsBySource = []
+        visibleTOCHeadings = []
+        markdownHeadingNumberWidths.removeAll()
+        for index in edit.window(markdownTaskCheckboxes, extent: { NSUnionRange($0.markerRange, $0.stateRange) }).lowerBound..<markdownTaskCheckboxes.count {
+            move(&markdownTaskCheckboxes[index].markerRange, edit.away)
+            move(&markdownTaskCheckboxes[index].stateRange, edit.away)
+        }
+        for index in edit.window(markdownListMarkers, extent: { $0.line }).lowerBound..<markdownListMarkers.count {
+            move(&markdownListMarkers[index].range, edit.away)
+            move(&markdownListMarkers[index].line, edit.line)
+        }
+        for index in edit.window(markdownParagraphs, extent: { $0.extent }).lowerBound..<markdownParagraphs.count {
+            move(&markdownParagraphs[index].range, edit.paragraph)
+            move(&markdownParagraphs[index].lastLine, edit.paragraph)
+            if var separator = markdownParagraphs[index].separatorAfter {
+                move(&separator, edit.after)
+                markdownParagraphs[index].separatorAfter = separator
+            }
+        }
+        let firstCompleted = edit.window(markdownCompletedTasks, ends: markdownCompletedTaskEnds, location: { $0.location }).lowerBound
+        var peak = firstCompleted > 0 ? markdownCompletedTaskEnds[firstCompleted - 1] : 0
+        for index in firstCompleted..<markdownCompletedTasks.count {
+            move(&markdownCompletedTasks[index], edit.block)
+            peak = max(peak, NSMaxRange(markdownCompletedTasks[index]))
+            markdownCompletedTaskEnds[index] = peak
+        }
+        for index in edit.window(markdownParagraphSeparators, extent: { $0.owner }).lowerBound..<markdownParagraphSeparators.count {
+            let owner = markdownParagraphSeparators[index].owner
+            move(&markdownParagraphSeparators[index].range, edit.after)
+            let start = owner.location <= edit.range.location ? owner.location : owner.location + edit.delta
+            markdownParagraphSeparators[index].owner = NSRange(location: start, length: NSMaxRange(markdownParagraphSeparators[index].range) - start)
+        }
+        for index in edit.window(markdownTextReplacements, extent: { $0.range }).lowerBound..<markdownTextReplacements.count {
+            move(&markdownTextReplacements[index].range, edit.away)
+        }
+        let firstMarker = firstLocated(markdownMarkers, from: spanStart) { $0.range.location }
+        peak = firstMarker > 0 ? markdownMarkerEnds[firstMarker - 1] : 0
+        for index in firstMarker..<markdownMarkers.count {
+            move(&markdownMarkers[index].range, edit.away)
+            move(&markdownMarkers[index].owner, edit.block)
+            peak = max(peak, NSMaxRange(markdownMarkers[index].range))
+            markdownMarkerEnds[index] = peak
+        }
+        let firstContainer = edit.window(markdownContainers, ends: markdownContainerEnds, location: { $0.location }).lowerBound
+        peak = firstContainer > 0 ? markdownContainerEnds[firstContainer - 1] : 0
+        for index in firstContainer..<markdownContainers.count {
+            if !unchanged.contains(markdownContainers[index]) { move(&markdownContainers[index], edit.block) }
+            peak = max(peak, NSMaxRange(markdownContainers[index]))
+            markdownContainerEnds[index] = peak
+        }
+        for index in firstLocated(markdownHeadings, from: spanStart, location: { $0.range.location })..<markdownHeadings.count {
+            move(&markdownHeadings[index].range, edit.block)
+            for marker in markdownHeadings[index].markerRanges.indices { move(&markdownHeadings[index].markerRanges[marker], edit.away) }
+        }
+        for index in firstLocated(markdownAlerts, from: spanStart, location: { $0.range.location })..<markdownAlerts.count {
+            move(&markdownAlerts[index].range, edit.block)
+            for marker in markdownAlerts[index].markerRanges.indices { move(&markdownAlerts[index].markerRanges[marker], edit.away) }
+        }
+        tableLines.shift(edit)
+        shiftMarkdownMedia(edit)
+        markdownRevealedRange = revealedRange
+        markdownInlineSelection = inlineSelection
+    }
+
+    /// Готовые картинки, формулы, эмодзи, размеры вставок и опорные линии ruby переезжают вместе с элементами: их не пересоздают и раскладку не сбрасывают.
+    /// Ключ блочной картинки — абзац (растёт вместе с ним), остальные ключи — неделимые диапазоны: правка их не задевает (`canShift`).
+    private func shiftMarkdownMedia(_ edit: MarkdownTextEdit) {
+        guard edit.delta != 0 else { return }
+        func move(_ range: inout NSRange, _ rule: (NSRange) -> NSRange?) {
+            if let value = rule(range) { range = value }
+        }
+        for index in markdownImages.indices { move(&markdownImages[index].range, edit.block) }
+        for index in markdownBlockImages.indices { move(&markdownBlockImages[index].range, edit.away) }
+        // Строчные картинки идут по началу: левее правки ничего не меняется, порядок для двоичного поиска сохраняется.
+        for index in upperBound(edit.range.location, count: markdownInlineImages.count, location: { markdownInlineImages[$0].range.location })..<markdownInlineImages.count {
+            move(&markdownInlineImages[index].range, edit.away)
+        }
+        let right = { (range: NSRange) in range.location > edit.range.location }
+        if markdownTableMathImages.keys.contains(where: right) {
+            markdownTableMathImages = Dictionary(markdownTableMathImages.compactMap { key, image in edit.away(key).map { ($0, image) } },
+                                                 uniquingKeysWith: { first, _ in first })
+        }
+        if markdownEmojiAccessibility.keys.contains(where: right) {
+            markdownEmojiAccessibility = Dictionary(markdownEmojiAccessibility.compactMap { key, value in edit.away(key).map { ($0, value) } },
+                                                    uniquingKeysWith: { first, _ in first })
+        }
+        // Размеры вставок и опорные линии ruby лежат по неделимым диапазонам: правка их не задевает (`canShift`).
+        if markdownMedia.contains(where: { right($0.range) }) {
+            markdownMedia = markdownMedia.map { (edit.away($0.range) ?? $0.range, $0.size) }
+        }
+        if markdownRubyBaselines.keys.contains(where: right) {
+            markdownRubyBaselines = Dictionary(markdownRubyBaselines.compactMap { key, baseline in edit.away(key).map { ($0, baseline) } },
+                                               uniquingKeysWith: { first, _ in first })
+        }
+        // Ссылка хранит и свой ключ, и целевую формулу: правее правки может быть любая из двух.
+        if markdownMathReferences.contains(where: { entry in right(entry.key) || entry.value.contains { right($0.target) } }) {
+            markdownMathReferences = Dictionary(markdownMathReferences.compactMap { key, references in
+                edit.away(key).map { moved in
+                    (moved, references.map { reference in (rect: reference.rect, target: edit.away(reference.target) ?? reference.target) })
+                }
+            }, uniquingKeysWith: { first, _ in first })
+        }
+    }
+
     func invalidateMarkdownLayout(in range: NSRange) {
         guard let safe = clampedRange(range) else { return }
         invalidateFoldGlyphs(in: safe)
@@ -1659,26 +1883,35 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         markdownInlineSelection = range
         for affected in [previous, range].compactMap({ $0 }) {
             var dirty = affected
+            var found = false
             var index = upperBound(affected.location + affected.length, count: markdownContainers.count) { markdownContainers[$0].location }
             while index > 0 {
                 index -= 1
                 if markdownContainerEnds[index] < affected.location { break }
                 let owner = markdownContainers[index]
-                if touches(owner, affected) { dirty = NSUnionRange(dirty, owner) }
+                if touches(owner, affected) { dirty = NSUnionRange(dirty, owner); found = true }
             }
-            invalidateMarkdownLayout(in: dirty)
+            // Читатели inline-выделения (скрытые маркеры и подмены текста) берут владельцев только из markdownContainers
+            if found { invalidateMarkdownLayout(in: dirty) }
         }
     }
 
     func markdownHeadingFont(level: Int) -> NSFont {
+        if let cached = headingFonts[level] { return cached }
         let scale: CGFloat = level == 1 ? 1.6 : (level == 2 ? 1.4 : (level == 3 ? 1.2 : 1))
         let bold = NSFontManager.shared.convert(textFont, toHaveTrait: .boldFontMask)
         let font = NSFont(descriptor: bold.fontDescriptor, size: textFont.pointSize * scale) ?? bold
-        return markdownSmallCapsLevels.contains(level) ? (smallCapsFont(font) ?? font) : font
+        let result = markdownSmallCapsLevels.contains(level) ? (smallCapsFont(font) ?? font) : font
+        headingFonts[level] = result
+        return result
     }
 
     func isMarkdownMarkerHidden(at location: Int) -> Bool {
-        guard textContainers.first?.textView?.hasMarkedText() != true else { return false }
+        isMarkdownMarkerHidden(at: location, hasMarkedText: textContainers.first?.textView?.hasMarkedText() == true)
+    }
+
+    private func isMarkdownMarkerHidden(at location: Int, hasMarkedText: Bool) -> Bool {
+        guard !hasMarkedText else { return false }
         var index = upperBound(location, count: markdownMarkers.count) { markdownMarkers[$0].range.location }
         while index > 0 {
             index -= 1
@@ -1718,6 +1951,10 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     }
 
     private func textReplacement(at location: Int) -> MarkdownTextReplacement? {
+        textReplacement(at: location, hasMarkedText: textContainers.first?.textView?.hasMarkedText() == true)
+    }
+
+    private func textReplacement(at location: Int, hasMarkedText: Bool) -> MarkdownTextReplacement? {
         let index = upperBound(location, count: markdownTextReplacements.count) { markdownTextReplacements[$0].range.location }
         guard index > 0 else { return nil }
         let replacement = markdownTextReplacements[index - 1]
@@ -1728,9 +1965,9 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         }
         guard NSLocationInRange(location, replacement.range),
               !(markdownInlineSelection.map { touches(replacement.range, $0) } ?? false),
-              textContainers.first?.textView?.hasMarkedText() != true,
-              !isCharacterFolded(location), !isMarkdownMarkerHidden(at: location),
-              tableLine(at: location) == nil, inlineImage(at: location) == nil else { return nil }
+              !hasMarkedText,
+              !isCharacterFolded(location), !isMarkdownMarkerHidden(at: location, hasMarkedText: hasMarkedText),
+              tableLineIndex(at: location) == nil, inlineImage(at: location) == nil else { return nil }
         return replacement
     }
 
@@ -1961,35 +2198,56 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             }
         }
 
+        let hasMarkedText = textContainers.first?.textView?.hasMarkedText() == true
+        var visibleImageRanges: [NSRange] = []
+        if glyphRange.length > 0 {
+            var firstBatchCharacter = characterIndexes[0]
+            var lastBatchCharacter = firstBatchCharacter
+            for offset in 0..<glyphRange.length {
+                firstBatchCharacter = min(firstBatchCharacter, characterIndexes[offset])
+                lastBatchCharacter = max(lastBatchCharacter, characterIndexes[offset])
+            }
+            for entry in markdownImages where entry.range.location <= lastBatchCharacter
+                && NSMaxRange(entry.range) > firstBatchCharacter && imageIsVisible(entry.range) {
+                visibleImageRanges.append(entry.range)
+            }
+            for entry in markdownMedia where entry.range.location <= lastBatchCharacter
+                && NSMaxRange(entry.range) > firstBatchCharacter && imageIsVisible(entry.range) {
+                visibleImageRanges.append(entry.range)
+            }
+            for entry in markdownBlockImages where entry.range.location <= lastBatchCharacter
+                && NSMaxRange(entry.range) > firstBatchCharacter && imageIsVisible(entry.range) {
+                visibleImageRanges.append(entry.range)
+            }
+        }
+
         var adjustedProperties = Array(
             UnsafeBufferPointer(start: properties, count: glyphRange.length)
         )
         var didFoldGlyph = false
         for offset in adjustedProperties.indices where isCharacterFolded(characterIndexes[offset])
-            || isMarkdownMarkerHidden(at: characterIndexes[offset])
+            || isMarkdownMarkerHidden(at: characterIndexes[offset], hasMarkedText: hasMarkedText)
             || visibleTOC(containing: characterIndexes[offset])
             || pageBreak(containing: characterIndexes[offset]) != nil
-            || tableLine(at: characterIndexes[offset]) != nil
-            || markdownImages.contains(where: { imageIsVisible($0.range) && NSLocationInRange(characterIndexes[offset], $0.range) })
-            || markdownMedia.contains(where: { imageIsVisible($0.range) && NSLocationInRange(characterIndexes[offset], $0.range) })
-            || markdownBlockImages.contains(where: { imageIsVisible($0.range) && NSLocationInRange(characterIndexes[offset], $0.range) }) {
+            || tableLineIndex(at: characterIndexes[offset]) != nil
+            || visibleImageRanges.contains(where: { NSLocationInRange(characterIndexes[offset], $0) }) {
             adjustedProperties[offset] = .null
             didFoldGlyph = true
         }
         for offset in adjustedProperties.indices {
             let character = characterIndexes[offset]
-            if let replacement = textReplacement(at: character) {
+            if let replacement = textReplacement(at: character, hasMarkedText: hasMarkedText) {
                 adjustedProperties[offset] = character == replacement.range.location ? .controlCharacter : .null
                 didFoldGlyph = true
                 continue
             }
-            if let marker = listMarker(at: character), !isCharacterFolded(character), tableLine(at: character) == nil {
+            if let marker = listMarker(at: character), !isCharacterFolded(character), tableLineIndex(at: character) == nil {
                 adjustedProperties[offset] = character == marker.range.location ? .controlCharacter : .null
                 didFoldGlyph = true
                 continue
             }
             guard let entry = inlineImage(at: character),
-                  !isCharacterFolded(character), !isMarkdownMarkerHidden(at: character), tableLine(at: character) == nil else { continue }
+                  !isCharacterFolded(character), !isMarkdownMarkerHidden(at: character, hasMarkedText: hasMarkedText), tableLineIndex(at: character) == nil else { continue }
             adjustedProperties[offset] = character == entry.range.location ? .controlCharacter : .null
             didFoldGlyph = true
         }

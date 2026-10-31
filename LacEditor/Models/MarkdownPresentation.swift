@@ -5,20 +5,23 @@ enum MarkdownPresentationKind: Equatable, Sendable {
 }
 
 struct MarkdownPresentationSpan: Equatable, Sendable {
-    let range: NSRange
+    var range: NSRange
     let kind: MarkdownPresentationKind
-    let markerRanges: [NSRange]
+    var markerRanges: [NSRange]
 }
 
 struct MarkdownParagraph: Equatable, Sendable {
-    let range: NSRange
-    let lastLine: NSRange
+    var range: NSRange
+    var lastLine: NSRange
     var separatorAfter: NSRange? = nil
+
+    /// Абзац вместе с разделителем после него.
+    var extent: NSRange { separatorAfter.map { NSUnionRange(range, $0) } ?? range }
 }
 
 struct MarkdownListMarker: Equatable, Sendable {
-    let range: NSRange
-    let line: NSRange
+    var range: NSRange
+    var line: NSRange
     let text: String
     let ordinal: Int?
     let depth: Int
@@ -34,7 +37,7 @@ struct MarkdownListMarker: Equatable, Sendable {
 
 struct MarkdownNamedAnchor: Equatable, Sendable {
     let name: String
-    let range: NSRange
+    var range: NSRange
 }
 
 struct MarkdownHeading: Identifiable, Equatable, Sendable {
@@ -62,11 +65,11 @@ struct MarkdownHeading: Identifiable, Equatable, Sendable {
     }
     let level: Int
     let title: String
-    let range: NSRange
+    var range: NSRange
     let emoji: [Emoji]
     let displayTitle: String?
     let number: String?
-    let plainTextRange: NSRange?
+    var plainTextRange: NSRange?
     let uppercaseRuns: [UppercaseRun]?
     /// Заголовок лежит прямо в документе: не в цитате, списке и не в определении сноски.
     let isTopLevel: Bool
@@ -320,23 +323,23 @@ enum MarkdownHeadingAnchors {
 }
 
 struct MarkdownLink: Equatable, Sendable {
-    let range: NSRange
+    var range: NSRange
     let url: String
 }
 
 /// Wiki-ссылка `[[цель#заголовок|текст]]`; все диапазоны в UTF-16 исходника.
 struct MarkdownWikiLink: Equatable, Sendable {
-    let range: NSRange
-    let displayRange: NSRange
+    var range: NSRange
+    var displayRange: NSRange
     let target: String
     let heading: String?
     let alias: String?
-    let markerRanges: [NSRange]
+    var markerRanges: [NSRange]
 }
 
 struct MarkdownImage: Equatable, Sendable {
-    let range: NSRange
-    let paragraphRange: NSRange
+    var range: NSRange
+    var paragraphRange: NSRange
     let url: String
     let alt: String
     let title: String?
@@ -345,7 +348,7 @@ struct MarkdownImage: Equatable, Sendable {
 }
 
 struct MarkdownIframeBlock: Equatable, Sendable {
-    let range: NSRange
+    var range: NSRange
     let html: String
     let width: String?
     let height: String?
@@ -354,14 +357,14 @@ struct MarkdownIframeBlock: Equatable, Sendable {
 }
 
 struct MarkdownAudioBlock: Equatable, Sendable {
-    let range: NSRange
+    var range: NSRange
     let media: MarkdownEmbeddedMedia
     var isInline: Bool = false
     var source: String { media.sources[0] }
 }
 
 struct MarkdownDetailsBlock: Equatable, Sendable {
-    let range: NSRange
+    var range: NSRange
     let summary: String
     let body: String
     var summaryHTML: String? = nil
@@ -370,7 +373,7 @@ struct MarkdownDetailsBlock: Equatable, Sendable {
 }
 
 struct MarkdownHTMLBlock: Equatable, Sendable {
-    let range: NSRange
+    var range: NSRange
     let html: String
 }
 
@@ -382,9 +385,9 @@ struct MarkdownRubyBaseRun: Equatable, Sendable {
 }
 
 struct MarkdownRuby: Equatable, Sendable {
-    let range: NSRange
-    let baseRange: NSRange
-    let readingRange: NSRange
+    var range: NSRange
+    var baseRange: NSRange
+    var readingRange: NSRange
     let base: String
     let reading: String
     var baseRuns: [MarkdownRubyBaseRun] = []
@@ -392,7 +395,7 @@ struct MarkdownRuby: Equatable, Sendable {
 
 struct MarkdownDiagram: Equatable, Sendable {
     enum Kind: String, Sendable { case mermaid, flow, sequence }
-    let range: NSRange
+    var range: NSRange
     let source: String
     let kind: Kind
 
@@ -404,12 +407,12 @@ struct MarkdownDiagram: Equatable, Sendable {
 }
 
 struct MarkdownCodeBlock: Equatable, Sendable {
-    let range: NSRange
-    let bodyRange: NSRange
-    let bodySegments: [NSRange]
+    var range: NSRange
+    var bodyRange: NSRange
+    var bodySegments: [NSRange]
     let bodyPadding: [Int]
-    let infoRange: NSRange
-    let fenceMarkers: [NSRange]
+    var infoRange: NSRange
+    var fenceMarkers: [NSRange]
     let continuationPrefix: String
     let isNested: Bool
     let isClosed: Bool
@@ -418,19 +421,19 @@ struct MarkdownCodeBlock: Equatable, Sendable {
 }
 
 struct MarkdownFormula: Equatable, Sendable {
-    let range: NSRange
+    var range: NSRange
     let source: String
 }
 
 struct MarkdownTaskCheckbox: Equatable, Sendable {
-    let markerRange: NSRange
-    let stateRange: NSRange
+    var markerRange: NSRange
+    var stateRange: NSRange
     let state: UInt16
 }
 
 struct MarkdownFootnote: Equatable, Sendable {
-    let referenceRange: NSRange
-    let definitionRange: NSRange
+    var referenceRange: NSRange
+    var definitionRange: NSRange
     let text: String
 }
 
@@ -470,6 +473,19 @@ struct MarkdownTableTextRun: Equatable, Sendable {
 struct MarkdownTableRow: Equatable, Sendable {
     let range: NSRange
     let cells: [MarkdownTableCell]
+}
+
+extension MarkdownTableRow {
+    /// Та же строка, возможно в другом месте текста: длины, колонки и показываемый текст равны, а позиции ячеек одинаковы относительно начала строки.
+    func sameContent(as other: MarkdownTableRow) -> Bool {
+        range.length == other.range.length && cells.count == other.cells.count
+            && zip(cells, other.cells).allSatisfy { left, right in
+                left.range.location - range.location == right.range.location - other.range.location
+                    && left.range.length == right.range.length && left.column == right.column
+                    && left.virtualSeparators == right.virtualSeparators
+                    && left.displayText == right.displayText && left.displayRuns == right.displayRuns
+            }
+    }
 }
 
 struct MarkdownTableRows: RandomAccessCollection, Equatable, Sendable {
@@ -533,10 +549,10 @@ struct MarkdownTableRows: RandomAccessCollection, Equatable, Sendable {
 }
 
 struct MarkdownTable: Equatable, Sendable {
-    let range: NSRange
-    let delimiterRange: NSRange
+    private(set) var range: NSRange
+    private(set) var delimiterRange: NSRange
     let alignments: [MarkdownTableAlignment]
-    let rows: MarkdownTableRows
+    private(set) var rows: MarkdownTableRows
     let containerPrefix: String
     let quoteDepth: Int
     let nestedList: Bool
@@ -560,6 +576,13 @@ struct MarkdownTable: Equatable, Sendable {
         self.containerPrefix = containerPrefix; self.quoteDepth = quoteDepth; self.nestedList = nestedList
         self.referenceLabels = referenceLabels
     }
+
+    /// Таблица целиком правее правки: все позиции прибавляют дельту, строки не обходятся.
+    mutating func shift(by delta: Int) {
+        range.location += delta
+        delimiterRange.location += delta
+        rows = rows.shifted(by: delta)
+    }
 }
 
 struct MarkdownFenceContainerLine: Equatable, Sendable {
@@ -570,58 +593,173 @@ struct MarkdownFenceContainerLine: Equatable, Sendable {
 
 struct MarkdownEmojiCandidate: Equatable, Sendable {
     let name: String
-    let range: NSRange
+    var range: NSRange
 }
 
 struct MarkdownTextReplacement: Equatable, Sendable {
     enum Kind: Equatable, Sendable { case smart, spaces, softBreak }
-    let range: NSRange
+    var range: NSRange
     let text: String
     let kind: Kind
 }
 
 struct MarkdownLooseIndent: Sendable {
-    let range: NSRange
+    var range: NSRange
     let replacement: String
 }
 
+/// Правка текста и правила сдвига диапазонов разбора при ней: по ним работают и проверка, и применение сдвига.
+struct MarkdownTextEdit: Sendable {
+    let range: NSRange
+    let replacementLength: Int
+    /// Длина текста до правки.
+    let textLength: Int
+    /// Вставлен один перевод строки (Enter), а не буква: на границе блока ничего не растёт, а новая пустая строка уходит в разделитель.
+    var lineBreak = false
+    /// Перевод строки вставлен в конец текста, где у последней строки ещё нет своего перевода: абзац растёт на него.
+    var atOpenLine = false
+
+    var delta: Int { replacementLength - range.length }
+    var end: Int { NSMaxRange(range) }
+
+    func holds(_ other: NSRange) -> Bool {
+        other.location <= range.location && end <= NSMaxRange(other)
+    }
+
+    /// Неделимый диапазон: правка строго до него или строго после, любое касание отклоняется.
+    func away(_ other: NSRange) -> NSRange? {
+        if NSMaxRange(other) < range.location { return other }
+        if other.location > end { return NSRange(location: other.location + delta, length: other.length) }
+        return nil
+    }
+
+    /// Вставка из сырого HTML: между правкой и ею должен остаться хотя бы один символ сверх перевода строки, иначе соседняя строка меняет разбор.
+    func spaced(_ other: NSRange) -> NSRange? {
+        if NSMaxRange(other) + 1 < range.location { return other }
+        if other.location > end + 1 { return NSRange(location: other.location + delta, length: other.length) }
+        return nil
+    }
+
+    /// Правка, расширенная на `margin` символов с каждой стороны: окно поиска для `spaced`.
+    func reaching(_ margin: Int) -> MarkdownTextEdit {
+        let start = max(0, range.location - margin)
+        return MarkdownTextEdit(range: NSRange(location: start, length: end + margin - start), replacementLength: replacementLength, textLength: textLength)
+    }
+
+    /// Граница, после которой допустима правка вплотную (разделитель абзацев).
+    func after(_ other: NSRange) -> NSRange? {
+        if lineBreak, range.length == 0, other.location <= range.location, range.location < NSMaxRange(other) {
+            return NSRange(location: other.location, length: other.length + delta)
+        }
+        if NSMaxRange(other) <= range.location { return other }
+        if other.location >= end { return NSRange(location: other.location + delta, length: other.length) }
+        return nil
+    }
+
+    /// Встроенный элемент: правка строго внутри растягивает, касание границы отклоняется.
+    func inline(_ other: NSRange) -> NSRange? {
+        if let moved = away(other) { return moved }
+        if other.location < range.location && end < NSMaxRange(other) && other.length + delta >= 0 {
+            return NSRange(location: other.location, length: other.length + delta)
+        }
+        return nil
+    }
+
+    /// Блок: вставка в любой точке от начала до конца растягивает (набор в конце абзаца), остальное как у встроенного.
+    func block(_ other: NSRange) -> NSRange? {
+        if range.length == 0 && other.location <= range.location && range.location <= NSMaxRange(other) && !(lineBreak && range.location == NSMaxRange(other)) {
+            return NSRange(location: other.location, length: other.length + delta)
+        }
+        if NSMaxRange(other) <= range.location { return other }
+        if other.location >= end { return NSRange(location: other.location + delta, length: other.length) }
+        if holds(other) && other.length + delta >= 0 {
+            return NSRange(location: other.location, length: other.length + delta)
+        }
+        return nil
+    }
+
+    /// Абзац: как блок, но перевод строки в конце текста без перевода строки растит абзац.
+    func paragraph(_ other: NSRange) -> NSRange? {
+        if lineBreak && atOpenLine && range.location == NSMaxRange(other) { return NSRange(location: other.location, length: other.length + delta) }
+        return block(other)
+    }
+
+    /// Строка пункта кончается переводом: вставка сразу за ним относится уже к следующей строке.
+    func startsNextLine(_ line: NSRange) -> Bool {
+        range.location == NSMaxRange(line) && range.location < textLength
+    }
+
+    func line(_ line: NSRange) -> NSRange? {
+        startsNextLine(line) ? line : block(line)
+    }
+
+    private func firstIndex(_ count: Int, where test: (Int) -> Bool) -> Int {
+        var low = 0, high = count
+        while low < high {
+            let middle = (low + high) / 2
+            if test(middle) { high = middle } else { low = middle + 1 }
+        }
+        return low
+    }
+
+    /// Элементы, которых может коснуться правка, для списка по порядку без пересечений: левее окна все кончаются раньше правки, правее все начинаются позже её конца.
+    func window<T>(_ items: [T], extent: (T) -> NSRange) -> Range<Int> {
+        let tail = firstIndex(items.count) { extent(items[$0]).location > end }
+        var start = firstIndex(tail) { extent(items[$0]).location > range.location }
+        while start > 0, NSMaxRange(extent(items[start - 1])) >= range.location { start -= 1 }
+        return start..<tail
+    }
+
+    /// То же для списка по началу диапазонов с префиксными максимумами концов (диапазоны могут вкладываться).
+    func window<T>(_ items: [T], ends: [Int], location: (T) -> Int) -> Range<Int> {
+        let tail = firstIndex(items.count) { location(items[$0]) > end }
+        return firstIndex(tail) { ends[$0] >= range.location }..<tail
+    }
+}
+
 struct MarkdownPresentation: Sendable {
-    let spans: [MarkdownPresentationSpan]
-    let headings: [MarkdownHeading]
-    let namedAnchors: [MarkdownNamedAnchor]
-    let images: [MarkdownImage]
-    let diagrams: [MarkdownDiagram]
-    let audioBlocks: [MarkdownAudioBlock]
-    let iframeBlocks: [MarkdownIframeBlock]
-    let detailsBlocks: [MarkdownDetailsBlock]
-    let htmlBlocks: [MarkdownHTMLBlock]
-    let pageBreaks: [NSRange]
-    let ruby: [MarkdownRuby]
-    let links: [MarkdownLink]
-    let formulas: [MarkdownFormula]
-    let inlineFormulas: [MarkdownFormula]
-    let emojiCandidates: [MarkdownEmojiCandidate]
+    private(set) var spans: [MarkdownPresentationSpan]
+    private(set) var headings: [MarkdownHeading]
+    private(set) var namedAnchors: [MarkdownNamedAnchor]
+    private(set) var images: [MarkdownImage]
+    private(set) var diagrams: [MarkdownDiagram]
+    private(set) var audioBlocks: [MarkdownAudioBlock]
+    private(set) var iframeBlocks: [MarkdownIframeBlock]
+    private(set) var detailsBlocks: [MarkdownDetailsBlock]
+    private(set) var htmlBlocks: [MarkdownHTMLBlock]
+    private(set) var pageBreaks: [NSRange]
+    private(set) var ruby: [MarkdownRuby]
+    private(set) var links: [MarkdownLink]
+    private(set) var formulas: [MarkdownFormula]
+    private(set) var inlineFormulas: [MarkdownFormula]
+    private(set) var emojiCandidates: [MarkdownEmojiCandidate]
     let emojiCandidatesIncluded: Bool
-    let emojiCompletionRanges: [NSRange]
-    let smartTextRanges: [NSRange]
-    let smartRawHTMLRanges: [NSRange]?
-    let textReplacements: [MarkdownTextReplacement]
-    let paragraphs: [MarkdownParagraph]
-    let completedTaskRanges: [NSRange]
-    let taskCheckboxes: [MarkdownTaskCheckbox]
-    let listMarkers: [MarkdownListMarker]
-    let looseIndents: [MarkdownLooseIndent]
-    let footnotes: [MarkdownFootnote]
-    let tableOfContents: [NSRange]
-    let tables: [MarkdownTable]
-    let codeBlocks: [MarkdownCodeBlock]
-    let fenceContainerLines: [MarkdownFenceContainerLine]
-    let fenceBlockedRanges: [NSRange]
-    let fenceBlockedEOF: Bool
-    let fenceContextAvailable: Bool
-    let readableText: MarkdownReadableText?
+    private(set) var emojiCompletionRanges: [NSRange]
+    private(set) var smartTextRanges: [NSRange]
+    private(set) var smartRawHTMLRanges: [NSRange]?
+    private(set) var textReplacements: [MarkdownTextReplacement]
+    private(set) var paragraphs: [MarkdownParagraph]
+    private(set) var completedTaskRanges: [NSRange]
+    private(set) var taskCheckboxes: [MarkdownTaskCheckbox]
+    private(set) var listMarkers: [MarkdownListMarker]
+    private(set) var looseIndents: [MarkdownLooseIndent]
+    private(set) var footnotes: [MarkdownFootnote]
+    private(set) var tableOfContents: [NSRange]
+    private(set) var tables: [MarkdownTable]
+    private(set) var codeBlocks: [MarkdownCodeBlock]
+    private(set) var fenceContainerLines: [MarkdownFenceContainerLine]
+    private(set) var fenceBlockedRanges: [NSRange]
+    private(set) var fenceBlockedEOF: Bool
+    private(set) var fenceContextAvailable: Bool
+    private(set) var readableText: MarkdownReadableText?
     private(set) var wikiLinks: [MarkdownWikiLink] = []
     private(set) var elements: MarkdownElementIndex = .empty
+    /// Префиксные максимумы концов `spans` и `completedTaskRanges`; считает `prepareForEditing`, держит `shift`.
+    private(set) var spanEnds: [Int] = []
+    private(set) var completedEnds: [Int] = []
+    private(set) var isReadyForShift = false
+    /// Итог `hasOnlyTextStructure` на момент разбора: `shift` заголовки только убирает, поэтому на каждую правку он не считается.
+    private var isTextStructureOnly = false
 
     init(spans: [MarkdownPresentationSpan], headings: [MarkdownHeading] = [], namedAnchors: [MarkdownNamedAnchor] = [], images: [MarkdownImage] = [], audioBlocks: [MarkdownAudioBlock] = [], iframeBlocks: [MarkdownIframeBlock] = [], detailsBlocks: [MarkdownDetailsBlock] = [], htmlBlocks: [MarkdownHTMLBlock] = [], pageBreaks: [NSRange] = [], ruby: [MarkdownRuby] = [], links: [MarkdownLink] = [], diagrams: [MarkdownDiagram] = [], formulas: [MarkdownFormula] = [], inlineFormulas: [MarkdownFormula] = [], emojiCandidates: [MarkdownEmojiCandidate] = [], emojiCandidatesIncluded: Bool = false, emojiCompletionRanges: [NSRange] = [], smartTextRanges: [NSRange] = [], smartRawHTMLRanges: [NSRange]? = nil, textReplacements: [MarkdownTextReplacement] = [], paragraphs: [MarkdownParagraph] = [], completedTaskRanges: [NSRange] = [], taskCheckboxes: [MarkdownTaskCheckbox] = [], listMarkers: [MarkdownListMarker] = [], looseIndents: [MarkdownLooseIndent] = [], footnotes: [MarkdownFootnote] = [], tableOfContents: [NSRange] = [], tables: [MarkdownTable] = [], codeBlocks: [MarkdownCodeBlock] = [], fenceContainerLines: [MarkdownFenceContainerLine] = [], fenceBlockedRanges: [NSRange] = [], fenceBlockedEOF: Bool = false, fenceContextAvailable: Bool = false, readableText: MarkdownReadableText? = nil) {
         self.spans = spans
@@ -856,6 +994,434 @@ struct MarkdownPresentation: Sendable {
                                         shift(indent.range).map { MarkdownLooseIndent(range: $0, replacement: indent.replacement) }
                                     }, footnotes: newFootnotes,
                                     tableOfContents: tableOfContents.compactMap(shift), tables: newTables, codeBlocks: newCodeBlocks).withWikiLinks(newWikiLinks)
+    }
+
+    /// Нет элементов, чьё установленное состояние (оглавление, якоря, разрывы страниц) сдвигом не переносится, и нет заголовков с номером или заглавными буквами.
+    /// Сноски пропускаются: их ссылки и определения сдвигаются правилом `away`.
+    /// Картинки, формулы и эмодзи (в том числе в ячейках таблиц), блоки кода, диаграммы, вставки (аудио, iframe, HTML-блоки, details) и ruby пропускаются: их готовые объекты переезжают вместе с ними.
+    var hasOnlyTextStructure: Bool {
+        pageBreaks.isEmpty && emojiCandidatesIncluded && tableOfContents.isEmpty
+            && namedAnchors.isEmpty
+            && headings.allSatisfy { $0.number == nil && $0.uppercaseRuns == nil }
+    }
+
+    /// Правило сдвига для вида оформления. nil: правка задевает границу или вид не поддерживается.
+    private static func shiftedRange(of span: MarkdownPresentationSpan, _ edit: MarkdownTextEdit) -> NSRange? {
+        switch span.kind {
+        case .heading, .quote:
+            return edit.block(span.range)
+        case .strong, .emphasis, .strikethrough, .code, .highlight, .subscriptText, .superscriptText:
+            return edit.inline(span.range)
+        case .tableMath, .tableEmoji, .tableImage:
+            return nil
+        default:
+            return edit.away(span.range)
+        }
+    }
+
+    private static func isUnshiftable(_ kind: MarkdownPresentationKind) -> Bool {
+        switch kind {
+        case .tableMath, .tableEmoji, .tableImage: return true
+        default: return false
+        }
+    }
+
+    private static func isOrdered<T>(_ items: [T], _ extent: (T) -> NSRange) -> Bool {
+        var end = 0
+        for item in items {
+            let range = extent(item)
+            guard range.location >= end else { return false }
+            end = NSMaxRange(range)
+        }
+        return true
+    }
+
+    /// Картинки одного абзаца делят его `paragraphRange`, разные абзацы не пересекаются; сам `range` лежит внутри абзаца.
+    private static func isOrdered(_ images: [MarkdownImage]) -> Bool {
+        var end = 0, group = NSRange(location: 0, length: 0)
+        for image in images {
+            guard image.range.location >= end, NSUnionRange(image.range, image.paragraphRange) == image.paragraphRange,
+                  image.paragraphRange == group || image.paragraphRange.location >= NSMaxRange(group) else { return false }
+            end = NSMaxRange(image.range)
+            group = image.paragraphRange
+        }
+        return true
+    }
+
+    /// Ни один элемент из `inner` (по порядку) не лежит в таблице: установленное в таблицах хранится по абсолютным диапазонам и сдвигом не переносится.
+    private static func isOutside(_ inner: [NSRange], tables: [MarkdownTable]) -> Bool {
+        var table = 0
+        for range in inner {
+            while table < tables.count, NSMaxRange(tables[table].range) <= range.location { table += 1 }
+            guard table < tables.count else { return true }
+            if tables[table].range.location < NSMaxRange(range) { return false }
+        }
+        return true
+    }
+
+    /// Наименьшее начало оформления, охватывающего правку или касающегося её; без такого оформления — место правки. Читает до `shift`.
+    func firstAffectedLocation(_ edit: MarkdownTextEdit) -> Int {
+        let window = edit.window(spans, ends: spanEnds, location: { $0.range.location })
+        let covering = spans[window].first { $0.range.location <= edit.range.location && NSMaxRange($0.range) >= edit.range.location }
+        return covering?.range.location ?? edit.range.location
+    }
+
+    /// Готовит оформление к сдвигу на месте: сортирует `spans`, считает префиксные максимумы концов и проверяет порядок списков,
+    /// на котором держатся двоичные поиски. Не на горячем пути: вызывается один раз после разбора.
+    mutating func prepareForEditing() {
+        isTextStructureOnly = hasOnlyTextStructure
+        if zip(spans, spans.dropFirst()).contains(where: { $1.range.location < $0.range.location }) {
+            spans.sort { $0.range.location < $1.range.location }
+        }
+        var peak = 0
+        spanEnds = spans.map { peak = max(peak, NSMaxRange($0.range)); return peak }
+        peak = 0
+        completedEnds = completedTaskRanges.map { peak = max(peak, NSMaxRange($0)); return peak }
+        isReadyForShift = !spans.contains(where: { Self.isUnshiftable($0.kind) })
+            && !zip(completedTaskRanges, completedTaskRanges.dropFirst()).contains(where: { $1.location < $0.location })
+            && Self.isOrdered(paragraphs, { $0.extent }) && Self.isOrdered(listMarkers, { $0.line })
+            && Self.isOrdered(links, { $0.range }) && Self.isOrdered(wikiLinks, { $0.range })
+            && Self.isOrdered(textReplacements, { $0.range }) && Self.isOrdered(looseIndents, { $0.range })
+            && Self.isOrdered(taskCheckboxes, { NSUnionRange($0.markerRange, $0.stateRange) })
+            && Self.isOrdered(emojiCompletionRanges, { $0 })
+            && Self.isOrdered(tables, { $0.range }) && Self.isOrdered(codeBlocks, { $0.range })
+            && Self.isOrdered(images) && Self.isOrdered(formulas, { $0.range }) && Self.isOrdered(inlineFormulas, { $0.range })
+            && Self.isOrdered(emojiCandidates, { $0.range }) && Self.isOrdered(headings, { $0.range })
+            && Self.isOrdered(namedAnchors, { $0.range }) && Self.isOrdered(pageBreaks, { $0 }) && Self.isOrdered(tableOfContents, { $0 })
+            && Self.isOrdered(ruby, { $0.range }) && Self.isOrdered(diagrams, { $0.range }) && Self.isOrdered(audioBlocks, { $0.range })
+            && Self.isOrdered(iframeBlocks, { $0.range }) && Self.isOrdered(detailsBlocks, { $0.range }) && Self.isOrdered(htmlBlocks, { $0.range })
+            && (tables.isEmpty || Self.isOutside((ruby.map(\.range) + audioBlocks.filter(\.isInline).map(\.range) + iframeBlocks.filter(\.isInline).map(\.range))
+                .sorted { $0.location < $1.location }, tables: tables))
+    }
+
+    /// Правку можно провести сдвигом на месте. Только чтение: при отказе ничего не изменено.
+    func canShift(_ edit: MarkdownTextEdit) -> Bool {
+        isTextStructureOnly && canShiftElements(edit)
+    }
+
+    /// Все проверки `canShift`, кроме `hasOnlyTextStructure`: по ним решается, выдержат ли сдвиг сами диапазоны элементов (стенд проверяет их отдельно).
+    /// Отказ, если правка задевает маркер, ссылку или границу элемента либо лежит вне блока: тогда оформление придётся снять.
+    /// Работает только после `prepareForEditing`; смотрит элементы возле правки, остальные по порядку списков заведомо не задеты.
+    func canShiftElements(_ edit: MarkdownTextEdit) -> Bool {
+        guard isReadyForShift else { return false }
+        var covered = false
+        for index in edit.window(spans, ends: spanEnds, location: { $0.range.location }) {
+            let span = spans[index]
+            guard Self.shiftedRange(of: span, edit) != nil, span.markerRanges.allSatisfy({ edit.away($0) != nil }) else { return false }
+            switch span.kind {
+            case .heading, .quote: if edit.holds(span.range) { covered = true }
+            default: break
+            }
+        }
+        for index in edit.window(paragraphs, extent: { $0.extent }) {
+            let item = paragraphs[index]
+            guard edit.paragraph(item.range) != nil, edit.paragraph(item.lastLine) != nil,
+                  item.separatorAfter.map({ edit.after($0) != nil }) ?? true else { return false }
+            if edit.holds(item.range) { covered = true }
+        }
+        for index in edit.window(listMarkers, extent: { $0.line }) {
+            let item = listMarkers[index]
+            guard edit.away(item.range) != nil, edit.line(item.line) != nil else { return false }
+            if edit.holds(item.line) { covered = true }
+        }
+        guard covered else { return false }
+        for index in edit.window(links, extent: { $0.range }) where edit.away(links[index].range) == nil { return false }
+        for index in edit.window(wikiLinks, extent: { $0.range }) {
+            let item = wikiLinks[index]
+            guard edit.away(item.range) != nil, edit.away(item.displayRange) != nil,
+                  item.markerRanges.allSatisfy({ edit.away($0) != nil }) else { return false }
+        }
+        for index in edit.window(emojiCompletionRanges, extent: { $0 }) where edit.block(emojiCompletionRanges[index]) == nil { return false }
+        for index in edit.window(textReplacements, extent: { $0.range }) where edit.away(textReplacements[index].range) == nil { return false }
+        for index in edit.window(completedTaskRanges, ends: completedEnds, location: { $0.location }) where edit.block(completedTaskRanges[index]) == nil { return false }
+        for index in edit.window(taskCheckboxes, extent: { NSUnionRange($0.markerRange, $0.stateRange) }) {
+            let item = taskCheckboxes[index]
+            guard edit.away(item.markerRange) != nil, edit.away(item.stateRange) != nil else { return false }
+        }
+        for index in edit.window(looseIndents, extent: { $0.range }) where edit.away(looseIndents[index].range) == nil { return false }
+        // Правка в таблице или вплотную к ней: таблицу пересобирает разбор. Вне окна таблицы только сдвигаются.
+        guard edit.window(tables, extent: { $0.range }).isEmpty else { return false }
+        // Само ограждение проверяют `spans` с метками; блок без своего `span` здесь не проскочит.
+        for index in edit.window(codeBlocks, extent: { $0.range }) where edit.away(codeBlocks[index].range) == nil { return false }
+        for index in edit.window(images, extent: { $0.paragraphRange }) {
+            guard edit.away(images[index].range) != nil, edit.block(images[index].paragraphRange) != nil else { return false }
+            // Enter в конце текста без перевода строки: правило блока растит абзац картинки на него, а полный разбор его не включает.
+            if edit.lineBreak && edit.atOpenLine && NSMaxRange(images[index].paragraphRange) == edit.range.location { return false }
+        }
+        for index in edit.window(formulas, extent: { $0.range }) where edit.away(formulas[index].range) == nil { return false }
+        for index in edit.window(inlineFormulas, extent: { $0.range }) where edit.away(inlineFormulas[index].range) == nil { return false }
+        for index in edit.window(emojiCandidates, extent: { $0.range }) where edit.away(emojiCandidates[index].range) == nil { return false }
+        for index in edit.window(namedAnchors, extent: { $0.range }) where edit.away(namedAnchors[index].range) == nil { return false }
+        for index in edit.window(pageBreaks, extent: { $0 }) where edit.away(pageBreaks[index]) == nil { return false }
+        for index in edit.window(tableOfContents, extent: { $0 }) where edit.away(tableOfContents[index]) == nil { return false }
+        for index in edit.window(ruby, extent: { $0.range }) {
+            guard edit.away(ruby[index].range) != nil, edit.away(ruby[index].baseRange) != nil, edit.away(ruby[index].readingRange) != nil else { return false }
+        }
+        // Блоки HTML и диаграммы целиком берут из текста строки (`html`, `body`, `source`): правка внутри устарила бы их, поэтому только `away`.
+        for index in edit.window(diagrams, extent: { $0.range }) where edit.away(diagrams[index].range) == nil { return false }
+        // Вставки из сырого HTML кончаются пустой строкой: буква на соседней строке впритык меняет разбор, поэтому нужен зазор (`spaced`).
+        let reach = edit.reaching(1)
+        for index in reach.window(audioBlocks, extent: { $0.range }) where edit.spaced(audioBlocks[index].range) == nil { return false }
+        for index in reach.window(iframeBlocks, extent: { $0.range }) where edit.spaced(iframeBlocks[index].range) == nil { return false }
+        for index in reach.window(detailsBlocks, extent: { $0.range }) where edit.spaced(detailsBlocks[index].range) == nil { return false }
+        for index in reach.window(htmlBlocks, extent: { $0.range }) where edit.spaced(htmlBlocks[index].range) == nil { return false }
+        // Определение сноски может стоять где угодно: порядок со ссылками не гарантирован, поэтому проход по всем.
+        // Правка в теле определения сюда не доходит: его не покрывает ни один блок текста (`covered`), а `text` сноски от него зависит.
+        for note in footnotes where edit.away(note.referenceRange) == nil || edit.away(note.definitionRange) == nil { return false }
+        return true
+    }
+
+    /// Сдвигает диапазоны на месте, без копий и сортировок. Условие: `canShift(edit)` вернул true.
+    /// Сдвигаются и элементы, которые `hasOnlyTextStructure` пока не пропускает; задетый правкой заголовок убирается из списка.
+    /// Умный текст, читаемый текст, `elements` и контекст ограждений сбрасываются.
+    mutating func shift(_ edit: MarkdownTextEdit) {
+        func move(_ range: inout NSRange, _ rule: (NSRange) -> NSRange?) {
+            if let value = rule(range) { range = value }
+        }
+        let first = edit.window(spans, ends: spanEnds, location: { $0.range.location }).lowerBound
+        var peak = first > 0 ? spanEnds[first - 1] : 0
+        for index in first..<spans.count {
+            if let range = Self.shiftedRange(of: spans[index], edit) { spans[index].range = range }
+            for marker in spans[index].markerRanges.indices { move(&spans[index].markerRanges[marker], edit.away) }
+            peak = max(peak, NSMaxRange(spans[index].range))
+            spanEnds[index] = peak
+        }
+        for index in edit.window(paragraphs, extent: { $0.extent }).lowerBound..<paragraphs.count {
+            move(&paragraphs[index].range, edit.paragraph)
+            move(&paragraphs[index].lastLine, edit.paragraph)
+            if var separator = paragraphs[index].separatorAfter {
+                move(&separator, edit.after)
+                paragraphs[index].separatorAfter = separator
+            }
+        }
+        for index in edit.window(listMarkers, extent: { $0.line }).lowerBound..<listMarkers.count {
+            move(&listMarkers[index].range, edit.away)
+            move(&listMarkers[index].line, edit.line)
+        }
+        for index in edit.window(links, extent: { $0.range }).lowerBound..<links.count { move(&links[index].range, edit.away) }
+        for index in edit.window(wikiLinks, extent: { $0.range }).lowerBound..<wikiLinks.count {
+            move(&wikiLinks[index].range, edit.away)
+            move(&wikiLinks[index].displayRange, edit.away)
+            for marker in wikiLinks[index].markerRanges.indices { move(&wikiLinks[index].markerRanges[marker], edit.away) }
+        }
+        for index in edit.window(emojiCompletionRanges, extent: { $0 }).lowerBound..<emojiCompletionRanges.count {
+            move(&emojiCompletionRanges[index], edit.block)
+        }
+        for index in edit.window(textReplacements, extent: { $0.range }).lowerBound..<textReplacements.count {
+            move(&textReplacements[index].range, edit.away)
+        }
+        let firstCompleted = edit.window(completedTaskRanges, ends: completedEnds, location: { $0.location }).lowerBound
+        peak = firstCompleted > 0 ? completedEnds[firstCompleted - 1] : 0
+        for index in firstCompleted..<completedTaskRanges.count {
+            move(&completedTaskRanges[index], edit.block)
+            peak = max(peak, NSMaxRange(completedTaskRanges[index]))
+            completedEnds[index] = peak
+        }
+        for index in edit.window(taskCheckboxes, extent: { NSUnionRange($0.markerRange, $0.stateRange) }).lowerBound..<taskCheckboxes.count {
+            move(&taskCheckboxes[index].markerRange, edit.away)
+            move(&taskCheckboxes[index].stateRange, edit.away)
+        }
+        for index in edit.window(looseIndents, extent: { $0.range }).lowerBound..<looseIndents.count { move(&looseIndents[index].range, edit.away) }
+        if edit.delta != 0 {
+            let firstTable = edit.window(tables, extent: { $0.range }).upperBound
+            for index in firstTable..<tables.count { tables[index].shift(by: edit.delta) }
+        }
+        for index in edit.window(codeBlocks, extent: { $0.range }).lowerBound..<codeBlocks.count {
+            move(&codeBlocks[index].range, edit.away)
+            move(&codeBlocks[index].bodyRange, edit.away)
+            move(&codeBlocks[index].infoRange, edit.away)
+            for segment in codeBlocks[index].bodySegments.indices { move(&codeBlocks[index].bodySegments[segment], edit.away) }
+            for marker in codeBlocks[index].fenceMarkers.indices { move(&codeBlocks[index].fenceMarkers[marker], edit.away) }
+        }
+        var heading = edit.window(headings, extent: { $0.range }).lowerBound
+        while heading < headings.count {
+            guard edit.away(headings[heading].range) != nil else { headings.remove(at: heading); continue }
+            move(&headings[heading].range, edit.away)
+            if var plain = headings[heading].plainTextRange {
+                move(&plain, edit.away)
+                headings[heading].plainTextRange = plain
+            }
+            heading += 1
+        }
+        for index in edit.window(images, extent: { $0.paragraphRange }).lowerBound..<images.count {
+            move(&images[index].range, edit.away)
+            move(&images[index].paragraphRange, edit.block)
+        }
+        for index in edit.window(formulas, extent: { $0.range }).lowerBound..<formulas.count { move(&formulas[index].range, edit.away) }
+        for index in edit.window(inlineFormulas, extent: { $0.range }).lowerBound..<inlineFormulas.count { move(&inlineFormulas[index].range, edit.away) }
+        for index in edit.window(emojiCandidates, extent: { $0.range }).lowerBound..<emojiCandidates.count { move(&emojiCandidates[index].range, edit.away) }
+        for index in edit.window(namedAnchors, extent: { $0.range }).lowerBound..<namedAnchors.count { move(&namedAnchors[index].range, edit.away) }
+        for index in edit.window(pageBreaks, extent: { $0 }).lowerBound..<pageBreaks.count { move(&pageBreaks[index], edit.away) }
+        for index in edit.window(tableOfContents, extent: { $0 }).lowerBound..<tableOfContents.count { move(&tableOfContents[index], edit.away) }
+        for index in edit.window(ruby, extent: { $0.range }).lowerBound..<ruby.count {
+            move(&ruby[index].range, edit.away)
+            move(&ruby[index].baseRange, edit.away)
+            move(&ruby[index].readingRange, edit.away)
+        }
+        for index in edit.window(diagrams, extent: { $0.range }).lowerBound..<diagrams.count { move(&diagrams[index].range, edit.away) }
+        for index in edit.window(audioBlocks, extent: { $0.range }).lowerBound..<audioBlocks.count { move(&audioBlocks[index].range, edit.away) }
+        for index in edit.window(iframeBlocks, extent: { $0.range }).lowerBound..<iframeBlocks.count { move(&iframeBlocks[index].range, edit.away) }
+        for index in edit.window(detailsBlocks, extent: { $0.range }).lowerBound..<detailsBlocks.count { move(&detailsBlocks[index].range, edit.away) }
+        for index in edit.window(htmlBlocks, extent: { $0.range }).lowerBound..<htmlBlocks.count { move(&htmlBlocks[index].range, edit.away) }
+        if edit.delta != 0 {
+            for index in footnotes.indices {
+                move(&footnotes[index].referenceRange, edit.away)
+                move(&footnotes[index].definitionRange, edit.away)
+            }
+        }
+        smartTextRanges = []
+        smartRawHTMLRanges = nil
+        readableText = nil
+        elements = .empty
+        fenceContainerLines = []
+        fenceBlockedRanges = []
+        fenceBlockedEOF = false
+        fenceContextAvailable = false
+    }
+
+    /// Копия с оформлением, сдвинутым под правку; nil, если `canShift` отказал. Для тестов и проверок: экран сдвигает `canShift` и `shift` на месте.
+    func shiftedForTextEdit(_ edit: NSRange, replacementLength: Int, textLength: Int) -> MarkdownPresentation? {
+        var copy = self
+        copy.prepareForEditing()
+        let change = MarkdownTextEdit(range: edit, replacementLength: replacementLength, textLength: textLength)
+        guard copy.canShift(change) else { return nil }
+        copy.shift(change)
+        return copy
+    }
+
+    /// Enter в конце обычного абзаца: дальше пустая строка или конец текста, абзац начинается с начала строки.
+    /// Возвращает правку для `canShift` или nil. Позиция правки берётся после уже стоящего перевода строки: текст тот же.
+    func paragraphBreakEdit(in text: NSString, at location: Int) -> MarkdownTextEdit? {
+        let length = text.length
+        guard location > 0, location <= length else { return nil }
+        if location < length {
+            guard text.character(at: location) == 10, text.character(at: location - 1) != 13,
+                  location + 1 == length || text.character(at: location + 1) == 10 else { return nil }
+        }
+        let before = text.character(at: location - 1)
+        guard before != 10, before != 32, before != 9,
+              Self.allowsTypingEdit(in: text, range: NSRange(location: location, length: 0), replacement: "a") else { return nil }
+        // Заголовок, цитата и пункт списка: перенос в них ведут прежним путём.
+        let probe = MarkdownTextEdit(range: NSRange(location: location, length: 0), replacementLength: 1, textLength: length)
+        for index in probe.window(spans, ends: spanEnds, location: { $0.range.location }) {
+            switch spans[index].kind {
+            case .heading, .quote: if probe.holds(spans[index].range) { return nil }
+            default: break
+            }
+        }
+        for index in probe.window(listMarkers, extent: { $0.line }) where probe.holds(listMarkers[index].line) { return nil }
+        let point = location < length ? location + 1 : location
+        let edit = MarkdownTextEdit(range: NSRange(location: point, length: 0), replacementLength: 1, textLength: length,
+                                    lineBreak: true, atOpenLine: text.character(at: point - 1) != 10)
+        guard let paragraph = paragraphs[edit.window(paragraphs, extent: { $0.extent })].first(where: { edit.holds($0.range) }),
+              NSMaxRange(paragraph.range) == point, NSMaxRange(paragraph.lastLine) == point,
+              text.lineRange(for: NSRange(location: paragraph.range.location, length: 0)).location == paragraph.range.location,
+              text.character(at: paragraph.range.location) != 32, text.character(at: paragraph.range.location) != 9,
+              paragraph.separatorAfter?.location == (point < length ? point : nil) else { return nil }
+        return canShift(edit) ? edit : nil
+    }
+
+    private static let typingPunctuation: Set<Character> = [",", ".", ";", "!", "?", ":", "(", ")", "-", "«", "»", "“", "”", "‘", "’", "–", "—", "…"]
+
+    private static func isTypingCharacter(_ character: Character) -> Bool {
+        character.isLetter || character.isNumber || character == " " || typingPunctuation.contains(character)
+            || (character.unicodeScalars.first?.properties.isEmojiPresentation ?? false)
+    }
+
+    /// Строка остаётся прозой: есть буква или цифра, отступ меньше 4, начало (если правка рядом) не похоже на разметку блока.
+    private static func isProseLine(_ unit: (Int) -> unichar, _ count: Int, head: Bool) -> Bool {
+        var first = 0, width = 0
+        while first < count, unit(first) == 32 || unit(first) == 9 { width += unit(first) == 9 ? 4 : 1; first += 1 }
+        func content(_ value: unichar) -> Bool {
+            if value < 128 { return (48...57).contains(value) || (65...90).contains(value) || (97...122).contains(value) }
+            return (0xD800...0xDFFF).contains(value) || (Unicode.Scalar(value).map { CharacterSet.alphanumerics.contains($0) } ?? false)
+        }
+        guard first < count, width < 4, (first..<count).contains(where: { content(unit($0)) }) else { return false }
+        guard head else { return true }
+        let start = first, lead = unit(start)
+        func run() -> Int { var n = 0; while start + n < count, unit(start + n) == lead { n += 1 }; return n }
+        func blank(_ index: Int) -> Bool { index >= count || unit(index) == 32 || unit(index) == 9 }
+        switch lead {
+        case 35, 36, 58, 60, 62, 92, 124: return false
+        case 42, 43, 45: return run() < 3 && !blank(start + 1)
+        case 95, 96, 126: return run() < 3
+        case 91: return !(start + 1 < count && unit(start + 1) == 94)
+        case 48...57:
+            var index = start
+            while index < count, (48...57).contains(unit(index)) { index += 1 }
+            return index >= count || (unit(index) != 46 && unit(index) != 41)
+        default: return true
+        }
+    }
+
+    /// Правку обычного текста можно вести быстрым путём по одной строке: она остаётся прозой и не создаёт и не рвёт разметку.
+    /// Проверяется только текст до правки; многострочные конструкции (например `$` через строки) эта проверка не видит.
+    static func allowsTypingEdit(in text: NSString, range: NSRange, replacement: String) -> Bool {
+        guard range.location >= 0, range.length >= 0, NSMaxRange(range) <= text.length,
+              replacement.allSatisfy(isTypingCharacter) else { return false }
+        let end = NSMaxRange(range)
+        // Границы правки лежат на границах составных символов (эмодзи, суррогаты).
+        if range.location < text.length, text.rangeOfComposedCharacterSequence(at: range.location).location != range.location { return false }
+        if end > 0, end < text.length, text.rangeOfComposedCharacterSequence(at: end).location != end { return false }
+        if range.length > 0, !text.substring(with: range).allSatisfy(isTypingCharacter) { return false }
+        let line = text.lineRange(for: NSRange(location: range.location, length: 0))
+        var contentEnd = NSMaxRange(line)
+        while contentEnd > line.location && [10, 13, 0x85, 0x2028, 0x2029].contains(Int(text.character(at: contentEnd - 1))) { contentEnd -= 1 }
+        guard end <= contentEnd else { return false }
+        let column = range.location - line.location, preCount = contentEnd - line.location
+        let inserted = Array(replacement.utf16), postCount = preCount - range.length + inserted.count
+        let pre: (Int) -> unichar = { text.character(at: line.location + $0) }
+        let post: (Int) -> unichar = { index in
+            index < column ? pre(index) : index < column + inserted.count ? inserted[index - column]
+                : text.character(at: end + index - column - inserted.count)
+        }
+        var first = 0
+        while first < preCount, pre(first) == 32 || pre(first) == 9 { first += 1 }
+        var headLimit = first
+        while headLimit < preCount, pre(headLimit) != 32, pre(headLimit) != 9 { headLimit += 1 }
+        while headLimit < preCount, pre(headLimit) == 32 || pre(headLimit) == 9 { headLimit += 1 }
+        let lineRange = NSRange(location: line.location, length: preCount)
+        let head = column <= headLimit
+        // HTML в начале содержимого, в том числе после `>` или маркера пункта: правка в теге меняет разбор всего блока.
+        let opening = text.range(of: "<", options: [], range: lineRange).location
+        if opening != NSNotFound, !text.substring(with: NSRange(location: line.location, length: opening - line.location)).contains(where: \.isLetter) { return false }
+        // `]:` — определение ссылки, в том числе внутри цитаты или пункта: адрес из него разбор хранит отдельно.
+        guard column >= first, isProseLine(pre, preCount, head: head), isProseLine(post, postCount, head: head),
+              text.range(of: "$", options: [], range: lineRange).location == NSNotFound,
+              text.range(of: "]:", options: [], range: lineRange).location == NSNotFound else { return false }
+        if replacement.contains(where: { "()".contains($0) }), text.range(of: "](", options: [], range: lineRange).location != NSNotFound { return false }
+        // Соседи правки: разметочные знаки рядом и склейки `..`, `--` дают умные замены или меняют разбор.
+        let lower = max(0, column - 2), upper = min(postCount, column + inserted.count + 2)
+        for index in lower..<upper {
+            if [42, 95, 126, 61, 94, 96, 91, 93, 60, 62, 124, 36, 92, 38].contains(post(index)) { return false }
+            if index > lower, post(index) == post(index - 1), post(index) == 46 || post(index) == 45 { return false }
+        }
+        // Слово вокруг правки не должно быть адресом, почтой, `:имя:`, сущностью или началом ссылки.
+        func tokenIsSafe(_ unit: (Int) -> unichar, _ count: Int, _ from: Int, _ to: Int) -> Bool {
+            var start = from, stop = to
+            while start > 0, unit(start - 1) != 32, unit(start - 1) != 9 { start -= 1; if from - start > 200 { return false } }
+            while stop < count, unit(stop) != 32, unit(stop) != 9 { stop += 1; if stop - to > 200 { return false } }
+            let token = String(decoding: (start..<stop).map(unit), as: UTF16.self).lowercased()
+            return !["@", "&", "www.", "://", "]("].contains(where: token.contains) && token.filter { $0 == ":" }.count < 2
+        }
+        guard tokenIsSafe(pre, preCount, column, column + range.length),
+              tokenIsSafe(post, postCount, column, column + inserted.count) else { return false }
+        // Два пробела подряд сворачиваются отдельной заменой, а отступ строки не должен меняться.
+        var postFirst = 0
+        while postFirst < postCount, post(postFirst) == 32 || post(postFirst) == 9 { postFirst += 1 }
+        if postFirst != first { return false }
+        for index in max(first + 1, lower - 1)..<max(first + 1, min(postCount, upper + 1)) where (post(index) == 32 || post(index) == 9) && (post(index - 1) == 32 || post(index - 1) == 9) { return false }
+        // Хвостовые пробелы строки прячутся отдельной заменой: правка, оставляющая пробел в конце строки, ведёт старым путём.
+        if postCount > 0, post(postCount - 1) == 32 || post(postCount - 1) == 9 { return false }
+        // Пробел рядом с пробелом или табуляцией может дать отступ, а сразу после маркера без слов (`#`, `-`, `1.`) — заголовок или список.
+        if replacement.contains(" ") {
+            guard column > first, range.location > 0 else { return false }
+            let before = text.character(at: range.location - 1)
+            let hasWord = text.substring(with: NSRange(location: line.location, length: column)).contains { $0.isLetter }
+            guard hasWord, before != 32 && before != 9,
+                  end >= contentEnd || (text.character(at: end) != 32 && text.character(at: end) != 9) else { return false }
+        }
+        return true
     }
 
 }

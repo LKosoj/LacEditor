@@ -202,6 +202,121 @@ final class MarkdownFootnoteTests: XCTestCase {
         controller.cancel()
     }
 
+    func testFootnoteNavigationSurvivesFastPathEdit() async throws {
+        _ = NSApplication.shared
+        let source = "before[^a] after\n\n[^a]: note"
+        let document = EditorDocument(text: source, language: .markdown)
+        let storage = NSTextStorage(string: source)
+        let layout = FoldLayoutManager()
+        storage.addLayoutManager(layout)
+        let container = NSTextContainer(containerSize: NSSize(width: 500, height: 500))
+        layout.addTextContainer(container)
+        let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 500), textContainer: container)
+        let scroll = NSScrollView(frame: view.frame)
+        scroll.documentView = view
+        let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = scroll
+        window.makeFirstResponder(view)
+        defer { window.close() }
+        let controller = MarkdownPresentationController(textView: view, layout: layout)
+        var revision: UInt = 0
+        controller.update(document: document, enabled: true, outlineVisible: true, isActive: true,
+                          revision: revision, currentRevision: { revision })
+        func point(_ range: NSRange) -> NSPoint {
+            layout.ensureLayout(for: container)
+            let glyphs = layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+            let rect = layout.boundingRect(forGlyphRange: glyphs, in: container)
+            return NSPoint(x: rect.midX + view.textContainerOrigin.x, y: rect.midY + view.textContainerOrigin.y)
+        }
+        let definition = (source as NSString).range(of: "[^a]:")
+        var target: NSRange?
+        for _ in 0..<30 {
+            target = controller.footnoteTarget(at: point((source as NSString).range(of: "[^a]")), document: document, revision: revision)
+            if target != nil { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertEqual(target?.location, definition.location)
+        // Буква в начале абзаца идёт быстрым путём: оформление и сноски сдвигаются, разбор не нужен.
+        let edit = NSRange(location: 2, length: 0)
+        controller.beforeEdit(range: edit, replacementLength: 1, replacement: "x")
+        storage.replaceCharacters(in: edit, with: "x")
+        revision += 1
+        controller.edited(revision: revision)
+        let shifted = (storage.string as NSString)
+        XCTAssertNotNil(controller.footnoteTarget(at: point(shifted.range(of: "[^a]")), document: document, revision: revision))
+        XCTAssertEqual(controller.footnoteTarget(at: point(shifted.range(of: "[^a]")), document: document, revision: revision)?.location,
+                       definition.location + 1)
+        var settled: NSRange?
+        for _ in 0..<30 {
+            settled = controller.footnoteTarget(at: point(shifted.range(of: "[^a]")), document: document, revision: revision)
+            if settled?.location == definition.location + 1 { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertEqual(settled?.location, definition.location + 1)
+        controller.cancel()
+    }
+
+    func testFootnoteTooltipsCoverVisibleTextAndWaitForParseAfterTyping() async throws {
+        _ = NSApplication.shared
+        let source = (0..<80).map { "line\($0)[^a]\n\n" }.joined() + "[^a]: note"
+        let document = EditorDocument(text: source, language: .markdown)
+        let storage = NSTextStorage(string: source)
+        let layout = FoldLayoutManager()
+        storage.addLayoutManager(layout)
+        let container = NSTextContainer(containerSize: NSSize(width: 500, height: 100_000))
+        layout.addTextContainer(container)
+        let frame = NSRect(x: 0, y: 0, width: 500, height: 300)
+        let view = LacTextView(frame: frame, textContainer: container)
+        let scroll = NSScrollView(frame: frame)
+        scroll.documentView = view
+        let window = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = scroll
+        window.makeFirstResponder(view)
+        defer { window.close() }
+        view.setFrameSize(NSSize(width: 500, height: 5000))
+        let controller = MarkdownPresentationController(textView: view, layout: layout)
+        var revision: UInt = 0
+        controller.update(document: document, enabled: true, outlineVisible: true, isActive: true,
+                          revision: revision, currentRevision: { revision })
+        let references = try NSRegularExpression(pattern: "\\[\\^a\\](?!:)")
+        func visibleReferences() -> Int {
+            layout.ensureLayout(for: container)
+            let rect = view.visibleRect.offsetBy(dx: -view.textContainerOrigin.x, dy: -view.textContainerOrigin.y)
+            let glyphs = layout.glyphRange(forBoundingRectWithoutAdditionalLayout: rect, in: container)
+            return references.numberOfMatches(in: storage.string, range: layout.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil))
+        }
+        for _ in 0..<30 {
+            if !controller.footnoteTooltipRects.isEmpty { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertEqual(controller.footnoteTooltipRects.count, visibleReferences())
+        // Часть строк уже оформлена: подсказки на них не теряются ни при частичной, ни при полностью готовой области.
+        view.scroll(NSPoint(x: 0, y: 120))
+        controller.viewportChanged()
+        XCTAssertGreaterThan(visibleReferences(), 0)
+        XCTAssertEqual(controller.footnoteTooltipRects.count, visibleReferences())
+        view.scroll(.zero)
+        controller.viewportChanged()
+        XCTAssertEqual(controller.footnoteTooltipRects.count, visibleReferences())
+        // Быстрый путь не трогает подсказки: новые места приходят с разбором после паузы.
+        let before = controller.footnoteTooltipRects
+        let edit = NSRange(location: 2, length: 0)
+        controller.beforeEdit(range: edit, replacementLength: 1, replacement: "x")
+        storage.replaceCharacters(in: edit, with: "x")
+        revision += 1
+        controller.edited(revision: revision)
+        XCTAssertEqual(controller.footnoteTooltipRects, before)
+        for _ in 0..<30 {
+            if controller.footnoteTooltipRects != before { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertNotEqual(controller.footnoteTooltipRects, before)
+        XCTAssertEqual(controller.footnoteTooltipRects.count, visibleReferences())
+        controller.cancel()
+    }
+
     func testCommandClickGoesToDefinitionAndBackWithoutEditing() async throws {
         _ = NSApplication.shared
         let source = "before[^a] after\n\n[^a]: note"

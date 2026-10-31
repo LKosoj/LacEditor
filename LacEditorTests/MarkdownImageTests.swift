@@ -2,6 +2,85 @@ import AppKit
 import XCTest
 @testable import LacEditor
 
+/// Адрес отвечает картинкой сразу; при `holdFirst` первый запрос повисает, пока его не отменят.
+private final class ShiftImageURLProtocol: URLProtocol {
+    private static let lock = NSLock()
+    private static var started = 0
+    private static var cancelled = 0
+    static var holdFirst = true
+    static var requestCount: Int { lock.withLock { started } }
+    static var cancelledCount: Int { lock.withLock { cancelled } }
+    static func reset(holdFirst: Bool) { lock.withLock { started = 0; cancelled = 0; Self.holdFirst = holdFirst } }
+
+    private var isHeld = false
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let number = Self.lock.withLock { Self.started += 1; return Self.started }
+        if Self.holdFirst && number == 1 { isHeld = true; return }
+        let data = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC")!
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {
+        if isHeld { Self.lock.withLock { Self.cancelled += 1 } }
+    }
+}
+
+/// Редактор с блочной картинкой; печать идёт тем же путём, что в редакторе: `beforeEdit`, правка текста, `edited`.
+@MainActor
+private final class ImageShiftFixture {
+    let storage: NSTextStorage
+    let layout = FoldLayoutManager()
+    let controller: MarkdownPresentationController
+    let document: EditorDocument
+    private let view: LacTextView
+    private let scroll: NSScrollView
+    var revision: UInt = 0
+
+    init(source: String, url: URL? = nil, session: URLSession? = nil) {
+        _ = NSApplication.shared
+        document = url.map { EditorDocument(text: source, url: $0, language: .markdown) } ?? EditorDocument(text: source, language: .markdown)
+        storage = NSTextStorage(string: source)
+        storage.addLayoutManager(layout)
+        let container = NSTextContainer(containerSize: NSSize(width: 400, height: 600))
+        layout.addTextContainer(container)
+        view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 600), textContainer: container)
+        scroll = NSScrollView(frame: view.frame)
+        scroll.documentView = view
+        controller = MarkdownPresentationController(textView: view, layout: layout)
+        if let session { controller.imageSession = session }
+        controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { [unowned self] in self.revision })
+    }
+
+    /// Диапазоны картинок в слое оформления: пары «начало, длина».
+    var images: [Int] { layout.markdownListsSnapshot["images"] ?? [] }
+
+    func waitForImage() async throws {
+        for _ in 0..<200 where images.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+    }
+
+    func type(after marker: String, _ text: String = "x", also change: (() -> Void)? = nil) {
+        let edit = NSRange(location: NSMaxRange(storage.mutableString.range(of: marker)), length: 0)
+        revision += 1
+        controller.beforeEdit(range: edit, replacementLength: (text as NSString).length, replacement: text)
+        change?()
+        storage.replaceCharacters(in: edit, with: text)
+        controller.edited(revision: revision)
+    }
+
+    /// Ждёт, пока разбор после правки будет установлен.
+    func waitForParse() async {
+        let installed = XCTestExpectation(description: "parse installed")
+        controller.parsedResultDidChange = { installed.fulfill() }
+        await XCTWaiter().fulfillment(of: [installed], timeout: 10)
+    }
+
+    func finish() { controller.cancel(); withExtendedLifetime(scroll) {} }
+}
+
 @MainActor
 final class MarkdownImageTests: XCTestCase {
     func testRawSVGIsNotAFileImageReference() throws {
@@ -260,4 +339,64 @@ final class MarkdownImageTests: XCTestCase {
         controller.cancel()
     }
 
+    /// Файл картинки удаляется после загрузки: перезагрузка не вернула бы её, поэтому слой оформления выдаёт, трогал ли её контроллер.
+    private func makeLocalImageFixture() async throws -> (ImageShiftFixture, URL) {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let png = try XCTUnwrap(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"))
+        let file = directory.appendingPathComponent("pic.png")
+        try png.write(to: file)
+        let fixture = ImageShiftFixture(source: "before\n\n![image](pic.png)\n\nafter", url: directory.appendingPathComponent("doc.md"))
+        try await fixture.waitForImage()
+        XCTAssertFalse(fixture.images.isEmpty)
+        try FileManager.default.removeItem(at: file)
+        return (fixture, directory)
+    }
+
+    func testReadyImageStaysUnderShiftedKeyAndIsNotReloadedAfterParse() async throws {
+        let (fixture, directory) = try await makeLocalImageFixture()
+        defer { fixture.finish(); try? FileManager.default.removeItem(at: directory) }
+        let before = fixture.images
+        let installed = XCTestExpectation(description: "parse installed")
+        fixture.controller.parsedResultDidChange = { installed.fulfill() }
+        fixture.type(after: "before")
+        XCTAssertEqual(fixture.images, [before[0] + 1, before[1]])
+        await XCTWaiter().fulfillment(of: [installed], timeout: 10)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(fixture.images, [before[0] + 1, before[1]])
+        XCTAssertEqual(fixture.images.first, (fixture.storage.string as NSString).range(of: "![image]").location)
+    }
+
+    func testDivergentParseDropsReadyImage() async throws {
+        let (fixture, directory) = try await makeLocalImageFixture()
+        defer { fixture.finish(); try? FileManager.default.removeItem(at: directory) }
+        let installed = XCTestExpectation(description: "parse installed")
+        fixture.controller.parsedResultDidChange = { installed.fulfill() }
+        // Сдвиг рассчитан на одну вставленную букву, а в тексте заодно изменена подпись картинки той же длины: свежий разбор расходится со сдвигом.
+        fixture.type(after: "before") {
+            let alt = fixture.storage.mutableString.range(of: "image]")
+            fixture.storage.replaceCharacters(in: NSRange(location: alt.location + 4, length: 1), with: "z")
+        }
+        XCTAssertFalse(fixture.images.isEmpty)
+        await XCTWaiter().fulfillment(of: [installed], timeout: 10)
+        XCTAssertTrue(fixture.images.isEmpty)
+    }
+
+    func testPendingRemoteImageIsCancelledAndRestartedAfterShift() async throws {
+        ShiftImageURLProtocol.reset(holdFirst: true)
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [ShiftImageURLProtocol.self]
+        let session = URLSession(configuration: config)
+        let fixture = ImageShiftFixture(source: "before\n\n![x](https://example.invalid/image.png)\n\nafter", session: session)
+        defer { fixture.finish(); session.invalidateAndCancel() }
+        for _ in 0..<200 where ShiftImageURLProtocol.requestCount == 0 { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(ShiftImageURLProtocol.requestCount, 1)
+        XCTAssertTrue(fixture.images.isEmpty)
+        fixture.type(after: "before")
+        await fixture.waitForParse()
+        try await fixture.waitForImage()
+        XCTAssertGreaterThanOrEqual(ShiftImageURLProtocol.requestCount, 2)
+        XCTAssertEqual(ShiftImageURLProtocol.cancelledCount, 1)
+        XCTAssertEqual(fixture.images.first, (fixture.storage.string as NSString).range(of: "![x]").location)
+    }
 }
