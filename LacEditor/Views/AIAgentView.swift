@@ -315,21 +315,39 @@ struct AIAgentView: View {
         .accessibilityElement(children: .contain)
     }
 
-    private func approvalCard(_ approval: AIAgentWebApproval) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(L10n.tr("代理想要联网搜索：")).font(.headline)
-            Text(approval.query).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-            Text(L10n.tr("搜索词会发送到 Jina；找到的网页内容会发送给 AI 服务器。")).font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+    @ViewBuilder private func approvalCard(_ approval: AIAgentApproval) -> some View {
+        switch approval.content {
+        case .webSearch(let query):
             VStack(alignment: .leading, spacing: 6) {
-                Button(L10n.tr("允许")) { controller.resolve(.allowOnce) }.buttonStyle(.borderedProminent)
-                Button(L10n.tr("本次运行内允许")) { controller.resolve(.allowInRun) }
-                Button(L10n.tr("拒绝")) { controller.resolve(.deny) }
+                Text(L10n.tr("代理想要联网搜索：")).font(.headline)
+                Text(query).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                Text(L10n.tr("搜索词会发送到 Jina；找到的网页内容会发送给 AI 服务器。")).font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 6) {
+                    Button(L10n.tr("允许")) { controller.resolve(.allowOnce) }.buttonStyle(.borderedProminent)
+                    Button(L10n.tr("本次运行内允许")) { controller.resolve(.allowInRun) }
+                    Button(L10n.tr("拒绝")) { controller.resolve(.deny) }
+                }
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(L10n.tr("代理请求联网搜索：%@", query))
+            .onAppear { AccessibilityNotification.Announcement(L10n.tr("代理请求联网搜索：%@", query)).post() }
+        case .document(_, let name, let path):
+            VStack(alignment: .leading, spacing: 6) {
+                Text(L10n.tr("代理想要访问文档：")).font(.headline)
+                Text(name).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                Text(path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                Text(L10n.tr("文档内容将发送给 AI 服务器。允许后，本次对话可访问此文档。")).font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Button(L10n.tr("允许")) { controller.resolve(.allowOnce) }.buttonStyle(.borderedProminent)
+                    Button(L10n.tr("拒绝")) { controller.resolve(.deny) }
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(L10n.tr("代理请求访问文档：%@", name))
+            .onAppear { AccessibilityNotification.Announcement(L10n.tr("代理请求访问文档：%@", name)).post() }
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(L10n.tr("代理请求联网搜索：%@", approval.query))
-        .onAppear { AccessibilityNotification.Announcement(L10n.tr("代理请求联网搜索：%@", approval.query)).post() }
     }
 
     private func turnView(_ turn: AIAgentTurn) -> some View {

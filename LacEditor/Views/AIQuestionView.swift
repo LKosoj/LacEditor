@@ -39,6 +39,7 @@ struct AIQuestionView: View {
                         if let last = controller.turns.last { proxy.scrollTo(last.id, anchor: .bottom) }
                     }
                 }
+                if let approval = controller.approval { approvalCard(approval) }
                 if !controller.message.isEmpty {
                     AIPanelMessageView(kind: controller.messageKind, text: controller.message, action: controller.messageAction,
                                        openSettings: openSettings, retry: { controller.retry() },
@@ -69,6 +70,22 @@ struct AIQuestionView: View {
         .onExitCommand(perform: controller.isWorking ? { controller.stop() } : nil)
         .onAppear { controller.refreshStaleness() }
         .onDisappear { controller.hidden() }
+    }
+
+    private func approvalCard(_ approval: AIQuestionWebApproval) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L10n.tr("AI 想要联网搜索：")).font(.headline)
+            Text(approval.query).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            Text(L10n.tr("搜索词会发送到 Jina；找到的网页内容会发送给 AI 服务器。")).font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button(L10n.tr("允许")) { controller.resolveWebApproval(true) }.buttonStyle(.borderedProminent)
+                Button(L10n.tr("拒绝")) { controller.resolveWebApproval(false) }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(L10n.tr("AI 请求联网搜索：%@", approval.query))
+        .onAppear { AccessibilityNotification.Announcement(L10n.tr("AI 请求联网搜索：%@", approval.query)).post() }
     }
 
     @ViewBuilder private var sourceDetail: some View {

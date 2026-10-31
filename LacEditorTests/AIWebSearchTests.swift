@@ -234,7 +234,7 @@ final class AIWebSearchTests: XCTestCase {
     func testConfigurationChangeDuringSearchCancels() async throws {
         installHandler(api: .responses) { $0 == 0 ? self.responsesCall("c", "q") : self.responsesFinal("done") }
         let calls = LockedCounter()
-        let web = webSession(reader: false, isCurrent: { calls.next() < 1 })
+        let web = webSession(reader: false, isCurrent: { calls.next() < 2 })
         do {
             _ = try await AIClient(session: session()).generateConversation(messages: [.user("q")], instructions: "i", profile: profile(.responses), key: nil, toolHandler: web.run)
             XCTFail("expected cancellation")
@@ -327,7 +327,8 @@ final class AIWebSearchTests: XCTestCase {
 
     @MainActor
     private func makeController(searchEnabled: Bool, reader: Bool = false, converse: @escaping ([AIConversationMessage], AIModelProfile, String?) async throws -> String,
-                                converseWeb: @escaping ([AIConversationMessage], AIModelProfile, String?, AIWebSearchSession) async throws -> String) throws -> AIQuestionController {
+                                converseWeb: @escaping ([AIConversationMessage], AIModelProfile, String?, AIWebSearchSession) async throws -> String,
+                                jinaClient: JinaClient = JinaClient()) throws -> (controller: AIQuestionController, state: AppState, preferences: AppPreferences) {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "LacEditor-AIWeb-\(UUID().uuidString)"))
         let preferences = AppPreferences(defaults: defaults)
         preferences.aiFeatures = [.ask]
@@ -336,14 +337,25 @@ final class AIWebSearchTests: XCTestCase {
         preferences.aiConfiguration = configuration
         var jina = JinaConfiguration()
         jina.searchEnabled = searchEnabled; jina.readerEnabled = reader
+        jina.searchEndpoint = "https://jina.example/search"; jina.readerEndpoint = "https://jina.example/read"
         preferences.jinaConfiguration = jina
         let state = AppState(initialDocuments: [EditorDocument(text: "Whole text")], recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
-        return AIQuestionController(appState: state, converse: converse, loadKey: { _, _ in nil }, converseWeb: converseWeb, loadJinaKey: { _, _ in nil })
+        return (AIQuestionController(appState: state, converse: converse, loadKey: { _, _ in nil }, converseWeb: converseWeb,
+                                     loadJinaKey: { _, _ in nil }, jinaClient: jinaClient), state, preferences)
     }
 
     @MainActor
     private func settle(_ controller: AIQuestionController) async {
         for _ in 0..<2000 where controller.isWorking { await Task.yield() }
+    }
+
+    @MainActor
+    private func waitFor(_ condition: @MainActor () -> Bool) async -> Bool {
+        for _ in 0..<1000 {
+            if condition() { return true }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        return condition()
     }
 
     @MainActor
@@ -356,20 +368,21 @@ final class AIWebSearchTests: XCTestCase {
     @MainActor
     func testToggleIsHiddenWithoutJinaSearchAndSurvivesNewConversation() throws {
         let off = try makeController(searchEnabled: false, converse: { _, _, _ in "" }, converseWeb: { _, _, _, _ in "" })
-        XCTAssertFalse(off.isWebSearchAvailable)
+        XCTAssertFalse(off.controller.isWebSearchAvailable)
         let on = try makeController(searchEnabled: true, converse: { _, _, _ in "" }, converseWeb: { _, _, _, _ in "" })
-        XCTAssertTrue(on.isWebSearchAvailable)
-        XCTAssertTrue(on.webSearchEnabled)
-        on.webSearchEnabled = false
-        on.newConversation()
-        XCTAssertFalse(on.webSearchEnabled)
+        XCTAssertTrue(on.controller.isWebSearchAvailable)
+        XCTAssertFalse(on.controller.webSearchEnabled)
+        on.controller.webSearchEnabled = true
+        on.controller.newConversation()
+        XCTAssertTrue(on.controller.webSearchEnabled)
     }
 
     @MainActor
     func testDisabledToggleUsesPlainConversationWithoutTools() async throws {
         var plain = 0, web = 0
-        let controller = try makeController(searchEnabled: true, converse: { _, _, _ in plain += 1; return #"{"answer":"ok","citations":[]}"# },
-                                            converseWeb: { _, _, _, _ in web += 1; return "" })
+        let setup = try makeController(searchEnabled: true, converse: { _, _, _ in plain += 1; return #"{"answer":"ok","citations":[]}"# },
+                                       converseWeb: { _, _, _, _ in web += 1; return "" })
+        let controller = setup.controller
         let observer = selectWholeDocument(try XCTUnwrap(controller.availableDocuments.first).id)
         defer { NotificationCenter.default.removeObserver(observer) }
         controller.webSearchEnabled = false
@@ -383,11 +396,13 @@ final class AIWebSearchTests: XCTestCase {
 
     @MainActor
     func testWebAnswerIsStoredAndProgressIsReset() async throws {
-        let controller = try makeController(searchEnabled: true, reader: true, converse: { _, _, _ in "" }, converseWeb: { _, _, _, _ in
+        let setup = try makeController(searchEnabled: true, reader: true, converse: { _, _, _ in "" }, converseWeb: { _, _, _, _ in
             return #"{"answer":"ok","citations":[],"webCitations":[]}"#
         })
+        let controller = setup.controller
         let observer = selectWholeDocument(try XCTUnwrap(controller.availableDocuments.first).id)
         defer { NotificationCenter.default.removeObserver(observer) }
+        controller.webSearchEnabled = true
         controller.draft = "Q"
         controller.ask()
         await settle(controller)
@@ -397,12 +412,87 @@ final class AIWebSearchTests: XCTestCase {
     }
 
     @MainActor
+    func testRepeatedQueryNeedsApprovalAgainAndDenyAddsNoNetworkOrSources() async throws {
+        WebSearchTestProtocol.handler = { _, _ in
+            (200, self.json(["data": [["title": "A", "url": "https://example.org/a", "description": "snippet A"]]]))
+        }
+        var outputs: [String] = []
+        let setup = try makeController(searchEnabled: true, converse: { _, _, _ in "" }, converseWeb: { _, _, _, web in
+            let call = AIToolCall(id: "c", name: "web_search", arguments: #"{"query":"repeat me"}"#)
+            outputs.append(try await web.run(call))
+            outputs.append(try await web.run(call))
+            return #"{"answer":"ok","citations":[]}"#
+        }, jinaClient: JinaClient(session: session()))
+        let controller = setup.controller
+        controller.webSearchEnabled = true
+        let observer = selectWholeDocument(try XCTUnwrap(controller.availableDocuments.first).id)
+        defer { NotificationCenter.default.removeObserver(observer) }
+        controller.draft = "Q"
+        controller.ask()
+        _ = await waitFor { controller.approval != nil }
+        XCTAssertEqual(controller.approval?.query, "repeat me")
+        XCTAssertTrue(jinaRequests.isEmpty)
+        controller.resolveWebApproval(true)
+        _ = await waitFor { controller.approval != nil }
+        XCTAssertEqual(controller.approval?.query, "repeat me")
+        XCTAssertEqual(jinaRequests.count, 1)
+        controller.resolveWebApproval(false)
+        await settle(controller)
+        XCTAssertEqual(jinaRequests.count, 1)
+        XCTAssertEqual(outputs.count, 2)
+        XCTAssertTrue(outputs[1].contains("declined"))
+        XCTAssertEqual(controller.turns.first?.webSources.count, 1)
+        XCTAssertEqual(controller.turns.first?.answer, "ok")
+    }
+
+    @MainActor
+    func testStopAndSettingsChangeReleasePendingWebApproval() async throws {
+        WebSearchTestProtocol.handler = { _, _ in (200, self.json(["data": []])) }
+        let stopped = try makeController(searchEnabled: true, converse: { _, _, _ in "" }, converseWeb: { _, _, _, web in
+            _ = try await web.run(AIToolCall(id: "c", name: "web_search", arguments: #"{"query":"q"}"#))
+            return #"{"answer":"late","citations":[]}"#
+        }, jinaClient: JinaClient(session: session()))
+        stopped.controller.webSearchEnabled = true
+        let firstObserver = selectWholeDocument(try XCTUnwrap(stopped.controller.availableDocuments.first).id)
+        stopped.controller.draft = "Q"; stopped.controller.ask()
+        _ = await waitFor { stopped.controller.approval != nil }
+        stopped.controller.stop()
+        XCTAssertNil(stopped.controller.approval)
+        stopped.controller.resolveWebApproval(true)
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertTrue(jinaRequests.isEmpty)
+        XCTAssertTrue(stopped.controller.turns.isEmpty)
+        NotificationCenter.default.removeObserver(firstObserver)
+
+        let changed = try makeController(searchEnabled: true, converse: { _, _, _ in "" }, converseWeb: { _, _, _, web in
+            _ = try await web.run(AIToolCall(id: "c", name: "web_search", arguments: #"{"query":"q"}"#))
+            return #"{"answer":"late","citations":[]}"#
+        }, jinaClient: JinaClient(session: session()))
+        changed.controller.webSearchEnabled = true
+        let secondObserver = selectWholeDocument(try XCTUnwrap(changed.controller.availableDocuments.first).id)
+        defer { NotificationCenter.default.removeObserver(secondObserver) }
+        changed.controller.draft = "Q"; changed.controller.ask()
+        _ = await waitFor { changed.controller.approval != nil }
+        var jina = changed.preferences.jinaConfiguration
+        jina.searchEndpoint = "https://jina.example/changed"
+        changed.preferences.jinaConfiguration = jina
+        changed.controller.settingsChanged()
+        XCTAssertNil(changed.controller.approval)
+        XCTAssertFalse(changed.controller.isWorking)
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertTrue(jinaRequests.isEmpty)
+        XCTAssertTrue(changed.controller.turns.isEmpty)
+    }
+
+    @MainActor
     func testServerRejectionWithToolsAddsHintOnlyForClientErrors() async throws {
         var status = 400
-        let controller = try makeController(searchEnabled: true, converse: { _, _, _ in "" }, converseWeb: { _, _, _, _ in throw AIError.http(status, nil) })
+        let setup = try makeController(searchEnabled: true, converse: { _, _, _ in "" }, converseWeb: { _, _, _, _ in throw AIError.http(status, nil) })
+        let controller = setup.controller
         let observer = selectWholeDocument(try XCTUnwrap(controller.availableDocuments.first).id)
         defer { NotificationCenter.default.removeObserver(observer) }
         let hint = L10n.tr("服务器拒绝了带联网搜索的请求。请关闭“在互联网上搜索”后重试（服务器可能不支持函数调用，或上下文不够长）。")
+        controller.webSearchEnabled = true
         controller.draft = "Q"
         controller.ask()
         await settle(controller)
@@ -428,6 +518,16 @@ final class AIWebSearchTests: XCTestCase {
     private func search(_ web: AIWebSearchSession, _ query: String = "q") async throws -> [String: Any] {
         let output = try await web.run(AIToolCall(id: "c", name: "web_search", arguments: "{\"query\":\"\(query)\"}"))
         return try XCTUnwrap(JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any])
+    }
+
+    func testDeniedSearchReturnsToolOutcomeWithoutNetworkSearchesOrSources() async throws {
+        let web = AIWebSearchSession(client: JinaClient(session: session()), configuration: jinaConfiguration(reader: true), searchKey: nil, readerKey: nil,
+                                     approve: { _ in false })
+        let output = try await search(web, "private query")
+        XCTAssertTrue((output["error"] as? String)?.contains("declined") == true)
+        XCTAssertTrue(jinaRequests.isEmpty)
+        XCTAssertEqual(web.searches, 0)
+        XCTAssertTrue(web.sources.isEmpty)
     }
 
     func testTruncateKeepsShortTextAndDoesNotSplitComposedCharacters() {

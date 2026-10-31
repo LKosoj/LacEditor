@@ -51,6 +51,20 @@ final class AIAgentToolsTests: XCTestCase {
 
     // MARK: - Пути
 
+    func testContentToolsRequireConsentOnlyForOpenDocumentsOutsideWorkspace() {
+        let outside = AIAgentOpenDocument(id: UUID(), name: "outside.md", relativePath: nil, text: "secret", revision: 1)
+        let inside = AIAgentOpenDocument(id: UUID(), name: "inside.md", relativePath: "inside.md", text: "workspace", revision: 1)
+        let tools = tools(open: [outside, inside])
+        for name in ["read_document", "document_outline", "document_links", "propose_edit"] {
+            let externalCall = AIToolCall(id: "c", name: name, arguments: #"{"path":"open:\#(outside.id.uuidString)"}"#)
+            XCTAssertEqual(tools.documentRequiringConsent(for: externalCall)?.id, outside.id, name)
+            let workspaceCall = AIToolCall(id: "c", name: name, arguments: #"{"path":"open:\#(inside.id.uuidString)"}"#)
+            XCTAssertNil(tools.documentRequiringConsent(for: workspaceCall), name)
+        }
+        let list = AIToolCall(id: "c", name: "list_documents", arguments: "{}")
+        XCTAssertNil(tools.documentRequiringConsent(for: list))
+    }
+
     func testEscapesAndAbsolutePathsAreRejected() async throws {
         try write("secret", "x.md")
         let tools = tools()
@@ -384,7 +398,7 @@ final class AIAgentToolsTests: XCTestCase {
             withUnsafeCurrentTask { $0?.cancel() }
             return try await self.call(tools, "update_plan", ["items": self.items(1)])
         }
-        do { _ = try await task.value; XCTFail("expected cancellation") } catch is CancellationError {} catch { XCTFail("Unexpected error") }
+        do { _ = try await task.value; XCTFail("expected cancellation") } catch is CancellationError {} catch { XCTFail("unexpected error: \(error)") }
         XCTAssertTrue(store.current.isEmpty)
     }
 

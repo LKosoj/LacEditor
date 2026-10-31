@@ -60,14 +60,15 @@ final class AIWebSearchSession: @unchecked Sendable {
     private let searchKey: String?
     private let readerKey: String?
     private let isCurrent: @Sendable () async -> Bool
+    private let approve: @Sendable (String) async -> Bool
     private let onSearch: @Sendable (Int) async -> Void
     private(set) var searches = 0
     private(set) var sources: [AIWebSource] = []
 
     init(maxSearches: Int = AIWebSearchSession.maxSearches, maxPageCharacters: Int = AIWebSearchSession.maxPageCharacters, client: JinaClient = JinaClient(), configuration: JinaConfiguration, searchKey: String?, readerKey: String?,
-         isCurrent: @escaping @Sendable () async -> Bool = { true }, onSearch: @escaping @Sendable (Int) async -> Void = { _ in }) {
+         isCurrent: @escaping @Sendable () async -> Bool = { true }, approve: @escaping @Sendable (String) async -> Bool = { _ in true }, onSearch: @escaping @Sendable (Int) async -> Void = { _ in }) {
         self.maxSearches = maxSearches; self.maxPageCharacters = maxPageCharacters; self.client = client; self.configuration = configuration; self.searchKey = searchKey; self.readerKey = readerKey
-        self.isCurrent = isCurrent; self.onSearch = onSearch
+        self.isCurrent = isCurrent; self.approve = approve; self.onSearch = onSearch
     }
 
     /// Обрезает по UTF-16 символам, не разрывая составной символ (суррогатную пару, основу с комбинирующим знаком).
@@ -97,6 +98,12 @@ final class AIWebSearchSession: @unchecked Sendable {
         }
         try Task.checkCancellation()
         guard await isCurrent() else { throw CancellationError() }
+        let approved = await approve(query)
+        try Task.checkCancellation()
+        guard await isCurrent() else { throw CancellationError() }
+        guard approved else {
+            return Self.json(["error": "web search was denied by the user. Do not retry; answer without web results and say that web search was declined."])
+        }
         searches += 1
         await onSearch(searches)
         let candidates: [JinaPage]
