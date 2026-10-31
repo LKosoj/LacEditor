@@ -106,4 +106,124 @@ final class FoldTaskTests: XCTestCase {
         coordinator.updateActivity(false)
         window.close()
     }
+
+    func testLeavingFormattedModeFoldsMediaBeforeDeferredTask() async throws {
+        for length in [300, 20_000] {
+            let payload = String(repeating: "A", count: length)
+            let source = "before\n![image](data:image/png;base64,\(payload))\nafter"
+            let document = EditorDocument(text: source, language: .markdown)
+            let editor = makeEditor(document, formatted: true)
+            defer { editor.close() }
+            let selection = NSRange(location: 2, length: 3)
+            editor.view.setSelectedRange(selection)
+            let revision = document.textRevision
+            document.isMarkdownFormatted = false
+            editor.coordinator.updateMarkdownPresentation()
+            let expected = [(source as NSString).range(of: payload)]
+            XCTAssertEqual(editor.layout.automaticMediaFoldedRanges, expected)
+            XCTAssertEqual(editor.view.string, source)
+            XCTAssertEqual(editor.view.selectedRange(), selection)
+            XCTAssertEqual(document.textRevision, revision)
+            XCTAssertFalse(document.isDirty)
+            try await Task.sleep(for: .milliseconds(250))
+            XCTAssertEqual(editor.layout.automaticMediaFoldedRanges, expected)
+        }
+    }
+
+    func testLeavingFormattedModeKeepsPayloadUnderCaretOpen() async throws {
+        let payload = String(repeating: "A", count: 300)
+        let other = String(repeating: "B", count: 300)
+        let source = "![a](data:image/png;base64,\(payload))\n![b](data:image/png;base64,\(other))"
+        let document = EditorDocument(text: source, language: .markdown)
+        let editor = makeEditor(document, formatted: true)
+        defer { editor.close() }
+        let caret = NSRange(location: (source as NSString).range(of: payload).location + 5, length: 0)
+        editor.view.setSelectedRange(caret)
+        document.isMarkdownFormatted = false
+        editor.coordinator.updateMarkdownPresentation()
+        let expected = [(source as NSString).range(of: other)]
+        XCTAssertEqual(editor.layout.automaticMediaFoldedRanges, expected)
+        XCTAssertEqual(editor.view.selectedRange(), caret)
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertEqual(editor.layout.automaticMediaFoldedRanges, expected)
+    }
+
+    func testLeavingFormattedModeRespectsDisabledFolding() async throws {
+        let source = "![image](data:image/png;base64,\(String(repeating: "A", count: 300)))"
+        let overridden = EditorDocument(text: source, language: .markdown)
+        overridden.setOverride(false, for: .folding)
+        let large = EditorDocument(text: source, language: .markdown, performanceProfile: .large)
+        for document in [overridden, large] {
+            let editor = makeEditor(document, formatted: true)
+            defer { editor.close() }
+            document.isMarkdownFormatted = false
+            editor.coordinator.updateMarkdownPresentation()
+            XCTAssertTrue(editor.layout.automaticMediaFoldedRanges.isEmpty)
+            try await Task.sleep(for: .milliseconds(250))
+            XCTAssertTrue(editor.layout.automaticMediaFoldedRanges.isEmpty)
+        }
+    }
+
+    func testLeavingFormattedModeWaitsForMarkedTextToFinish() {
+        let payload = String(repeating: "A", count: 300)
+        let source = "![image](data:image/png;base64,\(payload))"
+        let document = EditorDocument(text: source, language: .markdown)
+        let editor = makeEditor(document, formatted: true)
+        defer { editor.close() }
+        editor.view.setMarkedText("中", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: 0, length: 0))
+        document.isMarkdownFormatted = false
+        editor.coordinator.updateMarkdownPresentation()
+        XCTAssertTrue(editor.view.hasMarkedText())
+        XCTAssertTrue(editor.layout.automaticMediaFoldedRanges.isEmpty)
+        editor.view.unmarkText()
+        editor.coordinator.updateMarkdownPresentation()
+        XCTAssertEqual(editor.layout.automaticMediaFoldedRanges, [(editor.view.string as NSString).range(of: payload)])
+    }
+
+    func testSourceModeUpdateKeepsDeferredMediaFolds() async throws {
+        let payload = String(repeating: "A", count: 300)
+        let source = "![image](data:image/png;base64,\(payload))"
+        let document = EditorDocument(text: source, language: .markdown)
+        let editor = makeEditor(document, formatted: false)
+        defer { editor.close() }
+        XCTAssertTrue(editor.layout.automaticMediaFoldedRanges.isEmpty)
+        let deadline = Date().addingTimeInterval(5)
+        while editor.layout.automaticMediaFoldedRanges.isEmpty && Date() < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(editor.layout.automaticMediaFoldedRanges, [(source as NSString).range(of: payload)])
+    }
+
+    private struct Editor {
+        let coordinator: EditorTextView.Coordinator
+        let view: LacTextView
+        let layout: FoldLayoutManager
+        let scroll: NSScrollView
+
+        func close() {
+            coordinator.updateActivity(false)
+            withExtendedLifetime(scroll) {}
+        }
+    }
+
+    private func makeEditor(_ document: EditorDocument, formatted: Bool) -> Editor {
+        _ = NSApplication.shared
+        document.isMarkdownFormatted = formatted
+        let coordinator = EditorTextView.Coordinator(document: document)
+        let storage = NSTextStorage(string: coordinator.displayedText(for: document.text))
+        let layout = FoldLayoutManager()
+        storage.addLayoutManager(layout)
+        let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
+        layout.addTextContainer(container)
+        let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
+        let scroll = NSScrollView(frame: view.frame)
+        scroll.documentView = view
+        coordinator.textView = view
+        coordinator.foldLayoutManager = layout
+        view.delegate = coordinator
+        coordinator.installObservers(scrollView: scroll)
+        coordinator.updateActivity(true)
+        coordinator.updateMarkdownPresentation()
+        return Editor(coordinator: coordinator, view: view, layout: layout, scroll: scroll)
+    }
 }

@@ -438,7 +438,9 @@ struct EditorTextView: NSViewRepresentable {
             context.coordinator.remoteImageConsentChanged()
             context.coordinator.updateRemoteImagesConsentSnapshot()
         }
-        context.coordinator.updateMarkdownPresentation()
+        context.coordinator.updateMarkdownPresentation(
+            textPending: documentChanged || context.coordinator.lastSynchronizedRevision != document.textRevision
+        )
 
         // Marked text is owned by the input method. Replacing the string or its
         // attributes while it is composing cancels Chinese/Japanese/Korean input.

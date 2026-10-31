@@ -185,6 +185,7 @@ extension EditorTextView {
         private var markdownPresentation: MarkdownPresentationController?
         private var markdownImageProjection = MarkdownDataImageProjection()
         private var markdownImageProjectionEnabled = false
+        private var needsSourceMediaFolds = false
         // Режим проекции меняется редко; не повторять полную замену NSTextStorage
         // при обычных SwiftUI-обновлениях EditorTextView.
         private var lastMarkdownImageProjectionMode: Bool?
@@ -2253,6 +2254,7 @@ extension EditorTextView {
             if !shouldProject {
                 markdownImageProjectionEnabled = false
                 markdownImageProjection = MarkdownDataImageProjection()
+                needsSourceMediaFolds = true
             }
             isApplyingExternalUpdate = true
             textView.textStorage?.replaceCharacters(in: NSRange(location: 0, length: (oldDisplay as NSString).length), with: next)
@@ -3372,7 +3374,8 @@ extension EditorTextView {
             return true
         }
 
-        func updateMarkdownPresentation() {
+        /// `textPending`: `updateNSView` ещё заменит строку редактора и вызовет метод повторно.
+        func updateMarkdownPresentation(textPending: Bool = false) {
             guard let textView, let foldLayoutManager else { return }
             synchronizeMarkdownImageProjection()
             if markdownPresentation == nil {
@@ -3471,6 +3474,7 @@ extension EditorTextView {
             )
             updateTableCellWritingDirection()
             updateTableCellTaskStrike()
+            if !textPending { applySourceMediaFolds() }
             scheduleAutomaticMediaFolds()
         }
 
@@ -5230,10 +5234,36 @@ extension EditorTextView {
             ruler?.needsDisplay = true
         }
 
+        private var allowsAutomaticMediaFolds: Bool {
+            isActive && document.isFoldingEnabled && currentLanguage == .markdown
+                && !document.isMarkdownFormatted && textView != nil
+        }
+
+        /// Выход из оформленного режима сразу показывает весь Base64: диапазоны ставятся до первой отрисовки.
+        /// Полный поиск на главном потоке идёт один раз на переход; при наборе он остаётся в отложенной задаче.
+        private func applySourceMediaFolds() {
+            guard needsSourceMediaFolds else { return }
+            needsSourceMediaFolds = false
+            guard allowsAutomaticMediaFolds, let text = textView?.string else { return }
+            applyAutomaticMediaFolds(FoldService.mediaPayloadRanges(in: text))
+        }
+
+        private func applyAutomaticMediaFolds(_ ranges: [NSRange]) {
+            let selection = textView?.selectedRange()
+            let visibleRanges = ranges.filter { range in
+                guard let selection else { return true }
+                return !(selection.location >= range.location && selection.location <= NSMaxRange(range))
+            }
+            let previous = foldLayoutManager?.automaticMediaFoldedRanges ?? []
+            guard foldLayoutManager?.setAutomaticMediaFoldedRanges(visibleRanges) == true else { return }
+            // Те же сворачивания на новых местах (набор выше) общую геометрию не меняют: полная раскладка нужна только при другом их наборе.
+            let current = foldLayoutManager?.automaticMediaFoldedRanges ?? []
+            refreshFoldLayout(fullLayout: previous != current)
+        }
+
         private func scheduleAutomaticMediaFolds() {
             automaticMediaFoldTask?.cancel()
-            guard isActive, document.isFoldingEnabled, currentLanguage == .markdown,
-                  !document.isMarkdownFormatted, textView != nil else {
+            guard allowsAutomaticMediaFolds else {
                 // В оформленном редакторе автоматические media-fold не работают.
                 // Очищаем их только при фактическом переходе из обычного
                 // режима; повторная запись пустого списка на каждый символ
@@ -5255,16 +5285,7 @@ extension EditorTextView {
                 guard !Task.isCancelled, self.isActive,
                       self.contentRevision == revision, self.currentLanguage == .markdown,
                       !self.document.isMarkdownFormatted, self.document.isFoldingEnabled else { return }
-                let selection = self.textView?.selectedRange()
-                let visibleRanges = ranges.filter { range in
-                    guard let selection else { return true }
-                    return !(selection.location >= range.location && selection.location <= NSMaxRange(range))
-                }
-                let previous = self.foldLayoutManager?.automaticMediaFoldedRanges ?? []
-                guard self.foldLayoutManager?.setAutomaticMediaFoldedRanges(visibleRanges) == true else { return }
-                // Те же сворачивания на новых местах (набор выше) общую геометрию не меняют: полная раскладка нужна только при другом их наборе.
-                let current = self.foldLayoutManager?.automaticMediaFoldedRanges ?? []
-                self.refreshFoldLayout(fullLayout: previous != current)
+                self.applyAutomaticMediaFolds(ranges)
             }
         }
     }

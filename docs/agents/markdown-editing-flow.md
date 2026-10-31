@@ -186,6 +186,19 @@ CLI Claude, запущенный от `claude-bot`, подтвердил цеп�
 
 Следующий минимальный замер: один и тот же документ, оформление OFF/ON, курсор в конце и в середине; отдельно измерить `shouldChangeText`, `beforeEdit`, `textViewDidChangeSelection`, `scheduleSelectionVisibilitySync`, `updateNSView`, копии `as String`, `shouldGenerateGlyphs` и оба сдвига диапазонов. Только после этого менять код.
 
+### Исследование вспышки полного текста изображения при OFF
+
+Claude и Grok независимо подтвердили порядок:
+
+1. `synchronizeMarkdownImageProjection` восстанавливает полный исходный Markdown в `NSTextStorage` при переходе из formatted mode в source mode ([EditorCoordinator.swift:2241](../../LacEditor/Editor/EditorCoordinator.swift#L2241)).
+2. `MarkdownPresentationController.update(enabled: false)` синхронно вызывает `clear()`, снимая скрытые глифы и оформленные изображения ([MarkdownPresentationController.swift:517](../../LacEditor/Editor/MarkdownPresentationController.swift#L517), [MarkdownPresentationController.swift:1771](../../LacEditor/Editor/MarkdownPresentationController.swift#L1771)).
+3. `scheduleAutomaticMediaFolds` только ставит задачу с паузой 80 мс, после чего в фоне ищет Base64 и возвращает диапазоны ([EditorCoordinator.swift:5233](../../LacEditor/Editor/EditorCoordinator.swift#L5233)).
+4. До завершения этой задачи `automaticMediaFoldedRanges` пуст, поэтому первая отрисовка показывает полный `![...](data:image...;base64,...)`. После установки диапазонов вызывается полная раскладка, и строка сворачивается.
+
+Это отличается от обычного открытия source mode тем, что при OFF окно уже отображается: сначала виден старый оформленный вид, затем полный исходник, затем позднее свёрнутый исходник. Текст, dirty state и undo при этом не меняются.
+
+Минимальная точка исправления — переход из projection в source mode: применить media-fold диапазоны до первой отрисовки, не меняя текст и не трогая IME, каретку внутри payload, `DocumentFeatureOverrides.folding == false` и большой профиль. Нельзя просто убрать задержку для всех вводов: 80 мс нужна для обычного набора. Перед исправлением добавить тесты «сразу после OFF» и «после задачи», а также отдельно проверить payload 300 и 20 000 символов.
+
 ## План ускорения обоих режимов
 
 Цель — уменьшить задержку на главном потоке в исходном и оформленном редакторе, сохранив поведение документов, отмену, подсветку и фоновые проверки.
