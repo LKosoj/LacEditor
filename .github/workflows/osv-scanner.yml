@@ -1,0 +1,39 @@
+name: OSV dependency scan
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Scan Swift and vendored dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Verify vendored dependency provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          sequence_file="LacEditor/Resources/LegacyDiagrams/sequence-diagram-snap-min.js"
+          printf '%s  %s\n' \
+            "89e99999dfa83ee9fb88e58beb7820961dbfcf391cee2f361ffd4a3489309c69" "LacEditor/Resources/LegacyDiagrams/underscore-min.js" \
+            "92905fb54f5d168a27e6d5dc7c2197020add11842be4c70689d084bae3bfe37a" "LacEditor/Resources/LegacyDiagrams/UNDERSCORE-LICENSE.txt" \
+            "115a5a788eb973e7769a5473c6c9c9b7559f4159016745c229a9e3fae23cf7a8" "$sequence_file" | sha256sum --check --strict -
+          curl --fail --silent --show-error --location \
+            "https://raw.githubusercontent.com/bramp/js-sequence-diagrams/a6c252b2ed0d1e6b1d16be066f582afd2895e6c9/dist/sequence-diagram-snap-min.js" | cmp - "$sequence_file"
+      - name: Scan dependency lockfiles
+        uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36
+        with:
+          scan-args: |-
+            --lockfile=Package.resolved
+            --lockfile=LacEditor.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+            --lockfile=package-lock.json:LacEditor/Resources/LegacyDiagrams/vendored-package-lock.json

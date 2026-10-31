@@ -1,0 +1,4 @@
+[[IgnoredVulns]]
+id = "MAL-2025-23922"
+ignoreUntil = 2027-01-31
+reason = "Only the local sequence-diagram-snap-min.js is excepted: CI verifies SHA256 115a5a788eb973e7769a5473c6c9c9b7559f4159016745c229a9e3fae23cf7a8 and byte identity with bramp/js-sequence-diagrams commit a6c252b2ed0d1e6b1d16be066f582afd2895e6c9. This is not a waiver for the npm package."
