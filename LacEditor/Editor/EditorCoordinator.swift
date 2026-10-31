@@ -261,6 +261,7 @@ extension EditorTextView {
         private var rulerRefreshWorkItem: DispatchWorkItem?
         private var rulerRefreshNeedsLayout = false
         private var selectionVisibilityWorkItem: DispatchWorkItem?
+        private var cursorStateWorkItem: DispatchWorkItem?
         private var textCodecSuggestionWorkItem: DispatchWorkItem?
         private var textCodecSuggestionGeneration: UInt = 0
         private var modelSyncWorkItem: DispatchWorkItem?
@@ -588,6 +589,7 @@ extension EditorTextView {
             rulerRefreshWorkItem?.cancel()
             liveResizeLayoutWorkItem?.cancel()
             selectionVisibilityWorkItem?.cancel()
+            cursorStateWorkItem?.cancel()
             typewriterWorkItem?.cancel()
             textCodecSuggestionWorkItem?.cancel()
             clearFindHighlights()
@@ -3875,8 +3877,11 @@ extension EditorTextView {
             if document.statusMessage != nil { document.statusMessage = nil }
             clearFold()
             scheduleAutomaticMediaFolds()
-            refreshRuler()
-            updateCursor()
+            // TextKit уже инвалидировал затронутую строку. Не требуем полной
+            // видимой раскладки ради линейки на каждом символе; отложенная
+            // перерисовка линейки использует актуальную геометрию.
+            scheduleRulerRefresh(ensureLayout: false)
+            scheduleCursorStateUpdate()
             scheduleDelimiterMatch()
             scheduleSelectionVisibilitySync()
             if !isApplyingAutomatedEdit { scheduleTypewriterCentering() }
@@ -4887,6 +4892,21 @@ extension EditorTextView {
             if document.cursorColumn != position.column { document.cursorColumn = position.column }
         }
 
+        /// Публикация строки/колонки курсора не нужна синхронно для каждого
+        /// символа: TextKit уже обновил реальную каретку. Объединяем серии
+        /// быстрых вводов, чтобы SwiftUI не перестраивал правую панель на каждую
+        /// клавишу.
+        private func scheduleCursorStateUpdate() {
+            cursorStateWorkItem?.cancel()
+            let workItem = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                cursorStateWorkItem = nil
+                updateCursor()
+            }
+            cursorStateWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
+        }
+
         private func combinedEdit(
             from original: String,
             to replacement: String
@@ -5180,7 +5200,13 @@ extension EditorTextView {
             automaticMediaFoldTask?.cancel()
             guard isActive, document.isFoldingEnabled, currentLanguage == .markdown,
                   !document.isMarkdownFormatted, let textView else {
-                foldLayoutManager?.setAutomaticMediaFoldedRanges([])
+                // В оформленном редакторе автоматические media-fold не работают.
+                // Очищаем их только при фактическом переходе из обычного
+                // режима; повторная запись пустого списка на каждый символ
+                // инвалидировала бы раскладку.
+                if foldLayoutManager?.automaticMediaFoldedRanges.isEmpty == false {
+                    foldLayoutManager?.setAutomaticMediaFoldedRanges([])
+                }
                 return
             }
             let snapshot = textView.string
