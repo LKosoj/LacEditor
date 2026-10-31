@@ -31,7 +31,7 @@ function Image(image)
     if scheme or path:find('\0', 1, true) or path:sub(1, 1) == '/' then error('Cannot read image: ' .. source) end
     local resolved = source_root and canonical_path(pandoc.path.join({source_root, path}))
     if not resolved or not inside_source(resolved) then error('Cannot read image: ' .. source) end
-    mime, contents = pandoc.mediabag.fetch(resolved)
+    mime, contents = pandoc.mediabag.fetch((resolved:gsub('%%', '%%25')))
   end
   if not contents then error('Cannot read image: ' .. source) end
   image.src = pandoc.mediabag.make_data_uri(mime or '', contents)
