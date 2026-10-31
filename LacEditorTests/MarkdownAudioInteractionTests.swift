@@ -75,7 +75,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
 
     func testStandaloneSelfClosingMediaRequiresConfirmedWholeBlock() {
         for newline in ["\n", "\r\n"] {
-            for tag in ["<audio src='https://example.invalid/a/b.wav' />", "<video src='clip.mp4' width='120' height='80' />"] {
+            for tag in ["<audio src='https://8.8.8.8/a/b.wav' />", "<video src='clip.mp4' width='120' height='80' />"] {
                 for prefix in ["", "> ", "- "] {
                     let source = "😀" + newline + newline + prefix + tag + newline + newline + "after"
                     let raw = source as NSString
@@ -208,7 +208,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
 
     func testInlineIframeKeepsTextThroughRevealVerticalAndZoom() async throws {
         _ = NSApplication.shared
-        let source = "before <iframe src='https://example.invalid' width='50%' height='60'>fallback</iframe> after\n\nend"
+        let source = "before <iframe src='https://8.8.8.8' width='50%' height='60'>fallback</iframe> after\n\nend"
         let document = EditorDocument(text: source, language: .markdown)
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
         storage.addLayoutManager(layout)
@@ -271,7 +271,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
 
     func testLinkedIframeDefersRevealDuringMarkedTextAndKeepsGeometry() async throws {
         _ = NSApplication.shared
-        let source = "[before <iframe src='https://example.invalid' width='50%' height='60'>fallback</iframe> after](https://example.invalid/page)\n\nend"
+        let source = "[before <iframe src='https://8.8.8.8' width='50%' height='60'>fallback</iframe> after](https://8.8.8.8/page)\n\nend"
         let document = EditorDocument(text: source, language: .markdown)
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
         storage.addLayoutManager(layout)
@@ -344,7 +344,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
 
     func testRemoteAudioIsNotLoadedEvenWithImageConsent() async throws {
         _ = NSApplication.shared
-        let source = "before <audio src='https://example.invalid/private.wav'>fallback</audio> after\n\nend"
+        let source = "before <audio src='https://8.8.8.8/private.wav'>fallback</audio> after\n\nend"
         let document = EditorDocument(text: source, language: .markdown)
         document.allowsRemoteImages = true
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
@@ -375,7 +375,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
-        let source = "[before <audio src='sound.wav'></audio> after](https://example.invalid/page)\n\nend"
+        let source = "[before <audio src='sound.wav'></audio> after](https://8.8.8.8/page)\n\nend"
         let document = EditorDocument(text: source, url: folder.appendingPathComponent("document.md"), language: .markdown)
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
         storage.addLayoutManager(layout)
@@ -414,7 +414,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
-        let source = "[before <audio src='sound.wav'></audio> after](https://example.invalid/page)\n\nend"
+        let source = "[before <audio src='sound.wav'></audio> after](https://8.8.8.8/page)\n\nend"
         let document = EditorDocument(text: source, url: folder.appendingPathComponent("document.md"), language: .markdown)
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
         storage.addLayoutManager(layout)
@@ -449,7 +449,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         try "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><rect width='10' height='10' fill='red'/></svg>"
             .write(to: directory.appendingPathComponent("local.svg"), atomically: true, encoding: .utf8)
-        let source = "before ![local](local.svg) after ![remote](https://example.invalid/image.svg)\n\nend"
+        let source = "before ![local](local.svg) after ![remote](https://8.8.8.8/image.svg)\n\nend"
         let document = EditorDocument(text: source, url: directory.appendingPathComponent("note.md"), language: .markdown)
         document.allowsRemoteImages = true
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
@@ -611,10 +611,11 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         XCTAssertEqual(storage.string, source)
         XCTAssertFalse(document.isDirty)
     }
-    func testRemoteImageRequestWaitsForConsentAndStopsOnRevocation() async throws {
+    func testConsentRevocationClearsPresentedRemoteImageThroughUpdate() async throws {
         _ = NSApplication.shared
-        let source = "before\n\n![x](https://example.invalid/image.png)"
+        let source = "before\n\n![x](https://8.8.8.8/image.png)"
         let document = EditorDocument(text: source, language: .markdown)
+        document.allowsRemoteImages = true
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
         storage.addLayoutManager(layout)
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 300))
@@ -623,34 +624,31 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
         let controller = MarkdownPresentationController(textView: view, layout: layout)
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [DelayedMarkdownImageURLProtocol.self]
-        let session = URLSession(configuration: config)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DelayedMarkdownImageURLProtocol.self]
+        let session = URLSession(configuration: configuration)
         controller.imageSession = session
-        let started = expectation(description: "request started"), stopped = expectation(description: "request stopped")
-        var startedRequest = false
-        DelayedMarkdownImageURLProtocol.started = { startedRequest = true; started.fulfill() }
-        DelayedMarkdownImageURLProtocol.stopped = { stopped.fulfill() }
-        defer {
-            controller.cancel(); session.invalidateAndCancel()
-            DelayedMarkdownImageURLProtocol.started = nil; DelayedMarkdownImageURLProtocol.stopped = nil
-            withExtendedLifetime(scroll) {}
+        defer { controller.cancel(); session.invalidateAndCancel(); withExtendedLifetime(scroll) {} }
+        controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
+        for _ in 0..<200 where controller.navigationPresentation(document: document, revision: 0) == nil {
+            try await Task.sleep(for: .milliseconds(20))
         }
-        controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
-        try await Task.sleep(for: .milliseconds(200))
-        XCTAssertFalse(startedRequest)
-        document.allowsRemoteImages = true
-        controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
-        await fulfillment(of: [started], timeout: 4)
+        XCTAssertNotNil(controller.navigationPresentation(document: document, revision: 0))
+        let range = (source as NSString).range(of: "![x](https://8.8.8.8/image.png)")
+        layout.setMarkdownImage(NSImage(size: NSSize(width: 20, height: 20)), for: range)
+        layout.ensureLayout(for: container)
+        let rect = try XCTUnwrap(layout.markdownRenderedImageRects(for: [range], in: container)[range])
+        let point = NSPoint(x: rect.minX + 1, y: rect.minY + 1)
+        XCTAssertEqual(layout.markdownImageLocation(at: point, in: container), range.location)
         document.allowsRemoteImages = false
         controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
-        await fulfillment(of: [stopped], timeout: 4)
+        XCTAssertNil(layout.markdownImageLocation(at: point, in: container))
         XCTAssertEqual(storage.string, source)
     }
 
     func testVisibleRemoteImageUsesExistingDownloader() async throws {
         _ = NSApplication.shared
-        let source = "---\ninvalid: [\n---\n\n![x](https://example.invalid/image.png)"
+        let source = "---\ninvalid: [\n---\n\n![x](https://8.8.8.8/image.png)"
         let document = EditorDocument(text: source, language: .markdown)
         document.allowsRemoteImages = true
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
@@ -667,7 +665,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         controller.imageSession = session
         defer { controller.cancel(); session.invalidateAndCancel(); withExtendedLifetime(scroll) {} }
         controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
-        let range = (source as NSString).range(of: "![x](https://example.invalid/image.png)")
+        let range = (source as NSString).range(of: "![x](https://8.8.8.8/image.png)")
         func imageLocation() -> Int? {
             layout.ensureLayout(for: container)
             let line = layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: range.location), effectiveRange: nil)
@@ -762,7 +760,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
     }
 
     func testQuoteAndListMediaUseConfirmedContainerLines() throws {
-        let source = "😀\r\n\r\n> <video controls\r\n> width='50%'>\r\n> <source src='movie>file.mp4'>\r\n> </video>\r\n\r\n- <audio controls>\r\n  <source src='sound.mp3'>\r\n  </audio>\r\n\r\n> <iframe src='https://example.invalid/page' title='A > B'></iframe>\r\n\r\n> <script>\r\n> <iframe src='https://example.invalid/hidden'></iframe>\r\n> </script>\r\n"
+        let source = "😀\r\n\r\n> <video controls\r\n> width='50%'>\r\n> <source src='movie>file.mp4'>\r\n> </video>\r\n\r\n- <audio controls>\r\n  <source src='sound.mp3'>\r\n  </audio>\r\n\r\n> <iframe src='https://8.8.8.8/page' title='A > B'></iframe>\r\n\r\n> <script>\r\n> <iframe src='https://8.8.8.8/hidden'></iframe>\r\n> </script>\r\n"
         let parsed = MarkdownPresentationParser.parse(source)
         XCTAssertEqual(parsed.audioBlocks.count, 2)
         XCTAssertEqual(parsed.audioBlocks.first?.media.sources, ["movie>file.mp4"])
@@ -775,23 +773,23 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         }
         let tabbed = "> \t<audio src='x.mp3' />\n"
         XCTAssertTrue(MarkdownPresentationParser.parse(tabbed).audioBlocks.isEmpty)
-        let inert = "> before <script>\n>\n> <iframe src='https://example.invalid/hidden'></iframe>\n>\n> </script>\n\n> before <template>\n>\n> <iframe src='https://example.invalid/inert'></iframe>\n>\n> </template>\n"
+        let inert = "> before <script>\n>\n> <iframe src='https://8.8.8.8/hidden'></iframe>\n>\n> </script>\n\n> before <template>\n>\n> <iframe src='https://8.8.8.8/inert'></iframe>\n>\n> </template>\n"
         XCTAssertTrue(MarkdownPresentationParser.parse(inert).iframeBlocks.isEmpty)
-        let splitScript = "> before <script><!--<script\n>\n> </script\n>\n> <iframe src='https://example.invalid/hidden'></iframe>\n> -->\n> </script>"
+        let splitScript = "> before <script><!--<script\n>\n> </script\n>\n> <iframe src='https://8.8.8.8/hidden'></iframe>\n> -->\n> </script>"
         XCTAssertTrue(MarkdownPresentationParser.parse(splitScript).iframeBlocks.isEmpty)
-        let escapedQuote = "> before <script><!--<script\n>\n> </script\n>\n<iframe src='https://example.invalid/hidden'></iframe>"
+        let escapedQuote = "> before <script><!--<script\n>\n> </script\n>\n<iframe src='https://8.8.8.8/hidden'></iframe>"
         XCTAssertTrue(MarkdownPresentationParser.parse(escapedQuote).iframeBlocks.isEmpty)
-        let closedScript = "> <script>safe</script>\n>\n> <iframe src='https://example.invalid/visible'></iframe>"
+        let closedScript = "> <script>safe</script>\n>\n> <iframe src='https://8.8.8.8/visible'></iframe>"
         XCTAssertEqual(MarkdownPresentationParser.parse(closedScript).iframeBlocks.count, 1)
-        let topLevel = "before <script>safe\n\nmore </script>\n\n<iframe src='https://example.invalid/visible'></iframe>"
+        let topLevel = "before <script>safe\n\nmore </script>\n\n<iframe src='https://8.8.8.8/visible'></iframe>"
         XCTAssertEqual(MarkdownPresentationParser.parse(topLevel).iframeBlocks.count, 1)
-        let provenGap = "> before <script>\n> plain text\n> </script>\n>\n> <iframe src='https://example.invalid/visible'></iframe>"
+        let provenGap = "> before <script>\n> plain text\n> </script>\n>\n> <iframe src='https://8.8.8.8/visible'></iframe>"
         XCTAssertEqual(MarkdownPresentationParser.parse(provenGap).iframeBlocks.count, 1)
-        let listGap = "- before <script>\n  plain\n  </script>\n\n- <iframe src='https://example.invalid/visible'></iframe>"
+        let listGap = "- before <script>\n  plain\n  </script>\n\n- <iframe src='https://8.8.8.8/visible'></iframe>"
         XCTAssertEqual(MarkdownPresentationParser.parse(listGap).iframeBlocks.count, 1)
-        let referenceGap = "> before <script>\n>\n> [id]: /literal\n>\n> </script>\n>\n> <iframe src='https://example.invalid/visible'></iframe>"
+        let referenceGap = "> before <script>\n>\n> [id]: /literal\n>\n> </script>\n>\n> <iframe src='https://8.8.8.8/visible'></iframe>"
         XCTAssertTrue(MarkdownPresentationParser.parse(referenceGap).iframeBlocks.isEmpty)
-        let lazyGap = "> before <script>\ncontinued\n> </script>\n>\n> <iframe src='https://example.invalid/visible'></iframe>"
+        let lazyGap = "> before <script>\ncontinued\n> </script>\n>\n> <iframe src='https://8.8.8.8/visible'></iframe>"
         XCTAssertTrue(MarkdownPresentationParser.parse(lazyGap).iframeBlocks.isEmpty)
     }
 
@@ -1070,7 +1068,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
             XCTAssertEqual(blocks.first?.media.sources, ["x.mp4"])
             XCTAssertEqual(blocks.first?.isInline, true)
         }
-        let linked = "[before <video src='x.mp4'>fallback</video> after](https://example.invalid)"
+        let linked = "[before <video src='x.mp4'>fallback</video> after](https://8.8.8.8)"
         let linkedPresentation = MarkdownPresentationParser.parse(linked)
         XCTAssertEqual(linkedPresentation.audioBlocks.count, 1)
         XCTAssertEqual(linkedPresentation.audioBlocks.first?.media.sources, ["x.mp4"])

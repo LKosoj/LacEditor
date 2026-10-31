@@ -113,6 +113,7 @@ extension EditorTextView {
                 if oldValue !== document { cancelMarkdownLinkNavigation(); cachedMarkdownNavigation = nil; endEmojiCompletion(); endWikiCompletion() }
             }
         }
+        private(set) var remoteImagesConsentSnapshot: Bool
         weak var textView: LacTextView?
         weak var ruler: LineNumberRulerView?
         weak var scrollView: NSScrollView?
@@ -291,6 +292,7 @@ extension EditorTextView {
 
         init(document: EditorDocument) {
             self.document = document
+            remoteImagesConsentSnapshot = document.allowsRemoteImages
             currentLanguage = document.language
             lastSynchronizedRevision = document.textRevision
             contentRevision = document.textRevision
@@ -3782,6 +3784,10 @@ extension EditorTextView {
             }
             typewriterWorkItem = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: work)
+        }
+
+        func updateRemoteImagesConsentSnapshot(_ allowed: Bool) {
+            remoteImagesConsentSnapshot = allowed
         }
 
         func remoteImageConsentChanged() {

@@ -2,6 +2,8 @@ import Foundation
 import Darwin
 
 final class MarkdownRemoteImageDownloader: @unchecked Sendable {
+    typealias AddressResolver = @Sendable (String) async throws -> [String]
+
     struct Limits: Sendable {
         var maximumImageBytes = 8 * 1024 * 1024
         var maximumBatchBytes = 32 * 1024 * 1024
@@ -53,11 +55,13 @@ final class MarkdownRemoteImageDownloader: @unchecked Sendable {
     private let session: URLSession
     private let limits: Limits
     private let budget: Budget
+    private let resolver: AddressResolver
 
-    init(session: URLSession? = nil, limits: Limits = .init()) {
+    init(session: URLSession? = nil, limits: Limits = .init(), resolver: @escaping AddressResolver = MarkdownRemoteImageDownloader.resolveSystemAddresses) {
         self.session = session ?? Self.makeSession()
         self.limits = limits
         self.budget = Budget(limits: limits)
+        self.resolver = resolver
     }
 
     static func makeSession(protocolClasses: [AnyClass]? = nil) -> URLSession {
@@ -102,7 +106,15 @@ final class MarkdownRemoteImageDownloader: @unchecked Sendable {
     }
 
     func download(_ url: URL) async throws -> MarkdownImageUploadService.Payload {
-        try Self.validate(url)
+        let host = try Self.normalizedHost(url)
+        if Self.isLocalHostname(host) { throw DownloadError.blockedAddress }
+        if Self.isIPAddress(host) {
+            try Self.validateResolvedAddress(host)
+        } else {
+            let addresses = try await resolver(host)
+            guard !addresses.isEmpty else { throw DownloadError.response }
+            for address in addresses { try Self.validateResolvedAddress(address) }
+        }
         guard limits.maximumImageBytes > 0, limits.maximumBatchBytes > 0, await budget.beginImage() else { throw DownloadError.limit }
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         components?.fragment = nil
@@ -138,33 +150,76 @@ final class MarkdownRemoteImageDownloader: @unchecked Sendable {
     }
 
     static func validate(_ url: URL) throws {
+        let host = try normalizedHost(url)
+        if isLocalHostname(host) { throw DownloadError.blockedAddress }
+        if isIPAddress(host) { try validateResolvedAddress(host) }
+    }
+
+    @Sendable private static func resolveSystemAddresses(host: String) async throws -> [String] {
+        var hints = addrinfo()
+        hints.ai_family = AF_UNSPEC
+        hints.ai_socktype = SOCK_STREAM
+        var first: UnsafeMutablePointer<addrinfo>?
+        guard getaddrinfo(host, nil, &hints, &first) == 0, let first else { throw DownloadError.response }
+        defer { freeaddrinfo(first) }
+        var addresses: [String] = []
+        var current: UnsafeMutablePointer<addrinfo>? = first
+        while let node = current {
+            defer { current = node.pointee.ai_next }
+            var buffer = [CChar](repeating: 0, count: 1025)
+            let result = getnameinfo(node.pointee.ai_addr, node.pointee.ai_addrlen, &buffer, socklen_t(buffer.count), nil, 0, NI_NUMERICHOST)
+            guard result == 0 else { throw DownloadError.response }
+            addresses.append(String(cString: buffer))
+        }
+        return addresses
+    }
+
+    private static func normalizedHost(_ url: URL) throws -> String {
         guard ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.user == nil, url.password == nil,
               var host = url.host?.lowercased(), !host.isEmpty else { throw DownloadError.invalidURL }
         while host.hasSuffix(".") { host.removeLast() }
-        if host == "localhost" || host.hasSuffix(".localhost") { throw DownloadError.blockedAddress }
+        return host
+    }
+
+    private static func isLocalHostname(_ host: String) -> Bool {
+        host == "localhost" || host.hasSuffix(".localhost")
+    }
+
+    private static func addressBody(_ host: String) -> String {
+        var host = host
         if host.hasPrefix("[") && host.hasSuffix("]") { host = String(host.dropFirst().dropLast()) }
         if let zone = host.firstIndex(of: "%") { host = String(host[..<zone]) }
+        return host
+    }
+
+    private static func isIPAddress(_ host: String) -> Bool {
+        let host = addressBody(host)
+        var ipv4 = in_addr(), ipv6 = in6_addr()
+        return inet_pton(AF_INET, host, &ipv4) == 1 || inet_pton(AF_INET6, host, &ipv6) == 1
+    }
+
+    private static func validateResolvedAddress(_ host: String) throws {
+        let host = addressBody(host)
         var ipv4 = in_addr()
         if inet_pton(AF_INET, host, &ipv4) == 1 {
             guard !isBlockedIPv4(UInt32(bigEndian: ipv4.s_addr)) else { throw DownloadError.blockedAddress }
             return
         }
         var ipv6 = in6_addr()
-        if inet_pton(AF_INET6, host, &ipv6) == 1 {
-            let bytes = withUnsafeBytes(of: &ipv6) { Array($0) }
-            if bytes.prefix(10).allSatisfy({ $0 == 0 }), bytes[10] == 0xff, bytes[11] == 0xff {
-                let value = (UInt32(bytes[12]) << 24) | (UInt32(bytes[13]) << 16) | (UInt32(bytes[14]) << 8) | UInt32(bytes[15])
-                guard !isBlockedIPv4(value) else { throw DownloadError.blockedAddress }
-                return
-            }
-            let unspecified = bytes.allSatisfy { $0 == 0 }
-            let loopback = bytes.prefix(15).allSatisfy({ $0 == 0 }) && bytes[15] == 1
-            let linkLocal = bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80
-            let siteLocal = bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0xc0
-            let uniqueLocal = (bytes[0] & 0xfe) == 0xfc
-            let multicast = (bytes[0] & 0xf0) == 0xf0
-            guard !unspecified, !loopback, !linkLocal, !siteLocal, !uniqueLocal, !multicast else { throw DownloadError.blockedAddress }
+        guard inet_pton(AF_INET6, host, &ipv6) == 1 else { throw DownloadError.response }
+        let bytes = withUnsafeBytes(of: &ipv6) { Array($0) }
+        if bytes.prefix(10).allSatisfy({ $0 == 0 }), bytes[10] == 0xff, bytes[11] == 0xff {
+            let value = (UInt32(bytes[12]) << 24) | (UInt32(bytes[13]) << 16) | (UInt32(bytes[14]) << 8) | UInt32(bytes[15])
+            guard !isBlockedIPv4(value) else { throw DownloadError.blockedAddress }
+            return
         }
+        let unspecified = bytes.allSatisfy { $0 == 0 }
+        let loopback = bytes.prefix(15).allSatisfy({ $0 == 0 }) && bytes[15] == 1
+        let linkLocal = bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80
+        let siteLocal = bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0xc0
+        let uniqueLocal = (bytes[0] & 0xfe) == 0xfc
+        let multicast = (bytes[0] & 0xf0) == 0xf0
+        guard !unspecified, !loopback, !linkLocal, !siteLocal, !uniqueLocal, !multicast else { throw DownloadError.blockedAddress }
     }
 
     private static func isBlockedIPv4(_ value: UInt32) -> Bool {

@@ -347,6 +347,7 @@ final class MarkdownPresentationController {
     private var needsCompositionRefresh = false
     private var generation: UInt = 0
     private var document: EditorDocument?
+    private var remoteImagesConsentSnapshot = false
     private var appliedReadingMode = false
     private var revision: UInt = 0
     private var currentRevision: (() -> UInt)?
@@ -431,7 +432,8 @@ final class MarkdownPresentationController {
         let documentChanged = self.document !== document
         if documentChanged || self.revision != revision { expandedDetails.removeAll() }
         let imageBaseChanged = imageBaseURL != document.url
-        let remoteImagesChanged = self.document?.allowsRemoteImages != document.allowsRemoteImages
+        let remoteImagesChanged = remoteImagesConsentSnapshot != document.allowsRemoteImages
+        remoteImagesConsentSnapshot = document.allowsRemoteImages
         let imageContextChanged = imageBaseChanged || remoteImagesChanged
         if imageContextChanged {
             cancel()

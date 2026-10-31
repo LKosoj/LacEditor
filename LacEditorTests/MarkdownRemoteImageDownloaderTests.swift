@@ -8,6 +8,7 @@ private final class MarkdownDisplayURLProtocol: URLProtocol {
         var status = 200
         var chunks: [Data] = []
         var headers: [String: String] = [:]
+        var omitContentLength = false
         var hold = false
     }
 
@@ -23,7 +24,7 @@ private final class MarkdownDisplayURLProtocol: URLProtocol {
         guard let stub = Self.handler?(request) else { return }
         if stub.hold { return }
         var headers = stub.headers
-        headers["Content-Length"] = String(stub.chunks.reduce(0) { $0 + $1.count })
+        if !stub.omitContentLength { headers["Content-Length"] = String(stub.chunks.reduce(0) { $0 + $1.count }) }
         let response = HTTPURLResponse(url: request.url!, statusCode: stub.status, httpVersion: nil, headerFields: headers)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         for chunk in stub.chunks { client?.urlProtocol(self, didLoad: chunk) }
@@ -31,6 +32,13 @@ private final class MarkdownDisplayURLProtocol: URLProtocol {
     }
 
     override func stopLoading() { Self.stopped?() }
+}
+
+private final class MarkdownResolverRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var hosts: [String] = []
+    var values: [String] { lock.lock(); defer { lock.unlock() }; return hosts }
+    func append(_ host: String) { lock.lock(); hosts.append(host); lock.unlock() }
 }
 
 private final class MarkdownRTFRequestServer: @unchecked Sendable {
@@ -91,9 +99,9 @@ final class MarkdownRemoteImageDownloaderTests: XCTestCase {
         super.tearDown()
     }
 
-    private func makeDownloader(limits: MarkdownRemoteImageDownloader.Limits = .init()) -> (MarkdownRemoteImageDownloader, URLSession) {
+    private func makeDownloader(limits: MarkdownRemoteImageDownloader.Limits = .init(), resolver: @escaping MarkdownRemoteImageDownloader.AddressResolver = { _ in ["8.8.8.8"] }) -> (MarkdownRemoteImageDownloader, URLSession) {
         let session = MarkdownRemoteImageDownloader.makeSession(protocolClasses: [MarkdownDisplayURLProtocol.self])
-        return (MarkdownRemoteImageDownloader(session: session, limits: limits), session)
+        return (MarkdownRemoteImageDownloader(session: session, limits: limits, resolver: resolver), session)
     }
 
     func testEphemeralConfigurationAndCookiesAreNotSent() async throws {
@@ -128,6 +136,17 @@ final class MarkdownRemoteImageDownloaderTests: XCTestCase {
             _ = try await downloader.download(URL(string: "https://example.invalid/fake.png")!)
             XCTFail("Expected actual MIME rejection")
         } catch MarkdownRemoteImageDownloader.DownloadError.invalidImage {}
+    }
+
+    func testChunkedUnknownLengthStreamsWithinLimits() async throws {
+        let (downloader, session) = makeDownloader()
+        defer { session.invalidateAndCancel() }
+        MarkdownDisplayURLProtocol.handler = { _ in
+            .init(chunks: [Data(self.png.prefix(3)), Data(self.png.dropFirst(3))], headers: ["Content-Type": "image/png"], omitContentLength: true)
+        }
+        let payload = try await downloader.download(URL(string: "https://example.invalid/unknown-length.png")!)
+        XCTAssertEqual(payload.data, png)
+        XCTAssertEqual(MarkdownDisplayURLProtocol.requests.count, 1)
     }
 
     func testPerImageLimitStopsChunkedBody() async throws {
@@ -196,6 +215,39 @@ final class MarkdownRemoteImageDownloaderTests: XCTestCase {
         XCTAssertNoThrow(try MarkdownRemoteImageDownloader.validate(URL(string: "https://8.8.8.8/image.png")!))
     }
 
+    func testHostnameResolutionRejectsAnyPrivateResultBeforeRequest() async throws {
+        let recorder = MarkdownResolverRecorder()
+        let (downloader, session) = makeDownloader(resolver: { host in
+            recorder.append(host)
+            return ["8.8.8.8", "10.0.0.1", "fd00::1"]
+        })
+        defer { session.invalidateAndCancel() }
+        MarkdownDisplayURLProtocol.handler = { _ in .init(chunks: [self.png]) }
+        do {
+            _ = try await downloader.download(URL(string: "https://mixed.example/image.png")!)
+            XCTFail("Expected private resolved address rejection")
+        } catch MarkdownRemoteImageDownloader.DownloadError.blockedAddress {}
+        XCTAssertEqual(recorder.values, ["mixed.example"])
+        XCTAssertTrue(MarkdownDisplayURLProtocol.requests.isEmpty)
+    }
+
+    func testHostnameResolutionFailureMakesNoRequestAndPublicResultProceeds() async throws {
+        let (blocked, blockedSession) = makeDownloader(resolver: { _ in [] })
+        defer { blockedSession.invalidateAndCancel() }
+        do {
+            _ = try await blocked.download(URL(string: "https://unresolved.example/image.png")!)
+            XCTFail("Expected resolution failure")
+        } catch MarkdownRemoteImageDownloader.DownloadError.response {}
+        XCTAssertTrue(MarkdownDisplayURLProtocol.requests.isEmpty)
+
+        let (allowed, allowedSession) = makeDownloader(resolver: { _ in ["8.8.8.8", "2606:4700:4700::1111"] })
+        defer { allowedSession.invalidateAndCancel() }
+        MarkdownDisplayURLProtocol.handler = { _ in .init(chunks: [self.png]) }
+        let payload = try await allowed.download(URL(string: "https://public.example/image.png")!)
+        XCTAssertEqual(payload.data, png)
+        XCTAssertEqual(MarkdownDisplayURLProtocol.requests.count, 1)
+    }
+
     func testCancellationStopsStreamingRequest() async throws {
         let (downloader, session) = makeDownloader()
         defer { session.invalidateAndCancel() }
@@ -212,6 +264,52 @@ final class MarkdownRemoteImageDownloaderTests: XCTestCase {
         await fulfillment(of: [stopped], timeout: 5)
         let result = await task.result
         guard case .failure = result else { return XCTFail("Expected cancellation") }
+    }
+
+    func testRichCopyMixedImageAndRemoteMediaMakesNoRTFRequestsWithConsent() async throws {
+        _ = NSApplication.shared
+        let ready = expectation(description: "mixed RTF listener ready")
+        let server = try MarkdownRTFRequestServer(ready: ready)
+        defer { server.stop() }
+        await fulfillment(of: [ready], timeout: 10)
+        let port = try XCTUnwrap(server.listener.port?.rawValue)
+        let source = "![alt](https://8.8.8.8/image.png) <audio src='http://127.0.0.1:\(port)/private.wav'>fallback</audio>"
+        let document = EditorDocument(text: source, language: .markdown)
+        document.allowsRemoteImages = true
+        document.isMarkdownFormatted = true
+        let coordinator = EditorTextView.Coordinator(document: document)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MarkdownDisplayURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        coordinator.clipboardCopySession = session
+        defer { session.invalidateAndCancel() }
+        MarkdownDisplayURLProtocol.handler = { _ in .init(chunks: [self.png], headers: ["Content-Type": "image/png"]) }
+        let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200))
+        view.string = source
+        let scroll = NSScrollView(frame: view.frame)
+        scroll.documentView = view
+        coordinator.textView = view
+        view.delegate = coordinator
+        coordinator.installObservers(scrollView: scroll)
+        coordinator.updateActivity(true)
+        defer { coordinator.updateActivity(false); withExtendedLifetime(scroll) {} }
+        view.setSelectedRange(NSRange(location: 0, length: (source as NSString).length))
+        let board = NSPasteboard.general
+        let saved = (board.pasteboardItems ?? []).map { item -> NSPasteboardItem in
+            let copy = NSPasteboardItem()
+            for type in item.types { if let data = item.data(forType: type) { copy.setData(data, forType: type) } }
+            return copy
+        }
+        defer { board.clearContents(); board.writeObjects(saved) }
+        board.clearContents()
+        board.setString("old", forType: .string)
+        view.copy(nil)
+        for _ in 0..<500 where board.string(forType: .string) == "old" { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertNotEqual(board.string(forType: .string), "old")
+        XCTAssertTrue(board.string(forType: .html)?.contains("data:image/png;base64,") == true)
+        XCTAssertNil(board.data(forType: .rtf))
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(server.requests, 0)
     }
 
     func testRichCopyWithoutConsentMakesNoDownloaderOrRTFRequests() async throws {

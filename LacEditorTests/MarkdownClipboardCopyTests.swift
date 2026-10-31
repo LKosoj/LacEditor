@@ -84,25 +84,25 @@ final class MarkdownClipboardCopyTests: XCTestCase {
     }
 
     func testStandaloneSelfClosingMediaCopyIsAtomic() throws {
-        for tag in ["<audio src='https://example.invalid/a/b.wav' />", "<video src='https://example.invalid/a/b.mp4' />"] {
+        for tag in ["<audio src='https://8.8.8.8/a/b.wav' />", "<video src='https://8.8.8.8/a/b.mp4' />"] {
             let source = ("before\n\n" + tag + "\n\nafter") as NSString
             let range = source.range(of: tag)
             let result = try XCTUnwrap(MarkdownClipboardCopyService.project(source as String, selection: range))
             XCTAssertEqual(result.text, "")
             XCTAssertTrue(result.hasUnverifiedHTMLBlocks)
-            XCTAssertTrue(result.html.contains("https://example.invalid/a/b."))
+            XCTAssertTrue(result.html.contains("https://8.8.8.8/a/b."))
             XCTAssertNil(MarkdownClipboardCopyService.project(source as String, selection: NSRange(location: range.location, length: range.length - 1)))
         }
     }
 
     func testConfirmedMediaCopyPreservesDOMAndRejectsPartialSelection() throws {
-        let source = "before <video src=\"https://example.invalid/a.mp4\" controls><source src=\"https://example.invalid/b.mp4\" type=\"video/mp4\">fallback &amp; **bold**</video> after" as NSString
-        let range = source.range(of: "<video src=\"https://example.invalid/a.mp4\" controls><source src=\"https://example.invalid/b.mp4\" type=\"video/mp4\">fallback &amp; **bold**</video>")
+        let source = "before <video src=\"https://8.8.8.8/a.mp4\" controls><source src=\"https://8.8.8.8/b.mp4\" type=\"video/mp4\">fallback &amp; **bold**</video> after" as NSString
+        let range = source.range(of: "<video src=\"https://8.8.8.8/a.mp4\" controls><source src=\"https://8.8.8.8/b.mp4\" type=\"video/mp4\">fallback &amp; **bold**</video>")
         let whole = try XCTUnwrap(MarkdownClipboardCopyService.project(source as String, selection: NSRange(location: 0, length: source.length)))
         XCTAssertEqual(whole.text, "before  after")
         XCTAssertTrue(whole.html.contains("<video"))
-        XCTAssertTrue(whole.html.contains("https://example.invalid/a.mp4"))
-        XCTAssertTrue(whole.html.contains("https://example.invalid/b.mp4"))
+        XCTAssertTrue(whole.html.contains("https://8.8.8.8/a.mp4"))
+        XCTAssertTrue(whole.html.contains("https://8.8.8.8/b.mp4"))
         XCTAssertTrue(whole.html.contains("fallback &amp;"))
         XCTAssertTrue(whole.hasUnverifiedHTMLBlocks)
         let only = try XCTUnwrap(MarkdownClipboardCopyService.project(source as String, selection: range))
@@ -110,21 +110,21 @@ final class MarkdownClipboardCopyTests: XCTestCase {
         XCTAssertTrue(only.hasUnverifiedHTMLBlocks)
         XCTAssertNil(MarkdownClipboardCopyService.project(source as String, selection: source.range(of: "fallback")))
         XCTAssertNil(MarkdownClipboardCopyService.project(source as String, selection: NSRange(location: range.location, length: range.length - 1)))
-        let unsafeSource = "before <video src=\"https://example.invalid/a\" onplay=\"evil()\">hidden</video> after" as NSString
+        let unsafeSource = "before <video src=\"https://8.8.8.8/a\" onplay=\"evil()\">hidden</video> after" as NSString
         XCTAssertNil(MarkdownClipboardCopyService.project(unsafeSource as String, selection: unsafeSource.range(of: "hidden")))
         XCTAssertEqual(MarkdownClipboardCopyService.project(unsafeSource as String, selection: unsafeSource.range(of: "before"))?.text, "before")
-        for malformed in ["before <video src=\"https://example.invalid/a\">hidden",
-                          "before <video src=\"https://example.invalid/a\"><audio src=\"https://example.invalid/b\">hidden</video></audio>"] {
+        for malformed in ["before <video src=\"https://8.8.8.8/a\">hidden",
+                          "before <video src=\"https://8.8.8.8/a\"><audio src=\"https://8.8.8.8/b\">hidden</video></audio>"] {
             let raw = malformed as NSString
             XCTAssertNil(MarkdownClipboardCopyService.project(malformed, selection: raw.range(of: "hidden")))
         }
-        let inert = "before <script><video src=\"https://example.invalid/a\">secret</video></script> after" as NSString
+        let inert = "before <script><video src=\"https://8.8.8.8/a\">secret</video></script> after" as NSString
         XCTAssertNil(MarkdownClipboardCopyService.project(inert as String, selection: inert.range(of: "secret")))
         for address in ["relative.wav", "javascript:alert(1)"] {
             let value = "<audio src=\"\(address)\">fallback</audio>" as NSString
             XCTAssertNil(MarkdownClipboardCopyService.project(value as String, selection: NSRange(location: 0, length: value.length)))
         }
-        let frame = "<iframe src=\"https://example.invalid\">fallback</iframe>" as NSString
+        let frame = "<iframe src=\"https://8.8.8.8\">fallback</iframe>" as NSString
         let frameCopy = try XCTUnwrap(MarkdownClipboardCopyService.project(frame as String, selection: NSRange(location: 0, length: frame.length)))
         XCTAssertTrue(frameCopy.html.contains("sandbox=\"allow-scripts\""))
         XCTAssertEqual(frameCopy.text, "")
@@ -363,7 +363,7 @@ final class MarkdownClipboardCopyTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         try svg.write(to: directory.appendingPathComponent("local.svg"))
-        let source = "![local](local.svg#first) ![remote](https://example.invalid/image.svg#second)"
+        let source = "![local](local.svg#first) ![remote](https://8.8.8.8/image.svg#second)"
         let fragment = try XCTUnwrap(MarkdownClipboardCopyService.project(source,
             selection: NSRange(location: 0, length: (source as NSString).length), includeImages: true,
             documentURL: directory.appendingPathComponent("note.md"), allowRemoteImages: true))

@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import WebKit
 import XCTest
 @testable import LacEditor
@@ -51,28 +52,31 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
             return copy
         }
         defer { board.clearContents(); board.writeObjects(saved) }
-        let source = "![alt](https://example.com/image.png) after"
+        let source = "![alt](https://8.8.8.8/image.png) after"
         let document = EditorDocument(text: source, language: .markdown)
         document.allowsRemoteImages = true
         document.isMarkdownFormatted = true
-        let coordinator = EditorTextView.Coordinator(document: document)
+        let store = EditorSessionStore(limit: 1)
+        let editor = EditorTextView(document: document, sessionStore: store, fontSize: 14,
+            lineSpacing: 2, indentationStyle: .spaces, tabWidth: 4, wordWrap: true,
+            showsLineNumbers: false, topInset: 0, isActive: true, requestTextTransformation: { _ in })
+        let host = NSHostingView(rootView: editor)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        let coordinator = store.coordinator(for: document)
         coordinator.clipboardCopySession = session
-        let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200))
-        view.string = source
-        let scroll = NSScrollView(frame: view.frame)
-        scroll.documentView = view
-        coordinator.textView = view
-        view.delegate = coordinator
-        coordinator.installObservers(scrollView: scroll)
-        coordinator.updateActivity(true)
-        defer { coordinator.updateActivity(false) }
-        view.setSelectedRange((source as NSString).range(of: "![alt](https://example.com/image.png)"))
+        let view = try XCTUnwrap(coordinator.textView)
+        defer { coordinator.updateActivity(false); window.close() }
+        view.setSelectedRange((source as NSString).range(of: "![alt](https://8.8.8.8/image.png)"))
         board.clearContents(); board.setString("old", forType: .string)
         view.copy(nil)
         let task = try XCTUnwrap(coordinator.clipboardCopyTask)
         await fulfillment(of: [started], timeout: 10)
         document.allowsRemoteImages = false
-        coordinator.remoteImageConsentChanged()
+        host.rootView = editor
+        host.layoutSubtreeIfNeeded()
         await fulfillment(of: [stopped], timeout: 10)
         await task.value
         XCTAssertEqual(board.string(forType: .string), "old")
@@ -96,7 +100,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
             return copy
         }
         defer { board.clearContents(); board.writeObjects(saved) }
-        let source = "中😀 ![alt](https://example.com/image.png)"
+        let source = "中😀 ![alt](https://8.8.8.8/image.png)"
         let document = EditorDocument(text: source, language: .markdown)
         document.allowsRemoteImages = true
         document.isMarkdownFormatted = true
@@ -111,7 +115,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false) }
-        view.setSelectedRange((source as NSString).range(of: "![alt](https://example.com/image.png)"))
+        view.setSelectedRange((source as NSString).range(of: "![alt](https://8.8.8.8/image.png)"))
         board.clearContents(); board.setString("old", forType: .string)
         view.copy(nil)
         for _ in 0..<500 where board.string(forType: .string) == "old" { try await Task.sleep(for: .milliseconds(20)) }
@@ -975,7 +979,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         XCTAssertEqual(attachments, 1)
         XCTAssertEqual(view.string, source)
         XCTAssertFalse(document.isDirty)
-        let remoteSource = "![remote](https://example.com/image.png)"
+        let remoteSource = "![remote](https://8.8.8.8/image.png)"
         view.insertText(remoteSource, replacementRange: NSRange(location: 0, length: (source as NSString).length))
         view.setSelectedRange(NSRange(location: 0, length: (remoteSource as NSString).length))
         board.clearContents()
@@ -983,7 +987,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         NotificationCenter.default.post(name: EditorCommandNotification.markdownClipboard,
             object: MarkdownClipboardRequest(documentID: document.id, command: .copyHTML))
         for _ in 0..<250 where board.string(forType: .string) == "old" { try await Task.sleep(for: .milliseconds(20)) }
-        XCTAssertEqual(board.string(forType: .string), "<img src=\"https://example.com/image.png\" alt=\"remote\">")
+        XCTAssertEqual(board.string(forType: .string), "<img src=\"https://8.8.8.8/image.png\" alt=\"remote\">")
         XCTAssertEqual(view.string, remoteSource)
     }
 

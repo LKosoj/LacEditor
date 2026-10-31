@@ -975,7 +975,7 @@ final class MarkdownPDFExportTests: XCTestCase {
         let png = try XCTUnwrap(NSImage(systemSymbolName: "star.fill", accessibilityDescription: nil)?.tiffRepresentation)
         let bitmap = try XCTUnwrap(NSBitmapImageRep(data: png))
         let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
-        let markdown = "---\ntitle: 'A & B'\nappend-head: |\n  <meta name=\"description\" content=\"${title}\">\nappend-body-extra: |\n  <script>console.log('configured')</script>\n---\n\n[toc]\n\n# Heading 中文\n\n## Hidden heading\n\n- [x] done\n\n[link](https://example.com) and $x^2$ and :smile:\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n![picture](data:image/png;base64,\(data.base64EncodedString()))\n\n```mermaid\nflowchart LR\nA[Alpha] --> B[Beta]\n```\n\n<audio src=\"sound.mp3\"/>\n\n<video src=\"movie.mp4\" />\n\n<details><summary>Question?</summary><input type=checkbox checked> Answer</details>\n\n<iframe src=\"https://example.invalid/embed\" title=\"Example\">fallback</iframe>\n\nText <img src=\"photo.png\" alt=\"中文 &amp; emoji\" width=\"50\"> two  spaces\n\n<script>alert(1)</script>\n\n<style>body {color:red}</style>"
+        let markdown = "---\ntitle: 'A & B'\nappend-head: |\n  <meta name=\"description\" content=\"${title}\">\nappend-body-extra: |\n  <script>console.log('configured')</script>\n---\n\n[toc]\n\n# Heading 中文\n\n## Hidden heading\n\n- [x] done\n\n[link](https://example.com) and $x^2$ and :smile:\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n![picture](data:image/png;base64,\(data.base64EncodedString()))\n\n```mermaid\nflowchart LR\nA[Alpha] --> B[Beta]\n```\n\n<audio src=\"sound.mp3\"/>\n\n<video src=\"movie.mp4\" />\n\n<details><summary>Question?</summary><input type=checkbox checked> Answer</details>\n\n<iframe src=\"https://8.8.8.8/embed\" title=\"Example\">fallback</iframe>\n\nText <img src=\"photo.png\" alt=\"中文 &amp; emoji\" width=\"50\"> two  spaces\n\n<script>alert(1)</script>\n\n<style>body {color:red}</style>"
         try Data(markdown.utf8).write(to: source)
         try Data("old".utf8).write(to: destination)
         let document = EditorDocument(text: markdown + "\n\n1. one", language: .markdown)
@@ -1040,7 +1040,7 @@ final class MarkdownPDFExportTests: XCTestCase {
         XCTAssertTrue(html.contains("type=checkbox checked"))
         XCTAssertTrue(html.contains("<iframe"))
         XCTAssertTrue(html.contains("sandbox=\"allow-scripts\""))
-        XCTAssertTrue(html.contains("https://example.invalid/embed"))
+        XCTAssertTrue(html.contains("https://8.8.8.8/embed"))
         XCTAssertTrue(html.contains("photo.png"))
         XCTAssertTrue(html.contains("中文 &amp; emoji"))
         XCTAssertTrue(html.contains("width=\"50\""))
@@ -1118,7 +1118,7 @@ final class MarkdownPDFExportTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let document = EditorDocument(text: "before ![remote](https://example.invalid/remote.png) after", language: .markdown)
+        let document = EditorDocument(text: "before ![remote](https://8.8.8.8/remote.png) after", language: .markdown)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
@@ -1184,7 +1184,7 @@ final class MarkdownPDFExportTests: XCTestCase {
 
             ![local cyan square](/local.svg)
 
-            ![remote yellow square](https://example.invalid/yellow.png)
+            ![remote yellow square](https://8.8.8.8/yellow.png)
 
             <img src="data:image/png;base64,\(htmlPNG)" width="48" height="12">
 

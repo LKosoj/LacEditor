@@ -296,7 +296,7 @@ struct EditorTextView: NSViewRepresentable {
         Self.applyWritingChecks(to: textView, spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
         textView.textTransformationHandler = requestTextTransformation
         let documentChanged = context.coordinator.document.id != document.id
-        let remoteImageConsentChanged = context.coordinator.document.allowsRemoteImages != document.allowsRemoteImages
+        let remoteImageConsentChanged = context.coordinator.remoteImagesConsentSnapshot != document.allowsRemoteImages
         let requestedFont = AppPreferences.textFont(family: textFontFamily, size: fontSize)
         let fontChanged = context.coordinator.foldLayoutManager?.textFont != requestedFont
         let requestedCodeFont = AppPreferences.availableFont(family: codeFontFamily, size: fontSize)
@@ -317,6 +317,7 @@ struct EditorTextView: NSViewRepresentable {
         }
         context.coordinator.document = document
         if remoteImageConsentChanged { context.coordinator.remoteImageConsentChanged() }
+        context.coordinator.updateRemoteImagesConsentSnapshot(document.allowsRemoteImages)
         context.coordinator.currentLanguage = document.language
         context.coordinator.isMarkdownOutlineVisible = isOutlineVisible
         textView.indentationStyle = indentationStyle

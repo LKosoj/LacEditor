@@ -278,7 +278,7 @@ final class MarkdownPreviewTests: XCTestCase {
         defer { session.invalidateAndCancel() }
         let fixture = PreviewFixture(imageSession: session)
         defer { fixture.dispose() }
-        let source = "text ![image](https://example.invalid/slow.png)"
+        let source = "text ![image](https://8.8.8.8/slow.png)"
         fixture.coordinator.render(markdown: source, revision: 1, darkMode: false, immediately: true)
         try await fixture.waitUntil("document.querySelector('article img')?.getAttribute('src') === 'data:,'")
         try await Task.sleep(for: .milliseconds(200))
@@ -306,7 +306,7 @@ final class MarkdownPreviewTests: XCTestCase {
         let fixture = PreviewFixture(imageSession: session)
         defer { fixture.dispose() }
         fixture.document.allowsRemoteImages = true
-        fixture.coordinator.render(markdown: "old text ![image](https://example.invalid/slow.png)", revision: 1, darkMode: false, immediately: true)
+        fixture.coordinator.render(markdown: "old text ![image](https://8.8.8.8/slow.png)", revision: 1, darkMode: false, immediately: true)
         await fulfillment(of: [started], timeout: 5)
         try await fixture.waitUntil("document.querySelector('article')?.textContent.includes('old text') && document.querySelector('article img')?.getAttribute('src') === 'data:,'")
         fixture.coordinator.render(markdown: "new text", revision: 2, darkMode: false, immediately: true)
@@ -376,7 +376,7 @@ final class MarkdownPreviewTests: XCTestCase {
         let fixture = PreviewFixture(imageSession: session)
         defer { fixture.dispose() }
         fixture.document.allowsRemoteImages = true
-        fixture.coordinator.render(markdown: "old <img src='https://example.invalid/slow.png' width='50%'>", revision: 1, darkMode: false, immediately: true)
+        fixture.coordinator.render(markdown: "old <img src='https://8.8.8.8/slow.png' width='50%'>", revision: 1, darkMode: false, immediately: true)
         await fulfillment(of: [started], timeout: 5)
         try await fixture.waitUntil("document.querySelector('article')?.textContent.includes('old') && document.querySelector('article img')?.getAttribute('src') === 'data:,'")
         fixture.coordinator.render(markdown: "new text", revision: 2, darkMode: false, immediately: true)
@@ -406,7 +406,7 @@ final class MarkdownPreviewTests: XCTestCase {
         held.second = expectation(description: "completed fallback navigation finished")
         fixture.webView.navigationDelegate = held
         let _: Bool = try await fixture.value("document.querySelector('article').remove(); true")
-        fixture.coordinator.render(markdown: "remote ![image](https://example.invalid/slow.png)", revision: 2, darkMode: false, immediately: true)
+        fixture.coordinator.render(markdown: "remote ![image](https://8.8.8.8/slow.png)", revision: 2, darkMode: false, immediately: true)
         await fulfillment(of: [started, try XCTUnwrap(held.first)], timeout: 10)
         PendingPreviewImageURLProtocol.pending?.finish(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=")!)
         await fulfillment(of: [try XCTUnwrap(held.second)], timeout: 10)
@@ -425,7 +425,7 @@ final class MarkdownPreviewTests: XCTestCase {
         staleNavigation.first = expectation(description: "old revision navigation held")
         staleNavigation.second = expectation(description: "new revision navigation held")
         fixture.webView.navigationDelegate = staleNavigation
-        fixture.coordinator.render(markdown: "old ![image](https://example.invalid/again.png)", revision: 4, darkMode: false, immediately: true)
+        fixture.coordinator.render(markdown: "old ![image](https://8.8.8.8/again.png)", revision: 4, darkMode: false, immediately: true)
         await fulfillment(of: [staleStarted, try XCTUnwrap(staleNavigation.first)], timeout: 10)
         fixture.coordinator.render(markdown: "latest revision", revision: 5, darkMode: false, immediately: true)
         await fulfillment(of: [staleStopped, try XCTUnwrap(staleNavigation.second)], timeout: 10)
