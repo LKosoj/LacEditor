@@ -58,7 +58,7 @@ enum PandocImportService {
         let process = Process()
         process.executableURL = pandoc
         process.currentDirectoryURL = source.deletingLastPathComponent()
-        process.arguments = ["--from=\(reader)", "--to=gfm+yaml_metadata_block", "--standalone", "--lua-filter", filter.path,
+        process.arguments = ["--sandbox", "--from=\(reader)", "--to=gfm+yaml_metadata_block", "--standalone", "--lua-filter", filter.path,
                              "--output", output.path, "--", source.path]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = stderr

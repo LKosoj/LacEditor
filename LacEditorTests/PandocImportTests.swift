@@ -237,6 +237,88 @@ final class PandocImportTests: XCTestCase {
         XCTAssertTrue(html.contains("Remote caption"))
     }
 
+    func testSandboxSkipsIncludesWithoutWritingSourceDirectory() throws {
+        let executable = try XCTUnwrap(PandocExportService.findPandoc(), "Bundled Pandoc must be executable")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sourceDirectory = directory.appendingPathComponent("source", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceDirectory.appendingPathComponent("nested", isDirectory: true), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = sourceDirectory.appendingPathComponent("input.rst")
+        let input = "Before\n\n.. include:: nested/inside.txt\n\n.. include:: ../outside.txt\n\nAfter\n"
+        try Data(input.utf8).write(to: source)
+        try "INSIDE_INCLUDE".write(to: sourceDirectory.appendingPathComponent("nested/inside.txt"), atomically: true, encoding: .utf8)
+        try "OUTSIDE_SECRET".write(to: directory.appendingPathComponent("outside.txt"), atomically: true, encoding: .utf8)
+        let originalEntries = try FileManager.default.contentsOfDirectory(atPath: sourceDirectory.path).sorted()
+
+        let result = try PandocImportService.convert(source: source, executable: executable)
+
+        XCTAssertTrue(result.text.contains("Before"))
+        XCTAssertFalse(result.text.contains("INSIDE_INCLUDE"))
+        XCTAssertTrue(result.text.contains("After"))
+        XCTAssertFalse(result.text.contains("OUTSIDE_SECRET"))
+        XCTAssertEqual(try Data(contentsOf: source), Data(input.utf8))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: sourceDirectory.path).sorted(), originalEntries)
+    }
+
+    func testImportImagePathSecurityMatrix() throws {
+        let executable = try XCTUnwrap(PandocExportService.findPandoc(), "Bundled Pandoc must be executable")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sourceDirectory = directory.appendingPathComponent("source", isDirectory: true)
+        let nested = sourceDirectory.appendingPathComponent("nested", isDirectory: true)
+        try FileManager.default.createDirectory(at: nested.appendingPathComponent("deeper", isDirectory: true), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: nested.appendingPathComponent("encoded", isDirectory: true), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let image = try XCTUnwrap(Data(base64Encoded: imageBase64))
+        let outside = directory.appendingPathComponent("outside.png")
+        try image.write(to: outside)
+        try image.write(to: nested.appendingPathComponent("deeper/image.png"))
+        try image.write(to: nested.appendingPathComponent("Юникод пробел 100%.png"))
+        try image.write(to: nested.appendingPathComponent("encoded/картинка %.png"))
+        try FileManager.default.createSymbolicLink(atPath: nested.appendingPathComponent("internal.png").path, withDestinationPath: "deeper/image.png")
+        try FileManager.default.createSymbolicLink(atPath: nested.appendingPathComponent("external.png").path, withDestinationPath: "../../outside.png")
+
+        let allowed = [
+            "nested/deeper/image.png",
+            "nested/Юникод пробел 100%.png",
+            "nested/encoded/%D0%BA%D0%B0%D1%80%D1%82%D0%B8%D0%BD%D0%BA%D0%B0%20%25.png",
+            "nested/internal.png"
+        ]
+        let blocked = [
+            "../outside.png",
+            outside.path,
+            "file://\(outside.path)",
+            "%2e%2e/outside.png",
+            "%2E%2E%2Foutside.png",
+            "nested/external.png",
+            "missing%00.png",
+            "missing\0.png"
+        ]
+        for (index, reference) in (allowed + blocked).enumerated() {
+            try Data("<img src=\"\(reference)\">".utf8).write(to: sourceDirectory.appendingPathComponent("input-\(index).html"))
+        }
+        let originalEntries = try FileManager.default.contentsOfDirectory(atPath: sourceDirectory.path).sorted()
+
+        for (index, reference) in allowed.enumerated() {
+            let source = sourceDirectory.appendingPathComponent("input-\(index).html")
+            let result = try PandocImportService.convert(source: source, executable: executable)
+            XCTAssertTrue(result.text.contains("](data:image/png;base64,\(imageBase64))"), reference)
+        }
+        for (offset, reference) in blocked.enumerated() {
+            let source = sourceDirectory.appendingPathComponent("input-\(allowed.count + offset).html")
+            XCTAssertThrowsError(try PandocImportService.convert(source: source, executable: executable), reference)
+        }
+        let remote = sourceDirectory.appendingPathComponent("remote.html")
+        try "<img src=\"https://example.invalid/image.png\">".write(to: remote, atomically: true, encoding: .utf8)
+        let originalRemoteEntries = try FileManager.default.contentsOfDirectory(atPath: sourceDirectory.path).sorted()
+        let remoteResult = try PandocImportService.convert(source: remote, executable: executable)
+        XCTAssertTrue(remoteResult.text.contains("https://example.invalid/image.png"))
+        XCTAssertFalse(remoteResult.text.contains("data:image/"))
+
+        XCTAssertEqual(try Data(contentsOf: outside), image)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: sourceDirectory.path).sorted(), originalRemoteEntries)
+        XCTAssertEqual(originalRemoteEntries, originalEntries + ["remote.html"])
+    }
+
     func testComplexFigureIsNotFlattened() throws {
         let executable = try XCTUnwrap(PandocExportService.findPandoc(), "Bundled Pandoc must be executable")
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
