@@ -985,6 +985,53 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
         }
     }
 
+    func testDiagramStaysRenderedWhenTypingOutsideAndShiftsRange() async throws {
+        _ = NSApplication.shared
+        let source = "prefix words\n\n```flow\ns=>start: Start\ne=>end: End\ns->e\n```\n\nafter"
+        let document = EditorDocument(text: source, language: .markdown)
+        let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
+        storage.addLayoutManager(layout)
+        let container = NSTextContainer(containerSize: NSSize(width: 400, height: 800))
+        layout.addTextContainer(container)
+        let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 600), textContainer: container)
+        let scroll = NSScrollView(frame: view.frame)
+        scroll.documentView = view
+        let controller = MarkdownPresentationController(textView: view, layout: layout)
+        defer { controller.cancel(); withExtendedLifetime(scroll) {} }
+        var revision: UInt = 0
+        controller.update(document: document, enabled: true, isActive: true, revision: revision, currentRevision: { revision })
+        let original = try XCTUnwrap(MarkdownPresentationParser.parse(source).diagrams.first)
+
+        func imagePoint(for range: NSRange) -> NSPoint {
+            layout.ensureLayout(forBoundingRect: view.visibleRect, in: container)
+            let glyph = layout.glyphIndexForCharacter(at: range.location)
+            let line = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            return NSPoint(x: line.minX + container.lineFragmentPadding + 1, y: line.minY + 1)
+        }
+
+        for _ in 0..<200 where layout.markdownImageLocation(at: imagePoint(for: original), in: container) == nil {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertEqual(layout.markdownImageLocation(at: imagePoint(for: original), in: container), original.range.location)
+
+        let edit = NSRange(location: NSMaxRange((source as NSString).range(of: "prefix wor")), length: 0)
+        let inserted = "x"
+        revision += 1
+        controller.beforeEdit(range: edit, replacementLength: (inserted as NSString).length, replacement: inserted)
+        storage.replaceCharacters(in: edit, with: inserted)
+        controller.edited(revision: revision)
+
+        let shifted = NSRange(location: original.range.location + (inserted as NSString).length, length: original.range.length)
+        // До завершения нового разбора блок уже должен оставаться рендером, а не исходным текстом.
+        XCTAssertEqual(layout.markdownImageLocation(at: imagePoint(for: shifted), in: container), shifted.location)
+        XCTAssertEqual(storage.string, "prefix worxds\n\n```flow\ns=>start: Start\ne=>end: End\ns->e\n```\n\nafter")
+
+        for _ in 0..<100 where layout.markdownImageLocation(at: imagePoint(for: shifted), in: container) == nil {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(layout.markdownImageLocation(at: imagePoint(for: shifted), in: container), shifted.location)
+    }
+
     func testGeneratedBlocksAppearAndRestoreSourceOnSelection() async throws {
         _ = NSApplication.shared
         let source = "before $\\def\\lacfrac{\\frac{a}{b}}$\n\n```mermaid\nflowchart TD\nA --> B\n```\n\n$$\n\\lacfrac\n$$\n\nafter"

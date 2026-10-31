@@ -541,9 +541,9 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
 
     func noteLiveEdit(isEmpty: Bool) {
         invalidateRecoveryCopy()
-        markdownReadableText = nil
-        hasPendingLiveEdits = true
-        pendingLiveTextIsEmpty = isEmpty
+        if markdownReadableText != nil { markdownReadableText = nil }
+        if !hasPendingLiveEdits { hasPendingLiveEdits = true }
+        if pendingLiveTextIsEmpty != isEmpty { pendingLiveTextIsEmpty = isEmpty }
         scheduleMetricsRefresh()
         scheduleLineEndingRefresh()
         let shouldBeDirty = !(url == nil && isEmpty)

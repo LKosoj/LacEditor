@@ -638,9 +638,14 @@ final class LacTextView: NSTextView {
                 super.mouseDown(with: translated)
                 return
             }
-            if let character = layout.markdownImageLocation(at: location, in: container) {
+            if let hit = layout.markdownRenderedHit(at: location, in: container) {
                 window?.makeFirstResponder(self)
-                setSelectedRange(NSRange(location: character, length: 0))
+                setSelectedRange(NSRange(location: hit.range.location, length: 0))
+                if case .diagram = hit, let storage = textStorage {
+                    let sourcePosition = min(hit.range.location, storage.length)
+                    let line = storage.mutableString.lineRange(for: NSRange(location: sourcePosition, length: 0))
+                    layout.updateMarkdownRevealedRange(line)
+                }
                 return
             }
             if let range = layout.markdownPageBreak(at: location, in: container), pageBreakHandler?(range) == true { return }

@@ -822,7 +822,7 @@ enum MarkdownRenderer {
                 resolveLocalImages: resolveLocalImages, documentURL: documentURL, includeHeadingNumbers: includeHeadingNumbers,
                 imageMarkersByNode: &provedHTMLBlocks, mediaMarkersByNode: &provedMediaBlocks,
                 unprovedImageBlocks: unprovedHTMLImageBlocks, confirmedInline: &confirmedInline, detachedNodes: &detachedFrameNodes, markRemote: markRemote, resolveMedia: resolvedMedia,
-                preserveRawHTML: preserveRawHTMLBlocks)
+                preserveRawHTML: preserveRawHTMLBlocks, includeSourcePositions: includeSourcePositions)
             var formulas: [MarkdownRenderedMath] = []
             var diagrams: [MarkdownRenderedDiagram] = []
             var omittedHTML = includeHTMLMedia && omittedNamedHTML
@@ -907,6 +907,19 @@ enum MarkdownRenderer {
                 if let width = image.width { html += " width=\"\(escape(width))\"" }
                 if let height = image.height { html += " height=\"\(escape(height))\"" }
                 return html + ">"
+            }
+            // Custom nodes do not inherit cmark's source position. The preview
+            // scroll relay uses this attribute as its anchor when the first
+            // visible item is a block media element rather than ordinary text.
+            func sourcePositionAttribute(for node: OpaquePointer) -> String {
+                guard includeSourcePositions else { return "" }
+                return " data-sourcepos=\"\(cmark_node_get_start_line(node)):\(cmark_node_get_start_column(node))-\(cmark_node_get_end_line(node)):\(cmark_node_get_end_column(node))\""
+            }
+
+            func addingSourcePosition(to html: String, for node: OpaquePointer) -> String {
+                let attribute = sourcePositionAttribute(for: node)
+                guard !attribute.isEmpty, let closing = html.firstIndex(of: ">") else { return html }
+                return String(html[..<closing]) + attribute + String(html[closing...])
             }
             func visit(_ node: OpaquePointer) {
                 if Task.isCancelled { return }
@@ -1134,7 +1147,7 @@ enum MarkdownRenderer {
                         continue
                     }
                     if let svg = svgBlocks[current], let replacement = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) {
-                        let html = "<img src=\"data:image/svg+xml;base64," + svg.data.base64EncodedString() + "\" alt=\"\">"
+                        let html = addingSourcePosition(to: "<img src=\"data:image/svg+xml;base64," + svg.data.base64EncodedString() + "\" alt=\"\">", for: current)
                         if html.withCString({ cmark_node_set_on_enter(replacement, $0) }) != 0,
                            cmark_node_replace(current, replacement) != 0 { detachedFrameNodes.append(current) }
                         else { cmark_node_free(replacement) }
@@ -1143,7 +1156,7 @@ enum MarkdownRenderer {
                     }
                     if let widget = twitterBlocks[current], let frame = MarkdownHTMLMediaService.twitterFrame(widget),
                        let replacement = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) {
-                        let html = staticWidgetFallback ? MarkdownHTMLMediaService.twitterFallbackHTML(widget) : MarkdownHTMLMediaService.iframeHTML(frame)
+                        let html = addingSourcePosition(to: staticWidgetFallback ? MarkdownHTMLMediaService.twitterFallbackHTML(widget) : MarkdownHTMLMediaService.iframeHTML(frame), for: current)
                         if html.withCString({ cmark_node_set_on_enter(replacement, $0) }) != 0,
                            cmark_node_replace(current, replacement) != 0 { detachedFrameNodes.append(current) }
                         else { cmark_node_free(replacement) }
@@ -1152,7 +1165,7 @@ enum MarkdownRenderer {
                     }
                     if let media = standaloneMedia[current], let start = mediaOpeningHTML(media),
                        let replacement = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) {
-                        let html = start + (media.kind == .audio ? "</audio>" : "</video>")
+                        let html = addingSourcePosition(to: start + (media.kind == .audio ? "</audio>" : "</video>"), for: current)
                         if html.withCString({ cmark_node_set_on_enter(replacement, $0) }) != 0,
                            cmark_node_replace(current, replacement) != 0 { detachedFrameNodes.append(current) }
                         else { cmark_node_free(replacement) }
@@ -1162,7 +1175,8 @@ enum MarkdownRenderer {
                     if details.contains(current), let pointer = cmark_node_get_literal(current),
                        let rendered = MarkdownHTMLMediaService.exportBlock(String(cString: pointer), isCancelled: { Task.isCancelled }, imageOnly: true),
                        let replacement = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) {
-                        if rendered.html.withCString({ cmark_node_set_on_enter(replacement, $0) }) != 0,
+                        let html = addingSourcePosition(to: rendered.html, for: current)
+                        if html.withCString({ cmark_node_set_on_enter(replacement, $0) }) != 0,
                            cmark_node_replace(current, replacement) != 0 {
                             detachedFrameNodes.append(current)
                         } else { cmark_node_free(replacement) }
@@ -1179,7 +1193,8 @@ enum MarkdownRenderer {
                             cursor = cmark_node_next(item)
                         }
                         if nodes.last == closing, let replacement = cmark_node_new(CMARK_NODE_CUSTOM_INLINE) {
-                            let configured = MarkdownHTMLMediaService.iframeHTML(frame).withCString { cmark_node_set_on_enter(replacement, $0) }
+                            let html = addingSourcePosition(to: MarkdownHTMLMediaService.iframeHTML(frame), for: current)
+                            let configured = html.withCString { cmark_node_set_on_enter(replacement, $0) }
                             if configured != 0 && cmark_node_insert_before(current, replacement) != 0 {
                                 for item in nodes {
                                     if Task.isCancelled { return }
@@ -1196,7 +1211,8 @@ enum MarkdownRenderer {
                         if let closingReplacement = cmark_node_new(CMARK_NODE_CUSTOM_INLINE) {
                             let tag = media.kind == .audio ? "audio" : "video"
                             guard let html = mediaOpeningHTML(media) else { cmark_node_free(closingReplacement); cmark_node_free(openingReplacement); return }
-                            let start = html.withCString { cmark_node_set_on_enter(openingReplacement, $0) }
+                            let startHTML = addingSourcePosition(to: html, for: current)
+                            let start = startHTML.withCString { cmark_node_set_on_enter(openingReplacement, $0) }
                             let end = "</\(tag)>".withCString { cmark_node_set_on_enter(closingReplacement, $0) }
                             if start != 0, end != 0, cmark_node_insert_before(current, openingReplacement) != 0 {
                                 if cmark_node_insert_before(closing, closingReplacement) != 0 {
@@ -1220,7 +1236,8 @@ enum MarkdownRenderer {
                             html = start + (media.kind == .audio ? "</audio>" : "</video>")
                         } else { html = nil }
                         if let html, let replacement = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) {
-                            let configured = html.withCString { cmark_node_set_on_enter(replacement, $0) }
+                            let configuredHTML = addingSourcePosition(to: html, for: current)
+                            let configured = configuredHTML.withCString { cmark_node_set_on_enter(replacement, $0) }
                             if configured != 0 && cmark_node_insert_before(current, replacement) != 0 {
                                 cmark_node_unlink(current); cmark_node_free(current)
                             } else { cmark_node_free(replacement) }
@@ -1255,7 +1272,8 @@ enum MarkdownRenderer {
                                    MarkdownHTMLMediaService.htmlBlockTagOffsets(current, range: range, tags: [], sourceText: markdown as NSString, isCancelled: { Task.isCancelled }) == nil ? nil : String(cString: pointer)
                                }, resolveImage: { resolvedImage($0) }),
                            let replacement = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) {
-                            let configured = rendered.html.withCString { cmark_node_set_on_enter(replacement, $0) }
+                            let html = addingSourcePosition(to: rendered.html, for: current)
+                            let configured = html.withCString { cmark_node_set_on_enter(replacement, $0) }
                             if configured != 0 && cmark_node_insert_before(current, replacement) != 0 {
                                 cmark_node_unlink(current); cmark_node_free(current)
                             } else { cmark_node_free(replacement) }
@@ -1269,7 +1287,8 @@ enum MarkdownRenderer {
                         if let title = image.title { html += " title=\"\(escape(title))\"" }
                         if !image.sizing.css.isEmpty { html += " style=\"\(escape(image.sizing.css))\"" }
                         html += ">"
-                        let configured = html.withCString { cmark_node_set_on_enter(replacement, $0) }
+                        let configuredHTML = addingSourcePosition(to: html, for: current)
+                        let configured = configuredHTML.withCString { cmark_node_set_on_enter(replacement, $0) }
                         if configured != 0 && cmark_node_insert_before(current, replacement) != 0 {
                             cmark_node_unlink(current); cmark_node_free(current)
                         } else { cmark_node_free(replacement) }
@@ -1284,7 +1303,8 @@ enum MarkdownRenderer {
                            MarkdownHTMLMediaService.htmlBlockTagOffsets(current, range: range, tags: [], sourceText: markdown as NSString, isCancelled: { Task.isCancelled }) != nil,
                            let rendered = MarkdownHTMLMediaService.exportBlock(literal, isCancelled: { Task.isCancelled }, imageOnly: true, fallbackSource: literal),
                            let replacement = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) {
-                            let configured = rendered.html.withCString { cmark_node_set_on_enter(replacement, $0) }
+                            let html = addingSourcePosition(to: rendered.html, for: current)
+                            let configured = html.withCString { cmark_node_set_on_enter(replacement, $0) }
                             if configured != 0 && cmark_node_insert_before(current, replacement) != 0 {
                                 cmark_node_unlink(current); cmark_node_free(current)
                             } else { cmark_node_free(replacement) }
@@ -1330,7 +1350,8 @@ enum MarkdownRenderer {
                         } else { range = source.range(current) }
                         if cmark_node_get_type(current) == CMARK_NODE_HTML_INLINE, let range,
                            let html = confirmedInline[range], let replacement = cmark_node_new(CMARK_NODE_CUSTOM_INLINE) {
-                            let configured = html.withCString { cmark_node_set_on_enter(replacement, $0) }
+                            let configuredHTML = addingSourcePosition(to: html, for: current)
+                            let configured = configuredHTML.withCString { cmark_node_set_on_enter(replacement, $0) }
                             if configured != 0 && cmark_node_insert_before(current, replacement) != 0 {
                                 cmark_node_unlink(current); cmark_node_free(current)
                             } else { cmark_node_free(replacement); omittedHTML = true }
@@ -1345,7 +1366,8 @@ enum MarkdownRenderer {
                                    cmark_node_get_literal(current).map { String(cString: $0) }
                                }),
                            let replacement = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) {
-                            let configured = rendered.html.withCString { cmark_node_set_on_enter(replacement, $0) }
+                            let html = addingSourcePosition(to: rendered.html, for: current)
+                            let configured = html.withCString { cmark_node_set_on_enter(replacement, $0) }
                             if configured != 0 && cmark_node_insert_before(current, replacement) != 0 {
                                 cmark_node_unlink(current); cmark_node_free(current)
                                 omittedHTML = omittedHTML || rendered.omitted
@@ -1355,7 +1377,7 @@ enum MarkdownRenderer {
                         }
                         if let range, let confirmed = htmlImages[range], let literal = cmark_node_get_literal(current),
                            let image = MarkdownHTMLMediaService.image(in: confirmed.htmlXML ?? String(cString: literal)), image.source == confirmed.address {
-                            let html = imageHTML(image)
+                            let html = addingSourcePosition(to: imageHTML(image), for: current)
                             let kind = cmark_node_get_type(current) == CMARK_NODE_HTML_BLOCK ? CMARK_NODE_CUSTOM_BLOCK : CMARK_NODE_CUSTOM_INLINE
                             if let replacement = cmark_node_new(kind) {
                                 let configured = html.withCString { cmark_node_set_on_enter(replacement, $0) }
@@ -1371,7 +1393,7 @@ enum MarkdownRenderer {
                        let range = source.range(current), confirmedAudio.contains(range), let literal = cmark_node_get_literal(current),
                        let source = MarkdownHTMLMediaService.audioSource(in: String(cString: literal), allowPaired: true),
                        let replacement = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) {
-                        let html = "<audio controls src=\"\(escape(source))\"></audio>"
+                        let html = addingSourcePosition(to: "<audio controls src=\"\(escape(source))\"></audio>", for: current)
                         let configured = html.withCString { cmark_node_set_on_enter(replacement, $0) }
                         if configured != 0 && cmark_node_insert_before(current, replacement) != 0 {
                             cmark_node_unlink(current)
@@ -1384,7 +1406,7 @@ enum MarkdownRenderer {
                        let range = source.range(current), confirmedVideo.contains(range), let literal = cmark_node_get_literal(current),
                        let address = MarkdownHTMLMediaService.videoSource(in: String(cString: literal)),
                        let replacement = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) {
-                        let html = "<video controls src=\"\(escape(address))\"></video>"
+                        let html = addingSourcePosition(to: "<video controls src=\"\(escape(address))\"></video>", for: current)
                         let configured = html.withCString { cmark_node_set_on_enter(replacement, $0) }
                         if configured != 0 && cmark_node_insert_before(current, replacement) != 0 {
                             cmark_node_unlink(current); cmark_node_free(current)
@@ -1395,7 +1417,7 @@ enum MarkdownRenderer {
                     if includeHTMLMedia, let source, cmark_node_get_type(current) == CMARK_NODE_HTML_BLOCK,
                        let range = source.range(current), let frame = confirmedFrames[range],
                        let replacement = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) {
-                        let html = MarkdownHTMLMediaService.iframeHTML(frame)
+                        let html = addingSourcePosition(to: MarkdownHTMLMediaService.iframeHTML(frame), for: current)
                         let configured = html.withCString { cmark_node_set_on_enter(replacement, $0) }
                         if configured != 0 && cmark_node_insert_before(current, replacement) != 0 {
                             cmark_node_unlink(current); cmark_node_free(current)
@@ -1411,7 +1433,7 @@ enum MarkdownRenderer {
                        kind != .mermaid, diagramRange(current) != nil, let literal = cmark_node_get_literal(current),
                        let replacement = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) {
                         let item = MarkdownRenderedDiagram(kind: kind, source: String(cString: literal))
-                        let html = "<pre data-lac-diagram=\"\(diagrams.count)\">\(escape(item.source))</pre>"
+                        let html = "<pre data-lac-diagram=\"\(diagrams.count)\"\(sourcePositionAttribute(for: current))>\(escape(item.source))</pre>"
                         let configured = html.withCString { cmark_node_set_on_enter(replacement, $0) }
                         if configured != 0 && cmark_node_insert_before(current, replacement) != 0 {
                             diagrams.append(item)
@@ -1545,7 +1567,16 @@ enum MarkdownRenderer {
         confirmedInline: inout [NSRange: String],
         detachedNodes: inout [OpaquePointer],
         markRemote: @escaping (String) -> String?, resolveMedia: @escaping (String) -> String,
-        preserveRawHTML: Bool) -> (Set<String>, Bool, [NSRange]) {
+        preserveRawHTML: Bool, includeSourcePositions: Bool) -> (Set<String>, Bool, [NSRange]) {
+        func sourcePositionAttribute(for node: OpaquePointer) -> String {
+            guard includeSourcePositions else { return "" }
+            return " data-sourcepos=\"\(cmark_node_get_start_line(node)):\(cmark_node_get_start_column(node))-\(cmark_node_get_end_line(node)):\(cmark_node_get_end_column(node))\""
+        }
+        func addingSourcePosition(to html: String, for node: OpaquePointer) -> String {
+            let attribute = sourcePositionAttribute(for: node)
+            guard !attribute.isEmpty, let end = html.firstIndex(of: ">") else { return html }
+            return String(html[..<end]) + attribute + String(html[end...])
+        }
         struct Heading {
             let node: OpaquePointer
             let level: Int
@@ -1966,7 +1997,8 @@ enum MarkdownRenderer {
                 }
                 guard !Task.isCancelled, nodes.last == candidate.proof.closing,
                       let replacement = cmark_node_new(CMARK_NODE_CUSTOM_INLINE) else { continue }
-                let html = "<img src=\"data:image/svg+xml;base64," + candidate.data.base64EncodedString() + "\" alt=\"\">"
+                let rawHTML = "<img src=\"data:image/svg+xml;base64," + candidate.data.base64EncodedString() + "\" alt=\"\">"
+                let html = addingSourcePosition(to: rawHTML, for: candidate.proof.opening)
                 guard html.withCString({ cmark_node_set_on_enter(replacement, $0) }) != 0,
                       cmark_node_insert_before(candidate.proof.opening, replacement) != 0 else { cmark_node_free(replacement); continue }
                 for node in nodes {
@@ -1976,7 +2008,8 @@ enum MarkdownRenderer {
                 continue
             }
             guard let replacement = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) else { continue }
-            let html = "<img src=\"data:image/svg+xml;base64," + candidate.data.base64EncodedString() + "\" alt=\"\">"
+            let rawHTML = "<img src=\"data:image/svg+xml;base64," + candidate.data.base64EncodedString() + "\" alt=\"\">"
+            let html = addingSourcePosition(to: rawHTML, for: paragraph)
             guard html.withCString({ cmark_node_set_on_enter(replacement, $0) }) != 0,
                   cmark_node_replace(paragraph, replacement) != 0 else { cmark_node_free(replacement); continue }
             detachedNodes.append(paragraph)
@@ -2123,7 +2156,8 @@ enum MarkdownRenderer {
                 return uri
             }
             guard let rendered, let replacement = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) else { continue }
-            let configured = rendered.html.withCString { cmark_node_set_on_enter(replacement, $0) }
+            let html = addingSourcePosition(to: rendered.html, for: original)
+            let configured = html.withCString { cmark_node_set_on_enter(replacement, $0) }
             guard configured != 0, cmark_node_replace(original, replacement) != 0 else { cmark_node_free(replacement); continue }
             omittedNamedHTML = omittedNamedHTML || rendered.omitted
             imageMarkersByNode.removeValue(forKey: original)

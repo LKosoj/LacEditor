@@ -183,6 +183,9 @@ extension EditorTextView {
         private var markdownPresentation: MarkdownPresentationController?
         private var markdownImageProjection = MarkdownDataImageProjection()
         private var markdownImageProjectionEnabled = false
+        // Режим проекции меняется редко; не повторять полную замену NSTextStorage
+        // при обычных SwiftUI-обновлениях EditorTextView.
+        private var lastMarkdownImageProjectionMode: Bool?
         private var mathOptions = MathJaxRenderService.Options()
         private var contentRevision: UInt
         private(set) var markdownLinkTask: Task<Void, Never>?
@@ -2185,6 +2188,9 @@ extension EditorTextView {
             if visible.minY <= 0.5 { return .init(line: 1, atBottom: false) }
             let atBottom = visible.maxY >= textView.bounds.maxY - 1
             let rect = visible.offsetBy(dx: -textView.textContainerOrigin.x, dy: -textView.textContainerOrigin.y)
+            if let mediaLocation = foldLayoutManager?.markdownMediaSourceAnchor(in: rect, container: container) {
+                return .init(line: lineIndex.lineNumber(at: min(mediaLocation, storage.length)), atBottom: atBottom)
+            }
             let glyphs = layoutManager.glyphRange(forBoundingRect: rect, in: container)
             let characters = layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
             return .init(line: lineIndex.lineNumber(at: min(characters.location, storage.length)), atBottom: atBottom)
@@ -2211,10 +2217,12 @@ extension EditorTextView {
         func displayedText(for source: String) -> String {
             guard document.language == .markdown, document.isMarkdownFormatted else {
                 markdownImageProjectionEnabled = false
+                lastMarkdownImageProjectionMode = false
                 markdownImageProjection = MarkdownDataImageProjection()
                 return source
             }
             markdownImageProjectionEnabled = true
+            lastMarkdownImageProjectionMode = true
             return markdownImageProjection.project(source)
         }
 
@@ -2226,6 +2234,8 @@ extension EditorTextView {
         private func synchronizeMarkdownImageProjection() {
             guard let textView, !textView.hasMarkedText() else { return }
             let shouldProject = document.language == .markdown && document.isMarkdownFormatted
+            guard shouldProject != lastMarkdownImageProjectionMode else { return }
+            lastMarkdownImageProjectionMode = shouldProject
             guard shouldProject != markdownImageProjectionEnabled else { return }
             let oldDisplay = textView.string
             let source = markdownImageProjectionEnabled ? markdownImageProjection.restore(oldDisplay) : oldDisplay
@@ -4862,16 +4872,19 @@ extension EditorTextView {
             guard let textView,
                   let text = textView.textStorage?.mutableString else { return }
             let selection = textView.selectedRange()
-            document.selectionRange = markdownImageProjectionEnabled
+            let sourceSelection = markdownImageProjectionEnabled
                 ? markdownImageProjection.sourceRange(for: selection, in: text as String)
                 : selection
+            if document.selectionRange != sourceSelection {
+                document.selectionRange = sourceSelection
+            }
             let location = min(selection.location, text.length)
             let position = lineIndex.position(
                 at: location,
                 in: text
             )
-            document.cursorLine = position.line
-            document.cursorColumn = position.column
+            if document.cursorLine != position.line { document.cursorLine = position.line }
+            if document.cursorColumn != position.column { document.cursorColumn = position.column }
         }
 
         private func combinedEdit(

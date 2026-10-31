@@ -476,14 +476,16 @@ final class WindowManager: ObservableObject {
             .fullSizeContentView
         ]
         window.title = state.windowTitle
-        configureEditorWindowChrome(window)
+        // Attach the state and create the toolbar before the window is shown.
+        // Showing a window with a toolbar style but no toolbar can make AppKit
+        // enter _showToolbarWithAnimation: with a nil toolbar.
+        state.hostWindow = window
+        configureEditorWindowChrome(window, appState: state)
         window.setContentSize(NSSize(width: 1180, height: 780))
         window.minSize = NSSize(width: 900, height: 560)
         window.center()
         window.isReleasedWhenClosed = false
         window.isRestorable = false
-
-        state.hostWindow = window
 
         let controller = NSWindowController(window: window)
         windowControllers[windowID] = controller

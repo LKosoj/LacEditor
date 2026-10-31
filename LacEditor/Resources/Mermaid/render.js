@@ -46,12 +46,21 @@ globalThis.lacMermaid = (() => {
           if (generation !== value || !article.isConnected || !code.isConnected) return;
           output.innerHTML = result.svg;
           output.removeAttribute('role');
+          const sourcePosition = pre.getAttribute('data-sourcepos');
+          if (sourcePosition) output.setAttribute('data-sourcepos', sourcePosition);
+          else output.removeAttribute('data-sourcepos');
+          // Once the source block is hidden, its anchor must move to the
+          // visible diagram so editor-to-preview scrolling can locate it.
+          pre.removeAttribute('data-sourcepos');
+          globalThis.lacSourceLines = null;
           pre.hidden = true;
           output.scrollLeft = horizontal;
         } catch (_) {
           if (generation !== value || !article.isConnected || !code.isConnected) return;
           output.textContent = errorText;
           output.setAttribute('role', 'alert');
+          output.removeAttribute('data-sourcepos');
+          globalThis.lacSourceLines = null;
           pre.hidden = false;
         } finally {
           scratch.remove();

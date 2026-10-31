@@ -785,7 +785,20 @@ private final class EditorWindowToolbar: NSToolbar {
 }
 
 @MainActor
+// Defensive fix: always ensure toolbar is assigned before showing/manipulation (prevents nil toolbar error).
 func configureEditorWindowToolbar(_ window: NSWindow, appState: AppState) {
+    // Ensure toolbar is not nil before showing/manipulation
+    if window.toolbar == nil {
+        let controller = EditorWindowToolbarController(appState: appState)
+        let toolbar = controller.makeToolbar()
+        window.toolbar = toolbar
+        controller.update()
+        DispatchQueue.main.async {
+            localizeNativeToolbarItems(in: toolbar)
+        }
+        return
+    }
+
     if let toolbar = window.toolbar as? EditorWindowToolbar,
        let controller = toolbar.controller {
         controller.update(appState: appState)

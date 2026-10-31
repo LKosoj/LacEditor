@@ -143,6 +143,11 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     private var markdownImages: [(range: NSRange, image: NSImage)] = []
     private var markdownMedia: [(range: NSRange, size: NSSize)] = []
     private var markdownBlockImages: [(range: NSRange, image: NSImage)] = []
+    /// Source-backed rendered blocks.  Their bitmap may be revealed while the
+    /// insertion point is inside the source; opaque media must not use this
+    /// policy merely because the insertion point shares a line with them.
+    private var markdownDiagramRanges: [NSRange] = []
+    private var markdownFormulaRanges: [NSRange] = []
     private struct UppercaseHeadingVisual {
         let sourceRange: NSRange
         let projection: MarkdownHeadingUppercaseProjection
@@ -1098,10 +1103,51 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
                       width: size.width, height: size.height)
     }
 
+    /// Возвращает исходную позицию медиа, занимающего верхнюю часть viewport.
+    /// У таких элементов glyphRange может не содержать исходный Markdown-текст.
+    func markdownMediaSourceAnchor(in visible: NSRect, container: NSTextContainer) -> Int? {
+        var candidates: [(NSRange, NSRect)] = markdownMedia.compactMap { entry in
+            markdownMediaRect(for: entry.range, in: container).map { (entry.range, $0) }
+        }
+        candidates += markdownImages.compactMap { entry in
+            imageRect(entry, in: container, centered: true).map { (entry.range, $0) }
+        }
+        candidates += markdownInlineImages.compactMap { entry in
+            inlineImageRect(entry, in: container).map { (entry.range, $0) }
+        }
+        candidates += markdownBlockImages.compactMap { entry in
+            imageRect(entry, in: container).map { (entry.range, $0) }
+        }
+        return candidates
+            .filter { $0.1.maxY >= visible.minY && $0.1.minY <= visible.maxY }
+            .min { abs($0.1.minY - visible.minY) < abs($1.1.minY - visible.minY) }?.0.location
+    }
+
     private func imageIsVisible(_ range: NSRange) -> Bool {
         guard textContainers.first?.textView?.hasMarkedText() != true else { return false }
         if intersectsFoldedRange(range) { return false }
-        return !(markdownRevealedRange.map { touches(range, $0) } ?? false)
+        guard let revealed = markdownRevealedRange, touches(range, revealed) else { return true }
+
+        // Only source-backed blocks are revealable.  In particular, an image
+        // or another opaque media item on the same line as the caret remains
+        // rendered.  Requiring the actual selection to be inside the block
+        // also prevents a line-wide reveal from hiding a neighbouring diagram.
+        if markdownDiagramRanges.contains(where: { $0 == range }) {
+            guard let selection = textContainers.first?.textView?.selectedRange() else { return true }
+            if selection.length > 0 { return NSIntersectionRange(selection, range).length == 0 }
+            guard selection.location != NSNotFound else { return true }
+            return selection.location < range.location || selection.location >= NSMaxRange(range)
+        }
+
+        // Keep formulas on their established line-based reveal path.  Some
+        // explicit formula commands intentionally reveal the whole source
+        // line rather than moving the insertion point into the expression.
+        if markdownFormulaRanges.contains(where: { $0 == range }) { return false }
+
+        // Uppercase heading projections have their own explicit source-reveal
+        // interaction and retain the historical line-based behaviour.
+        if uppercaseHeadingVisuals[range] != nil { return false }
+        return true
     }
 
     private func listImageIndent(_ range: NSRange) -> CGFloat {
@@ -1287,15 +1333,34 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     }
 
     func markdownImageLocation(at point: NSPoint, in container: NSTextContainer) -> Int? {
+        markdownRenderedHit(at: point, in: container)?.range.location
+    }
+
+    enum MarkdownRenderedHit {
+        case inlineImage(NSRange)
+        case image(NSRange)
+        case blockImage(NSRange)
+        case diagram(NSRange)
+
+        var range: NSRange {
+            switch self {
+            case let .inlineImage(range), let .image(range), let .blockImage(range), let .diagram(range): return range
+            }
+        }
+    }
+
+    func markdownRenderedHit(at point: NSPoint, in container: NSTextContainer) -> MarkdownRenderedHit? {
         for entry in markdownInlineImages {
             if isCoveredByUppercaseHeading(entry.range) { continue }
-            if let rect = inlineImageRect(entry, in: container), rect.contains(point) { return entry.range.location }
+            if let rect = inlineImageRect(entry, in: container), rect.contains(point) { return .inlineImage(entry.range) }
         }
         for entry in markdownImages {
-            if let rect = imageRect(entry, in: container, centered: true), rect.contains(point) { return entry.range.location }
+            if let rect = imageRect(entry, in: container, centered: true), rect.contains(point) { return .image(entry.range) }
         }
         for entry in markdownBlockImages {
-            if let rect = imageRect(entry, in: container), rect.contains(point) { return entry.range.location }
+            if let rect = imageRect(entry, in: container), rect.contains(point) {
+                return markdownDiagramRanges.contains(entry.range) ? .diagram(entry.range) : .blockImage(entry.range)
+            }
         }
         return nil
     }
@@ -1639,6 +1704,9 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     }
 
     func setMarkdownPresentation(_ presentation: MarkdownPresentation?, revealedRange: NSRange?, inlineSelection: NSRange? = nil, invalidating range: NSRange? = nil) {
+        markdownDiagramRanges = (presentation?.diagrams ?? []).map(\.range).sorted { $0.location < $1.location }
+        markdownFormulaRanges = ((presentation?.formulas ?? []).map(\.range)
+            + (presentation?.inlineFormulas ?? []).map(\.range)).sorted { $0.location < $1.location }
         if presentation == nil && markdownMarkers.isEmpty && markdownTextReplacements.isEmpty && markdownListMarkers.isEmpty && markdownParagraphs.isEmpty && markdownHeadings.isEmpty && markdownTaskCheckboxes.isEmpty && markdownTOCRanges.isEmpty && markdownPageBreaks.isEmpty && tableLines.isEmpty && range != nil {
             markdownRevealedRange = nil
             markdownInlineSelection = nil
@@ -1807,9 +1875,19 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         }
         tableLines.shift(edit)
         shiftMarkdownMedia(edit)
+        markdownDiagramRanges = markdownDiagramRanges.compactMap(edit.away)
+        markdownFormulaRanges = markdownFormulaRanges.compactMap(edit.away)
         markdownRevealedRange = revealedRange
         markdownInlineSelection = inlineSelection
     }
+
+    func shiftMarkdownMediaOnly(_ edit: MarkdownTextEdit) {
+        guard edit.delta != 0 else { return }
+        shiftMarkdownMedia(edit)
+        markdownDiagramRanges = markdownDiagramRanges.compactMap(edit.away)
+        markdownFormulaRanges = markdownFormulaRanges.compactMap(edit.away)
+    }
+
 
     /// Готовые картинки, формулы, эмодзи, размеры вставок и опорные линии ruby переезжают вместе с элементами: их не пересоздают и раскладку не сбрасывают.
     /// Ключ блочной картинки — абзац (растёт вместе с ним), остальные ключи — неделимые диапазоны: правка их не задевает (`canShift`).

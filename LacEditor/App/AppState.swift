@@ -810,8 +810,10 @@ final class AppState: ObservableObject {
 
     func toggleDistractionFree() {
         if isDistractionFree {
-            if let previousToolbarVisibility {
-                distractionFreeToolbar?.isVisible = previousToolbarVisibility
+            if let previousToolbarVisibility,
+               let toolbar = distractionFreeToolbar,
+               hostWindow?.toolbar === toolbar {
+                toolbar.isVisible = previousToolbarVisibility
             }
             distractionFreeToolbar = nil
             previousToolbarVisibility = nil
@@ -819,8 +821,12 @@ final class AppState: ObservableObject {
         } else {
             let toolbar = hostWindow?.toolbar
             distractionFreeToolbar = toolbar
-            previousToolbarVisibility = toolbar?.isVisible
-            toolbar?.isVisible = false
+            if let toolbar, hostWindow?.toolbar === toolbar {
+                previousToolbarVisibility = toolbar.isVisible
+                toolbar.isVisible = false
+            } else {
+                previousToolbarVisibility = nil
+            }
             isDistractionFree = true
         }
     }

@@ -1,7 +1,10 @@
 import AppKit
 import AVKit
 import ImageIO
+import os
 import WebKit
+
+private let markdownEditorPerformanceLog = OSLog(subsystem: "com.laceditor.LacEditor", category: "MarkdownEditorPerformance")
 
 private final class MarkdownAnimatedImageView: NSImageView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -170,6 +173,33 @@ private func markdownPresentationImageData(_ address: String, baseURL: URL?, pat
 /// Keeps the source text unchanged while applying formatting to visible text.
 @MainActor
 final class MarkdownPresentationController {
+    /// Стабильная идентичность медиа не зависит от его текущего положения в исходнике.
+    /// Диапазон хранится отдельно как placement и меняется при редактировании.
+    private struct ImageCacheKey: Hashable {
+        let source: String
+        let sizing: String?
+        let isInline: Bool
+    }
+
+    private struct DiagramCacheKey: Hashable {
+        let kind: String
+        let source: String
+        let width: CGFloat
+        let dark: Bool
+    }
+
+    private struct CachedImage {
+        let image: NSImage
+        let animated: NSImage?
+        let intrinsic: CGSize?
+        let width: CGFloat?
+    }
+
+    private struct CachedDiagram {
+        let image: NSImage
+        let svg: Data?
+    }
+
     private weak var textView: LacTextView?
     private weak var layout: FoldLayoutManager?
     private let queue: OperationQueue = {
@@ -184,6 +214,7 @@ final class MarkdownPresentationController {
     private var remoteImageJobs: [NSRange: (UUID, Task<Void, Never>)] = [:]
     private var svgImageJobs: [NSRange: (UUID, CGFloat, MarkdownSVGRenderService)] = [:]
     private var imagePresentationWidths: [NSRange: CGFloat] = [:]
+    private var imageCache: [ImageCacheKey: CachedImage] = [:]
     private var animatedImages: [NSRange: NSImageView] = [:]
     private var editingTableCell: NSRange?
     var imageSession = URLSession.shared
@@ -225,8 +256,22 @@ final class MarkdownPresentationController {
             switch self { case let .mermaid(service): return service.renderedSVG; case let .legacy(service): return service.renderedSVG }
         }
     }
-    private var diagramJobs: [NSRange: (UUID, DiagramJob)] = [:]
+    /// Идентичность задания не зависит от текущего диапазона в исходнике.
+    /// Диапазон остаётся ключом словаря только как быстрый placement; при
+    /// сдвиге текста он переносится, а callback ищет его по token.
+    private struct DiagramJobIdentity: Equatable {
+        let kind: String
+        let source: String
+    }
+    private struct DiagramJobEntry {
+        let token: UUID
+        let identity: DiagramJobIdentity
+        var revision: UInt
+        let job: DiagramJob
+    }
+    private var diagramJobs: [NSRange: DiagramJobEntry] = [:]
     private var diagramResources: [NSRange: (image: NSImage, svg: Data?)] = [:]
+    private var diagramCache: [DiagramCacheKey: CachedDiagram] = [:]
     struct DiagramResource {
         let range: NSRange
         let image: NSImage
@@ -369,6 +414,9 @@ final class MarkdownPresentationController {
     private var keptEdit: (revision: UInt, length: Int, inserted: NSRange)?
     /// На экране сдвинутое оформление предыдущего разбора: при установке нового разбора стили видимой области снимаются.
     private var presentationKept = false
+    // При полном переразборе не убираем готовые медиа до появления нового результата.
+    // Это предотвращает превращение неизменившихся картинок и диаграмм в исходный текст во время ввода.
+    private var deferredReadyClear = false
     private var mediaPlacementPending = false
     private var lastRevealedRange: NSRange?
     var emojiCompletionReady: (() -> Void)?
@@ -476,6 +524,8 @@ final class MarkdownPresentationController {
             for (_, task) in remoteImageJobs.values { task.cancel() }
             remoteImageJobs.removeAll()
             loadedImageRanges.removeAll()
+            imageCache.removeAll()
+            diagramCache.removeAll()
             if !hasMarkedText { layout?.clearMarkdownImages() }
             lastVisibleRange = nil
         }
@@ -862,28 +912,64 @@ final class MarkdownPresentationController {
 
     func beforeEdit(range: NSRange, replacementLength: Int, replacement: String? = nil) {
         guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled || presentation != nil || parsedResult != nil else { return }
+        let isContinuation = deferredReadyClear
         // Прошлая правка сдвинула оформление, но текст так и не изменился: сдвиг ничем не подтверждён.
         if keptEdit != nil {
             keptEdit = nil
-            dropKeptPresentation()
+            // Следующая клавиша подтверждает, что ввод продолжается. Не сбрасываем
+            // готовые медиа между клавишами: их диапазоны будут сдвинуты ещё раз,
+            // а новый разбор позже заменит только действительно изменившиеся блоки.
+            deferredReadyClear = true
         }
         document?.invalidateMarkdownReadableText()
         if document?.isMarkdownOutlineCurrent == true { document?.isMarkdownOutlineCurrent = false }
         parsedResult = nil
         parsedSource = nil
-        cancelPending()
+        // `cancelPending` вызывается до сдвига placement. Если оформление уже
+        // показано, незавершённые загрузки неизменившихся картинок должны
+        // пережить эту клавишу; их ключи будут перенесены в `shiftInstalledMedia`.
+        deferredReadyClear = isActive && !hasMarkedText && (presentation != nil || !styledRanges.isEmpty)
+        cancelPending(preservingMedia: deferredReadyClear)
         if isActive && !hasMarkedText {
             if presentation != nil || !styledRanges.isEmpty {
                 if let replacement, let edit = presentationAfterEdit(range: range, replacement: replacement, replacementLength: replacementLength) {
                     lastRevealedRange = lastRevealedRange.flatMap { shifted([$0]).first }
-                    shiftPresentation(edit)
+                    if isContinuation {
+                        presentation?.shiftMediaOnly(edit)
+                        shiftInstalledMedia(edit)
+                        shiftDiagrams(edit)
+                        layout?.shiftMarkdownMediaOnly(edit)
+                    } else {
+                        shiftPresentation(edit)
+                    }
                     keptEdit = (currentRevision?() ?? 0, (textView?.textStorage?.length ?? 0) - range.length + replacementLength,
                                 NSRange(location: range.location, length: replacementLength))
+                    deferredReadyClear = true
                 } else {
-                    // Очистка раньше сброса оформления: cancelDiagrams читает presentation.images.
-                    clearReady()
-                    if let visible = visibleRange() { restoreStyles(in: visible) }
-                    invalidatePresentation(in: visibleRange())
+                    // Полный разбор всё равно понадобится, но готовые медиа оставляем на экране
+                    // до его завершения. Даже при структурно небезопасной правке переносим
+                    // старые диапазоны механически: иначе FoldLayoutManager сразу показывает
+                    // исходный Markdown вместо ещё актуальных вставок.
+                    let edit = MarkdownTextEdit(range: range, replacementLength: replacementLength,
+                                                textLength: textView?.textStorage?.length ?? 0)
+                    let editingDiagram = presentation?.diagrams.contains { diagram in
+                        if range.length > 0 {
+                            return NSIntersectionRange(range, diagram.range).length > 0
+                        }
+                        return diagram.range.location <= range.location && range.location <= NSMaxRange(diagram.range)
+                    } == true
+                    // Внутри диаграммы показывается исходный текст. Не тратим
+                    // O(N)-сдвиг всей Markdown-модели на каждую букву: новый
+                    // результат будет установлен после выхода из блока.
+                    if editingDiagram || isContinuation {
+                        presentation?.shiftMediaOnly(edit)
+                        shiftInstalledMedia(edit)
+                        shiftDiagrams(edit)
+                        layout?.shiftMarkdownMediaOnly(edit)
+                    } else {
+                        shiftPresentation(edit)
+                    }
+                    deferredReadyClear = true
                 }
             } else {
                 clearReady()
@@ -931,16 +1017,24 @@ final class MarkdownPresentationController {
         // Открытые details переезжают вместе с блоками (`shiftMedia`): очищаются только на старом пути.
         if self.revision != revision && !kept { expandedDetails.removeAll() }
         self.revision = revision
-        cancelPending()
+        // `beforeEdit` уже отменил устаревшие операции перед сдвигом placement.
+        // При сохранённом оформлении повторная отмена здесь выполнялась для
+        // каждого символа и лишний раз инвалидировала поколение/очередь задач.
+        if !deferredReadyClear {
+            cancelPending()
+        }
         let inserted = keptEdit?.inserted
         keptEdit = nil
-        if !kept {
+        if !kept && !deferredReadyClear {
             clearReady()
             dropKeptPresentation()
         }
-        guard !hasMarkedText else { return }
+        guard !hasMarkedText else {
+            deferredReadyClear = false
+            return
+        }
         guard isActive else { needsRefresh = true; return }
-        if !kept { invalidatePresentation(in: visibleRange()) }
+        if !kept && !deferredReadyClear { invalidatePresentation(in: visibleRange()) }
         else {
             if let inserted { matchInsertedStyle(inserted) }
             // Анимированные картинки лежат отдельными видами: на сдвинутое место их ставит только пересчёт рамок.
@@ -1114,6 +1208,7 @@ final class MarkdownPresentationController {
             if work == nil && operation == nil { schedule(revision: revision) }
         }
         guard isActive, enabled, !hasMarkedText, presentation != nil else { return }
+        if let visible = visibleRange() { loadVisibleDiagrams(in: visible) }
         layout?.updateMarkdownInlineSelection(inlineSelection())
         let range = revealedRange()
         guard range != lastRevealedRange else { return }
@@ -1367,23 +1462,36 @@ final class MarkdownPresentationController {
     /// Старый путь: отмена незавершённого и очистка готового.
     func cancel() {
         clearReady()
+        deferredReadyClear = false
         cancelPending()
     }
 
     /// Останавливает то, что ещё считается; поздние результаты отбрасываются по поколению. Готовое не трогает.
-    private func cancelPending() {
+    private func cancelPending(preservingMedia: Bool = false) {
         cancelCodeJobs()
-        cancelDiagramJobs()
-        cancelMediaJobs()
+        // Отменяем только незавершённый рендер. Готовые диаграммы и формулы
+        // должны оставаться в раскладке до установки нового разбора.
+        if !preservingMedia {
+            cancelDiagramJobs()
+            formulaJob?.service.cancel()
+            formulaJob = nil
+            cancelMediaJobs()
+        }
         emojiOperation?.cancel()
         emojiOperation = nil
-        cancelImageJobs()
+        // Во время обычного ввода `beforeEdit` сохраняет keptEdit: позиционные
+        // placement уже сдвинутся, а загрузки неизменившихся изображений должны
+        // продолжаться. При полном сбросе разбора старые задания действительно
+        // устарели и отменяются.
+        if !preservingMedia { cancelImageJobs() }
         work?.cancel()
         work = nil
         operation?.cancel()
         operation = nil
-        generation &+= 1
-        document?.taskCoordinator.cancel(.markdownPresentation)
+        if !preservingMedia {
+            generation &+= 1
+            document?.taskCoordinator.cancel(.markdownPresentation)
+        }
     }
 
     /// Отменяет незавершённые загрузки картинок: ключи у них позиционные, после расхождения разбора они устарели.
@@ -1395,6 +1503,93 @@ final class MarkdownPresentationController {
         let svgJobs = svgImageJobs.values.map { $0.2 }
         svgImageJobs.removeAll()
         for job in svgJobs { job.cancel() }
+    }
+
+    private func imageCacheKey(for image: MarkdownImage) -> ImageCacheKey {
+        ImageCacheKey(source: image.url, sizing: image.sizing?.css, isInline: image.isInline)
+    }
+
+    /// Диапазон — только текущее placement. Асинхронная работа живёт дольше одной
+    /// правки текста, поэтому после `shiftPresentation` её нужно искать по
+    /// стабильному идентификатору, а не по захваченному старому диапазону.
+    private func currentImagePlacement(for token: UUID) -> NSRange? {
+        if let entry = remoteImageJobs.first(where: { $0.value.0 == token }) { return entry.key }
+        if let entry = svgImageJobs.first(where: { $0.value.0 == token }) { return entry.key }
+        return nil
+    }
+
+    private func currentImagePlacement(for operation: BlockOperation) -> NSRange? {
+        imageOperations.first(where: { $0.value === operation })?.key
+    }
+
+    private func image(at placement: NSRange) -> MarkdownImage? {
+        presentation?.images.first { image in
+            let range = image.isInline ? image.range : image.paragraphRange
+            return range == placement
+        }
+    }
+
+    private func diagramCacheKey(for diagram: MarkdownDiagram, width: CGFloat, dark: Bool) -> DiagramCacheKey {
+        DiagramCacheKey(kind: diagram.kind.rawValue, source: diagram.source, width: width, dark: dark)
+    }
+
+    /// Переносит только placement уже готовых ресурсов к результату нового разбора.
+    /// Ресурс с той же identity остаётся в кэше; старый ресурс удаляется лишь если такого
+    /// элемента больше нет в презентации. Одинаковые картинки сопоставляются по порядку,
+    /// чтобы повторяющиеся ссылки не перепутали свои диапазоны.
+    private func reconcileMediaCache(from old: MarkdownPresentation, to new: MarkdownPresentation) {
+        let oldImages = Dictionary(grouping: old.images, by: imageCacheKey(for:))
+        let newImages = Dictionary(grouping: new.images, by: imageCacheKey(for:))
+        func placement(_ image: MarkdownImage) -> NSRange {
+            image.isInline ? image.range : image.paragraphRange
+        }
+        for (key, images) in oldImages {
+            let targets = newImages[key, default: []].sorted { $0.range.location < $1.range.location }
+            let sources = images.sorted { $0.range.location < $1.range.location }
+            for (source, target) in zip(sources, targets) where placement(source) != placement(target) {
+                // Не переносим флаг loaded в новый диапазон: после adopt новый
+                // placement восстановит изображение из identity-кэша без старой
+                // геометрии и без краткого показа исходного текста.
+                loadedImageRanges.remove(placement(source))
+                imagePresentationWidths.removeValue(forKey: placement(source))
+                if let view = animatedImages.removeValue(forKey: placement(source)) {
+                    view.animates = false
+                    view.removeFromSuperview()
+                }
+            }
+            if sources.count > targets.count {
+                for source in sources.dropFirst(targets.count) {
+                    let sourcePlacement = placement(source)
+                    loadedImageRanges.remove(sourcePlacement)
+                    imagePresentationWidths.removeValue(forKey: sourcePlacement)
+                    if let view = animatedImages.removeValue(forKey: sourcePlacement) {
+                        view.animates = false
+                        view.removeFromSuperview()
+                    }
+                    if source.isInline { layout?.removeMarkdownInlineImage(for: source.range) }
+                    else { layout?.setMarkdownImage(nil, for: source.paragraphRange) }
+                }
+            }
+        }
+
+        guard let geometry = diagramGeometry else { return }
+        let oldDiagrams = Dictionary(grouping: old.diagrams, by: { diagramCacheKey(for: $0, width: geometry.0, dark: geometry.1) })
+        let newDiagrams = Dictionary(grouping: new.diagrams, by: { diagramCacheKey(for: $0, width: geometry.0, dark: geometry.1) })
+        for (key, diagrams) in oldDiagrams {
+            let targets = newDiagrams[key, default: []].sorted { $0.range.location < $1.range.location }
+            let sources = diagrams.sorted { $0.range.location < $1.range.location }
+            for (source, target) in zip(sources, targets) where source.range != target.range {
+                diagramCompleted.remove(source.range)
+                diagramResources.removeValue(forKey: source.range)
+            }
+            if sources.count > targets.count {
+                for source in sources.dropFirst(targets.count) {
+                    diagramCompleted.remove(source.range)
+                    diagramResources.removeValue(forKey: source.range)
+                    layout?.setMarkdownBlockImage(nil, for: source.range)
+                }
+            }
+        }
     }
 
     /// Убирает готовое: оформление, привязанное к позициям, нельзя оставлять там, где оно уже не соответствует тексту.
@@ -1433,9 +1628,12 @@ final class MarkdownPresentationController {
             let operation = BlockOperation()
             operation.addExecutionBlock { [weak self, weak operation, weak document] in
                 guard let operation, !operation.isCancelled, let document else { return }
+                let signpost = OSSignpostID(log: markdownEditorPerformanceLog)
+                os_signpost(.begin, log: markdownEditorPerformanceLog, name: "MarkdownPresentationParse", signpostID: signpost)
                 let parsed = MarkdownPresentationParser.parse(text, includeReadableText: includeReadableText, includeEmojiCandidates: includeEmojiCandidates,
                                                               includeUppercaseRuns: includeUppercaseRuns, includeWikiLinks: true, syntax: syntax,
                                                               isCancelled: { operation.isCancelled })
+                os_signpost(.end, log: markdownEditorPerformanceLog, name: "MarkdownPresentationParse", signpostID: signpost)
                 let result = headingNumbering ? parsed.numberingHeadings(true) : parsed
                 let needsRoot = result.images.contains { MarkdownResourcePaths.requiresRoot($0.url) } || result.audioBlocks.contains { $0.media.sources.contains(where: { MarkdownResourcePaths.requiresRoot($0) }) }
                 let paths: MarkdownResourcePaths?
@@ -1544,25 +1742,25 @@ final class MarkdownPresentationController {
         work = item
         // Когда разбор нужен только ради пути, пауза длиннее: короткие остановки при наборе не должны его запускать.
         let pathOnly = !enabled && !outlineVisible && !readableEnabled && !emojiCompletionEnabled && !mathPairEnabled
-        DispatchQueue.main.asyncAfter(deadline: .now() + (pathOnly ? 0.4 : 0.15), execute: item)
+        // Полный разбор форматированного документа не должен запускаться на каждой клавише:
+        // при непрерывном вводе ждём короткую паузу, оставляя уже установленное оформление.
+        let delay = pathOnly ? 0.4 : (enabled ? 0.6 : 0.2)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }
 
     private func install(_ result: MarkdownPresentation) {
+        if deferredReadyClear {
+            deferredReadyClear = false
+            // Полный разбор уже подготовлен, но готовые медиа нельзя снимать до
+            // сопоставления их стабильных identity с новым результатом.
+            presentationKept = true
+        }
         clearUppercaseHeadings()
         uppercaseHeadings = uppercaseSnapshotReady && !uppercaseHeadingLevels.isEmpty
             ? Dictionary(result.headings.map { ($0.range.location, $0) }, uniquingKeysWith: { first, _ in first }) : [:]
         lastVisibleRange = nil
         if presentationKept {
-            // Сдвинутые картинки, формулы, эмодзи, диаграммы, вставки и ruby могли разойтись с разбором: тогда готовое снимается, как на старом пути.
-            if let kept = presentation, kept.images != result.images || kept.formulas != result.formulas
-                || kept.inlineFormulas != result.inlineFormulas || kept.emojiCandidates != result.emojiCandidates
-                || kept.diagrams != result.diagrams || kept.audioBlocks != result.audioBlocks || kept.iframeBlocks != result.iframeBlocks
-                || kept.detailsBlocks != result.detailsBlocks || kept.htmlBlocks != result.htmlBlocks || kept.ruby != result.ruby {
-                clearReady()
-                expandedDetails.removeAll()
-                // Незавершённые загрузки заново запустит applyVisible ниже, уже по ключам свежего разбора.
-                cancelImageJobs()
-            }
+            if let kept = presentation { reconcileMediaCache(from: kept, to: result) }
             presentationKept = false
             if let visible = visibleRange() { restoreStyles(in: visible) }
         }
@@ -1582,6 +1780,7 @@ final class MarkdownPresentationController {
 
     private func clear() {
         keptEdit = nil
+        deferredReadyClear = false
         presentationKept = false
         clearUppercaseHeadings()
         uppercaseHeadings.removeAll()
@@ -1702,7 +1901,11 @@ final class MarkdownPresentationController {
         guard let textView, let text = textView.textStorage?.mutableString else { return nil }
         let selection = textView.selectedRange()
         guard selection.location <= text.length else { return nil }
-        if selectionTouchesImage(selection) { return nil }
+        // Непрозрачные медиа не редактируются внутри оформленного редактора.
+        // Раскрытие всей строки здесь временно показывало их полный Markdown
+        // перед установкой ресурса. Диаграммы намеренно не входят в этот список:
+        // при попадании курсора внутрь диаграммы они должны перейти в текстовый вид.
+        if selectionTouchesOpaqueMedia(selection) { return nil }
         let length = min(selection.length, text.length - selection.location)
         return text.lineRange(for: NSRange(location: selection.location, length: length))
     }
@@ -1715,6 +1918,23 @@ final class MarkdownPresentationController {
             }
             return NSIntersectionRange(selection, range).length > 0
         } == true
+    }
+
+    private func selectionTouchesOpaqueMedia(_ selection: NSRange) -> Bool {
+        guard let presentation else { return false }
+        func touches(_ range: NSRange) -> Bool {
+            if selection.length == 0 {
+                return selection.location >= range.location && selection.location <= NSMaxRange(range)
+            }
+            return NSIntersectionRange(selection, range).length > 0
+        }
+        return presentation.images.contains { touches($0.isInline ? $0.range : $0.paragraphRange) }
+            || presentation.audioBlocks.contains { touches($0.range) }
+            || presentation.iframeBlocks.contains { touches($0.range) }
+            || presentation.detailsBlocks.contains { touches($0.range) }
+            || presentation.htmlBlocks.contains { touches($0.range) }
+            || presentation.formulas.contains { touches($0.range) }
+            || presentation.inlineFormulas.contains { touches($0.range) }
     }
 
     private func intersecting(_ range: NSRange) -> [MarkdownPresentationSpan] {
@@ -2730,6 +2950,45 @@ final class MarkdownPresentationController {
             imagePresentationWidths = Dictionary(imagePresentationWidths.compactMap { key, width in edit.block(key).map { ($0, width) } },
                                                  uniquingKeysWith: { first, _ in first })
         }
+        // Незавершённые загрузки имеют тот же стабильный элемент, но их
+        // словарные ключи — диапазоны старого текста. Переносим ключи вместе с
+        // placement, чтобы следующая видимая область не запускала дубликат.
+        func movedJobRange(_ range: NSRange) -> NSRange? {
+            edit.away(range) ?? edit.block(range)
+        }
+        if !imageOperations.isEmpty {
+            var moved: [NSRange: BlockOperation] = [:]
+            for (key, job) in imageOperations {
+                guard let next = movedJobRange(key), moved[next] == nil else {
+                    job.cancel()
+                    continue
+                }
+                moved[next] = job
+            }
+            imageOperations = moved
+        }
+        if !remoteImageJobs.isEmpty {
+            var moved: [NSRange: (UUID, Task<Void, Never>)] = [:]
+            for (key, job) in remoteImageJobs {
+                guard let next = movedJobRange(key), moved[next] == nil else {
+                    job.1.cancel()
+                    continue
+                }
+                moved[next] = job
+            }
+            remoteImageJobs = moved
+        }
+        if !svgImageJobs.isEmpty {
+            var moved: [NSRange: (UUID, CGFloat, MarkdownSVGRenderService)] = [:]
+            for (key, job) in svgImageJobs {
+                guard let next = movedJobRange(key), moved[next] == nil else {
+                    job.2.cancel()
+                    continue
+                }
+                moved[next] = job
+            }
+            svgImageJobs = moved
+        }
         if animatedImages.keys.contains(where: { NSMaxRange($0) >= edit.range.location }) {
             animatedImages = Dictionary(animatedImages.compactMap { key, view in edit.block(key).map { ($0, view) } },
                                         uniquingKeysWith: { first, _ in first })
@@ -2901,18 +3160,29 @@ final class MarkdownPresentationController {
 
     /// Останавливает идущую отрисовку диаграмм; готовые картинки не трогает. Поздние ответы отбрасывает сверка по `diagramJobs`.
     private func cancelDiagramJobs() {
-        let jobs = diagramJobs.values.map { $0.1 }
+        let jobs = diagramJobs.values.map { $0.job }
         diagramJobs.removeAll()
         for job in jobs { job.cancel() }
+    }
+
+    private func currentDiagramPlacement(for token: UUID) -> (range: NSRange, entry: DiagramJobEntry)? {
+        diagramJobs.first { $0.value.token == token }.map { ($0.key, $0.value) }
     }
 
     /// Готовые диаграммы переезжают вместе со своими блоками: меняются только ключи, картинка и SVG те же.
     /// Идущие отрисовки уже отменены (`cancelPending`) и заново пойдут по видимым диаграммам без результата.
     private func shiftDiagrams(_ edit: MarkdownTextEdit) {
-        guard edit.delta != 0, !diagramCompleted.isEmpty else { return }
+        guard edit.delta != 0 else { return }
+        for range in Array(diagramJobs.keys) where edit.away(range) == nil {
+            diagramJobs[range]?.job.cancel()
+            diagramJobs.removeValue(forKey: range)
+        }
         diagramCompleted = Set(diagramCompleted.compactMap(edit.away))
         diagramResources = Dictionary(diagramResources.compactMap { range, value in edit.away(range).map { ($0, value) } },
                                       uniquingKeysWith: { first, _ in first })
+        diagramJobs = Dictionary(diagramJobs.compactMap { range, entry in
+            edit.away(range).map { ($0, entry) }
+        }, uniquingKeysWith: { first, _ in first })
     }
 
     private func cancelDiagrams() {
@@ -2954,31 +3224,42 @@ final class MarkdownPresentationController {
         if let old = diagramGeometry, old.0 != width || old.1 != dark { cancelDiagrams() }
         diagramGeometry = (width, dark)
         let diagrams = presentation.diagrams.filter { NSIntersectionRange($0.range, visible).length > 0 }
-        let visibleRanges = Set(diagrams.map(\.range))
-        for range in diagramCompleted.subtracting(visibleRanges) {
-            layout.setMarkdownBlockImage(nil, for: range)
-            diagramCompleted.remove(range)
-            diagramResources.removeValue(forKey: range)
-        }
-        for range in Array(diagramJobs.keys) where !visibleRanges.contains(range) {
-            let job = diagramJobs.removeValue(forKey: range)
-            job?.1.cancel()
-        }
-        for diagram in diagrams where !diagramCompleted.contains(diagram.range) && diagramJobs[diagram.range] == nil {
+        // Готовые диаграммы не выгружаем при прокрутке. Их диапазон и размер уже
+        // участвуют в раскладке, а удаление картинки оставляет пустой блок и при
+        // возврате временно показывает исходный текст до нового рендера.
+        for diagram in diagrams {
+            // Диаграмма редактируется как исходный текст, пока курсор находится
+            // внутри её блока. Не запускаем новый рендер на каждой клавише;
+            // после выхода selectionChanged/viewportChanged снова вызовет этот путь.
+            if NSIntersectionRange(view.selectedRange(), diagram.range).length > 0 {
+                continue
+            }
+            guard !diagramCompleted.contains(diagram.range), diagramJobs[diagram.range] == nil else { continue }
+            let cacheKey = diagramCacheKey(for: diagram, width: width, dark: dark)
+            if let cached = diagramCache[cacheKey] {
+                diagramCompleted.insert(diagram.range)
+                diagramResources[diagram.range] = (cached.image, cached.svg)
+                layout.setMarkdownBlockImage(cached.image, for: diagram.range)
+                continue
+            }
             let token = UUID(), generation = self.generation, revision = self.revision
+            let identity = DiagramJobIdentity(kind: diagram.kind.rawValue, source: diagram.source)
             let receive: (Result<NSImage, Error>) -> Void = { [weak self, weak document] result in
-                guard let self, self.diagramJobs[diagram.range]?.0 == token else { return }
-                let svg = self.diagramJobs[diagram.range]?.1.svg
-                self.diagramJobs.removeValue(forKey: diagram.range)
+                guard let self, let current = self.currentDiagramPlacement(for: token), current.entry.identity == identity else { return }
+                let currentRange = current.range
+                let svg = current.entry.job.svg
+                self.diagramJobs.removeValue(forKey: currentRange)
                 guard let document, self.document === document, self.enabled, self.isActive,
-                      self.generation == generation, self.currentRevision?() == revision,
-                      !self.hasMarkedText, self.presentation?.diagrams.contains(diagram) == true,
-                      let visible = self.visibleRange(), NSIntersectionRange(diagram.range, visible).length > 0,
+                      self.generation == generation,
+                      !self.hasMarkedText,
+                      let currentDiagram = self.presentation?.diagrams.first(where: { $0.range == currentRange && $0.kind.rawValue == identity.kind && $0.source == identity.source }),
+                      let visible = self.visibleRange(), NSIntersectionRange(currentDiagram.range, visible).length > 0,
                       let geometry = self.diagramGeometry, geometry.0 == width, geometry.1 == dark else { return }
-                self.diagramCompleted.insert(diagram.range)
+                self.diagramCompleted.insert(currentDiagram.range)
                 if case let .success(image) = result {
-                    self.diagramResources[diagram.range] = (image, svg)
-                    self.layout?.setMarkdownBlockImage(image, for: diagram.range)
+                    self.diagramResources[currentDiagram.range] = (image, svg)
+                    self.diagramCache[cacheKey] = CachedDiagram(image: image, svg: svg)
+                    self.layout?.setMarkdownBlockImage(image, for: currentDiagram.range)
                     self.notifyGeometryChanged()
                 }
             }
@@ -2990,7 +3271,7 @@ final class MarkdownPresentationController {
                 let kind: LegacyDiagramRenderService.Kind = diagram.kind == .flow ? .flow : .sequence
                 job = .legacy(LegacyDiagramRenderService(code: diagram.source, kind: kind, width: width, completion: receive))
             }
-            diagramJobs[diagram.range] = (token, job)
+            diagramJobs[diagram.range] = DiagramJobEntry(token: token, identity: identity, revision: revision, job: job)
             job.start()
         }
     }
@@ -3279,7 +3560,16 @@ final class MarkdownPresentationController {
 
     private func loadVisibleImages(in visible: NSRange) {
         guard let presentation, let document, let layout else { return }
-        let images = presentation.images.filter { NSIntersectionRange($0.paragraphRange, visible).length > 0 }
+        let cursor = textView?.selectedRange().location ?? visible.location
+        let images = presentation.images
+            .filter { NSIntersectionRange($0.paragraphRange, visible).length > 0 }
+            .sorted { lhs, rhs in
+                let leftDistance = abs(lhs.paragraphRange.location - cursor)
+                let rightDistance = abs(rhs.paragraphRange.location - cursor)
+                return leftDistance == rightDistance
+                    ? lhs.paragraphRange.location < rhs.paragraphRange.location
+                    : leftDistance < rightDistance
+            }
         let retention = imageRetentionRange() ?? visible
         let retainedRanges = Set(presentation.images.lazy
             .filter { NSIntersectionRange($0.paragraphRange, retention).length > 0 }
@@ -3298,6 +3588,16 @@ final class MarkdownPresentationController {
         }
         for image in images {
             let key = image.isInline ? image.range : image.paragraphRange
+            let cacheKey = imageCacheKey(for: image)
+            if let cached = imageCache[cacheKey],
+               (cached.width == nil || imageWidth(for: image) == cached.width),
+               !loadedImageRanges.contains(key), imageOperations[key] == nil, svgImageJobs[key] == nil {
+                installPresentedImage(cached.image.copy() as? NSImage ?? cached.image,
+                                      animated: cached.animated,
+                                      intrinsic: cached.intrinsic,
+                                      for: image, key: key)
+                continue
+            }
             if let job = svgImageJobs[key], imageWidth(for: image) != job.1 {
                 svgImageJobs.removeValue(forKey: key)
                 job.2.cancel()
@@ -3324,21 +3624,23 @@ final class MarkdownPresentationController {
                               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return (nil, data.base64EncodedString()) }
                         return ((image, (CGImageSourceGetType(source) as String?) == "com.compuserve.gif" && CGImageSourceGetCount(source) > 1), nil)
                     }.value
-                    guard !Task.isCancelled, let self, self.remoteImageJobs[key]?.0 == token else { return }
-                    self.remoteImageJobs.removeValue(forKey: key)
+                    guard !Task.isCancelled, let self,
+                          let currentKey = self.currentImagePlacement(for: token),
+                          let currentImage = self.image(at: currentKey) else { return }
+                    self.remoteImageJobs.removeValue(forKey: currentKey)
                     guard let document, self.document === document, self.enabled, self.isActive,
                           self.generation == generation, self.currentRevision?() == revision, document.url == baseURL,
-                          !self.hasMarkedText, self.presentation?.images.contains(image) == true,
-                          let visible = self.visibleRange(), NSIntersectionRange(image.paragraphRange, visible).length > 0 else { return }
+                          !self.hasMarkedText,
+                          let visible = self.visibleRange(), NSIntersectionRange(currentImage.paragraphRange, visible).length > 0 else { return }
                     guard let raster = decoded.0 else {
                         if let encoded = decoded.1 {
-                            self.startSVG(encoded, for: image, key: key, document: document, generation: generation, revision: revision, baseURL: baseURL)
+                            self.startSVG(encoded, for: currentImage, key: currentKey, document: document, generation: generation, revision: revision, baseURL: baseURL)
                             return
                         }
-                        self.loadedImageRanges.insert(key)
+                        self.loadedImageRanges.insert(currentKey)
                         return
                     }
-                    self.installImage(raster.0, data: data, isAnimated: raster.1, for: image, key: key)
+                    self.installImage(raster.0, data: data, isAnimated: raster.1, for: currentImage, key: currentKey)
                 }
                 remoteImageJobs[key] = (token, task)
                 continue
@@ -3352,11 +3654,11 @@ final class MarkdownPresentationController {
             operation.addExecutionBlock { [weak self, weak document, weak operation] in
                 guard let operation, !operation.isCancelled,
                       let data = markdownPresentationImageData(projectedSource ?? image.url, baseURL: baseURL, paths: paths, rootInvalid: rootInvalid), !operation.isCancelled else {
-                    DispatchQueue.main.async { [weak self, weak operation] in
+                        DispatchQueue.main.async { [weak self, weak operation] in
                         guard let self, let operation, !operation.isCancelled, self.generation == generation,
-                              self.imageOperations[key] === operation else { return }
-                        self.imageOperations.removeValue(forKey: key)
-                        self.loadedImageRanges.insert(key)
+                              let currentKey = self.currentImagePlacement(for: operation) else { return }
+                        self.imageOperations.removeValue(forKey: currentKey)
+                        self.loadedImageRanges.insert(currentKey)
                     }
                     return
                 }
@@ -3365,16 +3667,17 @@ final class MarkdownPresentationController {
                 let isAnimated = source.map { (CGImageSourceGetType($0) as String?) == "com.compuserve.gif" && CGImageSourceGetCount($0) > 1 } ?? false
                 let encoded = decoded == nil ? data.base64EncodedString() : nil
                 DispatchQueue.main.async { [weak self, weak document, weak operation] in
-                    guard let self, let operation, self.imageOperations[key] === operation else { return }
-                    self.imageOperations.removeValue(forKey: key)
+                    guard let self, let operation,
+                          let currentKey = self.currentImagePlacement(for: operation),
+                          let currentImage = self.image(at: currentKey) else { return }
+                    self.imageOperations.removeValue(forKey: currentKey)
                     guard let document, !operation.isCancelled,
                           self.document === document, self.enabled, self.isActive, self.generation == generation,
                           self.currentRevision?() == revision, document.url == baseURL,
                           !self.hasMarkedText,
-                          self.presentation?.images.contains(image) == true,
-                          let visible = self.visibleRange(), NSIntersectionRange(image.paragraphRange, visible).length > 0 else { return }
-                    if let decoded { self.installImage(decoded, data: data, isAnimated: isAnimated, for: image, key: key) }
-                    else if let encoded { self.startSVG(encoded, for: image, key: key, document: document, generation: generation, revision: revision, baseURL: baseURL) }
+                          let visible = self.visibleRange(), NSIntersectionRange(currentImage.paragraphRange, visible).length > 0 else { return }
+                    if let decoded { self.installImage(decoded, data: data, isAnimated: isAnimated, for: currentImage, key: currentKey) }
+                    else if let encoded { self.startSVG(encoded, for: currentImage, key: currentKey, document: document, generation: generation, revision: revision, baseURL: baseURL) }
                 }
             }
             imageOperations[key] = operation
@@ -3406,17 +3709,18 @@ final class MarkdownPresentationController {
         guard let width = imageWidth(for: image) else { return }
         let token = UUID()
         let service = MarkdownSVGRenderService(encoded: encoded, fragment: MarkdownImageUploadService.fragmentSuffix(image.url), width: width) { [weak self, weak document] value in
-            guard let self, self.svgImageJobs[key]?.0 == token else { return }
-            let intrinsic = self.svgImageJobs[key]?.2.intrinsicSize
-            self.svgImageJobs.removeValue(forKey: key)
+            guard let self, let currentKey = self.currentImagePlacement(for: token),
+                  let currentImage = self.image(at: currentKey) else { return }
+            let intrinsic = self.svgImageJobs[currentKey]?.2.intrinsicSize
+            self.svgImageJobs.removeValue(forKey: currentKey)
             guard let document, self.document === document, self.enabled, self.isActive,
                   self.generation == generation, self.currentRevision?() == revision, document.url == baseURL,
-                  !self.hasMarkedText, self.presentation?.images.contains(image) == true,
-                  let visible = self.visibleRange(), NSIntersectionRange(image.paragraphRange, visible).length > 0 else { return }
-            guard self.imageWidth(for: image) == width else { self.loadVisibleImages(in: visible); return }
-            guard let value else { self.loadedImageRanges.insert(key); return }
-            self.imagePresentationWidths[key] = width
-            self.installPresentedImage(value, animated: nil, intrinsic: intrinsic, for: image, key: key)
+                  !self.hasMarkedText,
+                  let visible = self.visibleRange(), NSIntersectionRange(currentImage.paragraphRange, visible).length > 0 else { return }
+            guard self.imageWidth(for: currentImage) == width else { self.loadVisibleImages(in: visible); return }
+            guard let value else { self.loadedImageRanges.insert(currentKey); return }
+            self.imagePresentationWidths[currentKey] = width
+            self.installPresentedImage(value, animated: nil, intrinsic: intrinsic, for: currentImage, key: currentKey)
         }
         svgImageJobs[key] = (token, width, service)
         service.start()
@@ -3437,7 +3741,9 @@ final class MarkdownPresentationController {
 
     private func installPresentedImage(_ original: NSImage, animated: NSImage?, intrinsic: CGSize? = nil, for image: MarkdownImage, key: NSRange) {
         guard let layout else { return }
-        let value = original
+        let source = original.copy() as? NSImage ?? original
+        let value = source
+        let renderWidth = imageWidth(for: image)
         if let sizing = image.sizing {
             guard let width = imageWidth(for: image),
                   let size = sizing.size(intrinsic: intrinsic ?? value.size, availableWidth: width) else { return }
@@ -3451,6 +3757,8 @@ final class MarkdownPresentationController {
         } else { layout.setMarkdownImage(value, for: image.paragraphRange) }
         loadedImageRanges.insert(key)
         if image.sizing != nil, let width = imageWidth(for: image) { imagePresentationWidths[key] = width }
+        imageCache[imageCacheKey(for: image)] = CachedImage(image: source, animated: animated,
+                                                             intrinsic: intrinsic, width: renderWidth)
         if let animated {
             let view = MarkdownAnimatedImageView()
             view.image = animated

@@ -753,16 +753,24 @@ func configureEditorWindowChrome(_ window: NSWindow, appState: AppState? = nil) 
     // allowed to extend through the titlebar, while one compact AppKit toolbar
     // owns every titlebar control and tracks the split-view divider.
     window.styleMask.insert(.fullSizeContentView)
-    window.toolbarStyle = .unified
+    // Install the toolbar before selecting a toolbar style. AppKit may try to
+    // animate a style change immediately, which logs a nil-toolbar error when
+    // the style is set first during window creation.
+    if let appState {
+        configureEditorWindowToolbar(window, appState: appState)
+    }
+    // The window factory calls this once before it has an AppState (and thus
+    // before a toolbar can be created). Do not ask AppKit to show a style while
+    // `window.toolbar` is nil; that reaches _showToolbarWithAnimation:.
+    if window.toolbar != nil {
+        window.toolbarStyle = .unified
+    }
     window.titleVisibility = .hidden
     // Use NT2's native titlebar backdrop above the full-height scroll views.
     window.titlebarAppearsTransparent = false
     window.backgroundColor = .windowBackgroundColor
     window.titlebarSeparatorStyle = .none
 
-    if let appState {
-        configureEditorWindowToolbar(window, appState: appState)
-    }
 }
 
 /// AppKit sends the native tab bar's plus action down the responder chain.

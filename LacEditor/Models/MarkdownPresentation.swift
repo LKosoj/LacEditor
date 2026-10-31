@@ -1279,6 +1279,25 @@ struct MarkdownPresentation: Sendable {
         fenceContextAvailable = false
     }
 
+    mutating func shiftMediaOnly(_ edit: MarkdownTextEdit) {
+        guard edit.delta != 0 else { return }
+        func move(_ range: inout NSRange, _ rule: (NSRange) -> NSRange?) {
+            if let value = rule(range) { range = value }
+        }
+        for index in edit.window(images, extent: { $0.paragraphRange }).lowerBound..<images.count {
+            move(&images[index].range, edit.away)
+            move(&images[index].paragraphRange, edit.block)
+        }
+        for index in edit.window(formulas, extent: { $0.range }).lowerBound..<formulas.count { move(&formulas[index].range, edit.away) }
+        for index in edit.window(inlineFormulas, extent: { $0.range }).lowerBound..<inlineFormulas.count { move(&inlineFormulas[index].range, edit.away) }
+        for index in edit.window(diagrams, extent: { $0.range }).lowerBound..<diagrams.count { move(&diagrams[index].range, edit.away) }
+        for index in edit.window(audioBlocks, extent: { $0.range }).lowerBound..<audioBlocks.count { move(&audioBlocks[index].range, edit.away) }
+        for index in edit.window(iframeBlocks, extent: { $0.range }).lowerBound..<iframeBlocks.count { move(&iframeBlocks[index].range, edit.away) }
+        for index in edit.window(detailsBlocks, extent: { $0.range }).lowerBound..<detailsBlocks.count { move(&detailsBlocks[index].range, edit.away) }
+        for index in edit.window(htmlBlocks, extent: { $0.range }).lowerBound..<htmlBlocks.count { move(&htmlBlocks[index].range, edit.away) }
+    }
+
+
     /// Копия с оформлением, сдвинутым под правку; nil, если `canShift` отказал. Для тестов и проверок: экран сдвигает `canShift` и `shift` на месте.
     func shiftedForTextEdit(_ edit: NSRange, replacementLength: Int, textLength: Int) -> MarkdownPresentation? {
         var copy = self

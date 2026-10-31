@@ -244,6 +244,44 @@ final class MarkdownImageTests: XCTestCase {
         XCTAssertFalse(document.isDirty)
     }
 
+    func testImageStaysRenderedWhenCursorEntersItsSourceRange() async throws {
+        _ = NSApplication.shared
+        let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+        let source = "before\n\n![image](data:image/png;base64,\(png))\n\nafter"
+        let document = EditorDocument(text: source, language: .markdown)
+        let storage = NSTextStorage(string: source)
+        let layout = FoldLayoutManager()
+        storage.addLayoutManager(layout)
+        let container = NSTextContainer(containerSize: NSSize(width: 400, height: 1_000))
+        layout.addTextContainer(container)
+        let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 600), textContainer: container)
+        let scroll = NSScrollView(frame: view.frame)
+        scroll.documentView = view
+        let controller = MarkdownPresentationController(textView: view, layout: layout)
+        defer { controller.cancel(); withExtendedLifetime(scroll) {} }
+        controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
+
+        func imagePoint(for range: NSRange) -> NSPoint {
+            layout.ensureLayout(for: container)
+            let glyph = layout.glyphIndexForCharacter(at: range.location)
+            let line = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            return NSPoint(x: line.minX + container.lineFragmentPadding + 1, y: line.minY + 1)
+        }
+
+        let initialRange = (source as NSString).range(of: "![image]")
+        for _ in 0..<30 where layout.markdownImageLocation(at: imagePoint(for: initialRange), in: container) == nil {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertEqual(layout.markdownImageLocation(at: imagePoint(for: initialRange), in: container), initialRange.location)
+
+        view.setSelectedRange(NSRange(location: initialRange.location + 2, length: 0))
+        controller.selectionChanged()
+
+        XCTAssertEqual(layout.markdownImageLocation(at: imagePoint(for: initialRange), in: container), initialRange.location)
+        XCTAssertEqual(storage.string, source)
+        XCTAssertFalse(document.isDirty)
+    }
+
     func testLocalImageAndCancelledRevision() async throws {
         _ = NSApplication.shared
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
