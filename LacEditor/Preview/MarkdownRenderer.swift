@@ -145,12 +145,12 @@ struct MarkdownRenderedPage: Sendable {
         try replaceRemoteImages([:], matches: remoteImageMatches())
     }
 
-    mutating func resolveRemoteImages(session: URLSession = .shared) async throws {
+    mutating func resolveRemoteImages(session: URLSession? = nil) async throws {
         guard !remoteImageMarkers.isEmpty else { return }
         let matches = try remoteImageMatches()
         let original = body as NSString
         let addresses = matches.compactMap { remoteImageMarkers[original.substring(with: $0.range)] }
-        let values = try await MarkdownImageUploadService.remoteImageDataURIs(addresses, session: session)
+        let values = try await MarkdownRemoteImageDownloader(session: session).dataURIs(for: addresses)
         try replaceRemoteImages(values, matches: matches)
     }
 
@@ -231,7 +231,7 @@ struct MarkdownRenderedPage: Sendable {
         <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; media-src data: http: https:; frame-src http: https:; style-src 'unsafe-inline'">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; media-src data:; frame-src 'none'; style-src 'unsafe-inline'">
         <style>\(Self.styles)</style>
         <style id="lac-whitespace">\(preserveWhitespace ? "article span[data-lac-whitespace]{white-space:break-spaces}" : "")</style>
         <style id="lac-heading-small-caps">\(typography?.smallCapsCSS ?? "")</style>
@@ -796,7 +796,7 @@ enum MarkdownRenderer {
             func resolvedMedia(_ address: String) -> String {
                 if Task.isCancelled { return "data:," }
                 if let url = URL(string: address), let scheme = url.scheme?.lowercased(),
-                   ["http", "https"].contains(scheme), url.host != nil { return url.absoluteString }
+                   ["http", "https"].contains(scheme), url.host != nil { return includeHTMLMedia ? url.absoluteString : "data:," }
                 if MarkdownResourcePaths.requiresRoot(address) && !resourcePathsLoaded {
                     resourcePaths = Result { try MarkdownResourcePaths(text: markdown, document: documentURL) }
                     resourcePathsLoaded = true
@@ -816,6 +816,9 @@ enum MarkdownRenderer {
                 let marker = prefix + "X" + String(localMediaMarkers.values.count)
                 localMediaMarkers.values[marker] = .init(url: url, fragment: MarkdownImageUploadService.fragmentSuffix(address))
                 return marker
+            }
+            func frameHTML(_ frame: MarkdownHTMLMediaService.EmbeddedFrame) -> String {
+                includeHTMLMedia ? MarkdownHTMLMediaService.iframeHTML(frame) : MarkdownHTMLMediaService.iframeFallbackHTML(frame)
             }
             let (headingIDs, omittedNamedHTML, blockedStyles) = installTableOfContents(in: document, markdown: markdown, source: mappedSource, mathExtension: extensionNode, options: options, mathInline: inlineByNode,
                 emojiLocations: emojiLocations, emojiCandidates: emojiCandidates, emojiValues: emojiValues,
@@ -1075,7 +1078,7 @@ enum MarkdownRenderer {
                                         rendered.insert(contentsOf: " controls", at: rendered.index(rendered.startIndex, offsetBy: tag.count + 1))
                                     }
                                     html = rendered
-                                case .frame(let frame): html = MarkdownHTMLMediaService.iframeHTML(frame)
+                                case .frame(let frame): html = frameHTML(frame)
                                 }
                                 replacements.append((NSRange(location: start, length: end - start), html)); lastEnd = end
                             }
@@ -1143,7 +1146,7 @@ enum MarkdownRenderer {
                     }
                     if let widget = twitterBlocks[current], let frame = MarkdownHTMLMediaService.twitterFrame(widget),
                        let replacement = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) {
-                        let html = staticWidgetFallback ? MarkdownHTMLMediaService.twitterFallbackHTML(widget) : MarkdownHTMLMediaService.iframeHTML(frame)
+                        let html = staticWidgetFallback || !includeHTMLMedia ? MarkdownHTMLMediaService.twitterFallbackHTML(widget) : MarkdownHTMLMediaService.iframeHTML(frame)
                         if html.withCString({ cmark_node_set_on_enter(replacement, $0) }) != 0,
                            cmark_node_replace(current, replacement) != 0 { detachedFrameNodes.append(current) }
                         else { cmark_node_free(replacement) }
@@ -1179,7 +1182,7 @@ enum MarkdownRenderer {
                             cursor = cmark_node_next(item)
                         }
                         if nodes.last == closing, let replacement = cmark_node_new(CMARK_NODE_CUSTOM_INLINE) {
-                            let configured = MarkdownHTMLMediaService.iframeHTML(frame).withCString { cmark_node_set_on_enter(replacement, $0) }
+                            let configured = frameHTML(frame).withCString { cmark_node_set_on_enter(replacement, $0) }
                             if configured != 0 && cmark_node_insert_before(current, replacement) != 0 {
                                 for item in nodes {
                                     if Task.isCancelled { return }
@@ -1215,7 +1218,7 @@ enum MarkdownRenderer {
                        let range = mappedSource.range(current), let literal = cmark_node_get_literal(current),
                        confirmedAudio.contains(range) || confirmedVideo.contains(range) || confirmedFrames[range] != nil {
                         let html: String?
-                        if let frame = confirmedFrames[range] { html = MarkdownHTMLMediaService.iframeHTML(frame) }
+                        if let frame = confirmedFrames[range] { html = frameHTML(frame) }
                         else if let media = MarkdownHTMLMediaService.embeddedMedia(in: String(cString: literal)), let start = mediaOpeningHTML(media) {
                             html = start + (media.kind == .audio ? "</audio>" : "</video>")
                         } else { html = nil }

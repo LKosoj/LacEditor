@@ -200,7 +200,7 @@ extension EditorTextView {
         var clipboardCopyProject: @Sendable (String, NSRange, URL?, Bool, MarkdownSyntaxOptions, [NSRange: Bool]) -> MarkdownClipboardCopyService.Fragment? = {
             MarkdownClipboardCopyService.project($0, selection: $1, includeImages: true, documentURL: $2, allowRemoteImages: $3, syntax: $4, detailsOpenOverrides: $5)
         }
-        var clipboardCopySession = URLSession.shared
+        var clipboardCopySession: URLSession?
         var clipboardConversionExecutable: URL?
         var clipboardImageWrite: @Sendable (Data, URL) throws -> Void = { try $0.write(to: $1, options: .withoutOverwriting) }
         private var tableCellVirtualSeparators = 0
@@ -2376,6 +2376,7 @@ extension EditorTextView {
             guard sourceSelection.location <= storage.length, sourceSelection.length <= storage.length - sourceSelection.location else { return true }
             let markdown = storage.string, revision = contentRevision, documentRevision = document.textRevision, documentURL = document.url
             let wasFormatted = document.isMarkdownFormatted
+            let remoteImagesAllowed = document.allowsRemoteImages
             let contextID = tableCellContextID, copyID = clipboardCopyID, changeCount = board.changeCount
             let wasChild = child != nil
             let syntax = aiPreferences?.markdownSyntax ?? .init()
@@ -2391,7 +2392,7 @@ extension EditorTextView {
                 var fragment = mode == .markdown
                     ? MarkdownClipboardCopyService.Fragment(text: (markdown as NSString).substring(with: sourceSelection), html: "", runs: [])
                     : project(markdown, sourceSelection, documentURL, true, syntax, detailsOpenOverrides)
-                if mode == .rich, let projected = fragment, !projected.remoteImages.isEmpty {
+                if mode == .rich, remoteImagesAllowed, let projected = fragment, !projected.remoteImages.isEmpty {
                     fragment = try? await MarkdownClipboardCopyService.resolveRemoteImages(projected, session: session)
                 }
                 if let projected = fragment, !projected.mathImages.isEmpty {
@@ -2413,7 +2414,8 @@ extension EditorTextView {
                     guard !Task.isCancelled, let self, let document, self.document === document,
                           self.clipboardCopyID == copyID, self.isActive, self.contentRevision == revision,
                           document.textRevision == documentRevision, document.url == documentURL, document.language == .markdown, self.currentLanguage == .markdown,
-                          document.isMarkdownFormatted == wasFormatted, document.ioState == .idle, board.changeCount == changeCount,
+                          document.isMarkdownFormatted == wasFormatted, document.allowsRemoteImages == remoteImagesAllowed,
+                          document.ioState == .idle, board.changeCount == changeCount,
                           (mode == .markdown || (self.markdownPresentation?.detailsOpenOverrides ?? [:]) == detailsOpenOverrides),
                           (self.aiPreferences?.markdownSyntax ?? .init()) == syntax,
                           self.mathOptions.physics == copyMathPhysics, self.mathOptions.numbering == copyMathNumbering,
@@ -3780,6 +3782,11 @@ extension EditorTextView {
             }
             typewriterWorkItem = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: work)
+        }
+
+        func remoteImageConsentChanged() {
+            clipboardCopyTask?.cancel()
+            clipboardCopyTask = nil
         }
 
         func updateActivity(_ newValue: Bool) {

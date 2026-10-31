@@ -34,7 +34,7 @@ private final class ClipboardBlockNavigation: NSObject, WKNavigationDelegate {
 
 @MainActor
 final class MarkdownClipboardInteractionTests: XCTestCase {
-    func testRemoteCopyCancelsOnSelectionChangeWithoutWritingClipboard() async throws {
+    func testRemoteCopyCancelsOnConsentRevocationWithoutWritingClipboard() async throws {
         _ = NSApplication.shared
         let started = expectation(description: "remote copy started")
         let stopped = expectation(description: "remote copy cancelled")
@@ -53,6 +53,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         defer { board.clearContents(); board.writeObjects(saved) }
         let source = "![alt](https://example.com/image.png) after"
         let document = EditorDocument(text: source, language: .markdown)
+        document.allowsRemoteImages = true
         document.isMarkdownFormatted = true
         let coordinator = EditorTextView.Coordinator(document: document)
         coordinator.clipboardCopySession = session
@@ -70,7 +71,8 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         view.copy(nil)
         let task = try XCTUnwrap(coordinator.clipboardCopyTask)
         await fulfillment(of: [started], timeout: 10)
-        view.setSelectedRange((source as NSString).range(of: "after"))
+        document.allowsRemoteImages = false
+        coordinator.remoteImageConsentChanged()
         await fulfillment(of: [stopped], timeout: 10)
         await task.value
         XCTAssertEqual(board.string(forType: .string), "old")
@@ -96,6 +98,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         defer { board.clearContents(); board.writeObjects(saved) }
         let source = "中😀 ![alt](https://example.com/image.png)"
         let document = EditorDocument(text: source, language: .markdown)
+        document.allowsRemoteImages = true
         document.isMarkdownFormatted = true
         let coordinator = EditorTextView.Coordinator(document: document)
         coordinator.clipboardCopySession = session

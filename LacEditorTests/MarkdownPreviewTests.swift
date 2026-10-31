@@ -105,32 +105,22 @@ private final class HeldPreviewNavigation: NSObject, WKNavigationDelegate {
 
 @MainActor
 final class MarkdownPreviewTests: XCTestCase {
-    func testPreviewCSPBlocksParentScriptsButAllowsSandboxedFrame() async throws {
+    func testPreviewCSPBlocksParentScriptsAndRemoteFrames() async throws {
         let ready = expectation(description: "local frame server ready")
-        let held = expectation(description: "old frame request held")
+        let held = expectation(description: "no held frame request")
+        held.isInverted = true
         let server = try PreviewFrameServer(ready: ready, heldStarted: held)
         defer { server.stop() }
         await fulfillment(of: [ready], timeout: 10)
         let port = try XCTUnwrap(server.listener.port?.rawValue)
         let fixture = PreviewFixture()
         defer { fixture.dispose() }
-        let listener = """
-        window.addEventListener('message', e => {
-            if (e.data && e.data.lacChild) {
-                document.documentElement.dataset.childRan = 'yes';
-                document.documentElement.dataset.parentDenied = String(e.data.parentDenied);
-                document.documentElement.dataset.fileDenied = String(e.data.fileDenied);
-            }
-        });
-        """
-        fixture.webView.configuration.userContentController.addUserScript(WKUserScript(source: listener, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .defaultClient))
-        let source = "before\n\n<script>document.documentElement.dataset.sourceRan='yes'</script>\n\n<iframe src='http://127.0.0.1:\(port)/frame' width='300' height='120'></iframe>\n\nafter"
+        fixture.document.allowsRemoteImages = true
+        let source = "before\n\n<script>document.documentElement.dataset.sourceRan='yes'</script>\n\n<iframe src='http://127.0.0.1:\(port)/frame' width='300' height='120'>fallback</iframe>\n\nafter"
         fixture.coordinator.render(markdown: source, revision: 1, darkMode: false, immediately: true)
-        try await fixture.waitUntil("document.documentElement.dataset.childRan === 'yes'")
-        let sandbox: String = try await fixture.value("document.querySelector('article iframe').getAttribute('sandbox')")
-        XCTAssertEqual(sandbox, "allow-scripts")
-        let denied: Bool = try await fixture.value("document.documentElement.dataset.parentDenied === 'true' && document.documentElement.dataset.fileDenied === 'true'")
-        XCTAssertTrue(denied)
+        try await fixture.waitUntil("document.querySelector('article')?.textContent.includes('fallback') && document.querySelector('article a[href*=\"127.0.0.1\"]') !== null")
+        let noFrame: Bool = try await fixture.value("document.querySelector('article iframe') === null")
+        XCTAssertTrue(noFrame)
         let appScript: Bool = try await fixture.value("""
         (() => {
             document.documentElement.dataset.appRan = 'yes';
@@ -145,17 +135,8 @@ final class MarkdownPreviewTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(200))
         let blocked: Bool = try await fixture.value("!document.documentElement.dataset.sourceRan && !document.documentElement.dataset.inlineRan && !document.documentElement.dataset.externalRan && !document.documentElement.dataset.eventRan && !document.documentElement.dataset.urlRan")
         XCTAssertTrue(blocked)
-        XCTAssertFalse(server.requests().contains("/evil.js"))
-        let old = "<iframe src='http://127.0.0.1:\(port)/hold' width='300' height='120'></iframe>"
-        fixture.coordinator.render(markdown: old, revision: 2, darkMode: false, immediately: true)
-        await fulfillment(of: [held], timeout: 10)
-        fixture.coordinator.render(markdown: "NEW REVISION", revision: 3, darkMode: false, immediately: true)
-        try await fixture.waitForRevision(3)
-        let released = expectation(description: "old frame response released")
-        server.release(released)
-        await fulfillment(of: [released], timeout: 10)
-        let current: Bool = try await fixture.value("document.querySelector('article').innerText.includes('NEW REVISION') && !document.querySelector('article iframe')")
-        XCTAssertTrue(current)
+        XCTAssertTrue(server.requests().isEmpty)
+        await fulfillment(of: [held], timeout: 0.1)
     }
 
     func testStandaloneSVGPreviewUsesIsolatedVectorImage() async throws {
@@ -285,6 +266,33 @@ final class MarkdownPreviewTests: XCTestCase {
         XCTAssertNotEqual(tocContent, "none")
     }
 
+    func testRemoteImageWaitsForConsentAndRevocationCancelsRequest() async throws {
+        let started = expectation(description: "request starts only after consent")
+        let stopped = expectation(description: "request stops after revocation")
+        PendingPreviewImageURLProtocol.started = started
+        PendingPreviewImageURLProtocol.stopped = stopped
+        defer { PendingPreviewImageURLProtocol.started = nil; PendingPreviewImageURLProtocol.stopped = nil; PendingPreviewImageURLProtocol.pending = nil }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [PendingPreviewImageURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let fixture = PreviewFixture(imageSession: session)
+        defer { fixture.dispose() }
+        let source = "text ![image](https://example.invalid/slow.png)"
+        fixture.coordinator.render(markdown: source, revision: 1, darkMode: false, immediately: true)
+        try await fixture.waitUntil("document.querySelector('article img')?.getAttribute('src') === 'data:,'")
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertNil(PendingPreviewImageURLProtocol.pending)
+        fixture.document.allowsRemoteImages = true
+        fixture.coordinator.render(markdown: source, revision: 1, darkMode: false, immediately: true)
+        await fulfillment(of: [started], timeout: 5)
+        fixture.document.allowsRemoteImages = false
+        fixture.coordinator.render(markdown: source, revision: 1, darkMode: false, immediately: true)
+        await fulfillment(of: [stopped], timeout: 5)
+        PendingPreviewImageURLProtocol.pending?.finish(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=")!)
+        try await fixture.waitUntil("document.querySelector('article img')?.getAttribute('src') === 'data:,'")
+    }
+
     func testRemoteImageDoesNotDelayTextAndOldResultIsDiscarded() async throws {
         let started = expectation(description: "remote request started")
         let stopped = expectation(description: "old request cancelled")
@@ -297,6 +305,7 @@ final class MarkdownPreviewTests: XCTestCase {
         defer { session.invalidateAndCancel() }
         let fixture = PreviewFixture(imageSession: session)
         defer { fixture.dispose() }
+        fixture.document.allowsRemoteImages = true
         fixture.coordinator.render(markdown: "old text ![image](https://example.invalid/slow.png)", revision: 1, darkMode: false, immediately: true)
         await fulfillment(of: [started], timeout: 5)
         try await fixture.waitUntil("document.querySelector('article')?.textContent.includes('old text') && document.querySelector('article img')?.getAttribute('src') === 'data:,'")
@@ -366,6 +375,7 @@ final class MarkdownPreviewTests: XCTestCase {
         defer { session.invalidateAndCancel() }
         let fixture = PreviewFixture(imageSession: session)
         defer { fixture.dispose() }
+        fixture.document.allowsRemoteImages = true
         fixture.coordinator.render(markdown: "old <img src='https://example.invalid/slow.png' width='50%'>", revision: 1, darkMode: false, immediately: true)
         await fulfillment(of: [started], timeout: 5)
         try await fixture.waitUntil("document.querySelector('article')?.textContent.includes('old') && document.querySelector('article img')?.getAttribute('src') === 'data:,'")
@@ -387,6 +397,7 @@ final class MarkdownPreviewTests: XCTestCase {
         defer { session.invalidateAndCancel() }
         let fixture = PreviewFixture(imageSession: session)
         defer { fixture.dispose() }
+        fixture.document.allowsRemoteImages = true
         fixture.coordinator.render(markdown: "initial", revision: 1, darkMode: false, immediately: true)
         try await fixture.waitForRevision(1)
         let held = HeldPreviewNavigation()
@@ -1183,7 +1194,7 @@ private final class PreviewFixture {
     let webView: MarkdownWebView
     let window: NSWindow
 
-    init(width: CGFloat = 480, imageSession: URLSession = .shared) {
+    init(width: CGFloat = 480, imageSession: URLSession? = nil) {
         _ = NSApplication.shared
         coordinator = MarkdownPreview.Coordinator(document: document, imageSession: imageSession)
         let config = WKWebViewConfiguration()

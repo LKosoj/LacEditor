@@ -6,9 +6,11 @@ import XCTest
 
 private final class PDFImageURLProtocol: URLProtocol {
     static var data = Data()
+    static var requests = 0
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
+        Self.requests += 1
         let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Self.data)
@@ -1105,6 +1107,36 @@ final class MarkdownPDFExportTests: XCTestCase {
         XCTAssertEqual(completions, 1)
     }
 
+    func testPDFAndPNGDoNotFetchRemoteImagesWithoutConsent() async throws {
+        _ = NSApplication.shared
+        PDFImageURLProtocol.requests = 0
+        PDFImageURLProtocol.data = try XCTUnwrap(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"))
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [PDFImageURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let document = EditorDocument(text: "before ![remote](https://example.invalid/remote.png) after", language: .markdown)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+        defer { window.close() }
+        for mode in [MarkdownPDFExportService.Mode.pdf, .png] {
+            let done = expectation(description: "export without remote request")
+            let ext: String
+            if case .pdf = mode { ext = "pdf" } else { ext = "png" }
+            let service = MarkdownPDFExportService(destination: directory.appendingPathComponent("output.\(ext)"), mode: mode, window: window, isCurrent: { true }, imageSession: session) { _ in
+                done.fulfill()
+            }
+            service.start(snapshot: document.synchronizedSnapshot(), darkMode: false, sourceURL: document.url)
+            await fulfillment(of: [done], timeout: 30)
+            withExtendedLifetime(service) {}
+        }
+        XCTAssertEqual(PDFImageURLProtocol.requests, 0)
+    }
+
     func testLocalMermaidAndEmbeddedImageAreReadyBeforePDF() async throws {
         _ = NSApplication.shared
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -1175,7 +1207,7 @@ final class MarkdownPDFExportTests: XCTestCase {
             }
             finished.fulfill()
         }
-        service.start(snapshot: document.synchronizedSnapshot(), darkMode: false, sourceURL: document.url)
+        service.start(snapshot: document.synchronizedSnapshot(), darkMode: false, sourceURL: document.url, allowRemoteImages: true)
         await fulfillment(of: [finished], timeout: 30)
         XCTAssertNil(exportError)
         let prepared = try XCTUnwrap(output)
@@ -1231,7 +1263,7 @@ final class MarkdownPDFExportTests: XCTestCase {
             if case let .success(.file(file)) = result { pngOutput = file.preparedURL }
             pngDone.fulfill()
         }
-        pngService.start(snapshot: document.synchronizedSnapshot(), darkMode: false, sourceURL: document.url)
+        pngService.start(snapshot: document.synchronizedSnapshot(), darkMode: false, sourceURL: document.url, allowRemoteImages: true)
         await fulfillment(of: [pngDone], timeout: 30)
         let pngFile = try XCTUnwrap(pngOutput)
         defer { try? FileManager.default.removeItem(at: pngFile.deletingLastPathComponent()) }

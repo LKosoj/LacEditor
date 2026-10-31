@@ -2030,7 +2030,7 @@ final class AppState: ObservableObject {
         let darkMode = Self.markdownOutputUsesDarkMode(for: mode, windowIsDark: windowIsDark)
         service.start(snapshot: snapshot, darkMode: darkMode, typography: preferences.markdownTypography,
                       mathOptions: .init(physics: preferences.mathPhysicsEnabled, numbering: preferences.mathNumbering), options: options, headers: headers, sourceURL: source, htmlOptions: htmlOptions, syntax: preferences.markdownSyntax,
-                      wiki: MarkdownWikiLinkSource(root: folderWorkspace.rootURL, documentURL: source))
+                      wiki: MarkdownWikiLinkSource(root: folderWorkspace.rootURL, documentURL: source), allowRemoteImages: document.allowsRemoteImages)
     }
 
     func closeSelectedDocument() {
@@ -2128,6 +2128,12 @@ final class AppState: ObservableObject {
         } else {
             document.isPreviewVisible.toggle()
         }
+    }
+
+    func setMarkdownRemoteImagesAllowed(_ allowed: Bool) {
+        guard let document = selectedDocument, document.language == .markdown else { return }
+        document.allowsRemoteImages = allowed
+        if !allowed { pdfExports[document.id]?.cancel() }
     }
 
     func toggleWordWrap() {

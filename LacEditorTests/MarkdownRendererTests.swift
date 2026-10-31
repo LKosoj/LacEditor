@@ -40,8 +40,8 @@ final class MarkdownRendererTests: XCTestCase {
         let source = "before\n\n<blockquote class='twitter-tweet'><p lang='en' dir='ltr'>Sunsets 中文</p>&mdash; User <a href='https://twitter.com/Interior/status/463440424141459456?ref_src=twsrc%5Etfw'>May 5, 2014</a></blockquote>\n<script async src='https://platform.twitter.com/widgets.js' charset='utf-8'></script>\n\nafter"
         for plain in [false, true] {
             let live = MarkdownRenderer.renderPage(source, darkMode: false, includeHTMLMedia: plain, resolveLocalImages: !plain)
-            XCTAssertTrue(live.body.contains("sandbox=\"allow-scripts\""))
-            XCTAssertTrue(live.body.contains("platform.twitter.com/embed/Tweet.html?id=463440424141459456&amp;dnt=true"))
+            XCTAssertEqual(live.body.contains("sandbox=\"allow-scripts\""), plain)
+            XCTAssertEqual(live.body.contains("platform.twitter.com/embed/Tweet.html?id=463440424141459456&amp;dnt=true"), plain)
             XCTAssertFalse(live.body.contains("widgets.js"))
             XCTAssertTrue(live.body.contains("before")); XCTAssertTrue(live.body.contains("after"))
         }
@@ -168,7 +168,7 @@ final class MarkdownRendererTests: XCTestCase {
                 for plain in [false, true] {
                     let page = MarkdownRenderer.renderPage(source, darkMode: false, includeHTMLMedia: plain, resolveLocalImages: !plain)
                     XCTAssertEqual(page.body.components(separatedBy: "<" + element).count - 1, 1, source)
-                    XCTAssertTrue(page.body.contains("https://example.invalid/a/b."), source)
+                    XCTAssertEqual(page.body.contains("https://example.invalid/a/b."), plain, source)
                     XCTAssertTrue(page.body.contains("BEFORE😀"), source)
                     XCTAssertTrue(page.body.contains("AFTER"), source)
                     XCTAssertTrue(page.body.contains("</" + element + ">"), source)
@@ -767,9 +767,9 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertTrue(page.body.contains("left "))
         XCTAssertTrue(page.body.contains(" right"))
         XCTAssertTrue(page.body.contains("<video"))
-        XCTAssertTrue(page.body.contains("https://example.invalid/movie.mp4"))
+        XCTAssertFalse(page.body.contains("https://example.invalid/movie.mp4"))
         XCTAssertTrue(page.body.contains("<audio"))
-        XCTAssertTrue(page.body.contains("https://example.invalid/sound.mp3"))
+        XCTAssertFalse(page.body.contains("https://example.invalid/sound.mp3"))
         if let image = page.body.range(of: "fallback.png") {
             let video = page.body.range(of: "<video")
             let end = page.body.range(of: "</video>")
@@ -777,8 +777,7 @@ final class MarkdownRendererTests: XCTestCase {
             XCTAssertNotNil(end)
             if let video, let end { XCTAssertTrue(video.lowerBound < image.lowerBound && image.upperBound < end.upperBound) }
         }
-        XCTAssertTrue(page.html.contains("media-src data: http: https:"))
-        XCTAssertTrue(page.html.contains("frame-src http: https:"))
+        XCTAssertTrue(page.html.contains("default-src 'none'; img-src data:; media-src data:; frame-src 'none'"))
         let unproved = "<div><a id='target'></a><video onclick='bad()' src='https://example.invalid/unproved.mp4'></video></div>\n\n[link](#target)"
         let guarded = MarkdownRenderer.renderPage(unproved, darkMode: false, resolveLocalImages: true)
         XCTAssertFalse(guarded.body.contains("unproved.mp4"))
@@ -786,23 +785,23 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertEqual(sourceChild.body.components(separatedBy: "<source ").count - 1, 1)
         XCTAssertTrue(sourceChild.body.contains("fallback"))
         let standalone = MarkdownRenderer.renderPage("<video src='https://example.invalid/movie.mp4' />\n\n<iframe src='https://example.invalid/frame'></iframe>", darkMode: false, resolveLocalImages: true)
-        XCTAssertTrue(standalone.body.contains("https://example.invalid/movie.mp4"))
-        XCTAssertTrue(standalone.body.contains("sandbox=\"allow-scripts\""))
+        XCTAssertFalse(standalone.body.contains("https://example.invalid/movie.mp4"))
+        XCTAssertFalse(standalone.body.contains("<iframe"))
         XCTAssertTrue(standalone.body.contains("https://example.invalid/frame"))
         let anchored = MarkdownRenderer.renderPage("<div><a id='target'></a>left <video controls src='https://example.invalid/anchored.mp4'></video> right</div>\n\n[link](#target)", darkMode: false, resolveLocalImages: true)
-        XCTAssertTrue(anchored.body.contains("https://example.invalid/anchored.mp4"))
+        XCTAssertFalse(anchored.body.contains("https://example.invalid/anchored.mp4"))
         XCTAssertTrue(anchored.body.contains("left "))
         XCTAssertTrue(anchored.body.contains(" right"))
         XCTAssertTrue(anchored.body.contains("lac-anchor-"))
         let adjacent = MarkdownRenderer.renderPage("<div><audio controls src='https://example.invalid/a.mp3'></audio><audio controls src='https://example.invalid/b.mp3'></audio></div>", darkMode: false, resolveLocalImages: true)
-        XCTAssertTrue(adjacent.body.contains("https://example.invalid/a.mp3"))
-        XCTAssertTrue(adjacent.body.contains("https://example.invalid/b.mp3"))
+        XCTAssertFalse(adjacent.body.contains("https://example.invalid/a.mp3"))
+        XCTAssertFalse(adjacent.body.contains("https://example.invalid/b.mp3"))
         let inlineFrame = MarkdownRenderer.renderPage("before <iframe src='https://example.invalid/frame'>fallback <b>literal</b></iframe> after", darkMode: false, resolveLocalImages: true)
         XCTAssertTrue(inlineFrame.body.contains("before "))
         XCTAssertTrue(inlineFrame.body.contains(" after"))
-        XCTAssertTrue(inlineFrame.body.contains("sandbox=\"allow-scripts\""))
-        XCTAssertTrue(inlineFrame.body.contains("fallback <b>literal</b>"))
-        XCTAssertEqual(inlineFrame.body.components(separatedBy: "<iframe").count - 1, 1)
+        XCTAssertTrue(inlineFrame.body.contains("fallback &lt;b&gt;literal&lt;/b&gt;"), inlineFrame.body)
+        XCTAssertTrue(inlineFrame.body.contains("https://example.invalid/frame"), inlineFrame.body)
+        XCTAssertFalse(inlineFrame.body.contains("<iframe"), inlineFrame.body)
         for source in ["before <script><video src='https://example.invalid/hidden.mp4'></video></script> after",
                        "before <template><video src='https://example.invalid/hidden.mp4'></video></template> after",
                        "before <select><video src='https://example.invalid/hidden.mp4'></video></select> after"] {
@@ -813,9 +812,9 @@ final class MarkdownRendererTests: XCTestCase {
                        "before <video src='https://example.invalid/outer.mp4'>fallback <audio src='https://example.invalid/inner.wav'></audio></video> after",
                        "<div>before <video src='https://example.invalid/outer.mp4'>fallback <audio src='https://example.invalid/inner.wav'></audio></video> after</div>"] {
             let nested = MarkdownRenderer.renderPage(source, darkMode: false, resolveLocalImages: true)
-            XCTAssertTrue(nested.body.contains("outer.mp4"))
+            XCTAssertFalse(nested.body.contains("outer.mp4"))
             XCTAssertFalse(nested.body.contains("inner.wav"))
-            XCTAssertEqual(nested.body.components(separatedBy: "<video").count - 1, 1)
+            XCTAssertEqual(nested.body.components(separatedBy: "<video").count - 1, 1, nested.body)
         }
         let crossing = MarkdownRenderer.renderPage("**before <video src='https://example.invalid/cross.mp4'>** fallback </video> after", darkMode: false, resolveLocalImages: true)
         XCTAssertFalse(crossing.body.contains("cross.mp4"))
@@ -833,7 +832,7 @@ final class MarkdownRendererTests: XCTestCase {
         let linked = MarkdownRenderer.renderPage("[before <video src='https://example.invalid/linked.mp4'>fallback</video> after](https://example.invalid/page)", darkMode: false, resolveLocalImages: true)
         XCTAssertEqual(linked.body.components(separatedBy: "<a ").count - 1, 1)
         XCTAssertTrue(linked.body.contains("https://example.invalid/page"))
-        XCTAssertTrue(linked.body.contains("https://example.invalid/linked.mp4"))
+        XCTAssertFalse(linked.body.contains("https://example.invalid/linked.mp4"))
         XCTAssertTrue(linked.body.contains("before"))
         XCTAssertTrue(linked.body.contains("after"))
     }

@@ -158,7 +158,7 @@ final class MarkdownPDFExportService: NSObject, WKNavigationDelegate {
     private let mode: Mode
     private weak var window: NSWindow?
     private let isCurrent: () -> Bool
-    private let imageSession: URLSession
+    private let imageSession: URLSession?
     private var completion: ((Result<Output, Error>) -> Void)?
     private var webView: WKWebView?
     private var navigation: WKNavigation?
@@ -202,7 +202,7 @@ final class MarkdownPDFExportService: NSObject, WKNavigationDelegate {
     private var mathLinkMarkers: [MathLinkMarker] = []
     private var requestedPages: ClosedRange<Int>?
 
-    init(destination: URL?, mode: Mode = .pdf, window: NSWindow, isCurrent: @escaping () -> Bool, imageSession: URLSession = .shared,
+    init(destination: URL?, mode: Mode = .pdf, window: NSWindow, isCurrent: @escaping () -> Bool, imageSession: URLSession? = nil,
          completion: @escaping (Result<Output, Error>) -> Void) {
         self.destination = destination
         self.mode = mode
@@ -216,7 +216,7 @@ final class MarkdownPDFExportService: NSObject, WKNavigationDelegate {
                mathOptions: MathJaxRenderService.Options = .init(), options: MarkdownNativeExportOptions = .init(),
                headers: MarkdownPDFHeaderFooterOptions = .init(), sourceURL: URL? = nil,
                htmlOptions: MarkdownHTMLExportOptions = .init(), syntax: MarkdownSyntaxOptions = .init(),
-               wiki: MarkdownWikiLinkSource? = nil) {
+               wiki: MarkdownWikiLinkSource? = nil, allowRemoteImages: Bool = false) {
         self.htmlOptions = htmlOptions
         self.options = options
         self.headers = headers
@@ -271,7 +271,7 @@ final class MarkdownPDFExportService: NSObject, WKNavigationDelegate {
                     return
                 }
             }
-            let imageSession = self?.imageSession ?? .shared
+            let imageSession = self?.imageSession
             let pageTask = Task.detached(priority: .userInitiated) {
                 // Список файлов читается с диска заново; без него wiki-ссылки остаются обычным текстом.
                 let wikiContext = (wiki != nil && snapshot.text.contains("[[")) ? wiki.flatMap {
@@ -280,7 +280,8 @@ final class MarkdownPDFExportService: NSObject, WKNavigationDelegate {
                 var page = MarkdownRenderer.renderPage(snapshot.text, darkMode: darkMode, includeHTMLMedia: isHTML, renderEmoji: true,
                                                        resolveLocalImages: !isHTML, documentURL: sourceURL, prepareRemoteImages: !isHTML, syntax: syntax, forExport: true, includeHeadingNumbers: true, includeListStyles: true,
                                                        staticWidgetFallback: !isHTML, preserveRawHTMLBlocks: isHTML, highlightCode: !isHTML, wiki: wikiContext)
-                try? await page.resolveRemoteImages(session: imageSession)
+                if allowRemoteImages { try? await page.resolveRemoteImages(session: imageSession) }
+                else { try? page.hideRemoteImages() }
                 try? page.prepareLocalMedia(load: true)
                 if isImage && options.customImageFontSize {
                     page.typography = MarkdownTypography(fontSize: options.imageFontSize,

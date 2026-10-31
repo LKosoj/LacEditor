@@ -434,6 +434,11 @@ struct LacEditorCommands: Commands {
             }
                 .keyboardShortcut("p", modifiers: [.command, .option])
                 .disabled(appState == nil)
+            Toggle(L10n.tr("允许此文档加载远程图片"), isOn: Binding(
+                get: { appState?.selectedDocument?.allowsRemoteImages == true },
+                set: { appState?.setMarkdownRemoteImagesAllowed($0) }
+            ))
+            .disabled(appState?.selectedDocument?.language != .markdown)
             Button {
                 appState?.toggleWordWrap()
             } label: {

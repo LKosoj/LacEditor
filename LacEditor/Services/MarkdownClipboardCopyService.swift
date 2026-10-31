@@ -83,7 +83,9 @@ enum MarkdownClipboardCopyService {
         let body = fragment.html
             .replacingOccurrences(of: "<input type=\"checkbox\" disabled checked>", with: "☑")
             .replacingOccurrences(of: "<input type=\"checkbox\" disabled>", with: "☐")
-        let html = "<!doctype html><html><head><meta charset=\"utf-8\"></head><body>" + body + "</body></html>"
+        let remoteImages = try? NSRegularExpression(pattern: "(<img src=\")https?://[^\"]*(\")", options: .caseInsensitive)
+        let safeBody = remoteImages?.stringByReplacingMatches(in: body, range: NSRange(location: 0, length: (body as NSString).length), withTemplate: "$1data:,$2") ?? body
+        let html = "<!doctype html><html><head><meta charset=\"utf-8\"></head><body>" + safeBody + "</body></html>"
         guard let (attributed, _) = try? await NSAttributedString.fromHTML(Data(html.utf8)), !Task.isCancelled else { return nil }
         guard let data = try? attributed.data(from: NSRange(location: 0, length: attributed.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]),
               let restored = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) else { return nil }
@@ -301,15 +303,16 @@ enum MarkdownClipboardCopyService {
         }
     }
 
-    static func resolveRemoteImages(_ fragment: Fragment, session: URLSession = .shared) async throws -> Fragment {
+    static func resolveRemoteImages(_ fragment: Fragment, session: URLSession? = nil) async throws -> Fragment {
         var replacements: [(NSRange, String)] = []
         var downloaded: [URL: String] = [:]
+        let downloader = MarkdownRemoteImageDownloader(session: session)
         for image in fragment.remoteImages {
             try Task.checkCancellation()
             let uri: String
             if let existing = downloaded[image.url] { uri = existing }
             else {
-                let payload = try await MarkdownImageUploadService.download(image.url, session: session)
+                let payload = try await downloader.download(image.url)
                 uri = MarkdownImageUploadService.dataURI(payload, address: image.url.absoluteString)
                 downloaded[image.url] = uri
             }

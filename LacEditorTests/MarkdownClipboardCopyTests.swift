@@ -366,7 +366,7 @@ final class MarkdownClipboardCopyTests: XCTestCase {
         let source = "![local](local.svg#first) ![remote](https://example.invalid/image.svg#second)"
         let fragment = try XCTUnwrap(MarkdownClipboardCopyService.project(source,
             selection: NSRange(location: 0, length: (source as NSString).length), includeImages: true,
-            documentURL: directory.appendingPathComponent("note.md")))
+            documentURL: directory.appendingPathComponent("note.md"), allowRemoteImages: true))
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ClipboardCopyURLProtocol.self]
         let session = URLSession(configuration: configuration)

@@ -238,6 +238,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     @Published private(set) var markdownElementPath: MarkdownElementPath?
     @Published var isPreviewVisible: Bool
     @Published var isMarkdownFormatted = false
+    @Published var allowsRemoteImages = false
     /// Временный режим чтения: правка запрещена, Markdown на это время показывается оформленным. В сессию не пишется.
     @Published private(set) var isReadingMode = false
     private var markdownFormattedBeforeReading: Bool?

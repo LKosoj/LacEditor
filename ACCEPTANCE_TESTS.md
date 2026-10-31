@@ -61,7 +61,7 @@
 | AUTO-ASSOCIATION-02 | P1 | 构建隔离 | Debug 独立身份/数据目录且无文档声明，验收/实验无文档声明；安装 ZIP 保留正式身份及 Alternate 文档关联 |
 | AUTO-ASSOCIATION-03 | P1 | 本机登记与归档 | 精确清理后只有已安装正式版参与文件关联；历史 ZIP 完整性与 Info.plist/可执行文件回读一致，源代码与现有安装包保留 |
 | AUTO-MD-01 | P0 | CommonMark/GFM | 松散列表、`1)`、复杂续行、表格转义、任务列表、删除线和自动链接通过 XCTest |
-| AUTO-MD-02 | P0 | Markdown 安全 | 原始 HTML 与危险链接协议不会直接进入预览 HTML |
+| AUTO-MD-02 | P0 | Markdown 安全 | 原始 HTML 与危险链接协议不会直接进入预览 HTML；`MarkdownRemoteImageDownloaderTests` 与 preview/editor/export/copy 测试证明 consent 前零网络、撤销/取消、chunked/limits/cookies/redirect/private IP、WebKit/AV/RTF 防护及本地资源保留 |
 | AUTO-MD-03 | P1 | Markdown 性能 | 约 1 MB Markdown 在测试门槛内完成渲染且输出非空 |
 | AUTO-SESSION-01 | P0 | 真实窗口与拖拽 | `NSWindow` 注册、跨窗口拖放及末尾落点通过 XCTest |
 | AUTO-SESSION-02 | P0 | 会话缓存 | LRU 数量、64 MB 预算、24 MB 单会话上限及状态恢复通过 XCTest |
@@ -288,7 +288,7 @@
 
 - [ ] Папка при запуске: старые настройки → пустой путь; выбранный путь сохраняется без немедленного открытия. Чистый запуск выбирает его один раз, восстановленная папка/ранний Finder file/folder имеют приоритет. Dock reopen не сбрасывает root. Отсутствующий путь не создаётся и не меняет dirty-документ. Запустить расширенные FolderOpeningTests, проверить реальный `open -a LacEditor <путь>`.
 - [ ] Emoji: каталог/лицензия присутствуют в обеих сборках, unknown остаётся текстом. Проверить системную панель parent/child, Esc/Tab, Unicode/escaped pipe, виртуальную ячейку, stale и IME; не считать прямой вызов финального callback проверкой фактического выбора из popup.
-- [ ] Audio/video/iframe: реальные HTTP(S)/локальные источники, размеры при resize, прокрутка, остановка при закрытии/сворачивании, переход к исходнику, IME и доступность. Наличие Swift-кода не доказывает реальное воспроизведение и совместимость внешнего iframe-сервиса.
+- [ ] Remote content: до включения «Вид → 允许此文档加载远程图片» открыть Markdown с HTTP(S) image/audio/video/iframe и убедиться по контрольному серверу, что запросов нет; включить разрешение только в одной вкладке — загружаются только изображения, remote media остаются fallback, iframe открывается во внешнем браузере по явному действию. Отозвать разрешение во время chunked-загрузки — запрос отменяется, поздний результат не появляется, согласие исчезает после восстановления документа. Проверить preview/formatted editor/Rich Copy/PDF/PNG, cookies/redirect/private IP/лимиты и сохранение локальных image/audio. Наличие Swift-кода не заменяет проверку реального WebKit/AV/RTF и внешнего сервиса.
 
 - [ ] Обычные списки: bullet/ordered start и 9→10, вложенность/цитаты/tab, lazy continuation, пустые пункты/task, раскрытие только редактируемой строки. Проверить glyph width, попадание мыши/курсор, source switch, fold, undo, системный IME и VoiceOver; контрольный крупный документ и глубокая прокрутка.
 - [ ] Small caps по уровням H1–H6: поддерживаемый и неподдерживаемый шрифты, bold/italic/code внутри заголовка, сброс и parent/child marked. Текст/anchors/dirty/undo не меняются; synthetic CSS и реальный CoreText шрифт проверяются отдельно.

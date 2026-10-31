@@ -425,6 +425,16 @@ enum MarkdownHTMLMediaService {
         return html + ">" + frame.fallback + "</iframe>"
     }
 
+    static func iframeFallbackHTML(_ frame: EmbeddedFrame) -> String {
+        func escape(_ value: String) -> String {
+            value.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
+        }
+        let address = escape(frame.source.absoluteString)
+        let fallback = escape(frame.fallback)
+        return "<span>" + (fallback.isEmpty ? "" : fallback + " ") + "<a href=\"" + address + "\">" + address + "</a></span>"
+    }
+
     struct ExportBlock {
         let html: String
         let omitted: Bool

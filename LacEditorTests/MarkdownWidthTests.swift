@@ -1,7 +1,6 @@
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
-import WebKit
 import XCTest
 @testable import LacEditor
 
@@ -753,7 +752,7 @@ final class MarkdownWidthTests: XCTestCase {
         let ready = await waitFor { cell(1)?.cell.displayRuns.contains(where: { $0.kind == .keyboard }) == true }
         XCTAssertTrue(ready)
         XCTAssertTrue(cell(3)?.cell.displayRuns.contains { if case .inlineStyle = $0.kind { return true }; return false } == true)
-        let mediaReady = await waitFor { view.subviews.contains { $0 is WKWebView } }
+        let mediaReady = await waitFor { view.subviews.contains { $0 is MarkdownHTMLBlockView } }
         XCTAssertTrue(mediaReady)
         let first = try XCTUnwrap(cell(0))
         XCTAssertTrue(coordinator.beginTableCell(first.cell.range, frame: first.frame.offsetBy(dx: view.textContainerOrigin.x, dy: view.textContainerOrigin.y), cell: first.cell))
@@ -769,7 +768,7 @@ final class MarkdownWidthTests: XCTestCase {
         XCTAssertTrue(rawLink.displayText?.contains("[link](https://example.com)") == true)
         XCTAssertTrue(try XCTUnwrap(cell(3)?.cell).displayRuns.isEmpty)
         XCTAssertTrue(view.subviews.contains { $0 === child })
-        XCTAssertFalse(view.subviews.contains { $0 is WKWebView })
+        XCTAssertFalse(view.subviews.contains { $0 is MarkdownHTMLBlockView })
         XCTAssertFalse(child.frame.isEmpty)
         XCTAssertFalse(document.isMarkdownOutlineCurrent)
         XCTAssertEqual(child.undoAction?(false), true)

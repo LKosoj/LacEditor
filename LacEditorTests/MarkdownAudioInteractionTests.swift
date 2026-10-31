@@ -1,6 +1,5 @@
 import AppKit
 import AVKit
-import WebKit
 import XCTest
 @testable import LacEditor
 
@@ -42,7 +41,7 @@ private final class DelayedMarkdownImageURLProtocol: URLProtocol {
 
 @MainActor
 final class MarkdownAudioInteractionTests: XCTestCase {
-    func testTwitterWidgetUsesExistingIframeAndRevealsSource() async throws {
+    func testTwitterWidgetUsesFallbackAndRevealsSource() async throws {
         _ = NSApplication.shared
         let markup = "<blockquote class='twitter-tweet'><p>Sunsets 中文</p><a href='https://x.com/Interior/status/463440424141459456'>Post</a></blockquote>\n<script async src='https://platform.twitter.com/widgets.js' charset='utf-8'></script>"
         let source = markup + "\n\nend", raw = source as NSString
@@ -60,8 +59,8 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         defer { controller.cancel(); window.close(); withExtendedLifetime(scroll) {} }
         controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
         let range = try XCTUnwrap(MarkdownPresentationParser.parse(source).iframeBlocks.first?.range)
-        for _ in 0..<100 where view.subviews.compactMap({ $0 as? WKWebView }).isEmpty { try await Task.sleep(for: .milliseconds(50)) }
-        let web = try XCTUnwrap(view.subviews.compactMap { $0 as? WKWebView }.first)
+        for _ in 0..<100 where view.subviews.compactMap({ $0 as? MarkdownHTMLBlockView }).isEmpty { try await Task.sleep(for: .milliseconds(50)) }
+        let web = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownHTMLBlockView }.first)
         let child = NSTextView(frame: NSRect(x: 0, y: 0, width: 80, height: 30)); view.addSubview(child)
         child.setMarkedText("中", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: 0, length: 0))
         XCTAssertTrue(child.hasMarkedText())
@@ -229,10 +228,10 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         let block = try XCTUnwrap(MarkdownPresentationParser.parse(source).iframeBlocks.first)
         XCTAssertTrue(block.isInline)
         for _ in 0..<100 {
-            if !view.subviews.compactMap({ $0 as? WKWebView }).isEmpty { break }
+            if !view.subviews.compactMap({ $0 as? MarkdownHTMLBlockView }).isEmpty { break }
             try await Task.sleep(for: .milliseconds(50))
         }
-        let frame = try XCTUnwrap(view.subviews.compactMap { $0 as? WKWebView }.first)
+        let frame = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownHTMLBlockView }.first)
         layout.ensureLayout(for: container)
         let rect = try XCTUnwrap(layout.markdownRenderedImageRects(for: [block.range], in: container)[block.range])
         for word in ["before", "after"] {
@@ -253,7 +252,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         XCTAssertNil(frame.superview)
         view.setSelectedRange((source as NSString).range(of: "end")); controller.selectionChanged()
         for _ in 0..<100 {
-            if !view.subviews.compactMap({ $0 as? WKWebView }).isEmpty { break }
+            if !view.subviews.compactMap({ $0 as? MarkdownHTMLBlockView }).isEmpty { break }
             try await Task.sleep(for: .milliseconds(50))
         }
         view.setLayoutOrientation(.vertical)
@@ -261,7 +260,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         controller.viewportChanged()
         layout.ensureLayout(for: container)
         let vertical = try XCTUnwrap(layout.markdownRenderedImageRects(for: [block.range], in: container)[block.range])
-        let current = try XCTUnwrap(view.subviews.compactMap { $0 as? WKWebView }.first)
+        let current = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownHTMLBlockView }.first)
         let expected = scroll.contentView.convert(vertical.offsetBy(dx: view.textContainerOrigin.x, dy: view.textContainerOrigin.y), from: view)
         let actual = scroll.contentView.convert(current.bounds, from: current)
         XCTAssertEqual(actual.width, expected.width, accuracy: 1)
@@ -289,8 +288,8 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         defer { controller.cancel(); window.close() }
         controller.update(document: document, enabled: true, isActive: true, revision: revision, currentRevision: { revision })
         let block = try XCTUnwrap(MarkdownPresentationParser.parse(source).iframeBlocks.first)
-        for _ in 0..<100 where view.subviews.compactMap({ $0 as? WKWebView }).isEmpty { try await Task.sleep(for: .milliseconds(50)) }
-        let frame = try XCTUnwrap(view.subviews.compactMap { $0 as? WKWebView }.first)
+        for _ in 0..<100 where view.subviews.compactMap({ $0 as? MarkdownHTMLBlockView }).isEmpty { try await Task.sleep(for: .milliseconds(50)) }
+        let frame = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownHTMLBlockView }.first)
         let child = NSTextView(frame: NSRect(x: 0, y: 0, width: 80, height: 30))
         view.addSubview(child)
         child.setMarkedText("中", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: 0, length: 0))
@@ -301,11 +300,11 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         controller.compositionFinished(revision: revision); controller.selectionChanged()
         XCTAssertNil(frame.superview)
         view.setSelectedRange((source as NSString).range(of: "end")); controller.selectionChanged()
-        for _ in 0..<100 where view.subviews.compactMap({ $0 as? WKWebView }).isEmpty { try await Task.sleep(for: .milliseconds(50)) }
+        for _ in 0..<100 where view.subviews.compactMap({ $0 as? MarkdownHTMLBlockView }).isEmpty { try await Task.sleep(for: .milliseconds(50)) }
         view.setLayoutOrientation(.vertical); scroll.magnification = 1.5; controller.viewportChanged()
         layout.ensureLayout(for: container)
         let rect = try XCTUnwrap(layout.markdownRenderedImageRects(for: [block.range], in: container)[block.range])
-        let current = try XCTUnwrap(view.subviews.compactMap { $0 as? WKWebView }.first)
+        let current = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownHTMLBlockView }.first)
         let expected = scroll.contentView.convert(rect.offsetBy(dx: view.textContainerOrigin.x, dy: view.textContainerOrigin.y), from: view)
         let actual = scroll.contentView.convert(current.bounds, from: current)
         XCTAssertEqual(actual.width, expected.width, accuracy: 1)
@@ -341,6 +340,34 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         XCTAssertEqual(storage.string, source)
         XCTAssertFalse(document.isDirty)
         withExtendedLifetime(scroll) {}
+    }
+
+    func testRemoteAudioIsNotLoadedEvenWithImageConsent() async throws {
+        _ = NSApplication.shared
+        let source = "before <audio src='https://example.invalid/private.wav'>fallback</audio> after\n\nend"
+        let document = EditorDocument(text: source, language: .markdown)
+        document.allowsRemoteImages = true
+        let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
+        storage.addLayoutManager(layout)
+        let container = NSTextContainer(containerSize: NSSize(width: 400, height: 400))
+        layout.addTextContainer(container)
+        let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 400), textContainer: container)
+        let scroll = NSScrollView(frame: view.frame)
+        scroll.documentView = view
+        view.setSelectedRange((source as NSString).range(of: "end"))
+        XCTAssertEqual(MarkdownPresentationParser.parse(source).audioBlocks.count, 1)
+        let controller = MarkdownPresentationController(textView: view, layout: layout)
+        defer { controller.cancel(); withExtendedLifetime(scroll) {} }
+        var probes = 0
+        controller.audioAssetIsPlayable = { _ in
+            probes += 1
+            return false
+        }
+        controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(probes, 0)
+        XCTAssertTrue(view.subviews.compactMap { $0 as? AVPlayerView }.isEmpty)
+        XCTAssertEqual(storage.string, source)
     }
 
     func testCancelledInlineAudioDoesNotInstallLatePlayer() async throws {
@@ -424,6 +451,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
             .write(to: directory.appendingPathComponent("local.svg"), atomically: true, encoding: .utf8)
         let source = "before ![local](local.svg) after ![remote](https://example.invalid/image.svg)\n\nend"
         let document = EditorDocument(text: source, url: directory.appendingPathComponent("note.md"), language: .markdown)
+        document.allowsRemoteImages = true
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
         storage.addLayoutManager(layout)
         let container = NSTextContainer(containerSize: NSSize(width: 500, height: 300))
@@ -583,7 +611,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         XCTAssertEqual(storage.string, source)
         XCTAssertFalse(document.isDirty)
     }
-    func testRemoteImageRequestIsCancelledWhenPresentationStops() async throws {
+    func testRemoteImageRequestWaitsForConsentAndStopsOnRevocation() async throws {
         _ = NSApplication.shared
         let source = "before\n\n![x](https://example.invalid/image.png)"
         let document = EditorDocument(text: source, language: .markdown)
@@ -600,7 +628,8 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         let session = URLSession(configuration: config)
         controller.imageSession = session
         let started = expectation(description: "request started"), stopped = expectation(description: "request stopped")
-        DelayedMarkdownImageURLProtocol.started = { started.fulfill() }
+        var startedRequest = false
+        DelayedMarkdownImageURLProtocol.started = { startedRequest = true; started.fulfill() }
         DelayedMarkdownImageURLProtocol.stopped = { stopped.fulfill() }
         defer {
             controller.cancel(); session.invalidateAndCancel()
@@ -608,8 +637,13 @@ final class MarkdownAudioInteractionTests: XCTestCase {
             withExtendedLifetime(scroll) {}
         }
         controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertFalse(startedRequest)
+        document.allowsRemoteImages = true
+        controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
         await fulfillment(of: [started], timeout: 4)
-        controller.cancel()
+        document.allowsRemoteImages = false
+        controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
         await fulfillment(of: [stopped], timeout: 4)
         XCTAssertEqual(storage.string, source)
     }
@@ -618,6 +652,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         _ = NSApplication.shared
         let source = "---\ninvalid: [\n---\n\n![x](https://example.invalid/image.png)"
         let document = EditorDocument(text: source, language: .markdown)
+        document.allowsRemoteImages = true
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
         storage.addLayoutManager(layout)
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 300))
@@ -811,16 +846,17 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         let controller = MarkdownPresentationController(textView: view, layout: layout)
         defer { controller.cancel() }
         controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
-        for _ in 0..<200 where view.subviews.compactMap({ $0 as? WKWebView }).isEmpty {
+        for _ in 0..<200 where view.subviews.compactMap({ $0 as? MarkdownHTMLBlockView }).isEmpty {
             try await Task.sleep(for: .milliseconds(20))
         }
-        let iframeView = try XCTUnwrap(view.subviews.compactMap { $0 as? WKWebView }.first)
+        let iframeView = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownHTMLBlockView }.first)
         let frame = try XCTUnwrap(MarkdownPresentationParser.parse(source).iframeBlocks.first)
         let logical = try XCTUnwrap(layout.markdownMediaRect(for: frame.range, in: container))
         let expected = scroll.contentView.convert(logical.offsetBy(dx: view.textContainerOrigin.x, dy: view.textContainerOrigin.y), from: view)
         let actual = scroll.contentView.convert(iframeView.bounds, from: iframeView)
         XCTAssertEqual(actual.width, scroll.contentView.bounds.width / 2, accuracy: 1)
-        XCTAssertEqual(actual.height, 100, accuracy: 1)
+        XCTAssertEqual(actual.height, logical.height, accuracy: 1)
+        XCTAssertGreaterThan(actual.height, 0)
         XCTAssertEqual(actual.minX, expected.minX, accuracy: 0.5)
         XCTAssertEqual(actual.minY, expected.minY, accuracy: 0.5)
         view.setSelectedRange(frame.range)
@@ -830,7 +866,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         XCTAssertFalse(document.isDirty)
     }
 
-    func testIframeUsesIsolatedViewAndRevealsSource() async throws {
+    func testIframeUsesNativeFallbackAndRevealsSource() async throws {
         _ = NSApplication.shared
         let source = "before\n\n<iframe src=\"http://127.0.0.1:9/test\" width=\"50%\" height=\"240\" title=\"Example\"></iframe>\n\nafter"
         let document = EditorDocument(text: source, language: .markdown)
@@ -845,24 +881,16 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         let controller = MarkdownPresentationController(textView: view, layout: layout)
         defer { controller.cancel() }
         controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
-        for _ in 0..<200 where view.subviews.compactMap({ $0 as? WKWebView }).isEmpty {
+        for _ in 0..<200 where view.subviews.compactMap({ $0 as? MarkdownHTMLBlockView }).isEmpty {
             try await Task.sleep(for: .milliseconds(20))
         }
-        let iframeView = try XCTUnwrap(view.subviews.compactMap { $0 as? WKWebView }.first)
-        XCTAssertFalse(iframeView.configuration.websiteDataStore.isPersistent)
+        let iframeView = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownHTMLBlockView }.first)
         XCTAssertEqual(iframeView.frame.width, (container.size.width - 2 * container.lineFragmentPadding) / 2, accuracy: 0.5)
-        XCTAssertEqual(iframeView.frame.height, 240, accuracy: 0.5)
+        XCTAssertGreaterThan(iframeView.frame.height, 0)
         container.containerSize = NSSize(width: 600, height: 1000)
         controller.viewportChanged()
         XCTAssertEqual(iframeView.frame.width, (container.size.width - 2 * container.lineFragmentPadding) / 2, accuracy: 0.5)
         let frame = try XCTUnwrap(MarkdownPresentationParser.parse(source).iframeBlocks.first)
-        for _ in 0..<200 {
-            if let value = try? await iframeView.evaluateJavaScript("document.querySelector('iframe')?.getAttribute('sandbox')") as? String,
-               value == "allow-scripts" { break }
-            try await Task.sleep(for: .milliseconds(20))
-        }
-        let sandbox = try await iframeView.evaluateJavaScript("document.querySelector('iframe')?.getAttribute('sandbox')") as? String
-        XCTAssertEqual(sandbox, "allow-scripts")
         iframeView.removeFromSuperview()
         controller.viewportChanged()
         XCTAssertTrue(iframeView.superview === view)
@@ -872,13 +900,13 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         XCTAssertNil(layout.markdownMediaRect(for: frame.range, in: container))
         view.setSelectedRange(NSRange(location: 0, length: 0))
         controller.selectionChanged()
-        let unfolded = try XCTUnwrap(view.subviews.compactMap { $0 as? WKWebView }.first)
+        let unfolded = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownHTMLBlockView }.first)
         layout.setFoldedRange(frame.range)
         controller.viewportChanged()
         XCTAssertNil(unfolded.superview)
         layout.setFoldedRange(nil)
         controller.viewportChanged()
-        let active = try XCTUnwrap(view.subviews.compactMap { $0 as? WKWebView }.first)
+        let active = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownHTMLBlockView }.first)
         controller.update(document: document, enabled: true, isActive: false, revision: 0, currentRevision: { 0 })
         XCTAssertNil(active.superview)
         XCTAssertEqual(storage.string, source)

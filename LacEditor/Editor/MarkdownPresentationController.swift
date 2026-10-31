@@ -1,7 +1,6 @@
 import AppKit
 import AVKit
 import ImageIO
-import WebKit
 
 private final class MarkdownAnimatedImageView: NSImageView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -105,26 +104,6 @@ private final class MarkdownDetailsView: NSView {
     }
 }
 
-private final class MarkdownIframeNavigation: NSObject, WKNavigationDelegate {
-    let isCurrent: () -> Bool
-    private var initialNavigation = true
-
-    init(isCurrent: @escaping () -> Bool) { self.isCurrent = isCurrent }
-
-    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
-                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        guard isCurrent(), let frame = navigationAction.targetFrame,
-              let url = navigationAction.request.url else { decisionHandler(.cancel); return }
-        if frame.isMainFrame {
-            let allowed = initialNavigation && url.absoluteString == "about:blank"
-            initialNavigation = false
-            decisionHandler(allowed ? .allow : .cancel)
-        } else {
-            decisionHandler(["http", "https"].contains(url.scheme?.lowercased() ?? "") ? .allow : .cancel)
-        }
-    }
-}
-
 private func markdownPresentationImageData(_ address: String, baseURL: URL?, paths: MarkdownResourcePaths?, rootInvalid: Bool) -> Data? {
     if address.hasPrefix("data:") {
         guard let comma = address.firstIndex(of: ",") else { return nil }
@@ -177,7 +156,8 @@ final class MarkdownPresentationController {
     private var imagePresentationWidths: [NSRange: CGFloat] = [:]
     private var animatedImages: [NSRange: NSImageView] = [:]
     private var editingTableCell: NSRange?
-    var imageSession = URLSession.shared
+    var imageSession: URLSession?
+    private var remoteImageDownloader: MarkdownRemoteImageDownloader?
     var projectedImageSource: ((String) -> String?)?
     var imageLoadDidComplete: ((NSRange, Bool) -> Void)?
     var audioLoadDidComplete: ((NSRange, Bool) -> Void)?
@@ -252,8 +232,7 @@ final class MarkdownPresentationController {
     private var mathOptionsNeedRefresh = false
     private struct IframeView {
         let block: MarkdownIframeBlock
-        let view: WKWebView
-        let navigation: MarkdownIframeNavigation
+        let view: MarkdownHTMLBlockView
         var height: CGFloat
     }
     private var iframeViews: [NSRange: IframeView] = [:]
@@ -452,7 +431,9 @@ final class MarkdownPresentationController {
         let documentChanged = self.document !== document
         if documentChanged || self.revision != revision { expandedDetails.removeAll() }
         let imageBaseChanged = imageBaseURL != document.url
-        if imageBaseChanged {
+        let remoteImagesChanged = self.document?.allowsRemoteImages != document.allowsRemoteImages
+        let imageContextChanged = imageBaseChanged || remoteImagesChanged
+        if imageContextChanged {
             cancel()
             parsedResult = nil
             parsedSource = nil
@@ -498,7 +479,7 @@ final class MarkdownPresentationController {
             cancel()
         }
         if !document.isSyntaxHighlightingEnabled { cancelCodeHighlighting() }
-        if documentChanged || formatChanged || imageBaseChanged { needsRefresh = true }
+        if documentChanged || formatChanged || imageContextChanged { needsRefresh = true }
         guard isActive else { return }
         guard !hasMarkedText else {
             if needsRefresh { needsCompositionRefresh = true }
@@ -1320,6 +1301,7 @@ final class MarkdownPresentationController {
         imageOperations.removeAll()
         for (_, task) in remoteImageJobs.values { task.cancel() }
         remoteImageJobs.removeAll()
+        remoteImageDownloader = nil
         let svgJobs = svgImageJobs.values.map { $0.2 }
         svgImageJobs.removeAll()
         for job in svgJobs { job.cancel() }
@@ -2123,8 +2105,7 @@ final class MarkdownPresentationController {
 
     private func clearIframes() {
         for (range, entry) in iframeViews {
-            entry.view.stopLoading()
-            entry.view.navigationDelegate = nil
+            entry.view.invalidate()
             entry.view.removeFromSuperview()
             if !hasMarkedText, let layout { clearMediaGeometry(range, layout: layout) }
         }
@@ -2348,8 +2329,7 @@ final class MarkdownPresentationController {
         let ranges = Set(blocks.map(\.range))
         for range in Array(iframeViews.keys) where !ranges.contains(range) {
             if let entry = iframeViews.removeValue(forKey: range) {
-                entry.view.stopLoading()
-                entry.view.navigationDelegate = nil
+                entry.view.invalidate()
                 entry.view.removeFromSuperview()
                 clearMediaGeometry(range, layout: layout)
             }
@@ -2357,57 +2337,62 @@ final class MarkdownPresentationController {
         let availableWidth = container.layoutOrientation == .vertical
             ? max(1, textView.enclosingScrollView?.contentView.bounds.width ?? container.size.width)
             : max(1, container.size.width - 2 * container.lineFragmentPadding)
-        let availableHeight = textView.enclosingScrollView?.contentView.bounds.height ?? textView.visibleRect.height
+        var foreground: NSColor?, linkColor: NSColor?
+        textView.effectiveAppearance.performAsCurrentDrawingAppearance {
+            foreground = (layout.markdownColors.text?.nsColor ?? textView.textColor ?? NSColor.textColor).usingColorSpace(.sRGB)
+            linkColor = (layout.markdownColors.link?.nsColor ?? NSColor.linkColor).usingColorSpace(.sRGB)
+        }
+        guard let foreground, let linkColor else { clearIframes(); return }
         for block in blocks {
             let indent = layout.markdownMediaIndent(for: block.range)
             var widthAvailable = max(1, availableWidth - indent)
             if block.isInline, container.layoutOrientation != .vertical, textView.visibleRect.width > 0 {
                 widthAvailable = min(widthAvailable, max(1, textView.visibleRect.width - 2 * container.lineFragmentPadding - indent))
             }
-            guard let requestedWidth = iframeDimension(block.width, available: widthAvailable, fallback: block.isInline || indent > 0 ? min(560, widthAvailable) : 560),
-                  let height = iframeDimension(block.height, available: availableHeight, fallback: 315) else { continue }
+            guard let requestedWidth = iframeDimension(block.width, available: widthAvailable, fallback: block.isInline || indent > 0 ? min(560, widthAvailable) : 560) else { continue }
             let width = block.isInline ? min(requestedWidth, widthAvailable) : requestedWidth
+            if let old = iframeViews[block.range], old.block != block {
+                old.view.invalidate(); old.view.removeFromSuperview(); clearMediaGeometry(block.range, layout: layout)
+                iframeViews.removeValue(forKey: block.range)
+            }
             if iframeViews[block.range] == nil {
                 let generation = self.generation, revision = self.revision
-                let configuration = WKWebViewConfiguration()
-                configuration.websiteDataStore = .nonPersistent()
-                configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
-                let view = WKWebView(frame: NSRect(x: 0, y: 0, width: width, height: height), configuration: configuration)
-                let navigation = MarkdownIframeNavigation { [weak self, weak document, weak view] in
-                    guard let self, let document, let view else { return false }
-                    return self.document === document && self.enabled && self.isActive && self.generation == generation &&
-                        self.currentRevision?() == revision && !self.hasMarkedText && self.iframeViews[block.range]?.view === view &&
-                        self.presentation?.iframeBlocks.contains(block) == true
+                let view = MarkdownHTMLBlockView(frame: .zero)
+                guard view.configure(confirmedHTML: block.displayHTML, font: textView.font ?? layout.textFont, foreground: foreground, linkColor: linkColor,
+                                     codeFont: layout.markdownCodeFont, paragraphStyle: htmlParagraphStyle(textView: textView, layout: layout)),
+                      let size = view.measuredSize(width: width),
+                      let rect = mediaRect(for: block.range, size: size, inline: block.isInline, layout: layout, container: container) else {
+                    clearMediaGeometry(block.range, layout: layout); continue
                 }
-                view.navigationDelegate = navigation
-                view.setAccessibilityLabel(block.title ?? L10n.tr("嵌入内容"))
-                view.setAccessibilityCustomActions([NSAccessibilityCustomAction(name: L10n.tr("编辑源代码")) { [weak self, weak document] in
-                    guard let self, let document, self.document === document, self.generation == generation,
-                          self.currentRevision?() == revision, self.enabled, self.isActive, !self.hasMarkedText,
-                          self.presentation?.iframeBlocks.contains(block) == true, let textView = self.textView else { return false }
-                    textView.setSelectedRange(block.range)
-                    textView.scrollRangeToVisible(block.range)
+                iframeViews[block.range] = IframeView(block: block, view: view, height: size.height)
+                let current = { [weak self, weak document, weak view, weak layout] () -> Bool in
+                    guard let self, let document, let view, let layout,
+                          self.document === document, self.enabled, self.isActive, !self.hasMarkedText,
+                          self.generation == generation, self.currentRevision?() == revision,
+                          self.presentation?.iframeBlocks.contains(block) == true,
+                          self.iframeViews[block.range]?.view === view else { return false }
+                    return layout.canDisplayMarkdownMedia(block.range)
+                }
+                view.canInteract = current
+                view.revealSource = { [weak self, weak textView] in
+                    guard let self, let textView, current() else { return }
+                    textView.setSelectedRange(block.range); textView.scrollRangeToVisible(block.range)
                     textView.window?.makeFirstResponder(textView)
-                    return true
-                }])
-                iframeViews[block.range] = IframeView(block: block, view: view, navigation: navigation, height: height)
-                if let rect = mediaRect(for: block.range, size: NSSize(width: width, height: height), inline: block.isInline, layout: layout, container: container) {
-                    textView.addSubview(view)
-                    textView.placeMarkdownSubview(view, in: rect.offsetBy(dx: textView.textContainerOrigin.x, dy: textView.textContainerOrigin.y))
+                    self.updateIframes(in: visible)
                 }
-                let html = """
-                <!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src http: https:; style-src 'unsafe-inline'"><style>html,body{margin:0;width:100%;height:100%}iframe{width:100%!important;height:100%!important;box-sizing:border-box}</style></head><body>\(block.html)</body></html>
-                """
-                view.loadHTMLString(html, baseURL: nil)
-            } else if var entry = iframeViews[block.range] {
-                if entry.height != height {
-                    entry.height = height
-                    iframeViews[block.range] = entry
+                view.openLink = { [weak self] address in guard let self, current() else { return }; self.htmlBlockLink?(address, block.range) }
+                view.setAccessibilityLabel(block.title ?? L10n.tr("嵌入内容"))
+                textView.addSubview(view)
+                textView.placeMarkdownSubview(view, in: rect.offsetBy(dx: textView.textContainerOrigin.x, dy: textView.textContainerOrigin.y))
+                geometryDidChange?()
+            } else if let entry = iframeViews[block.range] {
+                guard let size = entry.view.measuredSize(width: width),
+                      let rect = mediaRect(for: block.range, size: size, inline: block.isInline, layout: layout, container: container) else {
+                    entry.view.invalidate(); entry.view.removeFromSuperview(); iframeViews.removeValue(forKey: block.range)
+                    clearMediaGeometry(block.range, layout: layout); continue
                 }
-                if let rect = mediaRect(for: block.range, size: NSSize(width: width, height: height), inline: block.isInline, layout: layout, container: container) {
-                    if entry.view.superview !== textView { textView.addSubview(entry.view) }
-                    textView.placeMarkdownSubview(entry.view, in: rect.offsetBy(dx: textView.textContainerOrigin.x, dy: textView.textContainerOrigin.y))
-                }
+                if entry.view.superview !== textView { textView.addSubview(entry.view) }
+                textView.placeMarkdownSubview(entry.view, in: rect.offsetBy(dx: textView.textContainerOrigin.x, dy: textView.textContainerOrigin.y))
             }
         }
     }
@@ -2451,7 +2436,7 @@ final class MarkdownPresentationController {
                     let base = source.hasPrefix("/") ? URL(fileURLWithPath: "/", isDirectory: true) : baseURL?.deletingLastPathComponent()
                     guard !(MarkdownResourcePaths.requiresRoot(source) && rootInvalid),
                           let url = paths?.resolve(source) ?? URL(string: source, relativeTo: base)?.absoluteURL,
-                          url.isFileURL || (["http", "https"].contains(url.scheme?.lowercased() ?? "") && url.host != nil) else { continue }
+                          url.isFileURL else { continue }
                     let asset = AVURLAsset(url: url)
                     if await isPlayable(asset) { selected = asset; break }
                 }
@@ -2994,11 +2979,12 @@ final class MarkdownPresentationController {
             }
             guard !loadedImageRanges.contains(key), imageOperations[key] == nil, svgImageJobs[key] == nil else { continue }
             if let url = URL(string: image.url), ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil {
-                guard remoteImageJobs[key] == nil else { continue }
+                guard document.allowsRemoteImages, remoteImageJobs[key] == nil else { continue }
                 let token = UUID(), generation = self.generation, revision = self.revision, baseURL = document.url
-                let session = imageSession
+                let downloader = remoteImageDownloader ?? MarkdownRemoteImageDownloader(session: imageSession)
+                remoteImageDownloader = downloader
                 let task = Task { @MainActor [weak self, weak document] in
-                    let data = try? await MarkdownImageUploadService.downloadData(url, session: session)
+                    let data = try? await downloader.download(url).data
                     guard !Task.isCancelled else { return }
                     let decoded = await Task.detached(priority: .userInitiated) { () -> ((CGImage, Bool)?, String?) in
                         guard let data else { return (nil, nil) }
@@ -3009,7 +2995,7 @@ final class MarkdownPresentationController {
                     }.value
                     guard !Task.isCancelled, let self, self.remoteImageJobs[key]?.0 == token else { return }
                     self.remoteImageJobs.removeValue(forKey: key)
-                    guard let document, self.document === document, self.enabled, self.isActive,
+                    guard let document, self.document === document, self.enabled, self.isActive, document.allowsRemoteImages,
                           self.generation == generation, self.currentRevision?() == revision, document.url == baseURL,
                           !self.hasMarkedText, self.presentation?.images.contains(image) == true,
                           let visible = self.visibleRange(), NSIntersectionRange(image.paragraphRange, visible).length > 0 else { return }

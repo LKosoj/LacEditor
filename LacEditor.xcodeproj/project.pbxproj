@@ -144,6 +144,7 @@
 		D01200000000000000000027 /* MarkdownHTMLMediaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000028 /* MarkdownHTMLMediaService.swift */; };
 		D01200000000000000000029 /* MarkdownClipboardCopyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000002A /* MarkdownClipboardCopyService.swift */; };
 		D0120000000000000000002B /* MarkdownImageUploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000002C /* MarkdownImageUploadService.swift */; };
+		D01800000000000000000001 /* MarkdownRemoteImageDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01800000000000000000002 /* MarkdownRemoteImageDownloader.swift */; };
 		D0120000000000000000002D /* MarkdownTagReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0120000000000000000002E /* MarkdownTagReader.swift */; };
 		D01200000000000000000033 /* MarkdownLinkNavigationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000034 /* MarkdownLinkNavigationService.swift */; };
 		D01200000000000000000035 /* MarkdownImageCopyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000036 /* MarkdownImageCopyService.swift */; };
@@ -371,6 +372,7 @@
 		D01200000000000000000028 /* MarkdownHTMLMediaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownHTMLMediaService.swift; sourceTree = "<group>"; };
 		D0120000000000000000002A /* MarkdownClipboardCopyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownClipboardCopyService.swift; sourceTree = "<group>"; };
 		D0120000000000000000002C /* MarkdownImageUploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownImageUploadService.swift; sourceTree = "<group>"; };
+		D01800000000000000000002 /* MarkdownRemoteImageDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRemoteImageDownloader.swift; sourceTree = "<group>"; };
 		D0120000000000000000002E /* MarkdownTagReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTagReader.swift; sourceTree = "<group>"; };
 		D01200000000000000000034 /* MarkdownLinkNavigationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownLinkNavigationService.swift; sourceTree = "<group>"; };
 		D01200000000000000000036 /* MarkdownImageCopyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownImageCopyService.swift; sourceTree = "<group>"; };
@@ -616,6 +618,7 @@
 				D01200000000000000000028 /* MarkdownHTMLMediaService.swift */,
 				D0120000000000000000002A /* MarkdownClipboardCopyService.swift */,
 				D0120000000000000000002C /* MarkdownImageUploadService.swift */,
+				D01800000000000000000002 /* MarkdownRemoteImageDownloader.swift */,
 				D0120000000000000000002E /* MarkdownTagReader.swift */,
 				D01311000000000000000001 /* FolderTagsController.swift */,
 				D01200000000000000000034 /* MarkdownLinkNavigationService.swift */,
@@ -924,6 +927,7 @@
 				D01200000000000000000027 /* MarkdownHTMLMediaService.swift in Sources */,
 				D01200000000000000000029 /* MarkdownClipboardCopyService.swift in Sources */,
 				D0120000000000000000002B /* MarkdownImageUploadService.swift in Sources */,
+				D01800000000000000000001 /* MarkdownRemoteImageDownloader.swift in Sources */,
 				14E906EC309332F00019953B /* CMarkOpaquePointerCompatibility.swift in Sources */,
 				D0120000000000000000002D /* MarkdownTagReader.swift in Sources */,
 				D01311000000000000000002 /* FolderTagsController.swift in Sources */,
