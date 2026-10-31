@@ -8,6 +8,11 @@ import XCTest
 final class PandocImportTests: XCTestCase {
     private let imageBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
 
+    private func recursiveEntries(at directory: URL) -> [String] {
+        let entries = FileManager.default.enumerator(atPath: directory.path)?.allObjects as? [String] ?? []
+        return entries.sorted()
+    }
+
     @MainActor
     func testImportedDocumentIsUnsavedMarkdown() {
         let text = "![image](data:image/png;base64,\(imageBase64))"
@@ -248,7 +253,7 @@ final class PandocImportTests: XCTestCase {
         try Data(input.utf8).write(to: source)
         try "INSIDE_INCLUDE".write(to: sourceDirectory.appendingPathComponent("nested/inside.txt"), atomically: true, encoding: .utf8)
         try "OUTSIDE_SECRET".write(to: directory.appendingPathComponent("outside.txt"), atomically: true, encoding: .utf8)
-        let originalEntries = try FileManager.default.contentsOfDirectory(atPath: sourceDirectory.path).sorted()
+        let originalEntries = recursiveEntries(at: sourceDirectory)
 
         let result = try PandocImportService.convert(source: source, executable: executable)
 
@@ -257,7 +262,30 @@ final class PandocImportTests: XCTestCase {
         XCTAssertTrue(result.text.contains("After"))
         XCTAssertFalse(result.text.contains("OUTSIDE_SECRET"))
         XCTAssertEqual(try Data(contentsOf: source), Data(input.utf8))
-        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: sourceDirectory.path).sorted(), originalEntries)
+        XCTAssertEqual(recursiveEntries(at: sourceDirectory), originalEntries)
+    }
+
+    func testSandboxSkipsLaTeXIncludesWithoutWritingSourceDirectory() throws {
+        let executable = try XCTUnwrap(PandocExportService.findPandoc(), "Bundled Pandoc must be executable")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sourceDirectory = directory.appendingPathComponent("source", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceDirectory.appendingPathComponent("nested", isDirectory: true), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = sourceDirectory.appendingPathComponent("input.tex")
+        let input = "Before\n\n\\input{nested/inside.txt}\n\n\\input{../outside.txt}\n\nAfter\n"
+        try Data(input.utf8).write(to: source)
+        try "INSIDE_INCLUDE".write(to: sourceDirectory.appendingPathComponent("nested/inside.txt"), atomically: true, encoding: .utf8)
+        try "OUTSIDE_SECRET".write(to: directory.appendingPathComponent("outside.txt"), atomically: true, encoding: .utf8)
+        let originalEntries = recursiveEntries(at: sourceDirectory)
+
+        let result = try PandocImportService.convert(source: source, executable: executable)
+
+        XCTAssertTrue(result.text.contains("Before"))
+        XCTAssertFalse(result.text.contains("INSIDE_INCLUDE"))
+        XCTAssertTrue(result.text.contains("After"))
+        XCTAssertFalse(result.text.contains("OUTSIDE_SECRET"))
+        XCTAssertEqual(try Data(contentsOf: source), Data(input.utf8))
+        XCTAssertEqual(recursiveEntries(at: sourceDirectory), originalEntries)
     }
 
     func testImportImagePathSecurityMatrix() throws {
@@ -296,7 +324,7 @@ final class PandocImportTests: XCTestCase {
         for (index, reference) in (allowed + blocked).enumerated() {
             try Data("<img src=\"\(reference)\">".utf8).write(to: sourceDirectory.appendingPathComponent("input-\(index).html"))
         }
-        let originalEntries = try FileManager.default.contentsOfDirectory(atPath: sourceDirectory.path).sorted()
+        let originalEntries = recursiveEntries(at: sourceDirectory)
 
         for (index, reference) in allowed.enumerated() {
             let source = sourceDirectory.appendingPathComponent("input-\(index).html")
@@ -309,14 +337,45 @@ final class PandocImportTests: XCTestCase {
         }
         let remote = sourceDirectory.appendingPathComponent("remote.html")
         try "<img src=\"https://example.invalid/image.png\">".write(to: remote, atomically: true, encoding: .utf8)
-        let originalRemoteEntries = try FileManager.default.contentsOfDirectory(atPath: sourceDirectory.path).sorted()
+        let originalRemoteEntries = recursiveEntries(at: sourceDirectory)
         let remoteResult = try PandocImportService.convert(source: remote, executable: executable)
         XCTAssertTrue(remoteResult.text.contains("https://example.invalid/image.png"))
         XCTAssertFalse(remoteResult.text.contains("data:image/"))
 
         XCTAssertEqual(try Data(contentsOf: outside), image)
-        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: sourceDirectory.path).sorted(), originalRemoteEntries)
+        XCTAssertEqual(recursiveEntries(at: sourceDirectory), originalRemoteEntries)
         XCTAssertEqual(originalRemoteEntries, originalEntries + ["remote.html"])
+    }
+
+    func testImportImageEscapesCanonicalPercentPathExactlyOnce() throws {
+        let executable = try XCTUnwrap(PandocExportService.findPandoc(), "Bundled Pandoc must be executable")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sourceDirectory = directory.appendingPathComponent("source%20root", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: directory.appendingPathComponent("source root", isDirectory: true), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let outside = Data("OUTSIDE_SECRET".utf8)
+        let decoy = Data("DECOY_IMAGE".utf8)
+        let literal = Data("LITERAL_PERCENT".utf8)
+        let outsideURL = directory.appendingPathComponent("outside.png")
+        try outside.write(to: outsideURL)
+        try decoy.write(to: sourceDirectory.appendingPathComponent("%2e%2e%2foutside.png"))
+        try literal.write(to: sourceDirectory.appendingPathComponent("literal%20.png"))
+        let decoySource = sourceDirectory.appendingPathComponent("decoy.html")
+        let literalSource = sourceDirectory.appendingPathComponent("literal.html")
+        try Data("<img src=\"%252e%252e%252foutside.png\">".utf8).write(to: decoySource)
+        try Data("<img src=\"literal%2520.png\">".utf8).write(to: literalSource)
+        let originalEntries = recursiveEntries(at: sourceDirectory)
+
+        let decoyResult = try PandocImportService.convert(source: decoySource, executable: executable)
+        let literalResult = try PandocImportService.convert(source: literalSource, executable: executable)
+        let imported = decoyResult.text + literalResult.text
+
+        XCTAssertTrue(decoyResult.text.contains("data:image/png;base64,\(decoy.base64EncodedString())"))
+        XCTAssertTrue(literalResult.text.contains("data:image/png;base64,\(literal.base64EncodedString())"))
+        XCTAssertFalse(imported.contains(outside.base64EncodedString()))
+        XCTAssertEqual(try Data(contentsOf: outsideURL), outside)
+        XCTAssertEqual(recursiveEntries(at: sourceDirectory), originalEntries)
     }
 
     func testComplexFigureIsNotFlattened() throws {
