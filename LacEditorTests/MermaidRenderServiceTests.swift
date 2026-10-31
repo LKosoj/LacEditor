@@ -122,6 +122,21 @@ final class MermaidRenderServiceTests: XCTestCase {
         }
     }
 
+    func testDarkDiagramKeepsTransparentBackground() async throws {
+        _ = NSApplication.shared
+        let finished = expectation(description: "dark Mermaid")
+        var rendered: NSImage?
+        let service = MermaidRenderService(code: "flowchart TD\nA[Start] --> B[End]", width: 480, dark: true) { result in
+            if case let .success(image) = result { rendered = image }
+            finished.fulfill()
+        }
+        service.start()
+        await fulfillment(of: [finished], timeout: 30)
+        let data = try XCTUnwrap(try XCTUnwrap(rendered).tiffRepresentation)
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: data))
+        XCTAssertLessThan(try XCTUnwrap(bitmap.colorAt(x: 0, y: 0)).alphaComponent, 0.01)
+    }
+
     func testInvalidDiagramReturnsError() async {
         _ = NSApplication.shared
         let finished = expectation(description: "invalid diagram")

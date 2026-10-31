@@ -718,6 +718,19 @@ struct MarkdownTextEdit: Sendable {
     }
 }
 
+/// Что снял `MarkdownPresentation.removeTouched`: по этому списку контроллер убирает готовые ресурсы снятых элементов.
+struct MarkdownTouchedElements: Sendable {
+    /// Объединение снятых диапазонов в координатах до правки; nil, если правка ничего не задела.
+    var range: NSRange?
+    var images: [MarkdownImage] = []
+    /// Диаграммы и блочные формулы: картинка лежит на слое по диапазону элемента.
+    var blockImages: [NSRange] = []
+    /// Строчные формулы, эмодзи и ruby: строчная картинка слоя.
+    var inlineImages: [NSRange] = []
+    var hasCode = false
+    var hasInserts = false
+}
+
 struct MarkdownPresentation: Sendable {
     private(set) var spans: [MarkdownPresentationSpan]
     private(set) var headings: [MarkdownHeading]
@@ -1278,6 +1291,69 @@ struct MarkdownPresentation: Sendable {
         fenceBlockedRanges = []
         fenceBlockedEOF = false
         fenceContextAvailable = false
+    }
+
+    /// Убирает элементы, которые правка задевает по тем же правилам, что у `canShiftElements`: после этого `shift` переносит остальное без исключений.
+    /// Вызывается для правки, которую `canShift` не пропустил, но которая не портит диапазоны вне себя.
+    mutating func removeTouched(by edit: MarkdownTextEdit) -> MarkdownTouchedElements {
+        var touched = MarkdownTouchedElements()
+        @discardableResult
+        func remove<T>(_ items: inout [T], extent: (T) -> NSRange, keeps: (T) -> Bool) -> [T] {
+            let removed = items.filter { !keeps($0) }
+            guard !removed.isEmpty else { return [] }
+            items.removeAll { !keeps($0) }
+            for item in removed {
+                let range = extent(item)
+                touched.range = touched.range.map { NSUnionRange($0, range) } ?? range
+            }
+            return removed
+        }
+        remove(&spans, extent: { $0.range }) { span in
+            Self.shiftedRange(of: span, edit) != nil && span.markerRanges.allSatisfy { edit.away($0) != nil }
+        }
+        remove(&paragraphs, extent: { $0.extent }) { item in
+            edit.paragraph(item.range) != nil && edit.paragraph(item.lastLine) != nil && (item.separatorAfter.map { edit.after($0) != nil } ?? true)
+        }
+        remove(&listMarkers, extent: { $0.line }) { edit.away($0.range) != nil && edit.line($0.line) != nil }
+        remove(&links, extent: { $0.range }) { edit.away($0.range) != nil }
+        remove(&wikiLinks, extent: { $0.range }) { item in
+            edit.away(item.range) != nil && edit.away(item.displayRange) != nil && item.markerRanges.allSatisfy { edit.away($0) != nil }
+        }
+        remove(&emojiCompletionRanges, extent: { $0 }) { edit.block($0) != nil }
+        remove(&textReplacements, extent: { $0.range }) { edit.away($0.range) != nil }
+        remove(&completedTaskRanges, extent: { $0 }) { edit.block($0) != nil }
+        remove(&taskCheckboxes, extent: { NSUnionRange($0.markerRange, $0.stateRange) }) { edit.away($0.markerRange) != nil && edit.away($0.stateRange) != nil }
+        remove(&looseIndents, extent: { $0.range }) { edit.away($0.range) != nil }
+        remove(&tables, extent: { $0.range }) { edit.away($0.range) != nil }
+        let code = remove(&codeBlocks, extent: { $0.range }) { edit.away($0.range) != nil }
+        touched.hasCode = !code.isEmpty
+        let removedImages = remove(&images, extent: { $0.paragraphRange }) { image in
+            edit.away(image.range) != nil && edit.block(image.paragraphRange) != nil && (image.isInline || edit.away(image.paragraphRange) != nil)
+        }
+        touched.images = removedImages
+        let removedDiagrams = remove(&diagrams, extent: { $0.range }) { edit.away($0.range) != nil }
+        let removedFormulas = remove(&formulas, extent: { $0.range }) { edit.away($0.range) != nil }
+        touched.blockImages = removedDiagrams.map { $0.range } + removedFormulas.map { $0.range }
+        let removedInlineFormulas = remove(&inlineFormulas, extent: { $0.range }) { edit.away($0.range) != nil }
+        let removedEmoji = remove(&emojiCandidates, extent: { $0.range }) { edit.away($0.range) != nil }
+        let removedRuby = remove(&ruby, extent: { $0.range }) { item in
+            edit.away(item.range) != nil && edit.away(item.baseRange) != nil && edit.away(item.readingRange) != nil
+        }
+        touched.inlineImages = removedInlineFormulas.map { $0.range } + removedEmoji.map { $0.range } + removedRuby.map { $0.range }
+        remove(&namedAnchors, extent: { $0.range }) { edit.away($0.range) != nil }
+        remove(&pageBreaks, extent: { $0 }) { edit.away($0) != nil }
+        remove(&tableOfContents, extent: { $0 }) { edit.away($0) != nil }
+        let audio = remove(&audioBlocks, extent: { $0.range }) { edit.spaced($0.range) != nil }
+        let iframes = remove(&iframeBlocks, extent: { $0.range }) { edit.spaced($0.range) != nil }
+        let details = remove(&detailsBlocks, extent: { $0.range }) { edit.spaced($0.range) != nil }
+        let html = remove(&htmlBlocks, extent: { $0.range }) { edit.spaced($0.range) != nil }
+        touched.hasInserts = !audio.isEmpty || !iframes.isEmpty || !details.isEmpty || !html.isEmpty
+        // Определение сноски может стоять далеко от ссылки: в итог идёт только та часть, которую правка задела.
+        remove(&footnotes, extent: { edit.away($0.referenceRange) == nil ? $0.referenceRange : $0.definitionRange }) { note in
+            edit.away(note.referenceRange) != nil && edit.away(note.definitionRange) != nil
+        }
+        if touched.range != nil { prepareForEditing() }
+        return touched
     }
 
     mutating func shiftMediaOnly(_ edit: MarkdownTextEdit) {

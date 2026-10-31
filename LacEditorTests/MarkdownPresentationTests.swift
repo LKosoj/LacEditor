@@ -1040,9 +1040,67 @@ final class MarkdownPresentationTests: XCTestCase {
         XCTAssertNotNil(fixture.controller.work)
     }
 
-    func testFallbackEditClearsReadyState() async throws {
+    func testStructuralEditKeepsReadyStateOutsideEdit() async throws {
         let fixture = try await typeWithBlockImage("\n")
-        XCTAssertFalse(fixture.layout.containsAtomicBlock(in: NSRange(location: 19, length: 8)))
+        XCTAssertTrue(fixture.layout.containsAtomicBlock(in: NSRange(location: 21, length: 4)))
+        XCTAssertFalse(fixture.layout.containsAtomicBlock(in: NSRange(location: 20, length: 1)))
+    }
+
+    /// Вторая клавиша до нового разбора: картинка и оформление остаются, готовое переезжает ещё раз.
+    func testSecondKeyBeforeParseKeepsReadyState() async throws {
+        let fixture = try await typeWithBlockImage("x")
+        let edit = NSRange(location: 14, length: 0)
+        fixture.revision += 1
+        fixture.controller.beforeEdit(range: edit, replacementLength: 1, replacement: "y")
+        fixture.storage.replaceCharacters(in: edit, with: "y")
+        fixture.controller.edited(revision: fixture.revision)
+        XCTAssertTrue(fixture.layout.isMarkdownMarkerHidden(at: 0))
+        XCTAssertTrue(fixture.layout.containsAtomicBlock(in: NSRange(location: 22, length: 4)))
+        XCTAssertFalse(fixture.layout.containsAtomicBlock(in: NSRange(location: 21, length: 1)))
+    }
+
+    /// Пробел в конце строки не проходит быстрый путь, но разметку не задевает: заголовок и картинка на месте.
+    func testEndOfLineSpaceKeepsReadyState() async throws {
+        let fixture = try await makeTypingFixture("# Heading\n\nSome **bold** text")
+        fixture.layout.setMarkdownBlockImage(NSImage(size: NSSize(width: 4, height: 4)), for: NSRange(location: 2, length: 4))
+        let edit = NSRange(location: 29, length: 0)
+        fixture.revision += 1
+        fixture.controller.beforeEdit(range: edit, replacementLength: 1, replacement: " ")
+        fixture.storage.replaceCharacters(in: edit, with: " ")
+        fixture.controller.edited(revision: fixture.revision)
+        XCTAssertTrue(fixture.layout.containsAtomicBlock(in: NSRange(location: 2, length: 4)))
+        XCTAssertTrue(fixture.layout.isMarkdownMarkerHidden(at: 0))
+    }
+
+    /// Вставка на границе скрытой замены убирает её: новый пробел не должен попасть в старый нулевой glyph.
+    func testTouchedReplacementLeavesLayerBeforeEdit() async throws {
+        let fixture = try await makeTypingFixture("# Heading\n\nSome  text")
+        let location = try XCTUnwrap(fixture.layout.markdownListsSnapshot["replacements"]?.first)
+        let edit = NSRange(location: location, length: 0)
+        fixture.revision += 1
+        fixture.controller.beforeEdit(range: edit, replacementLength: 1, replacement: " ")
+        fixture.storage.replaceCharacters(in: edit, with: " ")
+        fixture.controller.edited(revision: fixture.revision)
+        XCTAssertEqual(fixture.layout.markdownListsSnapshot["replacements"], [])
+        XCTAssertTrue(fixture.layout.isMarkdownMarkerHidden(at: 0))
+        fixture.layout.ensureLayout(for: try XCTUnwrap(fixture.view.textContainer))
+        let glyph = fixture.layout.glyphIndexForCharacter(at: location)
+        XCTAssertFalse(fixture.layout.propertyForGlyph(at: glyph).contains(.controlCharacter))
+        XCTAssertFalse(fixture.layout.propertyForGlyph(at: glyph).contains(.null))
+    }
+
+    /// Каретка у картинки не должна прятать схлопнутые пробелы рядом с ней.
+    func testSpacesAfterInlineImageStayVisibleAtCaret() async throws {
+        let source = "# Heading\n\nline ![a](missing.png)  tail"
+        let fixture = try await makeTypingFixture(source)
+        let spaces = (source as NSString).range(of: ")  ")
+        XCTAssertEqual(fixture.layout.markdownListsSnapshot["replacements"]?.isEmpty, false)
+        fixture.view.setSelectedRange(NSRange(location: spaces.location + 1, length: 0))
+        fixture.controller.selectionChanged()
+        fixture.layout.ensureLayout(for: try XCTUnwrap(fixture.view.textContainer))
+        let glyph = fixture.layout.glyphIndexForCharacter(at: spaces.location + 2)
+        XCTAssertFalse(fixture.layout.propertyForGlyph(at: glyph).contains(.null))
+        XCTAssertFalse(fixture.layout.propertyForGlyph(at: glyph).contains(.controlCharacter))
     }
 
     func testUnconfirmedFastEditClearsReadyState() async throws {
@@ -1074,7 +1132,7 @@ final class MarkdownPresentationTests: XCTestCase {
         XCTAssertGreaterThan(typed.pointSize, fixture.layout.textFont.pointSize)
     }
 
-    func testEditInsideLineIndentFallsBack() async throws {
+    func testEditInsideLineIndentKeepsHeading() async throws {
         let fixture = try await makeTypingFixture("# Heading\n\n  - item")
         XCTAssertTrue(fixture.layout.isMarkdownMarkerHidden(at: 0))
         let edit = NSRange(location: 12, length: 0)
@@ -1082,22 +1140,24 @@ final class MarkdownPresentationTests: XCTestCase {
         fixture.controller.beforeEdit(range: edit, replacementLength: 1, replacement: "x")
         fixture.storage.replaceCharacters(in: edit, with: "x")
         fixture.controller.edited(revision: fixture.revision)
-        XCTAssertFalse(fixture.layout.isMarkdownMarkerHidden(at: 0))
+        XCTAssertTrue(fixture.layout.isMarkdownMarkerHidden(at: 0))
     }
 
-    func testMultilineOrMarkerEditFallsBack() async throws {
-        for (edit, replacement) in [(NSRange(location: 13, length: 0), "\n"), (NSRange(location: 17, length: 0), "x"), (NSRange(location: 13, length: 0), "*")] {
+    func testMultilineOrMarkerEditKeepsFormattingOutsideEdit() async throws {
+        for (edit, replacement, markerStays) in [(NSRange(location: 13, length: 0), "\n", true), (NSRange(location: 17, length: 0), "x", false), (NSRange(location: 13, length: 0), "*", true)] {
             let fixture = try await makeTypingFixture("# Heading\n\nSome **bold** text")
             XCTAssertTrue(fixture.layout.isMarkdownMarkerHidden(at: 0))
             fixture.revision += 1
             fixture.controller.beforeEdit(range: edit, replacementLength: (replacement as NSString).length, replacement: replacement)
             fixture.storage.replaceCharacters(in: edit, with: replacement)
             fixture.controller.edited(revision: fixture.revision)
-            XCTAssertFalse(fixture.layout.isMarkdownMarkerHidden(at: 0), replacement)
+            XCTAssertTrue(fixture.layout.isMarkdownMarkerHidden(at: 0), replacement)
+            // Правка внутри `**` снимает только этот жирный участок.
+            XCTAssertEqual(fixture.layout.isMarkdownMarkerHidden(at: replacement == "x" ? 16 : 17), markerStays, replacement)
         }
     }
 
-    func testEnterAtParagraphEndKeepsFormattingOnce() async throws {
+    func testEnterAtParagraphEndKeepsFormatting() async throws {
         let fixture = try await makeTypingFixture("# Heading\n\nSome text\n\nTail")
         XCTAssertTrue(fixture.layout.isMarkdownMarkerHidden(at: 0))
         let edit = NSRange(location: 20, length: 0)
@@ -1114,7 +1174,7 @@ final class MarkdownPresentationTests: XCTestCase {
         fixture.controller.beforeEdit(range: second, replacementLength: 1, replacement: "\n")
         fixture.storage.replaceCharacters(in: second, with: "\n")
         fixture.controller.edited(revision: fixture.revision)
-        XCTAssertFalse(fixture.layout.isMarkdownMarkerHidden(at: 0))
+        XCTAssertTrue(fixture.layout.isMarkdownMarkerHidden(at: 0))
     }
 
     func testHeadingFontReturnsAfterFallbackEdit() async throws {
@@ -1142,7 +1202,7 @@ final class MarkdownPresentationTests: XCTestCase {
         XCTAssertTrue(fixture.layout.isMarkdownMarkerHidden(at: 0))
     }
 
-    func testAnchorDocumentUsesFallback() async throws {
+    func testAnchorDocumentKeepsFormattingOutsideEdit() async throws {
         let fixture = try await makeTypingFixture("# Heading\n\nSome text\n\n<a name=\"top\"></a>\n")
         XCTAssertTrue(fixture.layout.isMarkdownMarkerHidden(at: 0))
         let edit = NSRange(location: 13, length: 0)
@@ -1150,7 +1210,7 @@ final class MarkdownPresentationTests: XCTestCase {
         fixture.controller.beforeEdit(range: edit, replacementLength: 1, replacement: "x")
         fixture.storage.replaceCharacters(in: edit, with: "x")
         fixture.controller.edited(revision: fixture.revision)
-        XCTAssertFalse(fixture.layout.isMarkdownMarkerHidden(at: 0))
+        XCTAssertTrue(fixture.layout.isMarkdownMarkerHidden(at: 0))
     }
 
     private final class TypingFixture {

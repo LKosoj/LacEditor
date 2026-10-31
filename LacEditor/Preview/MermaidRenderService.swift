@@ -32,11 +32,13 @@ final class MermaidRenderService: NSObject, WKNavigationDelegate {
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
         let view = WKWebView(frame: NSRect(x: 0, y: 0, width: ceil(width), height: 1), configuration: configuration)
         view.navigationDelegate = self
+        // В тёмном окне снимок не должен приносить светлый холст: фон остаётся прозрачным.
+        if dark { view.setValue(false, forKey: "drawsBackground") }
         webView = view
         let page = """
             <!doctype html><html><head><meta charset="utf-8">
             <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">
-            <style>html,body { margin:0; padding:0 } pre[hidden] { display:none }
+            <style>html,body { margin:0; padding:0; background:transparent } pre[hidden] { display:none }
             .mermaid-diagram svg { max-width:100%; height:auto; display:block }</style>
             </head><body><article><pre><code class="language-mermaid"></code></pre></article></body></html>
             """

@@ -416,6 +416,8 @@ final class MarkdownPresentationController {
     private var keptEdit: (revision: UInt, length: Int, inserted: NSRange)?
     /// На экране сдвинутое оформление предыдущего разбора: при установке нового разбора стили видимой области снимаются.
     private var presentationKept = false
+    /// Оформление пережило правку разметки (`shiftAroundEdit`): расходится ли оно с текстом вне экрана, покажет только новый разбор.
+    private var structureEditPending = false
     // При полном переразборе не убираем готовые медиа до появления нового результата.
     // Это предотвращает превращение неизменившихся картинок и диаграмм в исходный текст во время ввода.
     private var deferredReadyClear = false
@@ -917,7 +919,6 @@ final class MarkdownPresentationController {
 
     func beforeEdit(range: NSRange, replacementLength: Int, replacement: String? = nil) {
         guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled || presentation != nil || parsedResult != nil else { return }
-        let isContinuation = deferredReadyClear
         // Прошлая правка сдвинула оформление, но текст так и не изменился: сдвиг ничем не подтверждён.
         if keptEdit != nil {
             keptEdit = nil
@@ -931,16 +932,8 @@ final class MarkdownPresentationController {
         // показано, незавершённые загрузки неизменившихся картинок должны
         // пережить эту клавишу; их ключи будут перенесены в `shiftInstalledMedia`.
         deferredReadyClear = isActive && !hasMarkedText && (presentation != nil || !styledRanges.isEmpty)
-        cancelPending(preservingMedia: deferredReadyClear && !isContinuation)
+        cancelPending(preservingMedia: deferredReadyClear)
         if isActive && !hasMarkedText {
-            if isContinuation {
-                // После первой безопасной правки новый разбор ещё не готов.
-                // Снимаем старые текстовые диапазоны один раз и не сдвигаем
-                // всю Markdown-модель на каждой следующей клавише.
-                clear()
-                deferredReadyClear = false
-                return
-            }
             if presentation != nil || !styledRanges.isEmpty {
                 if let replacement, let edit = presentationAfterEdit(range: range, replacement: replacement, replacementLength: replacementLength) {
                     lastRevealedRange = lastRevealedRange.flatMap { shifted([$0]).first }
@@ -948,12 +941,16 @@ final class MarkdownPresentationController {
                     keptEdit = (currentRevision?() ?? 0, (textView?.textStorage?.length ?? 0) - range.length + replacementLength,
                                 NSRange(location: range.location, length: replacementLength))
                     deferredReadyClear = true
+                } else if replacement != nil, let edit = localEdit(range: range, replacementLength: replacementLength) {
+                    lastRevealedRange = lastRevealedRange.flatMap { shifted([$0]).first }
+                    shiftAroundEdit(edit)
+                    // Длина вставки нулевая: чужой стиль на такую правку не переносится (`matchInsertedStyle`).
+                    keptEdit = (currentRevision?() ?? 0, (textView?.textStorage?.length ?? 0) - range.length + replacementLength,
+                                NSRange(location: range.location, length: 0))
+                    deferredReadyClear = true
                 } else {
-                    // Небезопасную правку нельзя переносить по старым диапазонам:
-                    // на границе скрытой замены или Markdown-маркера новый пробел
-                    // иначе временно получает старый нулевой glyph. Полный разбор
-                    // всё равно будет запланирован ниже, поэтому сразу убираем
-                    // устаревшее текстовое оформление и не делаем O(N)-сдвиг.
+                    // Диапазоны нельзя перенести (нет текста правки, активная таблица,
+                    // преобразованные заголовки): снимается всё оформление.
                     clear()
                     deferredReadyClear = false
                 }
@@ -1751,7 +1748,13 @@ final class MarkdownPresentationController {
             presentationKept = false
             if let visible = visibleRange() { restoreStyles(in: visible) }
         }
+        let keptSpans = presentation?.spans
         adopt(result)
+        // Правка разметки могла изменить разбор и вне экрана: восстановленные стили этих мест иначе остались бы старыми. Пока разбор сошёлся, они верны.
+        if structureEditPending {
+            structureEditPending = false
+            if keptSpans != presentation?.spans { restoreStyles() }
+        }
         pruneCodeHighlighting(keeping: result.codeBlocks)
         lastRevealedRange = revealedRange()
         layout?.setMarkdownPresentation(result, revealedRange: lastRevealedRange, inlineSelection: inlineSelection(), invalidating: visibleRange() ?? NSRange(location: 0, length: 0))
@@ -1769,6 +1772,7 @@ final class MarkdownPresentationController {
         keptEdit = nil
         deferredReadyClear = false
         presentationKept = false
+        structureEditPending = false
         clearUppercaseHeadings()
         uppercaseHeadings.removeAll()
         emojiOperation?.cancel()
@@ -1801,6 +1805,7 @@ final class MarkdownPresentationController {
 
     private func invalidatePresentation(in range: NSRange?) {
         presentationKept = false
+        structureEditPending = false
         clearUppercaseHeadings()
         uppercaseHeadings.removeAll()
         clearAudio()
@@ -1834,6 +1839,82 @@ final class MarkdownPresentationController {
         shiftMedia(edit)
     }
 
+    /// Правка меняет разметку, но не портит диапазоны вне себя: снимается только то, что она задела, остальное переезжает, как при обычном вводе.
+    /// Задетое обязано уйти: иначе новый символ попал бы в старый нулевой glyph маркера или замены (задетый диапазон `shift` оставляет на месте).
+    private func shiftAroundEdit(_ edit: MarkdownTextEdit) {
+        // Выделение ещё в старых координатах: сверять его с картинками надо до их снятия и сдвига.
+        let selection = inlineSelection()
+        guard let touched = presentation?.removeTouched(by: edit) else { return }
+        if let range = touched.range { dropTouched(touched, in: range) }
+        presentationKept = true
+        structureEditPending = true
+        lastFootnote = nil
+        if touched.range == nil, presentation?.hasOnlyTextStructure == true, let spanStart = presentation?.firstAffectedLocation(edit) {
+            presentation?.shift(edit)
+            layout?.shiftMarkdownPresentation(edit, spanStart: spanStart, revealedRange: lastRevealedRange, inlineSelection: selection)
+        } else {
+            // Снятое надо убрать и из списков слоя, а оглавления и разрывы страниц сдвиг слоя не переносит: списки строятся заново, раскладка сбрасывается только у задетого.
+            presentation?.shift(edit)
+            layout?.shiftMarkdownMediaOnly(edit)
+            layout?.setMarkdownPresentation(presentation, revealedRange: lastRevealedRange, inlineSelection: selection,
+                                            invalidating: touched.range ?? NSRange(location: edit.range.location, length: 0))
+        }
+        shiftCodeHighlighting(edit)
+        shiftInstalledMedia(edit)
+        shiftDiagrams(edit)
+        shiftMedia(edit)
+    }
+
+    /// Снимает ресурсы и стили задетых элементов; всё, что лежит вне `range`, остаётся на экране.
+    private func dropTouched(_ touched: MarkdownTouchedElements, in range: NSRange) {
+        for image in touched.images {
+            let placement = image.isInline ? image.range : image.paragraphRange
+            loadedImageRanges.remove(placement)
+            imagePresentationWidths.removeValue(forKey: placement)
+            imageOperations.removeValue(forKey: placement)?.cancel()
+            remoteImageJobs.removeValue(forKey: placement)?.1.cancel()
+            svgImageJobs.removeValue(forKey: placement)?.2.cancel()
+            if let view = animatedImages.removeValue(forKey: placement) {
+                view.animates = false
+                view.removeFromSuperview()
+            }
+            if image.isInline { layout?.removeMarkdownInlineImage(for: image.range) }
+            else { layout?.setMarkdownImage(nil, for: placement) }
+        }
+        if !touched.blockImages.isEmpty || !touched.inlineImages.isEmpty {
+            let service = formulaJob?.service
+            formulaJob = nil
+            service?.cancel()
+        }
+        for range in touched.blockImages {
+            layout?.setMarkdownBlockImage(nil, for: range)
+            diagramCompleted.remove(range)
+            diagramResources.removeValue(forKey: range)
+            formulaCompleted.remove(range)
+        }
+        for range in touched.inlineImages {
+            layout?.removeMarkdownInlineImage(for: range)
+            formulaCompleted.remove(range)
+            emojiRanges.remove(range)
+            emojiFonts.removeValue(forKey: range)
+            rubyRendered.removeValue(forKey: range)
+        }
+        if touched.hasCode, let blocks = presentation?.codeBlocks { pruneCodeHighlighting(keeping: blocks) }
+        // Вставок больше нет в разборе: обновление снимает их вью с экрана.
+        if touched.hasInserts, let visible = visibleRange() {
+            updateAudio(in: visible)
+            updateIframes(in: visible)
+            updateDetails(in: visible)
+            updateHTMLBlocks(in: visible)
+        }
+        restoreStyles(in: range)
+        if let textView, let layout {
+            var typing = textView.typingAttributes
+            typing[.font] = layout.textFont
+            textView.typingAttributes = typing
+        }
+    }
+
     /// Простой текст вводится базовым шрифтом: до нового разбора вставка берёт оформление соседнего символа: слева, а после переноса строки и в начале текста справа.
     private func matchInsertedStyle(_ inserted: NSRange) {
         guard inserted.length > 0, let textView, let storage = textView.textStorage,
@@ -1864,6 +1945,14 @@ final class MarkdownPresentationController {
         return presentation.canShift(edit) ? edit : nil
     }
 
+    /// Правка, вокруг которой оформление можно сохранить, снимая только задетое; nil, если диапазоны переносить нельзя.
+    private func localEdit(range: NSRange, replacementLength: Int) -> MarkdownTextEdit? {
+        guard enabled, !hasMarkedText, uppercaseHeadingLevels.isEmpty, !headingNumbering, uppercaseHeadings.isEmpty, uppercaseInstalled.isEmpty,
+              presentation?.isReadyForShift == true, layout?.hasActiveTable != true,
+              let text = textView?.textStorage?.mutableString else { return nil }
+        return MarkdownTextEdit(range: range, replacementLength: replacementLength, textLength: text.length)
+    }
+
     /// Оставленное при правке оформление снимается как раньше: стили экрана возвращаются, разбор сбрасывается.
     private func dropKeptPresentation() {
         guard presentationKept else { return }
@@ -1879,8 +1968,15 @@ final class MarkdownPresentationController {
         guard let textView, let text = textView.textStorage?.mutableString else { return nil }
         let selection = textView.selectedRange()
         guard selection.location <= text.length else { return nil }
-        if selectionTouchesImage(selection) { return nil }
+        if selectionTouchesImage(selection), !selectionTouchesSpaces(selection) { return nil }
         return NSRange(location: selection.location, length: min(selection.length, text.length - selection.location))
+    }
+
+    /// Каретка у картинки не раскрывает маркеры, но скрытые или схлопнутые пробелы рядом с ней обязаны остаться видимыми: иначе набранный пробел пропадает до ухода каретки.
+    private func selectionTouchesSpaces(_ selection: NSRange) -> Bool {
+        presentation?.textReplacements.contains {
+            $0.kind == .spaces && selection.location <= NSMaxRange($0.range) && NSMaxRange(selection) >= $0.range.location
+        } == true
     }
 
     private func revealedRange() -> NSRange? {
@@ -2096,7 +2192,8 @@ final class MarkdownPresentationController {
             merged = NSRange(location: start, length: max(NSMaxRange(range), NSMaxRange(merged)) - start)
             return false
         }
-        styledRanges.append(merged)
+        // Список остаётся упорядоченным: на этом держится проход без сортировки в `unstyledRange`.
+        styledRanges.insert(merged, at: styledRanges.firstIndex { $0.location > merged.location } ?? styledRanges.count)
         loadVisibleEmoji(in: styleRange)
         updateUppercaseHeadings(spans: matches)
         layout.invalidateMarkdownLayout(in: styleRange)
@@ -2135,7 +2232,7 @@ final class MarkdownPresentationController {
     private func unstyledRange(in visible: NSRange) -> NSRange? {
         var start = visible.location
         let end = NSMaxRange(visible)
-        for range in styledRanges.sorted(by: { $0.location < $1.location }) {
+        for range in styledRanges {
             guard range.location <= start else { break }
             start = max(start, min(NSMaxRange(range), end))
             if start >= end { return nil }
@@ -3269,7 +3366,7 @@ final class MarkdownPresentationController {
                 job = .mermaid(MermaidRenderService(code: diagram.source, width: width, dark: dark, completion: receive))
             case .flow, .sequence:
                 let kind: LegacyDiagramRenderService.Kind = diagram.kind == .flow ? .flow : .sequence
-                job = .legacy(LegacyDiagramRenderService(code: diagram.source, kind: kind, width: width, completion: receive))
+                job = .legacy(LegacyDiagramRenderService(code: diagram.source, kind: kind, dark: dark, width: width, completion: receive))
             }
             diagramJobs[diagram.range] = DiagramJobEntry(token: token, identity: identity, revision: revision, job: job)
             job.start()

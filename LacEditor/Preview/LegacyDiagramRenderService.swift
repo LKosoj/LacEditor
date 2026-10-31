@@ -11,6 +11,7 @@ final class LegacyDiagramRenderService: NSObject, WKNavigationDelegate {
     private let code: String
     private let kind: Kind
     private let theme: Theme
+    private let dark: Bool
     private let width: CGFloat
     private var completion: ((Result<NSImage, Error>) -> Void)?
     private var webView: WKWebView?
@@ -18,11 +19,12 @@ final class LegacyDiagramRenderService: NSObject, WKNavigationDelegate {
     private var hostURL: URL?
     private(set) var renderedSVG: Data?
 
-    init(code: String, kind: Kind, theme: Theme = .simple, width: CGFloat,
+    init(code: String, kind: Kind, theme: Theme = .simple, dark: Bool = false, width: CGFloat,
          completion: @escaping (Result<NSImage, Error>) -> Void) {
         self.code = code
         self.kind = kind
         self.theme = theme
+        self.dark = dark
         self.width = width
         self.completion = completion
     }
@@ -40,6 +42,8 @@ final class LegacyDiagramRenderService: NSObject, WKNavigationDelegate {
         }
         let view = WKWebView(frame: NSRect(x: 0, y: 0, width: ceil(width), height: 1))
         view.navigationDelegate = self
+        // В тёмном окне снимок не должен приносить светлый холст: фон остаётся прозрачным.
+        if dark { view.setValue(false, forKey: "drawsBackground") }
         webView = view
         hostURL = host
         navigation = view.loadFileURL(host, allowingReadAccessTo: host.deletingLastPathComponent())
@@ -59,7 +63,7 @@ final class LegacyDiagramRenderService: NSObject, WKNavigationDelegate {
         guard navigation === self.navigation, completion != nil else { return }
         self.navigation = nil
         let script = """
-            const dimensions = await window.renderDiagram(source, kind, theme, width);
+            const dimensions = await window.renderDiagram(source, kind, theme, width, dark);
             const svg = document.querySelector('#diagram svg');
             if (!svg) throw new Error('Missing diagram');
             const copy = svg.cloneNode(true);
@@ -74,7 +78,7 @@ final class LegacyDiagramRenderService: NSObject, WKNavigationDelegate {
         let fontURL = hostURL?.deletingLastPathComponent().appendingPathComponent("danielbd-original.ttf")
         let font = theme == .hand ? fontURL.flatMap { try? Data(contentsOf: $0).base64EncodedString() } ?? "" : ""
         webView.callAsyncJavaScript(script, arguments: ["source": code, "kind": kind == .flow ? "flow" : "sequence",
-                                                        "theme": theme.rawValue, "width": Double(width), "font": font], in: nil, in: .page) { [weak self, weak webView] result in
+                                                        "theme": theme.rawValue, "width": Double(width), "dark": dark, "font": font], in: nil, in: .page) { [weak self, weak webView] result in
             guard let self, let webView, self.completion != nil else { return }
             guard case let .success(value) = result, let values = value as? [Any], values.count == 3,
                   let rightValue = values[0] as? NSNumber, let bottomValue = values[1] as? NSNumber else {

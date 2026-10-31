@@ -51,6 +51,21 @@ final class LegacyDiagramRenderServiceTests: XCTestCase {
         }
     }
 
+    func testDarkDiagramKeepsTransparentBackground() async throws {
+        _ = NSApplication.shared
+        let finished = expectation(description: "dark diagram")
+        var rendered: NSImage?
+        let service = LegacyDiagramRenderService(code: "Alice->Bob: Hello", kind: .sequence, dark: true, width: 300) { result in
+            if case let .success(image) = result { rendered = image }
+            finished.fulfill()
+        }
+        service.start()
+        await fulfillment(of: [finished], timeout: 30)
+        let data = try XCTUnwrap(try XCTUnwrap(rendered).tiffRepresentation)
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: data))
+        XCTAssertLessThan(try XCTUnwrap(bitmap.colorAt(x: 0, y: 0)).alphaComponent, 0.01)
+    }
+
     func testInvalidInputAndCancellationCompleteOnce() async throws {
         _ = NSApplication.shared
         let failed = expectation(description: "invalid")

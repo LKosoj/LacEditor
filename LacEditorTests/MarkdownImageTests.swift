@@ -408,6 +408,28 @@ final class MarkdownImageTests: XCTestCase {
         XCTAssertEqual(fixture.images.first, (fixture.storage.string as NSString).range(of: "![image]").location)
     }
 
+    /// Правка разметки вне картинки: ключ переезжает, разбор не перезагружает готовый ресурс (файл уже удалён).
+    func testStructuralEditOutsideKeepsReadyImage() async throws {
+        let (fixture, directory) = try await makeLocalImageFixture()
+        defer { fixture.finish(); try? FileManager.default.removeItem(at: directory) }
+        let before = fixture.images
+        fixture.type(after: "before", "*")
+        XCTAssertEqual(fixture.images, [before[0] + 1] + before.dropFirst())
+        await fixture.waitForParse()
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(fixture.images, [before[0] + 1] + before.dropFirst())
+    }
+
+    /// Вторая подряд клавиша до разбора: вспышки исходного текста нет.
+    func testSecondKeyBeforeParseKeepsReadyImage() async throws {
+        let (fixture, directory) = try await makeLocalImageFixture()
+        defer { fixture.finish(); try? FileManager.default.removeItem(at: directory) }
+        let before = fixture.images
+        fixture.type(after: "before")
+        fixture.type(after: "beforex")
+        XCTAssertEqual(fixture.images, [before[0] + 2] + before.dropFirst())
+    }
+
     func testDivergentParseDropsReadyImage() async throws {
         let (fixture, directory) = try await makeLocalImageFixture()
         defer { fixture.finish(); try? FileManager.default.removeItem(at: directory) }

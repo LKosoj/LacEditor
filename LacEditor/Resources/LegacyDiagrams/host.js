@@ -1,5 +1,24 @@
 'use strict';
-window.renderDiagram = async function(source, kind, theme, width) {
+// Flow and sequence libraries paint black on white. Keep colored marks, swap
+// only grays, and leave the page transparent for the dark editor background.
+function darkColor(value) {
+  const match = /^rgba?\((\d+), (\d+), (\d+)/.exec(value);
+  if (!match) return null;
+  const channels = match.slice(1, 4).map(Number);
+  if (Math.max(...channels) - Math.min(...channels) > 40) return null;
+  return channels[0] < 128 ? '#e6e6e6' : '#1f1f1f';
+}
+function applyDarkColors(svg) {
+  document.documentElement.style.background = 'transparent';
+  document.body.style.background = 'transparent';
+  for (const element of svg.querySelectorAll('path,rect,circle,ellipse,line,polyline,polygon,text,tspan')) {
+    const style = getComputedStyle(element);
+    const fill = darkColor(style.fill), stroke = darkColor(style.stroke);
+    if (fill) element.style.fill = fill;
+    if (stroke) element.style.stroke = stroke;
+  }
+}
+window.renderDiagram = async function(source, kind, theme, width, dark) {
   const container = document.getElementById('diagram');
   container.replaceChildren();
   if (kind === 'flow') {
@@ -15,6 +34,7 @@ window.renderDiagram = async function(source, kind, theme, width) {
   await document.fonts.ready;
   const svg = container.querySelector('svg');
   if (!svg || container.querySelectorAll('svg').length !== 1) throw new Error('Diagram unavailable');
+  if (dark) applyDarkColors(svg);
   const box = svg.getBBox();
   if (![box.x, box.y, box.width, box.height, width].every(Number.isFinite) || box.width <= 0 || box.height <= 0 || width <= 0) throw new Error('Invalid diagram bounds');
   const root = svg.getScreenCTM();

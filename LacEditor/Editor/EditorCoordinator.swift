@@ -167,6 +167,8 @@ extension EditorTextView {
         private let syntaxHighlightContext = SyntaxHighlighter.IncrementalContext()
         private let delimiterMatchingContext = DelimiterMatchingService.Context()
         private var delimiterMatchWorkItem: DispatchWorkItem?
+        private var delimiterMatchRevision: UInt?
+        private var delimiterMatchSelection: NSRange?
         private let delimiterMatchQueue: OperationQueue = {
             let queue = OperationQueue()
             queue.name = "com.laceditor.delimiter-matching"
@@ -262,7 +264,6 @@ extension EditorTextView {
         private var rulerRefreshWorkItem: DispatchWorkItem?
         private var rulerRefreshNeedsLayout = false
         private var selectionVisibilityWorkItem: DispatchWorkItem?
-        private var cursorStateWorkItem: DispatchWorkItem?
         private var textCodecSuggestionWorkItem: DispatchWorkItem?
         private var textCodecSuggestionGeneration: UInt = 0
         private var modelSyncWorkItem: DispatchWorkItem?
@@ -591,7 +592,6 @@ extension EditorTextView {
             rulerRefreshWorkItem?.cancel()
             liveResizeLayoutWorkItem?.cancel()
             selectionVisibilityWorkItem?.cancel()
-            cursorStateWorkItem?.cancel()
             typewriterWorkItem?.cancel()
             textCodecSuggestionWorkItem?.cancel()
             clearFindHighlights()
@@ -3456,7 +3456,7 @@ extension EditorTextView {
                 }
             }
             updateSyntaxOptions()
-            markdownPresentation?.setElementPathEnabled(document.language == .markdown && !document.isLargeFileMode)
+            markdownPresentation?.setElementPathEnabled(document.language == .markdown && document.isMarkdownFormatted && !document.isLargeFileMode)
             if document.language != .markdown || document.isLargeFileMode { clearCriticHighlights() }
             markdownPresentation?.update(
                 document: document,
@@ -3868,10 +3868,12 @@ extension EditorTextView {
             cachedMarkdownNavigation = nil
             guard !isApplyingExternalUpdate, let textView else { return }
             cancelAICompletion()
-            let revision = contentRevision
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.contentRevision == revision else { return }
-                self.scheduleAICompletion()
+            if aiFeatures.contains(.completion) {
+                let revision = contentRevision
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.contentRevision == revision else { return }
+                    self.scheduleAICompletion()
+                }
             }
             if let text = textView.textStorage?.mutableString,
                lineIndex.textLength != text.length {
@@ -3893,7 +3895,6 @@ extension EditorTextView {
             // видимой раскладки ради линейки на каждом символе; отложенная
             // перерисовка линейки использует актуальную геометрию.
             scheduleRulerRefresh(ensureLayout: false)
-            scheduleCursorStateUpdate()
             scheduleDelimiterMatch()
             scheduleSelectionVisibilitySync()
             if !isApplyingAutomatedEdit { scheduleTypewriterCentering() }
@@ -4404,10 +4405,12 @@ extension EditorTextView {
             let generation = textCodecSuggestionGeneration
             // updateNSView may call this while SwiftUI is reconciling. Publish
             // the suggestion outside that update, and discard stale clears.
-            DispatchQueue.main.async { [weak self] in
-                guard let self, textCodecSuggestionGeneration == generation,
-                      document.textCodecSuggestionTitle != nil else { return }
-                document.textCodecSuggestionTitle = nil
+            if document.textCodecSuggestionTitle != nil {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, textCodecSuggestionGeneration == generation,
+                          document.textCodecSuggestionTitle != nil else { return }
+                    document.textCodecSuggestionTitle = nil
+                }
             }
             guard isActive,
                   let textView,
@@ -4443,6 +4446,9 @@ extension EditorTextView {
         }
 
         func scheduleDelimiterMatch(delay: TimeInterval = 0.03) {
+            // Правка приходит сюда дважды: от смены выделения и из `textDidChange`. Второй вызов ничего не меняет.
+            if delay > 0, delimiterMatchWorkItem != nil, delimiterMatchRevision == contentRevision,
+               delimiterMatchSelection == textView?.selectedRange() { return }
             cancelDelimiterMatch(clearHighlight: true)
             guard isActive,
                   DelimiterMatchingService.supports(currentLanguage),
@@ -4510,10 +4516,14 @@ extension EditorTextView {
                 delimiterMatchQueue.addOperation(operation)
             }
             delimiterMatchWorkItem = workItem
-            if delay <= 0 {
+            delimiterMatchRevision = contentRevision
+            delimiterMatchSelection = selection
+            // Снимок обнуляет правка: новый снимок всего текста делается один раз за серию клавиш, а не на каждую.
+            let wait = delay > 0 && delimiterSnapshot == nil ? max(delay, 0.12) : delay
+            if wait <= 0 {
                 DispatchQueue.main.async(execute: workItem)
             } else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+                DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: workItem)
             }
         }
 
@@ -4904,21 +4914,6 @@ extension EditorTextView {
             if document.cursorColumn != position.column { document.cursorColumn = position.column }
         }
 
-        /// Публикация строки/колонки курсора не нужна синхронно для каждого
-        /// символа: TextKit уже обновил реальную каретку. Объединяем серии
-        /// быстрых вводов, чтобы SwiftUI не перестраивал правую панель на каждую
-        /// клавишу.
-        private func scheduleCursorStateUpdate() {
-            cursorStateWorkItem?.cancel()
-            let workItem = DispatchWorkItem { [weak self] in
-                guard let self else { return }
-                cursorStateWorkItem = nil
-                updateCursor()
-            }
-            cursorStateWorkItem = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
-        }
-
         private func combinedEdit(
             from original: String,
             to replacement: String
@@ -5211,7 +5206,7 @@ extension EditorTextView {
         private func scheduleAutomaticMediaFolds() {
             automaticMediaFoldTask?.cancel()
             guard isActive, document.isFoldingEnabled, currentLanguage == .markdown,
-                  !document.isMarkdownFormatted, let textView else {
+                  !document.isMarkdownFormatted, textView != nil else {
                 // В оформленном редакторе автоматические media-fold не работают.
                 // Очищаем их только при фактическом переходе из обычного
                 // режима; повторная запись пустого списка на каждый символ
@@ -5221,15 +5216,16 @@ extension EditorTextView {
                 }
                 return
             }
-            let snapshot = textView.string
             let revision = contentRevision
             automaticMediaFoldTask = Task { [weak self] in
                 try? await Task.sleep(for: .milliseconds(80))
-                guard !Task.isCancelled else { return }
+                // Копия всего текста делается после паузы: отменённая следующей клавишей задача её не платит.
+                guard !Task.isCancelled, let self, self.contentRevision == revision,
+                      let snapshot = self.textView?.string else { return }
                 let ranges = await Task.detached(priority: .utility) {
                     FoldService.mediaPayloadRanges(in: snapshot, isCancelled: { Task.isCancelled })
                 }.value
-                guard !Task.isCancelled, let self, self.isActive,
+                guard !Task.isCancelled, self.isActive,
                       self.contentRevision == revision, self.currentLanguage == .markdown,
                       !self.document.isMarkdownFormatted, self.document.isFoldingEnabled else { return }
                 let selection = self.textView?.selectedRange()
