@@ -14,12 +14,12 @@ permissions:
 
 jobs:
   scan:
-    name: Scan Swift and vendored dependencies
+    name: Scan Swift and versioned vendored JS
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - name: Verify vendored dependency provenance
+      - name: Verify LegacyDiagram provenance
         shell: bash
         run: |
           set -euo pipefail
@@ -36,4 +36,4 @@ jobs:
           scan-args: |-
             --lockfile=Package.resolved
             --lockfile=LacEditor.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
-            --lockfile=package-lock.json:LacEditor/Resources/LegacyDiagrams/vendored-package-lock.json
+            --lockfile=osv-scanner:.github/osv/osv-scanner.json
