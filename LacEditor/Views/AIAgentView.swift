@@ -379,7 +379,7 @@ struct AIAgentView: View {
     }
 }
 
-private struct AIAgentJournalRow: View {
+struct AIAgentJournalRow: View {
     let entry: AIAgentJournalEntry
 
     private var icon: String {
@@ -400,7 +400,7 @@ private struct AIAgentJournalRow: View {
         }
     }
 
-    private var title: String {
+    var title: String {
         let subject = entry.subject ?? ""
         switch entry.kind {
         case .listDocuments: return subject.isEmpty ? L10n.tr("列出文件") : L10n.tr("列出文件：%@", subject)
@@ -416,8 +416,11 @@ private struct AIAgentJournalRow: View {
         case .contextCondensed: return L10n.tr("已压缩上下文")
         case .contextCondenseFailed: return L10n.tr("压缩上下文失败")
         case .rejected:
-            return entry.tool == "web_search" && entry.errorCode == nil
-                ? L10n.tr("已拒绝联网搜索“%@”", subject) : L10n.tr("无效的工具调用：%@", subject.isEmpty ? entry.tool : subject)
+            if entry.errorCode == nil {
+                if entry.tool == "web_search" { return L10n.tr("已拒绝联网搜索“%@”", subject) }
+                if let documentName = entry.documentName { return L10n.tr("已拒绝访问文档“%@”", documentName) }
+            }
+            return L10n.tr("无效的工具调用：%@", subject.isEmpty ? entry.tool : subject)
         }
     }
 

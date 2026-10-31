@@ -199,8 +199,8 @@ final class AIAgentController: ObservableObject {
     /// Путь внутри рабочей папки; nil — файла нет, он вне папки или папка не открыта.
     static func relativePath(of url: URL?, root: URL?) -> String? {
         guard let url, let root else { return nil }
-        let path = url.standardizedFileURL.pathComponents
-        let base = root.standardizedFileURL.pathComponents
+        let path = url.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+        let base = root.standardizedFileURL.resolvingSymlinksInPath().pathComponents
         guard path.count > base.count, Array(path.prefix(base.count)) == base else { return nil }
         return path.dropFirst(base.count).joined(separator: "/")
     }

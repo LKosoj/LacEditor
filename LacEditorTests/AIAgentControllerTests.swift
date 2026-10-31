@@ -689,6 +689,11 @@ final class AIAgentControllerTests: XCTestCase {
         XCTAssertNil(AIAgentController.relativePath(of: root, root: root))
         XCTAssertNil(AIAgentController.relativePath(of: nil, root: root))
         XCTAssertNil(AIAgentController.relativePath(of: root.appendingPathComponent("a.md"), root: nil))
+
+        let temporary = try temporaryDirectory()
+        let note = temporary.appendingPathComponent("note.md")
+        XCTAssertEqual(AIAgentController.relativePath(of: note, root: temporary.resolvingSymlinksInPath()), "note.md")
+        XCTAssertEqual(AIAgentController.relativePath(of: note.resolvingSymlinksInPath(), root: temporary), "note.md")
     }
 
     @MainActor
@@ -709,6 +714,61 @@ final class AIAgentControllerTests: XCTestCase {
         XCTAssertEqual(byID[inside.id]?.text, "unsaved edit")
         XCTAssertNil(byID[outside.id]?.relativePath)
         XCTAssertNil(byID[nameless.id]?.relativePath)
+    }
+
+    @MainActor
+    func testExternalSymlinkNeedsConsentAndRelativeAliasCannotBypassPathSafety() async throws {
+        let root = try temporaryDirectory(), outside = try temporaryDirectory()
+        let target = outside.appendingPathComponent("secret.md")
+        try "disk secret".write(to: target, atomically: true, encoding: .utf8)
+        let alias = root.appendingPathComponent("alias.md")
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: target)
+        let document = EditorDocument(text: "EXTERNAL-SYMLINK-SECRET")
+        document.url = alias
+        let openRead = call("read_document", #"{"path":"open:\#(document.id.uuidString)"}"#)
+        let aliasRead = call("read_document", #"{"path":"alias.md"}"#)
+        let setup = try make([openRead, aliasRead, .text("done")], documents: [document])
+        setup.state.folderWorkspace.setRoot(root)
+        let scope = AIAgentController.makeScope(appState: setup.state)
+        XCTAssertNil(scope.openDocuments.first?.relativePath)
+
+        setup.controller.draft = "Read"; setup.controller.send()
+        _ = await waitFor { setup.controller.approval != nil }
+        setup.controller.resolve(.deny)
+        await settle(setup.controller)
+        XCTAssertNil(setup.controller.approval)
+        XCTAssertEqual(setup.script.requests.count, 3)
+        for index in 0..<3 { XCTAssertFalse(setup.script.serialized(index).contains("EXTERNAL-SYMLINK-SECRET")) }
+        let journal = try XCTUnwrap(setup.controller.turns.first?.journal)
+        XCTAssertEqual(journal.map(\.kind), [.rejected, .readDocument])
+        XCTAssertEqual(journal[1].errorCode, .pathNotAllowed)
+        XCTAssertEqual(setup.controller.turns.first?.status, .answered)
+    }
+
+    @MainActor
+    func testInternalSymlinkUsesCanonicalTargetWithoutConsentAndAliasStillFailsPathSafety() async throws {
+        let root = try temporaryDirectory()
+        let target = root.appendingPathComponent("actual.md")
+        try "disk internal".write(to: target, atomically: true, encoding: .utf8)
+        let alias = root.appendingPathComponent("alias.md")
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: target)
+        let document = EditorDocument(text: "INTERNAL-SYMLINK-SECRET")
+        document.url = alias
+        let openRead = call("read_document", #"{"path":"open:\#(document.id.uuidString)"}"#)
+        let aliasRead = call("read_document", #"{"path":"alias.md"}"#)
+        let setup = try make([openRead, aliasRead, .text("done")], documents: [document])
+        setup.state.folderWorkspace.setRoot(root)
+        let scope = AIAgentController.makeScope(appState: setup.state)
+        XCTAssertEqual(scope.openDocuments.first?.relativePath, "actual.md")
+
+        setup.controller.draft = "Read"; setup.controller.send()
+        await settle(setup.controller)
+        XCTAssertNil(setup.controller.approval)
+        let journal = try XCTUnwrap(setup.controller.turns.first?.journal)
+        XCTAssertEqual(journal.map(\.kind), [.readDocument, .readDocument])
+        XCTAssertEqual(journal[1].errorCode, .pathNotAllowed)
+        XCTAssertTrue(setup.script.serialized(2).contains("INTERNAL-SYMLINK-SECRET"))
+        XCTAssertEqual(setup.controller.turns.first?.status, .answered)
     }
 
     // MARK: - Локализация
@@ -831,6 +891,15 @@ final class AIAgentControllerTests: XCTestCase {
         XCTAssertFalse(setup.controller.isWorking)
         XCTAssertFalse(setup.controller.message.isEmpty)
         XCTAssertTrue(setup.script.requests.isEmpty)
+    }
+
+    func testDocumentAndWebDenialsHaveDistinctJournalTitles() {
+        let document = AIAgentJournalEntry(id: UUID(), kind: .rejected, tool: "read_document", subject: "open:document", documentName: "secret.md", files: [],
+                                           sentBytes: 0, fileBytes: nil, errorCode: nil, truncated: false)
+        XCTAssertEqual(AIAgentJournalRow(entry: document).title, L10n.tr("已拒绝访问文档“%@”", "secret.md"))
+        let web = AIAgentJournalEntry(id: UUID(), kind: .rejected, tool: "web_search", subject: "query", documentName: nil, files: [],
+                                      sentBytes: 0, fileBytes: nil, errorCode: nil, truncated: false)
+        XCTAssertEqual(AIAgentJournalRow(entry: web).title, L10n.tr("已拒绝联网搜索“%@”", "query"))
     }
 
     func testViewAndControllerStringsExistInAllCatalogs() throws {
