@@ -2426,6 +2426,7 @@ enum MarkdownPresentationParser {
                let literal = cmark_node_get_literal(node),
                let frame = MarkdownHTMLMediaService.iframe(in: String(cString: literal)) {
                 iframeBlocks.append(MarkdownIframeBlock(range: range, html: MarkdownHTMLMediaService.iframeHTML(frame),
+                                                        displayHTML: MarkdownHTMLMediaService.iframeFallbackHTML(frame),
                                                         width: frame.width, height: frame.height, title: frame.title))
             }
             let confirmedAlert = unsupported ? nil : alert(node, source: source, text: sourceText)
@@ -2689,6 +2690,7 @@ enum MarkdownPresentationParser {
                 let candidate = twitterCandidates[index]
                 guard let frame = MarkdownHTMLMediaService.twitterFrame(candidate.proof.widget) else { continue }
                 iframeBlocks.append(MarkdownIframeBlock(range: candidate.range, html: MarkdownHTMLMediaService.iframeHTML(frame),
+                    displayHTML: MarkdownHTMLMediaService.twitterFallbackHTML(candidate.proof.widget),
                     width: frame.width, height: frame.height, title: frame.title))
             }
             iframeBlocks.sort { $0.range.location < $1.range.location }
@@ -2776,6 +2778,7 @@ enum MarkdownPresentationParser {
                 switch candidate.proof.expected {
                 case .media(let media): audioBlocks.append(MarkdownAudioBlock(range: candidate.range, media: media, isInline: candidate.isInline))
                 case .frame(let frame): iframeBlocks.append(MarkdownIframeBlock(range: candidate.range, html: MarkdownHTMLMediaService.iframeHTML(frame),
+                    displayHTML: MarkdownHTMLMediaService.iframeFallbackHTML(frame),
                     width: frame.width, height: frame.height, title: frame.title, isInline: candidate.isInline))
                 }
             }

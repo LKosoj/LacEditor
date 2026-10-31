@@ -51,8 +51,9 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
             return copy
         }
         defer { board.clearContents(); board.writeObjects(saved) }
-        let source = "![alt](https://example.com/image.png) after"
+        let source = "![alt](https://8.8.8.8/image.png) after"
         let document = EditorDocument(text: source, language: .markdown)
+        document.allowsRemoteImages = true
         document.isMarkdownFormatted = true
         let coordinator = EditorTextView.Coordinator(document: document)
         coordinator.clipboardCopySession = session
@@ -65,7 +66,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false) }
-        view.setSelectedRange((source as NSString).range(of: "![alt](https://example.com/image.png)"))
+        view.setSelectedRange((source as NSString).range(of: "![alt](https://8.8.8.8/image.png)"))
         board.clearContents(); board.setString("old", forType: .string)
         view.copy(nil)
         let task = try XCTUnwrap(coordinator.clipboardCopyTask)
@@ -94,8 +95,9 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
             return copy
         }
         defer { board.clearContents(); board.writeObjects(saved) }
-        let source = "中😀 ![alt](https://example.com/image.png)"
+        let source = "中😀 ![alt](https://8.8.8.8/image.png)"
         let document = EditorDocument(text: source, language: .markdown)
+        document.allowsRemoteImages = true
         document.isMarkdownFormatted = true
         let coordinator = EditorTextView.Coordinator(document: document)
         coordinator.clipboardCopySession = session
@@ -108,7 +110,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false) }
-        view.setSelectedRange((source as NSString).range(of: "![alt](https://example.com/image.png)"))
+        view.setSelectedRange((source as NSString).range(of: "![alt](https://8.8.8.8/image.png)"))
         board.clearContents(); board.setString("old", forType: .string)
         view.copy(nil)
         for _ in 0..<500 where board.string(forType: .string) == "old" { try await Task.sleep(for: .milliseconds(20)) }

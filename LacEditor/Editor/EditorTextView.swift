@@ -434,6 +434,10 @@ struct EditorTextView: NSViewRepresentable {
         context.coordinator.updateWritingModes(focus: isFocusMode, focusScope: focusScope, typewriter: isTypewriterMode)
         context.coordinator.updateTopInset(topInset)
         context.coordinator.updateActivity(isActive)
+        if context.coordinator.remoteImagesConsentSnapshot != document.allowsRemoteImages {
+            context.coordinator.remoteImageConsentChanged()
+            context.coordinator.updateRemoteImagesConsentSnapshot()
+        }
         context.coordinator.updateMarkdownPresentation()
 
         // Marked text is owned by the input method. Replacing the string or its

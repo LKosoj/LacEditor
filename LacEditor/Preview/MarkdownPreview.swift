@@ -306,7 +306,7 @@ struct MarkdownPreview: NSViewRepresentable {
         private var pendingEditorPosition: MarkdownPreviewScrollRelay.Position?
         private var editorSyncInFlight = false
         private var needsInitialEditorSync = true
-        private let imageSession: URLSession
+        private let imageSession: URLSession?
         private var debounce: DispatchWorkItem?
         private var renderTask: Task<Void, Never>?
         private var taskGeneration: UInt?
@@ -317,6 +317,8 @@ struct MarkdownPreview: NSViewRepresentable {
         private var renderedSyntax: MarkdownSyntaxOptions?
         private var lastWiki: MarkdownWikiLinkContext?
         private var renderedWiki: MarkdownWikiLinkContext?
+        private var lastRemoteImagesAllowed: Bool?
+        private var renderedRemoteImagesAllowed = false
         private var renderedRevision: UInt?
         private(set) var visibleRevision: UInt?
         private var visibleDocumentURL: URL?
@@ -381,7 +383,7 @@ struct MarkdownPreview: NSViewRepresentable {
             return library + "\n" + client + "\nvoid 0;"
         }()
 
-        init(document: EditorDocument, imageSession: URLSession = .shared) {
+        init(document: EditorDocument, imageSession: URLSession? = nil) {
             self.document = document
             self.imageSession = imageSession
             super.init()
@@ -483,7 +485,9 @@ struct MarkdownPreview: NSViewRepresentable {
         func render(markdown: String, revision: UInt, darkMode: Bool, typography: MarkdownTypography? = nil, syntax: MarkdownSyntaxOptions = .init(), wiki: MarkdownWikiLinkContext? = nil, immediately: Bool = false) {
             guard isActive else { return }
             let sourceURL = document?.url
-            if revision == lastRequestedRevision, darkMode == lastDarkMode, sourceURL == lastDocumentURL, syntax == lastSyntax, wiki == lastWiki {
+            let remoteImagesAllowed = document?.allowsRemoteImages == true
+            if revision == lastRequestedRevision, darkMode == lastDarkMode, sourceURL == lastDocumentURL, syntax == lastSyntax, wiki == lastWiki,
+               remoteImagesAllowed == lastRemoteImagesAllowed {
                 guard typography != lastTypography else { return }
                 lastTypography = typography
                 if renderedRevision == revision, var page {
@@ -501,8 +505,10 @@ struct MarkdownPreview: NSViewRepresentable {
             lastTypography = typography
             lastSyntax = syntax
             lastWiki = wiki
+            lastRemoteImagesAllowed = remoteImagesAllowed
             let requestedGeneration = generation
-            if renderedRevision == revision, renderedDocumentURL == sourceURL, renderedSyntax == syntax, renderedWiki == wiki, var page {
+            if renderedRevision == revision, renderedDocumentURL == sourceURL, renderedSyntax == syntax, renderedWiki == wiki,
+               renderedRemoteImagesAllowed == remoteImagesAllowed, var page {
                 page.darkMode = darkMode
                 page.typography = typography
                 self.page = page
@@ -527,6 +533,7 @@ struct MarkdownPreview: NSViewRepresentable {
         private func beginRender(markdown: String, revision: UInt, darkMode: Bool, syntax: MarkdownSyntaxOptions, wiki: MarkdownWikiLinkContext?, generation requestedGeneration: Int) {
             guard let document else { return }
             let sourceURL = document.url
+            let remoteImagesAllowed = document.allowsRemoteImages
             let imageSession = self.imageSession
             let coordinator = document.taskCoordinator
             let taskGeneration = coordinator.begin(.preview)
@@ -544,7 +551,7 @@ struct MarkdownPreview: NSViewRepresentable {
                 guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .preview) else { await clearLoading(); return }
                 @MainActor func apply(_ page: MarkdownRenderedPage, finished: Bool) -> Bool {
                     guard !Task.isCancelled, let self, let document, self.document === document, document.url == sourceURL, self.isActive,
-                          self.generation == requestedGeneration,
+                          document.allowsRemoteImages == remoteImagesAllowed, self.generation == requestedGeneration,
                           coordinator.isCurrent(taskGeneration, for: .preview),
                           let webView = self.webView else { return false }
                     if finished {
@@ -558,6 +565,7 @@ struct MarkdownPreview: NSViewRepresentable {
                     self.renderedRevision = revision
                     self.renderedSyntax = syntax
                     self.renderedWiki = wiki
+                    self.renderedRemoteImagesAllowed = remoteImagesAllowed
                     self.renderedDocumentURL = sourceURL
                     if self.pageIsReady && !self.usesReloadFallback { self.patchPage(includingBody: true) }
                     else if self.latestNavigation == nil || (finished && self.usesReloadFallback) { self.loadPage(in: webView) }
@@ -568,7 +576,8 @@ struct MarkdownPreview: NSViewRepresentable {
                     try? placeholder.hideRemoteImages()
                     try? placeholder.prepareLocalMedia(load: false)
                     guard await apply(placeholder, finished: false) else { await clearLoading(); return }
-                    try? await page.resolveRemoteImages(session: imageSession)
+                    if remoteImagesAllowed { try? await page.resolveRemoteImages(session: imageSession) }
+                    else { try? page.hideRemoteImages() }
                     try? page.prepareLocalMedia(load: true)
                 }
                 guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .preview) else { await clearLoading(); return }

@@ -34,6 +34,7 @@
 | Восстановление после сбоя и сохранение сессии | `DocumentRecoveryStoreTests`, `WindowAndSessionTests`, соответствующие случаи `StabilityTests` |
 | Редактирование, диапазоны, строки, подсветка и преобразования | `StabilityTests`, `InteractionPolishTests`; `Verification/main.swift`, `EditorInteractionVerification.swift`, `FoldLayoutVerification.swift` |
 | Markdown и жизненный цикл предпросмотра | `MarkdownRendererTests`, `MarkdownPreviewTests` |
+| Удалённые картинки Markdown | `MarkdownRemoteImageDownloaderTests` (отказ и разрешение на документ); с включённым разрешением — `MarkdownPreviewTests`, `MarkdownAudioInteractionTests`, `MarkdownPDFExportTests`, `MarkdownClipboardInteractionTests` |
 | Избранное, группы, перетаскивание, фокус и подсказки | `SidebarDragTests`, `SidebarMotionTests`, `InteractionPolishTests`, `UIExperimentTests`; отдельно `Verification/SidebarPointerVerification.swift` |
 | Ассоциации и экспериментальные примеры | `FileAssociationTests`, `ExperimentSampleLibraryTests` |
 | Языки | `LocalizationTests`, проверка трёх каталогов и ручная проверка системных меню и диалогов |

@@ -1152,7 +1152,7 @@ final class MarkdownPDFExportTests: XCTestCase {
 
             ![local cyan square](/local.svg)
 
-            ![remote yellow square](https://example.invalid/yellow.png)
+            ![remote yellow square](https://8.8.8.8/yellow.png)
 
             <img src="data:image/png;base64,\(htmlPNG)" width="48" height="12">
 
@@ -1175,7 +1175,7 @@ final class MarkdownPDFExportTests: XCTestCase {
             }
             finished.fulfill()
         }
-        service.start(snapshot: document.synchronizedSnapshot(), darkMode: false, sourceURL: document.url)
+        service.start(snapshot: document.synchronizedSnapshot(), darkMode: false, sourceURL: document.url, allowRemoteImages: true)
         await fulfillment(of: [finished], timeout: 30)
         XCTAssertNil(exportError)
         let prepared = try XCTUnwrap(output)
@@ -1231,7 +1231,7 @@ final class MarkdownPDFExportTests: XCTestCase {
             if case let .success(.file(file)) = result { pngOutput = file.preparedURL }
             pngDone.fulfill()
         }
-        pngService.start(snapshot: document.synchronizedSnapshot(), darkMode: false, sourceURL: document.url)
+        pngService.start(snapshot: document.synchronizedSnapshot(), darkMode: false, sourceURL: document.url, allowRemoteImages: true)
         await fulfillment(of: [pngDone], timeout: 30)
         let pngFile = try XCTUnwrap(pngOutput)
         defer { try? FileManager.default.removeItem(at: pngFile.deletingLastPathComponent()) }

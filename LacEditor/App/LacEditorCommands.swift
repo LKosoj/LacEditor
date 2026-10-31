@@ -427,6 +427,11 @@ struct LacEditorCommands: Commands {
                 Text(L10n.tr("格式化文本")).tag(true)
             }
             .disabled(appState?.selectedDocument?.language != .markdown)
+            Toggle(L10n.tr("允许此文档加载远程图片"), isOn: Binding(
+                get: { appState?.selectedDocument?.allowsRemoteImages == true },
+                set: { appState?.setMarkdownRemoteImagesAllowed($0) }
+            ))
+            .disabled(appState?.selectedDocument?.language != .markdown)
             Button {
                 appState?.togglePreview()
             } label: {

@@ -51,7 +51,10 @@ private final class ImageShiftFixture {
         scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
         controller = MarkdownPresentationController(textView: view, layout: layout)
-        if let session { controller.imageSession = session }
+        if let session {
+            controller.imageSession = session
+            document.allowsRemoteImages = true
+        }
         controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { [unowned self] in self.revision })
     }
 
@@ -425,7 +428,7 @@ final class MarkdownImageTests: XCTestCase {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [ShiftImageURLProtocol.self]
         let session = URLSession(configuration: config)
-        let fixture = ImageShiftFixture(source: "before\n\n![x](https://example.invalid/image.png)\n\nafter", session: session)
+        let fixture = ImageShiftFixture(source: "before\n\n![x](https://8.8.8.8/image.png)\n\nafter", session: session)
         defer { fixture.finish(); session.invalidateAndCancel() }
         for _ in 0..<200 where ShiftImageURLProtocol.requestCount == 0 { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertEqual(ShiftImageURLProtocol.requestCount, 1)

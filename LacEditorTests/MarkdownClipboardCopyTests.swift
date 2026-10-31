@@ -363,10 +363,10 @@ final class MarkdownClipboardCopyTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         try svg.write(to: directory.appendingPathComponent("local.svg"))
-        let source = "![local](local.svg#first) ![remote](https://example.invalid/image.svg#second)"
+        let source = "![local](local.svg#first) ![remote](https://8.8.8.8/image.svg#second)"
         let fragment = try XCTUnwrap(MarkdownClipboardCopyService.project(source,
             selection: NSRange(location: 0, length: (source as NSString).length), includeImages: true,
-            documentURL: directory.appendingPathComponent("note.md")))
+            documentURL: directory.appendingPathComponent("note.md"), allowRemoteImages: true))
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ClipboardCopyURLProtocol.self]
         let session = URLSession(configuration: configuration)
@@ -812,7 +812,7 @@ final class MarkdownClipboardCopyTests: XCTestCase {
         configuration.protocolClasses = [ClipboardCopyURLProtocol.self]
         let session = URLSession(configuration: configuration)
         defer { session.invalidateAndCancel(); ClipboardCopyURLProtocol.handler = nil }
-        let url = "https://example.com/a.png?x=1&y=2"
+        let url = "https://8.8.8.8/a.png?x=1&y=2"
         let source = "![one](<\(url)>) ![two](<\(url)>)\n\n![other](https://example.org/other.png)"
         let selection = (source as NSString).range(of: "![one](<\(url)>) ![two](<\(url)>)")
         let fragment = try XCTUnwrap(MarkdownClipboardCopyService.project(source, selection: selection, includeImages: true, allowRemoteImages: true))
@@ -861,7 +861,7 @@ final class MarkdownClipboardCopyTests: XCTestCase {
         let nestedFragment = try XCTUnwrap(MarkdownClipboardCopyService.project(nested,
             selection: NSRange(location: 0, length: (nested as NSString).length), includeImages: true, allowRemoteImages: true))
         let nestedImage = try XCTUnwrap(nestedFragment.remoteImages.first)
-        XCTAssertEqual((nestedFragment.html as NSString).substring(with: nestedImage.range), "https://example.com/a.png?x=1&amp;y=2")
+        XCTAssertEqual((nestedFragment.html as NSString).substring(with: nestedImage.range), "https://8.8.8.8/a.png?x=1&amp;y=2")
         let nestedResolved = try await MarkdownClipboardCopyService.resolveRemoteImages(nestedFragment, session: session)
         XCTAssertTrue(nestedResolved.html.contains("<blockquote><ul>"))
         XCTAssertTrue(nestedResolved.html.contains("<a href=\"https://example.org/link\"><img src=\"data:image/png;base64,"))

@@ -422,8 +422,9 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         try "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><rect width='10' height='10' fill='red'/></svg>"
             .write(to: directory.appendingPathComponent("local.svg"), atomically: true, encoding: .utf8)
-        let source = "before ![local](local.svg) after ![remote](https://example.invalid/image.svg)\n\nend"
+        let source = "before ![local](local.svg) after ![remote](https://8.8.8.8/image.svg)\n\nend"
         let document = EditorDocument(text: source, url: directory.appendingPathComponent("note.md"), language: .markdown)
+        document.allowsRemoteImages = true
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
         storage.addLayoutManager(layout)
         let container = NSTextContainer(containerSize: NSSize(width: 500, height: 300))
@@ -585,8 +586,9 @@ final class MarkdownAudioInteractionTests: XCTestCase {
     }
     func testRemoteImageRequestIsCancelledWhenPresentationStops() async throws {
         _ = NSApplication.shared
-        let source = "before\n\n![x](https://example.invalid/image.png)"
+        let source = "before\n\n![x](https://8.8.8.8/image.png)"
         let document = EditorDocument(text: source, language: .markdown)
+        document.allowsRemoteImages = true
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
         storage.addLayoutManager(layout)
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 300))
@@ -616,8 +618,9 @@ final class MarkdownAudioInteractionTests: XCTestCase {
 
     func testVisibleRemoteImageUsesExistingDownloader() async throws {
         _ = NSApplication.shared
-        let source = "---\ninvalid: [\n---\n\n![x](https://example.invalid/image.png)"
+        let source = "---\ninvalid: [\n---\n\n![x](https://8.8.8.8/image.png)"
         let document = EditorDocument(text: source, language: .markdown)
+        document.allowsRemoteImages = true
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
         storage.addLayoutManager(layout)
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 300))
@@ -632,7 +635,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         controller.imageSession = session
         defer { controller.cancel(); session.invalidateAndCancel(); withExtendedLifetime(scroll) {} }
         controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
-        let range = (source as NSString).range(of: "![x](https://example.invalid/image.png)")
+        let range = (source as NSString).range(of: "![x](https://8.8.8.8/image.png)")
         func imageLocation() -> Int? {
             layout.ensureLayout(for: container)
             let line = layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: range.location), effectiveRange: nil)
@@ -857,12 +860,12 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         XCTAssertEqual(iframeView.frame.width, (container.size.width - 2 * container.lineFragmentPadding) / 2, accuracy: 0.5)
         let frame = try XCTUnwrap(MarkdownPresentationParser.parse(source).iframeBlocks.first)
         for _ in 0..<200 {
-            if let value = try? await iframeView.evaluateJavaScript("document.querySelector('iframe')?.getAttribute('sandbox')") as? String,
-               value == "allow-scripts" { break }
+            if let value = try? await iframeView.evaluateJavaScript("document.querySelector('iframe') === null && document.querySelector('a')?.getAttribute('href') === 'http://127.0.0.1:9/test'") as? Bool,
+               value { break }
             try await Task.sleep(for: .milliseconds(20))
         }
-        let sandbox = try await iframeView.evaluateJavaScript("document.querySelector('iframe')?.getAttribute('sandbox')") as? String
-        XCTAssertEqual(sandbox, "allow-scripts")
+        let isolated = try await iframeView.evaluateJavaScript("document.querySelector('iframe') === null && document.querySelector('a')?.getAttribute('href') === 'http://127.0.0.1:9/test'") as? Bool
+        XCTAssertEqual(isolated, true)
         iframeView.removeFromSuperview()
         controller.viewportChanged()
         XCTAssertTrue(iframeView.superview === view)

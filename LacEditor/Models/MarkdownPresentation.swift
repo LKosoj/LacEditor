@@ -350,6 +350,7 @@ struct MarkdownImage: Equatable, Sendable {
 struct MarkdownIframeBlock: Equatable, Sendable {
     var range: NSRange
     let html: String
+    let displayHTML: String
     let width: String?
     let height: String?
     let title: String?
@@ -883,7 +884,7 @@ struct MarkdownPresentation: Sendable {
         }
         let newIframes = iframeBlocks.compactMap { block -> MarkdownIframeBlock? in
             guard let range = shift(block.range) else { return nil }
-            return MarkdownIframeBlock(range: range, html: block.html, width: block.width, height: block.height, title: block.title, isInline: block.isInline)
+            return MarkdownIframeBlock(range: range, html: block.html, displayHTML: block.displayHTML, width: block.width, height: block.height, title: block.title, isInline: block.isInline)
         }
         let newAudio = audioBlocks.compactMap { block -> MarkdownAudioBlock? in
             guard let range = shift(block.range) else { return nil }

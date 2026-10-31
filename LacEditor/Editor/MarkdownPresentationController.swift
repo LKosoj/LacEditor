@@ -132,7 +132,7 @@ private final class MarkdownIframeNavigation: NSObject, WKNavigationDelegate {
             initialNavigation = false
             decisionHandler(allowed ? .allow : .cancel)
         } else {
-            decisionHandler(["http", "https"].contains(url.scheme?.lowercased() ?? "") ? .allow : .cancel)
+            decisionHandler(.cancel)
         }
     }
 }
@@ -212,12 +212,14 @@ final class MarkdownPresentationController {
     private var operation: BlockOperation?
     private var imageOperations: [NSRange: BlockOperation] = [:]
     private var remoteImageJobs: [NSRange: (UUID, Task<Void, Never>)] = [:]
+    private var remoteImageDownloader: MarkdownRemoteImageDownloader?
+    private var remoteImagesConsentSnapshot = false
     private var svgImageJobs: [NSRange: (UUID, CGFloat, MarkdownSVGRenderService)] = [:]
     private var imagePresentationWidths: [NSRange: CGFloat] = [:]
     private var imageCache: [ImageCacheKey: CachedImage] = [:]
     private var animatedImages: [NSRange: NSImageView] = [:]
     private var editingTableCell: NSRange?
-    var imageSession = URLSession.shared
+    var imageSession: URLSession?
     var projectedImageSource: ((String) -> String?)?
     var imageLoadDidComplete: ((NSRange, Bool) -> Void)?
     var audioLoadDidComplete: ((NSRange, Bool) -> Void)?
@@ -514,7 +516,9 @@ final class MarkdownPresentationController {
         let documentChanged = self.document !== document
         if documentChanged || self.revision != revision { expandedDetails.removeAll() }
         let imageBaseChanged = imageBaseURL != document.url
-        if imageBaseChanged {
+        let remoteImagesChanged = remoteImagesConsentSnapshot != document.allowsRemoteImages
+        remoteImagesConsentSnapshot = document.allowsRemoteImages
+        if imageBaseChanged || remoteImagesChanged {
             cancel()
             parsedResult = nil
             parsedSource = nil
@@ -523,6 +527,7 @@ final class MarkdownPresentationController {
             imageOperations.removeAll()
             for (_, task) in remoteImageJobs.values { task.cancel() }
             remoteImageJobs.removeAll()
+            remoteImageDownloader = nil
             loadedImageRanges.removeAll()
             imageCache.removeAll()
             diagramCache.removeAll()
@@ -562,7 +567,7 @@ final class MarkdownPresentationController {
             cancel()
         }
         if !document.isSyntaxHighlightingEnabled { cancelCodeHighlighting() }
-        if documentChanged || formatChanged || imageBaseChanged { needsRefresh = true }
+        if documentChanged || formatChanged || imageBaseChanged || remoteImagesChanged { needsRefresh = true }
         guard isActive else { return }
         guard !hasMarkedText else {
             if needsRefresh { needsCompositionRefresh = true }
@@ -2007,6 +2012,7 @@ final class MarkdownPresentationController {
         var activeIndices = Set<Int>()
         var eventIndex = 0
         let typing = textView.typingAttributes
+        var temporaryAttributes: [(NSAttributedString.Key, Any, NSRange)] = []
         storage.beginEditing()
         if boundaries.count > 1 {
             for index in 0..<(boundaries.count - 1) {
@@ -2049,23 +2055,25 @@ final class MarkdownPresentationController {
                 }
                 storage.addAttribute(.font, value: font, range: part)
                 if active.contains(where: { $0.kind == .strikethrough }) {
-                    layout.addTemporaryAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, forCharacterRange: part)
+                    temporaryAttributes.append((.strikethroughStyle, NSUnderlineStyle.single.rawValue, part))
                 }
                 if active.contains(where: { $0.kind == .link || $0.kind == .underline }) {
-                    layout.addTemporaryAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, forCharacterRange: part)
+                    temporaryAttributes.append((.underlineStyle, NSUnderlineStyle.single.rawValue, part))
                 }
                 if inlineStyle.background != nil || active.contains(where: { $0.kind == .quote || $0.kind == .code || $0.kind == .keyboard || $0.kind == .codeBlock || $0.kind == .highlight || $0.kind == .yaml }) {
-                    let color = backgroundColor(for: active)
-                    layout.addTemporaryAttribute(.backgroundColor, value: color, forCharacterRange: part)
+                    temporaryAttributes.append((.backgroundColor, backgroundColor(for: active), part))
                     backgroundRanges.append(part)
                 }
                 if let color = inlineStyle.foreground {
-                    layout.addTemporaryAttribute(.foregroundColor, value: color.nsColor, forCharacterRange: part)
+                    temporaryAttributes.append((.foregroundColor, color.nsColor, part))
                     rememberInlineForeground(part)
                 }
             }
         }
         storage.endEditing()
+        for (key, value, range) in temporaryAttributes {
+            layout.addTemporaryAttribute(key, value: value, forCharacterRange: range)
+        }
         textView.typingAttributes = typing
         if strikeCompletedTasks, let tasks = presentation?.completedTaskRanges {
             let prefixEnds = completedTaskPrefixEnds
@@ -2778,7 +2786,7 @@ final class MarkdownPresentationController {
                     textView.placeMarkdownSubview(view, in: rect.offsetBy(dx: textView.textContainerOrigin.x, dy: textView.textContainerOrigin.y))
                 }
                 let html = """
-                <!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src http: https:; style-src 'unsafe-inline'"><style>html,body{margin:0;width:100%;height:100%}iframe{width:100%!important;height:100%!important;box-sizing:border-box}</style></head><body>\(block.html)</body></html>
+                <!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src 'none'; style-src 'unsafe-inline'"><style>html,body{margin:0;width:100%;height:100%}iframe{width:100%!important;height:100%!important;box-sizing:border-box}</style></head><body>\(block.displayHTML)</body></html>
                 """
                 view.loadHTMLString(html, baseURL: nil)
             } else if var entry = iframeViews[block.range] {
@@ -2833,7 +2841,7 @@ final class MarkdownPresentationController {
                     let base = source.hasPrefix("/") ? URL(fileURLWithPath: "/", isDirectory: true) : baseURL?.deletingLastPathComponent()
                     guard !(MarkdownResourcePaths.requiresRoot(source) && rootInvalid),
                           let url = paths?.resolve(source) ?? URL(string: source, relativeTo: base)?.absoluteURL,
-                          url.isFileURL || (["http", "https"].contains(url.scheme?.lowercased() ?? "") && url.host != nil) else { continue }
+                          url.isFileURL else { continue }
                     let asset = AVURLAsset(url: url)
                     if await isPlayable(asset) { selected = asset; break }
                 }
@@ -3602,6 +3610,10 @@ final class MarkdownPresentationController {
                 if let view = animatedImages.removeValue(forKey: key) { view.animates = false; view.removeFromSuperview() }
             }
             guard !loadedImageRanges.contains(key), imageOperations[key] == nil, svgImageJobs[key] == nil else { continue }
+            if let url = URL(string: image.url), ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil, !document.allowsRemoteImages {
+                loadedImageRanges.insert(key)
+                continue
+            }
             // Reserve the media placement before starting an asynchronous load.
             // Without a placeholder FoldLayoutManager draws the full source line
             // during the cache miss, which looks like the image is раскрывается
@@ -3610,9 +3622,10 @@ final class MarkdownPresentationController {
             if let url = URL(string: image.url), ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil {
                 guard remoteImageJobs[key] == nil else { continue }
                 let token = UUID(), generation = self.generation, revision = self.revision, baseURL = document.url
-                let session = imageSession
+                let downloader = remoteImageDownloader ?? MarkdownRemoteImageDownloader(session: imageSession)
+                remoteImageDownloader = downloader
                 let task = Task { @MainActor [weak self, weak document] in
-                    let data = try? await MarkdownImageUploadService.downloadData(url, session: session)
+                    let data = try? await downloader.download(url).data
                     guard !Task.isCancelled else { return }
                     let decoded = await Task.detached(priority: .userInitiated) { () -> ((CGImage, Bool)?, String?) in
                         guard let data else { return (nil, nil) }
@@ -3625,7 +3638,7 @@ final class MarkdownPresentationController {
                           let currentKey = self.currentImagePlacement(for: token),
                           let currentImage = self.image(at: currentKey) else { return }
                     self.remoteImageJobs.removeValue(forKey: currentKey)
-                    guard let document, self.document === document, self.enabled, self.isActive,
+                    guard let document, self.document === document, self.enabled, self.isActive, document.allowsRemoteImages,
                           self.generation == generation, self.currentRevision?() == revision, document.url == baseURL,
                           !self.hasMarkedText,
                           let visible = self.visibleRange(), NSIntersectionRange(currentImage.paragraphRange, visible).length > 0 else { return }
@@ -3794,6 +3807,11 @@ final class MarkdownPresentationController {
             guard safe.length > 0 else { continue }
             storage.addAttribute(.font, value: layout.textFont, range: safe)
             storage.removeAttribute(.baselineOffset, range: safe)
+        }
+        storage.endEditing()
+        for range in styledRanges {
+            let safe = NSIntersectionRange(range, target)
+            guard safe.length > 0 else { continue }
             layout.removeTemporaryAttribute(.strikethroughStyle, forCharacterRange: safe)
             layout.removeTemporaryAttribute(.underlineStyle, forCharacterRange: safe)
         }
@@ -3801,7 +3819,6 @@ final class MarkdownPresentationController {
             let safe = NSIntersectionRange(range, target)
             if safe.length > 0 { layout.removeTemporaryAttribute(.backgroundColor, forCharacterRange: safe) }
         }
-        storage.endEditing()
         textView.typingAttributes = typing
         if !foregroundRanges.isEmpty { restoreCodeColors?(foregroundRanges) }
         if requested == nil {
