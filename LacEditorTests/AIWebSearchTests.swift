@@ -449,7 +449,8 @@ final class AIWebSearchTests: XCTestCase {
     func testLongPageIsTruncatedAndMarkedOnlyWhenCut() async throws {
         installPages(count: 2) { $0.hasSuffix("/0") ? String(repeating: "x", count: AIWebSearchSession.maxPageCharacters + 100) : "short page" }
         let web = webSession(reader: true)
-        let results = try XCTUnwrap(try await search(web)["results"] as? [[String: Any]])
+        let response = try await search(web)
+        let results = try XCTUnwrap(response["results"] as? [[String: Any]])
         XCTAssertEqual((results[0]["text"] as? String)?.utf16.count, AIWebSearchSession.maxPageCharacters)
         XCTAssertEqual(results[0]["truncated"] as? Bool, true)
         XCTAssertEqual(results[0]["verified"] as? Bool, true)
@@ -462,7 +463,8 @@ final class AIWebSearchTests: XCTestCase {
     func testOwnPageLimitIsApplied() async throws {
         installPages(count: 1) { _ in String(repeating: "x", count: 500) }
         let web = AIWebSearchSession(maxPageCharacters: 100, client: JinaClient(session: session()), configuration: jinaConfiguration(reader: true), searchKey: nil, readerKey: nil)
-        let results = try XCTUnwrap(try await search(web)["results"] as? [[String: Any]])
+        let response = try await search(web)
+        let results = try XCTUnwrap(response["results"] as? [[String: Any]])
         XCTAssertEqual((results[0]["text"] as? String)?.utf16.count, 100)
         XCTAssertEqual(results[0]["truncated"] as? Bool, true)
         XCTAssertEqual(web.sources[0].content.utf16.count, 100)
@@ -473,7 +475,8 @@ final class AIWebSearchTests: XCTestCase {
             (200, self.json(["data": [["title": "A", "url": "https://example.org/a", "description": String(repeating: "y", count: AIWebSearchSession.maxPageCharacters + 1)]]]))
         }
         let web = webSession(reader: false)
-        let results = try XCTUnwrap(try await search(web)["results"] as? [[String: Any]])
+        let response = try await search(web)
+        let results = try XCTUnwrap(response["results"] as? [[String: Any]])
         XCTAssertEqual(results[0]["truncated"] as? Bool, true)
         XCTAssertEqual(web.sources[0].content.utf16.count, AIWebSearchSession.maxPageCharacters)
         XCTAssertFalse(web.sources[0].isVerified)
@@ -501,7 +504,8 @@ final class AIWebSearchTests: XCTestCase {
     func testOnlyFirstFiveResultsAreUsed() async throws {
         installPages(count: 7) { "full \($0)" }
         let web = webSession(reader: true)
-        let results = try XCTUnwrap(try await search(web)["results"] as? [[String: Any]])
+        let response = try await search(web)
+        let results = try XCTUnwrap(response["results"] as? [[String: Any]])
         XCTAssertEqual(results.count, AIWebSearchSession.maxResults)
         XCTAssertEqual(web.sources.count, 5)
         XCTAssertEqual(jinaRequests.count, 1 + 5)
@@ -511,7 +515,8 @@ final class AIWebSearchTests: XCTestCase {
         installPages(count: 1) { _ in "page" }
         let web = AIWebSearchSession(maxSearches: 1, client: JinaClient(session: session()), configuration: jinaConfiguration(reader: false), searchKey: nil, readerKey: nil)
         _ = try await search(web, "one")
-        let limited = try XCTUnwrap(try await search(web, "two")["error"] as? String)
+        let response = try await search(web, "two")
+        let limited = try XCTUnwrap(response["error"] as? String)
         XCTAssertTrue(limited.contains("search limit reached (1)"))
         XCTAssertEqual(web.searches, 1)
         XCTAssertEqual(jinaRequests.count, 1)
@@ -522,7 +527,8 @@ final class AIWebSearchTests: XCTestCase {
         let web = webSession(reader: true)
         _ = try await search(web, "one")
         let readsAfterFirst = jinaRequests.count
-        let results = try XCTUnwrap(try await search(web, "two")["results"] as? [[String: Any]])
+        let response = try await search(web, "two")
+        let results = try XCTUnwrap(response["results"] as? [[String: Any]])
         XCTAssertEqual(web.sources.count, 1)
         XCTAssertEqual(results[0]["truncated"] as? Bool, true)
         XCTAssertEqual(jinaRequests.count, readsAfterFirst + 1)
