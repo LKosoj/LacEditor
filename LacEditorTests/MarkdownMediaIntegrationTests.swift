@@ -318,8 +318,18 @@ final class MarkdownMediaIntegrationTests: XCTestCase {
         let candidates = [(image, NSRect(x: 0, y: 100, width: 50, height: 300)),
                           (lower, NSRect(x: 0, y: 700, width: 50, height: 300))]
         XCTAssertNil(FoldLayoutManager.mediaAnchor(among: candidates, top: 50), "картинка ниже верхнего края не становится якорем")
-        XCTAssertEqual(FoldLayoutManager.mediaAnchor(among: candidates, top: 250), 10)
+        XCTAssertEqual(FoldLayoutManager.mediaAnchor(among: candidates, top: 250)?.0.location, 10)
         XCTAssertNil(FoldLayoutManager.mediaAnchor(among: candidates, top: 500), "между картинками позицию даёт текст")
-        XCTAssertEqual(FoldLayoutManager.mediaAnchor(among: candidates, top: 800), 40)
+        XCTAssertEqual(FoldLayoutManager.mediaAnchor(among: candidates, top: 800)?.0.location, 40)
+    }
+
+    func testPositionInBlockCoversAllItsLines() {
+        let middle = MarkdownPreviewScrollRelay.Position.inBlock(firstLine: 10, lastLine: 19, progress: 0.55, atBottom: false)
+        XCTAssertEqual(middle.line, 15)
+        XCTAssertEqual(middle.fraction, 0.5, accuracy: 0.001)
+        let single = MarkdownPreviewScrollRelay.Position.inBlock(firstLine: 7, lastLine: 7, progress: 0.25, atBottom: false)
+        XCTAssertEqual(single.line, 7)
+        XCTAssertEqual(single.fraction, 0.25, accuracy: 0.001)
+        XCTAssertEqual(MarkdownPreviewScrollRelay.Position.inBlock(firstLine: 7, lastLine: 7, progress: 2, atBottom: false).line, 7, "конец блока не уходит на следующую строку")
     }
 }

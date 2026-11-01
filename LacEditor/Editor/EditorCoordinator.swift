@@ -2246,16 +2246,28 @@ extension EditorTextView {
             if visible.minY <= 0.5 { return .init(line: 1, atBottom: false) }
             let atBottom = visible.maxY >= textView.bounds.maxY - 1
             let rect = visible.offsetBy(dx: -textView.textContainerOrigin.x, dy: -textView.textContainerOrigin.y)
-            if let mediaLocation = foldLayoutManager?.markdownMediaSourceAnchor(in: rect, container: container) {
-                let location = min(mediaLocation, storage.length)
-                return .init(line: liveMediaMap.sourceLine(forDisplayLine: lineIndex.lineNumber(at: location), atDisplayLocation: location),
-                             atBottom: atBottom)
+            if let (range, frame) = foldLayoutManager?.markdownMediaSourceAnchor(in: rect, container: container) {
+                let first = min(range.location, storage.length)
+                let end = min(NSMaxRange(range), storage.length)
+                let firstLine = liveMediaMap.sourceLine(forDisplayLine: lineIndex.lineNumber(at: first), atDisplayLocation: first)
+                let lastLine = liveMediaMap.sourceLine(forDisplayLine: lineIndex.lineNumber(at: max(first, end - 1)), atDisplayLocation: end)
+                return .inBlock(firstLine: firstLine, lastLine: max(firstLine, lastLine),
+                                progress: frame.height > 0 ? Double((rect.minY - frame.minY) / frame.height) : 0, atBottom: atBottom)
             }
             let glyphs = layoutManager.glyphRange(forBoundingRect: rect, in: container)
             let characters = layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
             let location = min(characters.location, storage.length)
-            return .init(line: liveMediaMap.sourceLine(forDisplayLine: lineIndex.lineNumber(at: location), atDisplayLocation: location),
-                         atBottom: atBottom)
+            let line = liveMediaMap.sourceLine(forDisplayLine: lineIndex.lineNumber(at: location), atDisplayLocation: location)
+            guard glyphs.length > 0 else { return .init(line: line, atBottom: atBottom) }
+            // Доля считается по знакам: высота всей логической строки потребовала бы раскладки невидимой части.
+            var fragmentGlyphs = NSRange()
+            let fragment = layoutManager.lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: &fragmentGlyphs)
+            let fragmentCharacters = layoutManager.characterRange(forGlyphRange: fragmentGlyphs, actualGlyphRange: nil)
+            let logical = storage.mutableString.lineRange(for: NSRange(location: location, length: 0))
+            let passed = fragment.height > 0 ? min(1, max(0, (rect.minY - fragment.minY) / fragment.height)) : 0
+            let fraction = (Double(fragmentCharacters.location - logical.location) + Double(passed) * Double(fragmentCharacters.length))
+                / Double(max(1, logical.length))
+            return .init(line: line, atBottom: atBottom, fraction: min(0.999, max(0, fraction)))
         }
 
         func attachLiveTextProvider() {

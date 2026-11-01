@@ -679,6 +679,9 @@ final class MarkdownPreviewTests: XCTestCase {
         try await fixture.waitUntil("document.querySelectorAll('article p')[39].getBoundingClientRect().top < -1")
         let below: Double = try await fixture.value("document.querySelectorAll('article p')[40].getBoundingClientRect().top")
         XCTAssertGreaterThan(below, 0)
+        // Доля строки двигает панель внутри абзаца, а не шагами от блока к блоку.
+        fixture.coordinator.scrollToEditorPosition(.init(line: 79, atBottom: false, fraction: 0.5))
+        try await fixture.waitUntil("Math.abs(document.querySelectorAll('article p')[39].getBoundingClientRect().top + document.querySelectorAll('article p')[39].getBoundingClientRect().height / 2) < 4")
         fixture.coordinator.scrollToEditorPosition(.init(line: 1, atBottom: false))
         try await fixture.waitUntil("scrollY === 0")
         fixture.coordinator.scrollToEditorPosition(.init(line: 1, atBottom: true))

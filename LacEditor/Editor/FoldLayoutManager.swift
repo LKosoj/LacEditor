@@ -1108,15 +1108,12 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
 
     /// Возвращает исходную позицию медиа, занимающего верхнюю часть viewport.
     /// У таких элементов glyphRange может не содержать исходный Markdown-текст.
-    func markdownMediaSourceAnchor(in visible: NSRect, container: NSTextContainer) -> Int? {
+    func markdownMediaSourceAnchor(in visible: NSRect, container: NSTextContainer) -> (NSRange, NSRect)? {
         var candidates: [(NSRange, NSRect)] = markdownMedia.compactMap { entry in
             markdownMediaRect(for: entry.range, in: container).map { (entry.range, $0) }
         }
         candidates += markdownImages.compactMap { entry in
             imageRect(entry, in: container, centered: true).map { (entry.range, $0) }
-        }
-        candidates += markdownInlineImages.compactMap { entry in
-            inlineImageRect(entry, in: container).map { (entry.range, $0) }
         }
         candidates += markdownBlockImages.compactMap { entry in
             imageRect(entry, in: container).map { (entry.range, $0) }
@@ -1126,8 +1123,9 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
 
     /// Media считается верхним элементом окна, только если накрывает верхний край:
     /// картинка ниже него не должна уводить предпросмотр вперёд текста над ней.
-    static func mediaAnchor(among candidates: [(NSRange, NSRect)], top: CGFloat) -> Int? {
-        candidates.filter { $0.1.minY <= top && $0.1.maxY >= top }.max { $0.1.minY < $1.1.minY }?.0.location
+    /// Картинки внутри строки сюда не входят: их строку и долю пройденного даёт сама строка.
+    static func mediaAnchor(among candidates: [(NSRange, NSRect)], top: CGFloat) -> (NSRange, NSRect)? {
+        candidates.filter { $0.1.minY <= top && $0.1.maxY >= top }.max { $0.1.minY < $1.1.minY }
     }
 
     private func imageIsVisible(_ range: NSRange) -> Bool {

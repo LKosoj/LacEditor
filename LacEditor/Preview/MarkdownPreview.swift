@@ -447,7 +447,7 @@ struct MarkdownPreview: NSViewRepresentable {
             pendingEditorPosition = nil
             editorSyncInFlight = true
             webView.callAsyncJavaScript(Self.scrollToLineScript,
-                arguments: ["line": position.line, "atBottom": position.atBottom],
+                arguments: ["line": position.line, "fraction": position.fraction, "atBottom": position.atBottom],
                 in: nil, in: .defaultClient) { [weak self] _ in
                 guard let self else { return }
                 self.editorSyncInFlight = false
@@ -915,7 +915,7 @@ struct MarkdownPreview: NSViewRepresentable {
             let target = 0;
             if (atBottom) {
                 target = maximum;
-            } else if (line > 1) {
+            } else if (line > 1 || fraction > 0) {
                 let cache = globalThis.lacSourceLines;
                 const anchor = article.firstElementChild;
                 if (!cache || cache.anchor !== anchor || (anchor && !anchor.isConnected)) {
@@ -944,11 +944,11 @@ struct MarkdownPreview: NSViewRepresentable {
                     const rect = previous.el.getBoundingClientRect();
                     const top = rect.top + y;
                     if (line <= previous.end) {
-                        target = top + (line - previous.start) / (previous.end - previous.start + 1) * rect.height;
+                        target = top + (line + fraction - previous.start) / (previous.end - previous.start + 1) * rect.height;
                     } else if (next) {
                         const bottom = top + rect.height;
                         const nextTop = next.el.getBoundingClientRect().top + y;
-                        target = bottom + (line - previous.end) / (next.start - previous.end) * (nextTop - bottom);
+                        target = bottom + (line + fraction - previous.end - 1) / (next.start - previous.end - 1) * (nextTop - bottom);
                     } else {
                         target = top + rect.height;
                     }

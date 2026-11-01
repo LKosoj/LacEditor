@@ -890,6 +890,13 @@ final class MarkdownPreviewScrollRelay {
     struct Position: Equatable {
         let line: Int        // верхняя видимая логическая строка, с 1
         let atBottom: Bool   // редактор прокручен до конца
+        var fraction = 0.0   // пройденная доля строки: без неё панель стоит на высоком блоке и перескакивает через него
+
+        /// Позиция внутри блока на несколько строк файла: `progress` — пройденная доля его высоты на экране.
+        static func inBlock(firstLine: Int, lastLine: Int, progress: Double, atBottom: Bool) -> Position {
+            let value = Double(firstLine) + min(0.999, max(0, progress)) * Double(lastLine - firstLine + 1)
+            return .init(line: Int(value), atBottom: atBottom, fraction: value - value.rounded(.down))
+        }
     }
     /// Ставит предпросмотр, пока он активен и показан.
     var positionHandler: ((Position) -> Void)?
