@@ -2264,6 +2264,7 @@ extension EditorTextView {
             lastMarkdownImageProjectionMode = shouldProject
             guard shouldProject != markdownImageProjectionEnabled else { return }
             let oldDisplay = textView.string
+            let previousMediaFolds = foldLayoutManager?.automaticMediaFoldedRanges ?? []
             let source = markdownImageProjectionEnabled ? markdownImageProjection.restore(oldDisplay) : oldDisplay
             let sourceSelection = markdownImageProjectionEnabled
                 ? markdownImageProjection.sourceRange(for: textView.selectedRange(), in: oldDisplay as NSString)
@@ -2286,6 +2287,11 @@ extension EditorTextView {
             textView.setSelectedRange(NSIntersectionRange(selection, NSRange(location: 0, length: (next as NSString).length)))
             resetLineIndex(with: next)
             isApplyingExternalUpdate = false
+            if shouldProject, !previousMediaFolds.isEmpty {
+                foldLayoutManager?.setAutomaticMediaFoldedRanges(previousMediaFolds.map {
+                    markdownImageProjection.displayRange(for: $0, in: next)
+                })
+            }
             markdownPresentation?.projectionChanged(revision: contentRevision)
         }
 
@@ -3483,6 +3489,7 @@ extension EditorTextView {
             }
             updateSyntaxOptions()
             markdownPresentation?.setElementPathEnabled(document.language == .markdown && document.isMarkdownFormatted && !document.isLargeFileMode)
+            foldLayoutManager.showMarkdownImagesWhenMediaFolded = document.language == .markdown && document.isMarkdownFormatted
             if document.language != .markdown || document.isLargeFileMode { clearCriticHighlights() }
             markdownPresentation?.update(
                 document: document,
@@ -5340,11 +5347,11 @@ extension EditorTextView {
         private func scheduleAutomaticMediaFolds() {
             automaticMediaFoldTask?.cancel()
             guard allowsAutomaticMediaFolds else {
-                // В оформленном редакторе автоматические media-fold не работают.
-                // Очищаем их только при фактическом переходе из обычного
-                // режима; повторная запись пустого списка на каждый символ
-                // инвалидировала бы раскладку.
-                if foldLayoutManager?.automaticMediaFoldedRanges.isEmpty == false {
+                // В оформленном редакторе automatic media-fold не применяются:
+                // исходный payload заменён коротким токеном, а изображение
+                // должно остаться видимым.
+                if !document.isMarkdownFormatted,
+                   foldLayoutManager?.automaticMediaFoldedRanges.isEmpty == false {
                     foldLayoutManager?.setAutomaticMediaFoldedRanges([])
                 }
                 return
