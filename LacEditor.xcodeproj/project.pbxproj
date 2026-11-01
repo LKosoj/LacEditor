@@ -198,11 +198,7 @@
 		D01301000000000000000001 /* CommandPaletteService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01301000000000000000002 /* CommandPaletteService.swift */; };
 		D09100000000000000000001 /* NavigationHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = D09100000000000000000002 /* NavigationHistory.swift */; };
 		D01301000000000000000003 /* CommandPalettePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01301000000000000000004 /* CommandPalettePanel.swift */; };
-		D01302000000000000000001 /* FileVersionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01302000000000000000002 /* FileVersionService.swift */; };
-		D01302000000000000000005 /* VersionHistoryController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01302000000000000000006 /* VersionHistoryController.swift */; };
-		D01302000000000000000007 /* VersionHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01302000000000000000008 /* VersionHistoryView.swift */; };
 		D01303000000000000000002 /* LineEndingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01303000000000000000001 /* LineEndingService.swift */; };
-		D01304000000000000000001 /* LineEditingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01304000000000000000002 /* LineEditingService.swift */; };
 		D01307000000000000000002 /* FolderReplaceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01307000000000000000001 /* FolderReplaceService.swift */; };
 		D0130C000000000000000004 /* OpenDocumentsSearchController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0130C000000000000000003 /* OpenDocumentsSearchController.swift */; };
 		D0130C000000000000000002 /* OpenDocumentsSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0130C000000000000000001 /* OpenDocumentsSearchService.swift */; };
@@ -449,11 +445,7 @@
 		D01301000000000000000002 /* CommandPaletteService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPaletteService.swift; sourceTree = "<group>"; };
 		D09100000000000000000002 /* NavigationHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationHistory.swift; sourceTree = "<group>"; };
 		D01301000000000000000004 /* CommandPalettePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPalettePanel.swift; sourceTree = "<group>"; };
-		D01302000000000000000002 /* FileVersionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FileVersionService.swift; path = Services/FileVersionService.swift; sourceTree = "<group>"; };
-		D01302000000000000000006 /* VersionHistoryController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VersionHistoryController.swift; path = Services/VersionHistoryController.swift; sourceTree = "<group>"; };
-		D01302000000000000000008 /* VersionHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VersionHistoryView.swift; path = Views/VersionHistoryView.swift; sourceTree = "<group>"; };
 		D01303000000000000000001 /* LineEndingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LineEndingService.swift; sourceTree = "<group>"; };
-		D01304000000000000000002 /* LineEditingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LineEditingService.swift; sourceTree = "<group>"; };
 		D01307000000000000000001 /* FolderReplaceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderReplaceService.swift; sourceTree = "<group>"; };
 		D0130C000000000000000003 /* OpenDocumentsSearchController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenDocumentsSearchController.swift; sourceTree = "<group>"; };
 		D0130C000000000000000001 /* OpenDocumentsSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenDocumentsSearchService.swift; sourceTree = "<group>"; };
