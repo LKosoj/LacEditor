@@ -985,7 +985,7 @@ final class MarkdownPresentationController {
         if let inheritedAlignment, replacementLength > 0 {
             alignedRanges[inheritedAlignment, default: IndexSet()].insert(integersIn: range.location..<(range.location + replacementLength))
         }
-        backgroundRanges = shifted(backgroundRanges)
+        MarkdownOrderedRanges.applyEdit(range: range, replacementLength: replacementLength, unordered: &backgroundRanges)
         MarkdownOrderedRanges.applyEdit(range: range, replacementLength: replacementLength, to: &inlineForegroundRanges)
         lastVisibleRange = nil
     }
@@ -1849,7 +1849,7 @@ final class MarkdownPresentationController {
         presentationKept = true
         structureEditPending = true
         lastFootnote = nil
-        if touched.range == nil, presentation?.hasOnlyTextStructure == true, let spanStart = presentation?.firstAffectedLocation(edit) {
+        if touched.range == nil, presentation?.isTextStructureOnly == true, let spanStart = presentation?.firstAffectedLocation(edit) {
             presentation?.shift(edit)
             layout?.shiftMarkdownPresentation(edit, spanStart: spanStart, revealedRange: lastRevealedRange, inlineSelection: selection)
         } else {
@@ -3114,11 +3114,12 @@ final class MarkdownPresentationController {
         func moved<Value>(_ items: [NSRange: Value]) -> [NSRange: Value] {
             Dictionary(items.compactMap { range, value in edit.away(range).map { ($0, value) } }, uniquingKeysWith: { first, _ in first })
         }
-        if !audioViews.isEmpty { audioViews = moved(audioViews) }
-        if !audioCompleted.isEmpty { audioCompleted = Set(audioCompleted.compactMap(edit.away)) }
-        if !detailsViews.isEmpty { detailsViews = moved(detailsViews) }
-        if !expandedDetails.isEmpty { expandedDetails = moved(expandedDetails) }
-        if !iframeViews.isEmpty {
+        // Левее правки ключи не меняются: словари и наборы, целиком лежащие там, не пересоздаются.
+        if audioViews.keys.contains(where: edit.reaches) { audioViews = moved(audioViews) }
+        if audioCompleted.contains(where: edit.reaches) { audioCompleted = Set(audioCompleted.compactMap(edit.away)) }
+        if detailsViews.keys.contains(where: edit.reaches) { detailsViews = moved(detailsViews) }
+        if expandedDetails.keys.contains(where: edit.reaches) { expandedDetails = moved(expandedDetails) }
+        if iframeViews.keys.contains(where: edit.reaches) {
             iframeViews = Dictionary(iframeViews.compactMap { range, entry -> (NSRange, IframeView)? in
                 guard let to = edit.away(range) else { return nil }
                 var entry = entry
@@ -3126,7 +3127,7 @@ final class MarkdownPresentationController {
                 return (to, entry)
             }, uniquingKeysWith: { first, _ in first })
         }
-        if !htmlBlockViews.isEmpty {
+        if htmlBlockViews.keys.contains(where: edit.reaches) {
             htmlBlockViews = Dictionary(htmlBlockViews.compactMap { range, entry -> (NSRange, HTMLBlockView)? in
                 guard let to = edit.away(range) else { return nil }
                 var entry = entry
@@ -3134,7 +3135,7 @@ final class MarkdownPresentationController {
                 return (to, entry)
             }, uniquingKeysWith: { first, _ in first })
         }
-        if !rubyRendered.isEmpty {
+        if rubyRendered.keys.contains(where: edit.reaches) {
             rubyRendered = Dictionary(rubyRendered.compactMap { range, key -> (NSRange, RubyKey)? in
                 guard let to = edit.away(range), let base = edit.away(key.item.baseRange), let reading = edit.away(key.item.readingRange) else { return nil }
                 var key = key
@@ -3263,7 +3264,8 @@ final class MarkdownPresentationController {
     /// Готовые диаграммы переезжают вместе со своими блоками: меняются только ключи, картинка и SVG те же.
     /// Идущие отрисовки уже отменены (`cancelPending`) и заново пойдут по видимым диаграммам без результата.
     private func shiftDiagrams(_ edit: MarkdownTextEdit) {
-        guard edit.delta != 0 else { return }
+        guard edit.delta != 0, diagramJobs.keys.contains(where: edit.reaches) || diagramCompleted.contains(where: edit.reaches)
+                || diagramResources.keys.contains(where: edit.reaches) else { return }
         for range in Array(diagramJobs.keys) where edit.away(range) == nil {
             diagramJobs[range]?.job.cancel()
             diagramJobs.removeValue(forKey: range)
@@ -3908,9 +3910,13 @@ final class MarkdownPresentationController {
             layout.removeTemporaryAttribute(.strikethroughStyle, forCharacterRange: safe)
             layout.removeTemporaryAttribute(.underlineStyle, forCharacterRange: safe)
         }
+        var backgroundTouched = false
         for range in backgroundRanges {
             let safe = NSIntersectionRange(range, target)
-            if safe.length > 0 { layout.removeTemporaryAttribute(.backgroundColor, forCharacterRange: safe) }
+            if safe.length > 0 {
+                backgroundTouched = true
+                layout.removeTemporaryAttribute(.backgroundColor, forCharacterRange: safe)
+            }
         }
         textView.typingAttributes = typing
         if !foregroundRanges.isEmpty { restoreCodeColors?(foregroundRanges) }
@@ -3922,17 +3928,19 @@ final class MarkdownPresentationController {
             inlineForegroundRanges.removeAll()
         } else {
             MarkdownOrderedRanges.subtract(target, from: &inlineForegroundRanges)
-            backgroundRanges = backgroundRanges.flatMap { range -> [NSRange] in
-                let overlap = NSIntersectionRange(range, target)
-                guard overlap.length > 0 else { return [range] }
-                var remaining: [NSRange] = []
-                if range.location < overlap.location {
-                    remaining.append(NSRange(location: range.location, length: overlap.location - range.location))
+            if backgroundTouched {
+                backgroundRanges = backgroundRanges.flatMap { range -> [NSRange] in
+                    let overlap = NSIntersectionRange(range, target)
+                    guard overlap.length > 0 else { return [range] }
+                    var remaining: [NSRange] = []
+                    if range.location < overlap.location {
+                        remaining.append(NSRange(location: range.location, length: overlap.location - range.location))
+                    }
+                    if NSMaxRange(overlap) < NSMaxRange(range) {
+                        remaining.append(NSRange(location: NSMaxRange(overlap), length: NSMaxRange(range) - NSMaxRange(overlap)))
+                    }
+                    return remaining
                 }
-                if NSMaxRange(overlap) < NSMaxRange(range) {
-                    remaining.append(NSRange(location: NSMaxRange(overlap), length: NSMaxRange(range) - NSMaxRange(overlap)))
-                }
-                return remaining
             }
             MarkdownOrderedRanges.subtract(target, from: &styledRanges)
         }

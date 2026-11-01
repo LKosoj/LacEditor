@@ -437,6 +437,63 @@ final class MarkdownPresentationTests: XCTestCase {
         XCTAssertGreaterThan(checked, 25)
     }
 
+    /// Снятие, не задевшее `spans` или задачи, не пересчитывает их концы: они всё равно должны совпасть с полным проходом, их читают следующие правки.
+    func testRemoveTouchedKeepsPrefixEndsForNextEdit() {
+        var checked = 0
+        for source in Self.elementSources {
+            let raw = source as NSString
+            for location in stride(from: 0, through: raw.length, by: 2) {
+                var presentation = parsedForShift(source)
+                guard presentation.isReadyForShift else { continue }
+                let change = MarkdownTextEdit(range: NSRange(location: location, length: 0), replacementLength: 1, textLength: raw.length)
+                _ = presentation.removeTouched(by: change)
+                presentation.shift(change)
+                var prepared = presentation
+                prepared.prepareForEditing()
+                XCTAssertEqual(presentation.spanEnds, prepared.spanEnds, "\(location) \(source)")
+                XCTAssertEqual(presentation.completedEnds, prepared.completedEnds, "\(location) \(source)")
+                checked += 1
+            }
+        }
+        XCTAssertGreaterThan(checked, 25)
+    }
+
+    func testUnorderedRangesMatchFullPass() {
+        var seed: UInt64 = 7
+        func next(_ bound: Int) -> Int {
+            seed = seed &* 6364136223846793005 &+ 1442695040888963407
+            return Int((seed >> 33) % UInt64(bound))
+        }
+        for _ in 0..<5000 {
+            let ranges = (0..<next(9)).map { _ in NSRange(location: next(50), length: 1 + next(8)) }
+            let target = NSRange(location: next(50), length: next(12))
+            let replacement = next(4)
+            var edited = ranges
+            MarkdownOrderedRanges.applyEdit(range: target, replacementLength: replacement, unordered: &edited)
+            XCTAssertEqual(edited, ranges.compactMap { current -> NSRange? in
+                let start = current.location <= target.location ? current.location
+                    : (current.location >= NSMaxRange(target) ? current.location + replacement - target.length : target.location)
+                let end = NSMaxRange(current) <= target.location ? NSMaxRange(current)
+                    : (NSMaxRange(current) >= NSMaxRange(target) ? NSMaxRange(current) + replacement - target.length : target.location + replacement)
+                return end > start ? NSRange(location: start, length: end - start) : nil
+            })
+        }
+    }
+
+    /// Диапазон, которого `reaches` не касается, обязан остаться тем же: на этом держится пропуск пересоздания словарей готовых медиа.
+    func testRangesLeftOfEditKeepTheirPlace() {
+        let edit = MarkdownTextEdit(range: NSRange(location: 20, length: 3), replacementLength: 5, textLength: 100)
+        for location in 0..<40 {
+            for length in 0..<25 {
+                let range = NSRange(location: location, length: length)
+                if !edit.reaches(range) { XCTAssertEqual(edit.away(range), range) }
+            }
+        }
+        XCTAssertFalse(edit.reaches(NSRange(location: 10, length: 9)))
+        XCTAssertTrue(edit.reaches(NSRange(location: 10, length: 10)))
+        XCTAssertEqual(edit.away(NSRange(location: 30, length: 4)), NSRange(location: 32, length: 4))
+    }
+
     func testOrderedRangesMatchFullPass() {
         var seed: UInt64 = 42
         func next(_ bound: Int) -> Int {

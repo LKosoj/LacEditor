@@ -627,6 +627,11 @@ struct MarkdownTextEdit: Sendable {
         other.location <= range.location && end <= NSMaxRange(other)
     }
 
+    /// Диапазон не кончается левее правки. Иначе `away` возвращает его без изменений: такие словари и наборы не пересоздаются.
+    func reaches(_ other: NSRange) -> Bool {
+        NSMaxRange(other) >= range.location
+    }
+
     /// Неделимый диапазон: правка строго до него или строго после, любое касание отклоняется.
     func away(_ other: NSRange) -> NSRange? {
         if NSMaxRange(other) < range.location { return other }
@@ -800,6 +805,25 @@ enum MarkdownOrderedRanges {
         }
         ranges.removeSubrange(kept..<ranges.count)
     }
+
+    /// Тот же перенос для списка в порядке загрузки: двоичный поиск к нему неприменим, но новый массив не создаётся и левее правки ничего не пишется.
+    static func applyEdit(range edited: NSRange, replacementLength: Int, unordered ranges: inout [NSRange]) {
+        let oldEnd = NSMaxRange(edited), change = replacementLength - edited.length
+        var kept = 0
+        for index in ranges.indices {
+            let current = ranges[index]
+            let start = current.location <= edited.location ? current.location
+                : (current.location >= oldEnd ? current.location + change : edited.location)
+            let end = NSMaxRange(current) <= edited.location ? NSMaxRange(current)
+                : (NSMaxRange(current) >= oldEnd ? NSMaxRange(current) + change : edited.location + replacementLength)
+            guard end > start else { continue }
+            if kept != index || start != current.location || end != NSMaxRange(current) {
+                ranges[kept] = NSRange(location: start, length: end - start)
+            }
+            kept += 1
+        }
+        if kept < ranges.count { ranges.removeSubrange(kept..<ranges.count) }
+    }
 }
 
 /// Что снял `MarkdownPresentation.removeTouched`: по этому списку контроллер убирает готовые ресурсы снятых элементов.
@@ -857,7 +881,7 @@ struct MarkdownPresentation: Sendable {
     private(set) var completedEnds: [Int] = []
     private(set) var isReadyForShift = false
     /// Итог `hasOnlyTextStructure` на момент разбора: `shift` заголовки только убирает, поэтому на каждую правку он не считается.
-    private var isTextStructureOnly = false
+    private(set) var isTextStructureOnly = false
 
     init(spans: [MarkdownPresentationSpan], headings: [MarkdownHeading] = [], namedAnchors: [MarkdownNamedAnchor] = [], images: [MarkdownImage] = [], audioBlocks: [MarkdownAudioBlock] = [], iframeBlocks: [MarkdownIframeBlock] = [], detailsBlocks: [MarkdownDetailsBlock] = [], htmlBlocks: [MarkdownHTMLBlock] = [], pageBreaks: [NSRange] = [], ruby: [MarkdownRuby] = [], links: [MarkdownLink] = [], diagrams: [MarkdownDiagram] = [], formulas: [MarkdownFormula] = [], inlineFormulas: [MarkdownFormula] = [], emojiCandidates: [MarkdownEmojiCandidate] = [], emojiCandidatesIncluded: Bool = false, emojiCompletionRanges: [NSRange] = [], smartTextRanges: [NSRange] = [], smartRawHTMLRanges: [NSRange]? = nil, textReplacements: [MarkdownTextReplacement] = [], paragraphs: [MarkdownParagraph] = [], completedTaskRanges: [NSRange] = [], taskCheckboxes: [MarkdownTaskCheckbox] = [], listMarkers: [MarkdownListMarker] = [], looseIndents: [MarkdownLooseIndent] = [], footnotes: [MarkdownFootnote] = [], tableOfContents: [NSRange] = [], tables: [MarkdownTable] = [], codeBlocks: [MarkdownCodeBlock] = [], fenceContainerLines: [MarkdownFenceContainerLine] = [], fenceBlockedRanges: [NSRange] = [], fenceBlockedEOF: Bool = false, fenceContextAvailable: Bool = false, readableText: MarkdownReadableText? = nil) {
         self.spans = spans
@@ -1400,7 +1424,7 @@ struct MarkdownPresentation: Sendable {
         }
         let spanWindow = ordered ? edit.window(spans, ends: spanEnds, location: { $0.range.location }) : spans.indices
         let completedWindow = ordered ? edit.window(completedTaskRanges, ends: completedEnds, location: { $0.location }) : completedTaskRanges.indices
-        remove(&spans, in: spanWindow, extent: { $0.range }) { span in
+        let removedSpans = remove(&spans, in: spanWindow, extent: { $0.range }) { span in
             Self.shiftedRange(of: span, edit) != nil && span.markerRanges.allSatisfy { edit.away($0) != nil }
         }
         remove(&paragraphs, extent: { $0.extent }) { item in
@@ -1413,7 +1437,7 @@ struct MarkdownPresentation: Sendable {
         }
         remove(&emojiCompletionRanges, extent: { $0 }) { edit.block($0) != nil }
         remove(&textReplacements, extent: { $0.range }) { edit.away($0.range) != nil }
-        remove(&completedTaskRanges, in: completedWindow, extent: { $0 }) { edit.block($0) != nil }
+        let removedCompleted = remove(&completedTaskRanges, in: completedWindow, extent: { $0 }) { edit.block($0) != nil }
         remove(&taskCheckboxes, extent: { NSUnionRange($0.markerRange, $0.stateRange) }) { edit.away($0.markerRange) != nil && edit.away($0.stateRange) != nil }
         remove(&looseIndents, extent: { $0.range }) { edit.away($0.range) != nil }
         remove(&tables, extent: { $0.range }) { edit.away($0.range) != nil }
@@ -1452,17 +1476,21 @@ struct MarkdownPresentation: Sendable {
         }
         // Снятие не меняет порядок: пересчитывается только то, что от него зависит.
         isTextStructureOnly = hasOnlyTextStructure
-        spanEnds.removeSubrange(spanWindow.lowerBound...)
-        var peak = spanEnds.last ?? 0
-        for span in spans[spanWindow.lowerBound...] {
-            peak = max(peak, NSMaxRange(span.range))
-            spanEnds.append(peak)
+        if !removedSpans.isEmpty {
+            spanEnds.removeSubrange(spanWindow.lowerBound...)
+            var peak = spanEnds.last ?? 0
+            for span in spans[spanWindow.lowerBound...] {
+                peak = max(peak, NSMaxRange(span.range))
+                spanEnds.append(peak)
+            }
         }
-        completedEnds.removeSubrange(completedWindow.lowerBound...)
-        peak = completedEnds.last ?? 0
-        for range in completedTaskRanges[completedWindow.lowerBound...] {
-            peak = max(peak, NSMaxRange(range))
-            completedEnds.append(peak)
+        if !removedCompleted.isEmpty {
+            completedEnds.removeSubrange(completedWindow.lowerBound...)
+            var peak = completedEnds.last ?? 0
+            for range in completedTaskRanges[completedWindow.lowerBound...] {
+                peak = max(peak, NSMaxRange(range))
+                completedEnds.append(peak)
+            }
         }
         return touched
     }

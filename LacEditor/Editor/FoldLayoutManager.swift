@@ -1940,6 +1940,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         guard range != markdownRevealedRange else { return }
         let previous = markdownRevealedRange
         markdownRevealedRange = range
+        var invalidated: NSRange?
         for affected in [previous, range].compactMap({ $0 }) {
             var dirty = affected
             var index = upperBound(affected.location + affected.length, count: markdownContainers.count) {
@@ -1951,7 +1952,9 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
                 let container = markdownContainers[index]
                 if touches(container, affected) { dirty = NSUnionRange(dirty, container) }
             }
-            invalidateMarkdownLayout(in: dirty)
+            // Старое и новое место внутри одного владельца: новое значение уже записано, второй сброс того же участка ничего не добавит.
+            if dirty != invalidated { invalidateMarkdownLayout(in: dirty) }
+            invalidated = dirty
         }
     }
 
@@ -1959,6 +1962,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         guard range != markdownInlineSelection else { return }
         let previous = markdownInlineSelection
         markdownInlineSelection = range
+        var invalidated: NSRange?
         for affected in [previous, range].compactMap({ $0 }) {
             var dirty = affected
             var found = false
@@ -1970,7 +1974,10 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
                 if touches(owner, affected) { dirty = NSUnionRange(dirty, owner); found = true }
             }
             // Читатели inline-выделения (скрытые маркеры и подмены текста) берут владельцев только из markdownContainers
-            if found { invalidateMarkdownLayout(in: dirty) }
+            if found, dirty != invalidated {
+                invalidateMarkdownLayout(in: dirty)
+                invalidated = dirty
+            }
         }
     }
 
