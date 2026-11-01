@@ -447,7 +447,8 @@ struct MarkdownPreview: NSViewRepresentable {
             pendingEditorPosition = nil
             editorSyncInFlight = true
             webView.callAsyncJavaScript(Self.scrollToLineScript,
-                arguments: ["line": position.line, "fraction": position.fraction, "atBottom": position.atBottom],
+                arguments: ["line": position.line, "fraction": position.fraction, "atBottom": position.atBottom,
+                            "plain": position.plain, "tail": position.tail],
                 in: nil, in: .defaultClient) { [weak self] _ in
                 guard let self else { return }
                 self.editorSyncInFlight = false
@@ -941,7 +942,18 @@ struct MarkdownPreview: NSViewRepresentable {
                     const mid = (low + high) >> 1;
                     if (items[mid].start <= line) low = mid + 1; else high = mid;
                 }
-                const previous = items[low - 1], next = items[low];
+                let previous = items[low - 1], next = items[low];
+                if (plain) {
+                    // В обычном режиме опорные точки — блоки с текстом: диаграммы и картинки между ними панель проходит равномерно.
+                    const opaque = item => item.el.matches('.mermaid-diagram, pre[data-lac-diagram]') || !item.el.textContent.trim();
+                    let before = low - 1, after = low;
+                    while (before >= 0 && opaque(items[before])) before -= 1;
+                    while (after < items.length && opaque(items[after])) after += 1;
+                    if (before >= 0 && after < items.length && line > items[before].end) {
+                        previous = items[before];
+                        next = items[after];
+                    }
+                }
                 const y = window.scrollY;
                 if (previous) {
                     const rect = previous.el.getBoundingClientRect();
@@ -957,7 +969,8 @@ struct MarkdownPreview: NSViewRepresentable {
                     }
                 }
             }
-            const destination = Math.max(0, Math.min(maximum, target));
+            const aligned = Math.max(0, Math.min(maximum, target));
+            const destination = aligned + tail * (maximum - aligned);
             const scroll = top => window.scrollTo({top, left: window.scrollX, behavior: 'instant'});
             const chase = globalThis.lacScrollChase ??= {running: false, cycle: 0};
             if (matchMedia('(prefers-reduced-motion: reduce)').matches ||

@@ -891,15 +891,17 @@ final class MarkdownPreviewScrollRelay {
         let line: Int        // верхняя видимая логическая строка, с 1
         let atBottom: Bool   // редактор прокручен до конца
         var fraction = 0.0   // пройденная доля строки: без неё панель стоит на высоком блоке и перескакивает через него
+        var plain = false    // обычный режим: высота диаграмм и картинок в окне не связана с их высотой в панели
+        var tail = 0.0       // на сколько панель уже сводится к своему концу на последнем экране прокрутки
 
-        /// Высота, по которой панель следует за окном: верхний край, а на последнем экране прокрутки
-        /// опорная точка доходит до нижнего края. Иначе строки последнего экрана никогда не становятся
-        /// верхними, и в обычном режиме, где картинка занимает одну строку, панель прыгала бы через них.
-        static func referenceY(top: Double, height: Double, contentHeight: Double) -> Double {
+        /// Строки последнего экрана никогда не становятся верхними, поэтому панель сводится к своему концу отдельно.
+        /// Доля в квадрате: большую часть пути панель стоит вровень с окном и не показывает дальше него.
+        static func tailProgress(top: Double, height: Double, contentHeight: Double) -> Double {
             let maximum = contentHeight - height
             let start = max(0, maximum - height)
-            guard maximum > start else { return top }
-            return top + height * min(1, max(0, (top - start) / (maximum - start)))
+            guard maximum > start else { return 0 }
+            let progress = min(1, max(0, (top - start) / (maximum - start)))
+            return progress * progress
         }
 
         /// Позиция внутри блока на несколько строк файла: `progress` — пройденная доля его высоты на экране.

@@ -686,6 +686,20 @@ final class MarkdownPreviewTests: XCTestCase {
         try await fixture.waitUntil("Math.abs(scrollY - (document.documentElement.scrollHeight - innerHeight)) < 1")
     }
 
+    func testPlainModeSpreadsDistanceBetweenTextBlocks() async throws {
+        let paragraphs = (1...40).map { "Paragraph \($0)" }.joined(separator: "\n\n")
+        let image = "![](data:image/gif;base64,R0lGODlhAQABAAAAACw=)"
+        let text = paragraphs + "\n\n" + image + "\n\n" + image + "\n\n" + paragraphs
+        let fixture = PreviewFixture()
+        defer { fixture.dispose() }
+        fixture.coordinator.attachScrollRelay()
+        fixture.coordinator.render(markdown: text, revision: 1, darkMode: false, immediately: true)
+        try await fixture.waitForRevision(1)
+        // Абзац 40 стоит на строке 79, картинки на 81 и 83, следующий текст на 85: середина строки 82 — половина пути.
+        fixture.coordinator.scrollToEditorPosition(.init(line: 82, atBottom: false, fraction: 0.5, plain: true))
+        try await fixture.waitUntil("(() => { const p = document.querySelectorAll('article p'); const a = p[39].getBoundingClientRect().bottom, b = p[42].getBoundingClientRect().top; return Math.abs(a + (b - a) / 2) < 4; })()")
+    }
+
     func testRenderActorSerializesAndSkipsCancelledWaitingWork() async {
         let gate = RenderGate()
         let started = expectation(description: "first render started")

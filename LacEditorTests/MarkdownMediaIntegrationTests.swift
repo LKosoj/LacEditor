@@ -323,14 +323,14 @@ final class MarkdownMediaIntegrationTests: XCTestCase {
         XCTAssertEqual(FoldLayoutManager.mediaAnchor(among: candidates, top: 800)?.0.location, 40)
     }
 
-    func testReferenceSlidesToBottomOnLastScreen() {
+    func testTailStartsOnLastScreenOnly() {
         typealias Position = MarkdownPreviewScrollRelay.Position
-        XCTAssertEqual(Position.referenceY(top: 500, height: 800, contentHeight: 5000), 500, "до последнего экрана — верхний край")
-        XCTAssertEqual(Position.referenceY(top: 3400, height: 800, contentHeight: 5000), 3400)
-        XCTAssertEqual(Position.referenceY(top: 3800, height: 800, contentHeight: 5000), 4400, "середина последнего экрана")
-        XCTAssertEqual(Position.referenceY(top: 4200, height: 800, contentHeight: 5000), 5000, "конец — нижний край")
-        XCTAssertEqual(Position.referenceY(top: 150, height: 800, contentHeight: 1100), 550, "короткий документ скользит на всю прокрутку")
-        XCTAssertEqual(Position.referenceY(top: 0, height: 800, contentHeight: 700), 0)
+        XCTAssertEqual(Position.tailProgress(top: 500, height: 800, contentHeight: 5000), 0)
+        XCTAssertEqual(Position.tailProgress(top: 3400, height: 800, contentHeight: 5000), 0, "начало последнего экрана")
+        XCTAssertEqual(Position.tailProgress(top: 3800, height: 800, contentHeight: 5000), 0.25, "середина: панель ещё почти вровень с окном")
+        XCTAssertEqual(Position.tailProgress(top: 4200, height: 800, contentHeight: 5000), 1)
+        XCTAssertEqual(Position.tailProgress(top: 150, height: 800, contentHeight: 1100), 0.25)
+        XCTAssertEqual(Position.tailProgress(top: 0, height: 800, contentHeight: 700), 0)
     }
 
     func testPositionInBlockCoversAllItsLines() {
