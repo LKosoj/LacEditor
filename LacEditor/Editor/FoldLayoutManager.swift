@@ -2202,6 +2202,25 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         return true
     }
 
+    /// Вызывается до правки. Чистый сдвиг глифы не трогает: TextKit сам переносит уже созданные;
+    /// без него следующая установка увидела бы другой список и перестроила всю раскладку.
+    func shiftAutomaticMediaFolds(range: NSRange, replacementLength: Int) {
+        guard !automaticMediaFoldedRanges.isEmpty else { return }
+        let end = NSMaxRange(range)
+        let delta = replacementLength - range.length
+        var kept: [NSRange] = []
+        for folded in automaticMediaFoldedRanges {
+            if NSMaxRange(folded) <= range.location {
+                kept.append(folded)
+            } else if folded.location >= end {
+                kept.append(NSRange(location: folded.location + delta, length: folded.length))
+            } else {
+                invalidateFoldGlyphs(in: folded)
+            }
+        }
+        automaticMediaFoldedRanges = kept
+    }
+
     func removeAutomaticMediaFold(containing location: Int) -> Bool {
         guard let index = automaticMediaFoldedRanges.firstIndex(where: {
             location >= $0.location && location <= NSMaxRange($0)

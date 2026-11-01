@@ -3,6 +3,32 @@ import XCTest
 @testable import LacEditor
 
 final class EngineAuditTests: XCTestCase {
+    func testColumnSkipsBase64RunsWithoutChangingResult() {
+        let payload = String(repeating: "QUJD", count: 100)
+        let text = "😀 data:image/png;base64,\(payload)\u{301}x\nстрока data:image/png;base64,\(payload) конец"
+        let raw = text as NSString
+        let index = LogicalLineIndex(text: text)
+        let runs = FoldService.mediaPayloadRanges(in: text)
+        XCTAssertEqual(runs.count, 2)
+        for location in 0...raw.length {
+            let plain = index.position(at: location, in: raw)
+            let skipped = index.position(at: location, in: raw, asciiRuns: runs)
+            XCTAssertEqual(plain.line, skipped.line)
+            XCTAssertEqual(plain.column, skipped.column)
+        }
+    }
+
+    func testDelimiterCandidateNeedsBracketNearCaret() {
+        let text = "ab(c)d" as NSString
+        XCTAssertFalse(DelimiterMatchingService.hasCandidate(in: text, selection: NSRange(location: 1, length: 0)))
+        XCTAssertTrue(DelimiterMatchingService.hasCandidate(in: text, selection: NSRange(location: 2, length: 0)))
+        XCTAssertTrue(DelimiterMatchingService.hasCandidate(in: text, selection: NSRange(location: 3, length: 0)))
+        XCTAssertTrue(DelimiterMatchingService.hasCandidate(in: text, selection: NSRange(location: 5, length: 0)))
+        XCTAssertTrue(DelimiterMatchingService.hasCandidate(in: text, selection: NSRange(location: 2, length: 1)))
+        XCTAssertFalse(DelimiterMatchingService.hasCandidate(in: text, selection: NSRange(location: 3, length: 1)))
+        XCTAssertFalse(DelimiterMatchingService.hasCandidate(in: "" as NSString, selection: NSRange(location: 0, length: 0)))
+    }
+
     func testJSONErrorByteOffsetUsesCRLFAndCRAsLineBreaks() {
         let cases: [(String, Int, Int)] = [
             ("错误", 1, 3),

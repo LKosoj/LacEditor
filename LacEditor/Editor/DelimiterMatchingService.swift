@@ -144,6 +144,14 @@ enum DelimiterMatchingService {
         return nil
     }
 
+    /// Без полного снимка отвечает, стоит ли запускать поиск пары у текущего выделения.
+    static func hasCandidate(in text: NSString, selection: NSRange) -> Bool {
+        candidateLocations(selection: selection, length: text.length).contains {
+            let value = text.character(at: $0)
+            return isOpening(value) || isClosing(value)
+        }
+    }
+
     private static func candidateLocations(
         selection: NSRange,
         length: Int

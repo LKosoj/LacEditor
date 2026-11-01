@@ -27,6 +27,35 @@ final class DocumentMetricsTaskTests: XCTestCase {
         XCTAssertTrue(current.isCancelled)
     }
 
+    func testTypingPauseDefersFullPasses() async throws {
+        let document = EditorDocument(text: "old")
+        var reads = 0
+        document.attachLiveTextProvider(id: UUID(), provider: { reads += 1; return "new text" }, acknowledgement: { _ in })
+        document.noteLiveEdit(isEmpty: false)
+        try await Task.sleep(for: .milliseconds(450))
+        document.noteLiveEdit(isEmpty: false)
+        try await Task.sleep(for: .milliseconds(450))
+        XCTAssertEqual(reads, 0)
+        for _ in 0..<100 where reads == 0 { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(reads, 1)
+    }
+
+    func testReadableProjectionWaitsForDeferredModelWrite() {
+        let source = "hello world"
+        let document = EditorDocument(text: source, language: .markdown)
+        var reads = 0
+        document.attachLiveTextProvider(id: UUID(), provider: { reads += 1; return source }, acknowledgement: { _ in })
+        let projection = MarkdownReadableText(sourceLength: (source as NSString).length, fragments: [
+            .init(sourceRange: NSRange(location: 0, length: (source as NSString).length), text: source, matchesSource: true)
+        ], unsupportedRanges: [])
+        document.noteLiveEdit(isEmpty: false)
+        XCTAssertFalse(document.installMarkdownReadableText(projection, source: source))
+        XCTAssertEqual(reads, 0)
+        XCTAssertTrue(document.synchronizeLiveText())
+        XCTAssertTrue(document.installMarkdownReadableText(projection, source: source))
+        document.cancelMetricsRefresh()
+    }
+
     func testOnlyLatestTextAndSelectionAreCounted() async {
         let document = EditorDocument()
         let updated = expectation(description: "latest selection")

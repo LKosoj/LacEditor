@@ -1,6 +1,12 @@
 import Foundation
 
 enum FoldService {
+    private static let minimumPayloadLength = 256
+    private static let maximumHeaderCommaOffset = 128
+    /// Расстояние от начала `data:` до первого символа payload: маркер, заголовок и запятая.
+    private static let maximumHeaderLength = 5 + maximumHeaderCommaOffset + 1
+    private static let incrementalScanLimit = 4096
+
     static func foldableRange(in text: String, at cursor: Int, language: EditorLanguage,
                               isCancelled: () -> Bool = { false }) -> NSRange? {
         guard !isCancelled() else { return nil }
@@ -57,37 +63,96 @@ enum FoldService {
         return ranges.first(where: { cursor >= $0.location && cursor <= NSMaxRange($0) }) ?? ranges.first
     }
 
+    /// Переносит найденные payload через правку без полного поиска. `text` — уже новый текст.
+    /// Новый или изменённый payload обязан иметь маркер `data:` в окне вокруг правки: слева дальше
+    /// окна может лежать только payload длиннее минимума, а он уже был в `ranges` и пересёкся с правкой.
+    /// `nil` означает, что локально ответить нельзя и нужен обычный полный поиск.
+    static func shiftedMediaPayloadRanges(_ ranges: [NSRange], editedRange: NSRange, replacementLength: Int,
+                                          in text: NSString) -> [NSRange]? {
+        guard replacementLength <= incrementalScanLimit else { return nil }
+        let start = editedRange.location
+        let oldEnd = NSMaxRange(editedRange)
+        let newEnd = start + replacementLength
+        let delta = replacementLength - editedRange.length
+        var kept: [NSRange] = []
+        var unconfirmed: [Int: Int] = [:]
+        var windowEnd = newEnd + 5
+        for range in ranges {
+            if NSMaxRange(range) < start {
+                kept.append(range)
+            } else if range.location >= oldEnd + maximumHeaderLength {
+                kept.append(NSRange(location: range.location + delta, length: range.length))
+            } else if range.location >= oldEnd {
+                // Сам payload цел, но правка могла задеть его заголовок: проверяем маркер заново.
+                unconfirmed[range.location + delta] = range.length
+                windowEnd = max(windowEnd, range.location + delta)
+            } else {
+                return nil
+            }
+        }
+        let limit = text.length
+        let windowStart = max(0, start - minimumPayloadLength - maximumHeaderLength - 1)
+        let window = NSRange(location: windowStart, length: min(windowEnd, limit) - windowStart)
+        var search = window
+        while search.length > 0 {
+            let marker = text.range(of: "data:", options: .caseInsensitive, range: search)
+            guard marker.location != NSNotFound else { break }
+            let next = NSMaxRange(marker)
+            search = NSRange(location: next, length: NSMaxRange(window) - next)
+            guard let payloadStart = mediaPayloadStart(in: text, afterMarker: marker, limit: limit) else { continue }
+            if let length = unconfirmed[payloadStart] {
+                kept.append(NSRange(location: payloadStart, length: length))
+                continue
+            }
+            var payloadEnd = payloadStart
+            while payloadEnd < limit, isBase64(text.character(at: payloadEnd)) {
+                payloadEnd += 1
+                if payloadEnd - payloadStart > incrementalScanLimit { return nil }
+            }
+            if payloadEnd - payloadStart >= minimumPayloadLength {
+                kept.append(NSRange(location: payloadStart, length: payloadEnd - payloadStart))
+            }
+        }
+        kept.sort { $0.location < $1.location }
+        var result: [NSRange] = []
+        for range in kept where result.last != range { result.append(range) }
+        return result
+    }
+
     private static func mediaPayloadRanges(in text: NSString, searchRange: NSRange,
                                            isCancelled: () -> Bool = { false }) -> [NSRange] {
-        let minimumPayloadLength = 256
         var search = searchRange
         var result: [NSRange] = []
         while search.length > 0 {
             if isCancelled() { return [] }
             let marker = text.range(of: "data:", options: .caseInsensitive, range: search)
             guard marker.location != NSNotFound else { break }
-            let headerStart = NSMaxRange(marker)
-            let remaining = NSRange(location: headerStart, length: NSMaxRange(searchRange) - headerStart)
-            let comma = text.range(of: ",", range: remaining)
-            if comma.location != NSNotFound, comma.location - headerStart <= 128 {
-                let header = text.substring(with: NSRange(location: headerStart, length: comma.location - headerStart)).lowercased()
-                let isMedia = header.hasPrefix("image/") || header.hasPrefix("audio/")
-                    || header.hasPrefix("video/") || header.hasPrefix("application/pdf")
-                if isMedia, header.split(separator: ";").dropFirst().contains("base64") {
-                    let payloadStart = NSMaxRange(comma)
-                    var payloadEnd = payloadStart
-                    while payloadEnd < NSMaxRange(searchRange), isBase64(text.character(at: payloadEnd)) {
-                        payloadEnd += 1
-                        if (payloadEnd - payloadStart).isMultiple(of: 16_384), isCancelled() { return [] }
-                    }
-                    let payload = NSRange(location: payloadStart, length: payloadEnd - payloadStart)
-                    if payload.length >= minimumPayloadLength { result.append(payload) }
+            if let payloadStart = mediaPayloadStart(in: text, afterMarker: marker, limit: NSMaxRange(searchRange)) {
+                var payloadEnd = payloadStart
+                while payloadEnd < NSMaxRange(searchRange), isBase64(text.character(at: payloadEnd)) {
+                    payloadEnd += 1
+                    if (payloadEnd - payloadStart).isMultiple(of: 16_384), isCancelled() { return [] }
                 }
+                let payload = NSRange(location: payloadStart, length: payloadEnd - payloadStart)
+                if payload.length >= minimumPayloadLength { result.append(payload) }
             }
             let next = NSMaxRange(marker)
             search = NSRange(location: next, length: NSMaxRange(searchRange) - next)
         }
         return result
+    }
+
+    /// Запятая ищется только в пределах допустимого заголовка: дальше ответ всё равно отрицательный.
+    private static func mediaPayloadStart(in text: NSString, afterMarker marker: NSRange, limit: Int) -> Int? {
+        let headerStart = NSMaxRange(marker)
+        let remaining = NSRange(location: headerStart, length: min(maximumHeaderCommaOffset + 1, limit - headerStart))
+        let comma = text.range(of: ",", range: remaining)
+        guard comma.location != NSNotFound else { return nil }
+        let header = text.substring(with: NSRange(location: headerStart, length: comma.location - headerStart)).lowercased()
+        let isMedia = header.hasPrefix("image/") || header.hasPrefix("audio/")
+            || header.hasPrefix("video/") || header.hasPrefix("application/pdf")
+        guard isMedia, header.split(separator: ";").dropFirst().contains("base64") else { return nil }
+        return NSMaxRange(comma)
     }
 
     private static func isBase64(_ value: unichar) -> Bool {

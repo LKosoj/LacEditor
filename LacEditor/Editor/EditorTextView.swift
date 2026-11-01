@@ -45,14 +45,22 @@ struct EditorTextView: NSViewRepresentable {
     var requestWikiCatalog: (() -> Void)? = nil
     var wikiSource: (() -> MarkdownWikiLinkSource)? = nil
 
-    static func applyWritingChecks(to textView: NSTextView, spellingEnabled: Bool, grammarEnabled: Bool) {
+    /// Поиск идёт по строке хранилища без её копирования.
+    static func containsDataImage(in textView: NSTextView) -> Bool {
+        guard let text = textView.textStorage?.mutableString else { return false }
+        return text.range(of: "data:image/", options: [.caseInsensitive]).location != NSNotFound
+    }
+
+    /// Текст просматривается, только если проверка вообще включена.
+    static func applyWritingChecks(to textView: NSTextView, spellingEnabled: Bool, grammarEnabled: Bool,
+                                   containsDataImage: @autoclosure () -> Bool) {
         guard !textView.hasMarkedText() else { return }
-        let containsDataImage = (textView.string as NSString).range(
-            of: "data:image/",
-            options: [.caseInsensitive]
-        ).location != NSNotFound
-        let effectiveSpelling = spellingEnabled && !containsDataImage
-        let effectiveGrammar = grammarEnabled && !containsDataImage
+        let signpostID = OSSignpostID(log: editorPerformanceLog)
+        os_signpost(.begin, log: editorPerformanceLog, name: "EditorApplyWritingChecks", signpostID: signpostID)
+        defer { os_signpost(.end, log: editorPerformanceLog, name: "EditorApplyWritingChecks", signpostID: signpostID) }
+        let blocked = (spellingEnabled || grammarEnabled) && containsDataImage()
+        let effectiveSpelling = spellingEnabled && !blocked
+        let effectiveGrammar = grammarEnabled && !blocked
         if textView.isContinuousSpellCheckingEnabled != effectiveSpelling {
             textView.isContinuousSpellCheckingEnabled = effectiveSpelling
         }
@@ -80,7 +88,6 @@ struct EditorTextView: NSViewRepresentable {
                 textView.autoPairBracketsEnabled = aiPreferences?.autoPairBracketsEnabled ?? false
                 textView.autoPairMarkdownEnabled = aiPreferences?.autoPairMarkdownEnabled ?? false
                 textView.isEditable = isEditorEditable
-                Self.applyWritingChecks(to: textView, spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
             }
             os_signpost(
                 .event,
@@ -164,7 +171,8 @@ struct EditorTextView: NSViewRepresentable {
         textView.tabWidth = tabWidth
         textView.configureTabStops()
         textView.string = document.text
-        Self.applyWritingChecks(to: textView, spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
+        Self.applyWritingChecks(to: textView, spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled,
+                                containsDataImage: Self.containsDataImage(in: textView))
         let textLength = (document.text as NSString).length
         let selectionLocation = min(document.selectionRange.location, textLength)
         textView.setSelectedRange(NSRange(
@@ -275,6 +283,9 @@ struct EditorTextView: NSViewRepresentable {
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        let updateSignpostID = OSSignpostID(log: editorPerformanceLog)
+        os_signpost(.begin, log: editorPerformanceLog, name: "EditorUpdateNSView", signpostID: updateSignpostID)
+        defer { os_signpost(.end, log: editorPerformanceLog, name: "EditorUpdateNSView", signpostID: updateSignpostID) }
         context.coordinator.updateMathOptions(.init(physics: aiPreferences?.mathPhysicsEnabled ?? true,
                                                     numbering: aiPreferences?.mathNumbering ?? .none))
         guard let textView = context.coordinator.textView else { return }
@@ -293,7 +304,6 @@ struct EditorTextView: NSViewRepresentable {
         textView.isEditable = isEditorEditable
         textView.autoPairBracketsEnabled = aiPreferences?.autoPairBracketsEnabled ?? false
         textView.autoPairMarkdownEnabled = aiPreferences?.autoPairMarkdownEnabled ?? false
-        Self.applyWritingChecks(to: textView, spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
         textView.textTransformationHandler = requestTextTransformation
         let documentChanged = context.coordinator.document.id != document.id
         let requestedFont = AppPreferences.textFont(family: textFontFamily, size: fontSize)

@@ -377,7 +377,10 @@ final class MarkdownPDFExportService: NSObject, WKNavigationDelegate {
         guard diagrams.indices.contains(index) else { legacyToken = nil; prepareMath(in: webView); return }
         let item = diagrams[index]
         let kind: LegacyDiagramRenderService.Kind = item.kind == .flow ? .flow : .sequence
-        let service = LegacyDiagramRenderService(code: item.source, kind: kind, width: width) { [weak self, weak webView] result in
+        // Тёмная страница есть только в PNG: на белом фоне HTML светлые линии с прозрачным фоном не видны.
+        let dark: Bool
+        if case .png = mode { dark = darkMode } else { dark = false }
+        let service = LegacyDiagramRenderService(code: item.source, kind: kind, dark: dark, width: width) { [weak self, weak webView] result in
             guard let self, let webView, self.completion != nil, self.webView === webView, self.legacyToken == token else { return }
             self.legacyService = nil
             guard !self.cancelled, self.isCurrent() else { self.finish(.failure(ExportError.cancelled)); return }

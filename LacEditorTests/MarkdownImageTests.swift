@@ -2,22 +2,31 @@ import AppKit
 import XCTest
 @testable import LacEditor
 
-/// Адрес отвечает картинкой сразу; при `holdFirst` первый запрос повисает, пока его не отменят.
+/// Адрес отвечает картинкой сразу; при `holdFirst` первый запрос повисает, пока его не отпустят (`releaseHeld`) или не отменят.
 private final class ShiftImageURLProtocol: URLProtocol {
     private static let lock = NSLock()
     private static var started = 0
     private static var cancelled = 0
+    private static var held: ShiftImageURLProtocol?
     static var holdFirst = true
     static var requestCount: Int { lock.withLock { started } }
     static var cancelledCount: Int { lock.withLock { cancelled } }
-    static func reset(holdFirst: Bool) { lock.withLock { started = 0; cancelled = 0; Self.holdFirst = holdFirst } }
+    static func reset(holdFirst: Bool) { lock.withLock { started = 0; cancelled = 0; held = nil; Self.holdFirst = holdFirst } }
+    static func releaseHeld() {
+        guard let held = lock.withLock({ Self.held }) else { return }
+        held.respond()
+    }
 
     private var isHeld = false
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         let number = Self.lock.withLock { Self.started += 1; return Self.started }
-        if Self.holdFirst && number == 1 { isHeld = true; return }
+        if Self.holdFirst && number == 1 { isHeld = true; Self.lock.withLock { Self.held = self }; return }
+        respond()
+    }
+    @objc private func respond() {
+        isHeld = false
         let data = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC")!
         let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
@@ -445,7 +454,8 @@ final class MarkdownImageTests: XCTestCase {
         XCTAssertTrue(fixture.images.isEmpty)
     }
 
-    func testPendingRemoteImageIsCancelledAndRestartedAfterShift() async throws {
+    /// Загрузка переживает клавишу: тот же запрос ставит картинку на сдвинутое место, новый не нужен.
+    func testPendingRemoteImageSurvivesShiftAndInstallsOnce() async throws {
         ShiftImageURLProtocol.reset(holdFirst: true)
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [ShiftImageURLProtocol.self]
@@ -457,9 +467,10 @@ final class MarkdownImageTests: XCTestCase {
         XCTAssertTrue(fixture.images.isEmpty)
         fixture.type(after: "before")
         await fixture.waitForParse()
+        ShiftImageURLProtocol.releaseHeld()
         try await fixture.waitForImage()
-        XCTAssertGreaterThanOrEqual(ShiftImageURLProtocol.requestCount, 2)
-        XCTAssertEqual(ShiftImageURLProtocol.cancelledCount, 1)
+        XCTAssertEqual(ShiftImageURLProtocol.requestCount, 1)
+        XCTAssertEqual(ShiftImageURLProtocol.cancelledCount, 0)
         XCTAssertEqual(fixture.images.first, (fixture.storage.string as NSString).range(of: "![x]").location)
     }
 }

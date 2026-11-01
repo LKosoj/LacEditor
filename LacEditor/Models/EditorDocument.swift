@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let documentPerformanceLog = OSLog(subsystem: "com.laceditor.LacEditor", category: "DocumentPerformance")
 
 enum DocumentPerformanceProfile: String, CaseIterable, Identifiable {
     case standard
@@ -269,6 +272,8 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     private var liveTextAcknowledgement: ((UInt) -> Void)?
     private(set) var hasPendingLiveEdits = false
     private var pendingLiveTextIsEmpty: Bool?
+    private static let typingPause: TimeInterval = 1
+    private var lastLiveEditTime: DispatchTime?
     private var isUpdatingDirtyState = false
     private var metricsGeneration: UInt = 0
     private var statisticsReadingSpeed = 200
@@ -542,6 +547,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     }
 
     func noteLiveEdit(isEmpty: Bool) {
+        lastLiveEditTime = .now()
         invalidateRecoveryCopy()
         if markdownReadableText != nil { markdownReadableText = nil }
         if !hasPendingLiveEdits { hasPendingLiveEdits = true }
@@ -628,13 +634,15 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         !hasPendingLiveEdits && markdownReadableText?.revision == textRevision
     }
 
+    /// При незаписанных правках модель не запрашивается: разбор вернёт результат сразу после
+    /// отложенной записи через `update` контроллера, а не полной копией между клавишами.
     @discardableResult
     func installMarkdownReadableText(_ value: MarkdownReadableText, source: String) -> Bool {
-        guard language == .markdown, isWordCountEnabled, !metricsSuspended else { return false }
+        guard language == .markdown, isWordCountEnabled, !metricsSuspended, !hasPendingLiveEdits else { return false }
         isTakingMetricsSnapshot = true
         let snapshot = synchronizedSnapshot()
         isTakingMetricsSnapshot = false
-        guard !hasPendingLiveEdits, snapshot.text.utf16.elementsEqual(source.utf16), value.sourceLength == (source as NSString).length else { return false }
+        guard snapshot.text.utf16.elementsEqual(source.utf16), value.sourceLength == (source as NSString).length else { return false }
         markdownReadableText = (snapshot.revision, value)
         scheduleMetricsRefresh()
         return true
@@ -644,6 +652,13 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         guard markdownReadableText != nil else { return }
         markdownReadableText = nil
         scheduleMetricsRefresh()
+    }
+
+    /// Полные проходы статистики и окончаний строк начинаются только после паузы в наборе.
+    private func backgroundDeadline(after delay: TimeInterval) -> DispatchTime {
+        let deadline = DispatchTime.now() + delay
+        guard let lastLiveEditTime else { return deadline }
+        return max(deadline, lastLiveEditTime + Self.typingPause)
     }
 
     private func scheduleMetricsRefresh() {
@@ -661,7 +676,10 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
                   !self.metricsSuspended, self.isWordCountEnabled else { return }
             self.metricsDebounceWorkItem = nil
             self.isTakingMetricsSnapshot = true
+            let snapshotSignpostID = OSSignpostID(log: documentPerformanceLog)
+            os_signpost(.begin, log: documentPerformanceLog, name: "DocumentStatisticsSnapshot", signpostID: snapshotSignpostID)
             let snapshot = self.synchronizedSnapshot()
+            os_signpost(.end, log: documentPerformanceLog, name: "DocumentStatisticsSnapshot", signpostID: snapshotSignpostID)
             self.isTakingMetricsSnapshot = false
             guard !self.hasPendingLiveEdits else { return }
             let selection = self.selectionRange
@@ -692,7 +710,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
                                      selection: selection.length == 0 ? nil : selection, generation: generation, revision: snapshot.revision)
         }
         metricsDebounceWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: backgroundDeadline(after: 0.4), execute: workItem)
     }
 
     private func startMetricsRefresh(for snapshot: String, source: String, readable: MarkdownReadableText?, selection: NSRange?, generation: UInt, revision: UInt) {
@@ -701,9 +719,12 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         let readingSpeed = statisticsReadingSpeed
         let task = Task.detached(priority: .utility) { [weak self] in
             guard !Task.isCancelled else { return }
+            let signpostID = OSSignpostID(log: documentPerformanceLog)
+            os_signpost(.begin, log: documentPerformanceLog, name: "DocumentStatisticsCalculate", signpostID: signpostID)
             let prose = readable?.text(in: selection, source: source as NSString, isCancelled: { Task.isCancelled })
             let unavailable = readable != nil && prose == nil
             let result = unavailable ? nil : DocumentStatistics.calculate(snapshot, wordsPerMinute: readingSpeed, readableText: prose, isCancelled: { Task.isCancelled })
+            os_signpost(.end, log: documentPerformanceLog, name: "DocumentStatisticsCalculate", signpostID: signpostID)
             guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .metrics) else { return }
             await MainActor.run { [weak self] in
                 guard let self, self.metricsGeneration == generation, self.textRevision == revision,
@@ -737,13 +758,20 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
                 return
             }
             self.isTakingMetricsSnapshot = true
+            let snapshotSignpostID = OSSignpostID(log: documentPerformanceLog)
+            os_signpost(.begin, log: documentPerformanceLog, name: "DocumentLineEndingsSnapshot", signpostID: snapshotSignpostID)
             let snapshot = self.synchronizedSnapshot()
+            os_signpost(.end, log: documentPerformanceLog, name: "DocumentLineEndingsSnapshot", signpostID: snapshotSignpostID)
             self.isTakingMetricsSnapshot = false
             guard !self.hasPendingLiveEdits else { return }
             let coordinator = self.taskCoordinator
             let taskGeneration = coordinator.begin(.lineEndings)
             let task = Task.detached(priority: .utility) { [weak self] in
-                guard let result = LineEndingService.detect(in: snapshot.text, isCancelled: { Task.isCancelled }),
+                let signpostID = OSSignpostID(log: documentPerformanceLog)
+                os_signpost(.begin, log: documentPerformanceLog, name: "DocumentLineEndingsDetect", signpostID: signpostID)
+                let detected = LineEndingService.detect(in: snapshot.text, isCancelled: { Task.isCancelled })
+                os_signpost(.end, log: documentPerformanceLog, name: "DocumentLineEndingsDetect", signpostID: signpostID)
+                guard let result = detected,
                       !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .lineEndings) else { return }
                 await MainActor.run { [weak self] in
                     guard let self, self.lineEndingGeneration == generation,
@@ -759,7 +787,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         if delay <= 0 {
             DispatchQueue.main.async(execute: workItem)
         } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+            DispatchQueue.main.asyncAfter(deadline: backgroundDeadline(after: delay), execute: workItem)
         }
     }
 

@@ -729,7 +729,7 @@ struct MarkdownPreview: NSViewRepresentable {
                   page.diagrams.indices.contains(index), let webView else { return }
             let item = page.diagrams[index]
             let kind: LegacyDiagramRenderService.Kind = item.kind == .flow ? .flow : .sequence
-            let service = LegacyDiagramRenderService(code: item.source, kind: kind, width: width) { [weak self, weak webView] result in
+            let service = LegacyDiagramRenderService(code: item.source, kind: kind, dark: page.darkMode, width: width) { [weak self, weak webView] result in
                 guard let self, let webView, self.isActive, self.generation == generation,
                       self.mathDOMID == domID, self.legacyToken == token else { return }
                 self.legacyService = nil

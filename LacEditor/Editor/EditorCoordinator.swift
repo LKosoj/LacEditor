@@ -32,6 +32,7 @@ private struct MarkdownDataImageProjection {
     }
 
     func restore(_ display: String) -> String {
+        guard !entries.isEmpty else { return display }
         let source = NSMutableString(string: display)
         for entry in entries {
             source.replaceOccurrences(of: entry.token, with: entry.source,
@@ -44,8 +45,7 @@ private struct MarkdownDataImageProjection {
         entries.first(where: { $0.token == address })?.source
     }
 
-    func sourceRange(for displayRange: NSRange, in display: String) -> NSRange {
-        let raw = display as NSString
+    func sourceRange(for displayRange: NSRange, in raw: NSString) -> NSRange {
         func map(_ position: Int, trailing: Bool) -> Int {
             var delta = 0
             for entry in entries {
@@ -87,13 +87,12 @@ private struct MarkdownDataImageProjection {
         return NSRange(location: max(0, start), length: max(0, end - start))
     }
 
-    func intersectsToken(_ range: NSRange, in display: String) -> Bool {
-        intersectsToken([range], in: display)
+    func intersectsToken(_ range: NSRange, in raw: NSString) -> Bool {
+        intersectsToken([range], in: raw)
     }
 
-    func intersectsToken(_ ranges: [NSRange], in display: String) -> Bool {
-        let raw = display as NSString
-        return entries.contains { entry in
+    func intersectsToken(_ ranges: [NSRange], in raw: NSString) -> Bool {
+        entries.contains { entry in
             let token = raw.range(of: entry.token)
             return token.location != NSNotFound && ranges.contains { range in
                 NSIntersectionRange(token, range).length > 0 ||
@@ -177,8 +176,10 @@ extension EditorTextView {
             return queue
         }()
         private var delimiterMatchOperation: BlockOperation?
-        private var delimiterSnapshot: String?
-        private var delimiterSnapshotRevision: UInt?
+        // Один снимок живого текста на версию для подсветки, поиска пар и записи в модель.
+        // Заполняют его только отложенные задачи: между ростом версии в shouldChangeText и
+        // самой заменой снимок закрепил бы старый текст.
+        private var liveTextSnapshot: (revision: UInt, length: Int, text: String)?
         private var delimiterHighlightRanges: [NSRange] = []
         private var highlightGeneration: UInt = 0
         var isMarkdownOutlineVisible = false
@@ -240,6 +241,8 @@ extension EditorTextView {
         private var writingGrammarEnabled = false
         private var pendingFoldSelection: NSRange?
         private var automaticMediaFoldTask: Task<Void, Never>?
+        private var mediaPayloadScan: (document: EditorDocument, revision: UInt, textLength: Int, ranges: [NSRange])?
+        private var dataImagePresence: (revision: UInt, textLength: Int, contains: Bool)?
         private var highlightedRevision: UInt?
         private var appliedTreeChangeRevision: UInt?
         private var highlightedLanguage: EditorLanguage?
@@ -333,9 +336,23 @@ extension EditorTextView {
         func configureWritingChecks(spellingEnabled: Bool, grammarEnabled: Bool) {
             writingSpellingEnabled = spellingEnabled
             writingGrammarEnabled = grammarEnabled
-            if let textView {
-                EditorTextView.applyWritingChecks(to: textView, spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
+            if let textView { applyWritingChecks(to: textView) }
+        }
+
+        /// SwiftUI вызывает это при каждом обновлении вида; текст просматривается один раз на версию.
+        private func applyWritingChecks(to textView: NSTextView) {
+            EditorTextView.applyWritingChecks(to: textView, spellingEnabled: writingSpellingEnabled, grammarEnabled: writingGrammarEnabled,
+                                              containsDataImage: containsDataImage(in: textView))
+        }
+
+        private func containsDataImage(in textView: NSTextView) -> Bool {
+            let length = textView.textStorage?.length ?? 0
+            if let dataImagePresence, dataImagePresence.revision == contentRevision, dataImagePresence.textLength == length {
+                return dataImagePresence.contains
             }
+            let contains = EditorTextView.containsDataImage(in: textView)
+            dataImagePresence = (contentRevision, length, contains)
+            return contains
         }
 
         func configureAIAssistance(preferences: AppPreferences?) {
@@ -1295,7 +1312,7 @@ extension EditorTextView {
                   let textView, let storage = textView.textStorage else { return nil }
             let displayRange = resource.image.range
             let sourceRange = markdownImageProjectionEnabled
-                ? markdownImageProjection.sourceRange(for: displayRange, in: storage.string)
+                ? markdownImageProjection.sourceRange(for: displayRange, in: storage.mutableString)
                 : displayRange
             let snapshot = document.synchronizedSnapshot()
             let source = snapshot.text as NSString
@@ -1498,7 +1515,7 @@ extension EditorTextView {
                 replacements = [(edit.range, edit.replacement)]
                 finalSelection = edit.selectionRange
             }
-            if markdownImageProjectionEnabled, markdownImageProjection.intersectsToken(replacements.map(\.range), in: storage.string) {
+            if markdownImageProjectionEnabled, markdownImageProjection.intersectsToken(replacements.map(\.range), in: storage.mutableString) {
                 document.setStatusError(L10n.tr("修订含大图片，请在源码视图中处理"))
                 return
             }
@@ -2211,7 +2228,8 @@ extension EditorTextView {
                 provider: { [weak self] in
                     guard let self else { return nil }
                     if self.tableCellEditor?.hasMarkedText() == true { return self.tableCellSource() }
-                    guard let text = self.textView?.string else { return nil }
+                    guard let textView = self.textView else { return nil }
+                    let text = self.currentLiveTextSnapshot(in: textView)?.text ?? textView.string
                     return self.markdownImageProjectionEnabled
                         ? self.markdownImageProjection.restore(text)
                         : text
@@ -2248,7 +2266,7 @@ extension EditorTextView {
             let oldDisplay = textView.string
             let source = markdownImageProjectionEnabled ? markdownImageProjection.restore(oldDisplay) : oldDisplay
             let sourceSelection = markdownImageProjectionEnabled
-                ? markdownImageProjection.sourceRange(for: textView.selectedRange(), in: oldDisplay)
+                ? markdownImageProjection.sourceRange(for: textView.selectedRange(), in: oldDisplay as NSString)
                 : textView.selectedRange()
             let next = shouldProject ? displayedText(for: source) : source
             if !shouldProject {
@@ -2258,6 +2276,10 @@ extension EditorTextView {
             }
             isApplyingExternalUpdate = true
             textView.textStorage?.replaceCharacters(in: NSRange(location: 0, length: (oldDisplay as NSString).length), with: next)
+            // Замена идёт без смены версии: всё, что привязано к версии, относится к старому показу.
+            liveTextSnapshot = nil
+            dataImagePresence = nil
+            mediaPayloadScan = nil
             let selection = shouldProject
                 ? markdownImageProjection.displayRange(for: sourceSelection, in: next)
                 : sourceSelection
@@ -3444,9 +3466,7 @@ extension EditorTextView {
                 textView.compositionCompletionHandler = { [weak self] in
                     guard let self else { return }
                     if self.tableCellEditor?.hasMarkedText() != true { self.scrollView?.allowsMagnification = true }
-                    if let textView = self.textView {
-                        EditorTextView.applyWritingChecks(to: textView, spellingEnabled: self.writingSpellingEnabled, grammarEnabled: self.writingGrammarEnabled)
-                    }
+                    if let textView = self.textView { self.applyWritingChecks(to: textView) }
                     self.updateSyntaxOptions()
                     self.finishPendingMagnification()
                     self.markdownPresentation?.compositionFinished(revision: self.contentRevision)
@@ -3870,6 +3890,9 @@ extension EditorTextView {
         }
 
         func textDidChange(_ notification: Notification) {
+            let didChangeSignpostID = OSSignpostID(log: editorPerformanceLog)
+            os_signpost(.begin, log: editorPerformanceLog, name: "EditorTextDidChange", signpostID: didChangeSignpostID)
+            defer { os_signpost(.end, log: editorPerformanceLog, name: "EditorTextDidChange", signpostID: didChangeSignpostID) }
             clearFindHighlights()
             cancelMarkdownLinkNavigation()
             cachedMarkdownNavigation = nil
@@ -3898,6 +3921,7 @@ extension EditorTextView {
             )
             if document.statusMessage != nil { document.statusMessage = nil }
             clearFold()
+            carryMediaPayloadScan(in: textView)
             scheduleAutomaticMediaFolds()
             // TextKit уже инвалидировал затронутую строку. Не требуем полной
             // видимой раскладки ради линейки на каждом символе; отложенная
@@ -3930,6 +3954,9 @@ extension EditorTextView {
         }
 
         func flushModelText(reconcileDirtyState: Bool) {
+            let flushSignpostID = OSSignpostID(log: editorPerformanceLog)
+            os_signpost(.begin, log: editorPerformanceLog, name: "EditorFlushModelText", signpostID: flushSignpostID)
+            defer { os_signpost(.end, log: editorPerformanceLog, name: "EditorFlushModelText", signpostID: flushSignpostID) }
             if reconcileDirtyState {
                 modelSyncWorkItem?.cancel()
                 modelSyncWorkItem = nil
@@ -3966,8 +3993,7 @@ extension EditorTextView {
             contentRevision &+= 1
             markdownPresentation?.edited(revision: contentRevision)
             cancelFoldTask()
-            delimiterSnapshot = nil
-            delimiterSnapshotRevision = nil
+            liveTextSnapshot = nil
             delimiterMatchingContext.reset()
             cancelDelimiterMatch(clearHighlight: true)
         }
@@ -3981,7 +4007,9 @@ extension EditorTextView {
                 guard let text = textView.textStorage?.mutableString else { return }
                 if text.length > 0, let layoutManager = textView.layoutManager {
                     let anchor = min(selection.location, text.length - 1)
-                    let lineRange = text.lineRange(
+                    // После набора нужна раскладка только до каретки: длинная строка
+                    // с Base64 не должна просматриваться и размечаться на каждом символе.
+                    let lineRange = afterTypedEdit ? NSRange(location: anchor, length: 1) : text.lineRange(
                         for: NSRange(location: anchor, length: 0)
                     )
                     if !afterTypedEdit {
@@ -3990,7 +4018,10 @@ extension EditorTextView {
                             actualCharacterRange: nil
                         )
                     }
+                    let layoutSignpostID = OSSignpostID(log: editorPerformanceLog)
+                    os_signpost(.begin, log: editorPerformanceLog, name: "EditorEnsureCaretLineLayout", signpostID: layoutSignpostID)
                     layoutManager.ensureLayout(forCharacterRange: lineRange)
+                    os_signpost(.end, log: editorPerformanceLog, name: "EditorEnsureCaretLineLayout", signpostID: layoutSignpostID)
                 }
                 textView.scrollRangeToVisible(selection)
                 updateCursor()
@@ -4119,6 +4150,9 @@ extension EditorTextView {
             shouldChangeTextIn affectedCharRange: NSRange,
             replacementString: String?
         ) -> Bool {
+            let shouldChangeSignpostID = OSSignpostID(log: editorPerformanceLog)
+            os_signpost(.begin, log: editorPerformanceLog, name: "EditorShouldChangeText", signpostID: shouldChangeSignpostID)
+            defer { os_signpost(.end, log: editorPerformanceLog, name: "EditorShouldChangeText", signpostID: shouldChangeSignpostID) }
             tableAccessibilityVirtualTarget = nil
             if tableCellEditor != nil && !applyingTableCell { finishTableCell() }
             clearFold()
@@ -4153,9 +4187,8 @@ extension EditorTextView {
                     nsText.length - safeLocation
                 )
             )
-            // Без больших data:image проекция пуста: копия всего текста не нужна.
             if markdownImageProjectionEnabled, !markdownImageProjection.entries.isEmpty,
-               markdownImageProjection.intersectsToken(safeRange, in: nsText as String) {
+               markdownImageProjection.intersectsToken(safeRange, in: nsText) {
                 NSSound.beep()
                 return false
             }
@@ -4182,8 +4215,7 @@ extension EditorTextView {
             translateHighlightedRanges(after: NSRange(location: affectedLineStart, length: 0))
             syntaxHighlightContext.invalidate(after: safeRange.location)
             delimiterMatchingContext.invalidate(after: safeRange.location)
-            delimiterSnapshot = nil
-            delimiterSnapshotRevision = nil
+            liveTextSnapshot = nil
             cancelDelimiterMatch(clearHighlight: true)
             if !isApplyingAutomatedEdit {
                 listNormalizationWorkItem?.cancel()
@@ -4201,6 +4233,7 @@ extension EditorTextView {
 
             if isApplyingAutomatedEdit {
                 markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength)
+                foldLayoutManager?.shiftAutomaticMediaFolds(range: safeRange, replacementLength: replacementLength)
                 lineIndex.applyEdit(
                     range: safeRange,
                     replacement: replacement,
@@ -4210,6 +4243,7 @@ extension EditorTextView {
             }
             guard document.language == .markdown else {
                 markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength)
+                foldLayoutManager?.shiftAutomaticMediaFolds(range: safeRange, replacementLength: replacementLength)
                 lineIndex.applyEdit(
                     range: safeRange,
                     replacement: replacement,
@@ -4229,6 +4263,7 @@ extension EditorTextView {
                     replacement: replacement
                   ) else {
                 markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength, replacement: replacement)
+                foldLayoutManager?.shiftAutomaticMediaFolds(range: safeRange, replacementLength: replacementLength)
                 lineIndex.applyEdit(
                     range: safeRange,
                     replacement: replacement,
@@ -4245,6 +4280,7 @@ extension EditorTextView {
             ) {
                 pendingListNormalizationLocation = intendedCaretLocation
                 markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength, replacement: replacement)
+                foldLayoutManager?.shiftAutomaticMediaFolds(range: safeRange, replacementLength: replacementLength)
                 lineIndex.applyEdit(
                     range: safeRange,
                     replacement: replacement,
@@ -4263,6 +4299,7 @@ extension EditorTextView {
                 to: normalization.text
             ) else {
                 markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength, replacement: replacement)
+                foldLayoutManager?.shiftAutomaticMediaFolds(range: safeRange, replacementLength: replacementLength)
                 lineIndex.applyEdit(
                     range: safeRange,
                     replacement: replacement,
@@ -4486,7 +4523,9 @@ extension EditorTextView {
                   let textView,
                   !textView.hasMarkedText() else { return }
             let selection = textView.selectedRange()
-            guard selection.length <= 1 else { return }
+            guard selection.length <= 1,
+                  let liveText = textView.textStorage?.mutableString,
+                  DelimiterMatchingService.hasCandidate(in: liveText, selection: selection) else { return }
 
             let workItem = DispatchWorkItem { [weak self] in
                 guard let self,
@@ -4496,15 +4535,7 @@ extension EditorTextView {
                 delimiterMatchWorkItem = nil
                 let revision = contentRevision
                 let language = currentLanguage
-                let snapshot: String
-                if delimiterSnapshotRevision == revision,
-                   let cached = delimiterSnapshot {
-                    snapshot = cached
-                } else {
-                    snapshot = textView.string
-                    delimiterSnapshot = snapshot
-                    delimiterSnapshotRevision = revision
-                }
+                let snapshot = makeLiveTextSnapshot(in: textView)
                 let taskGeneration = document.taskCoordinator.begin(.delimiterMatch)
                 let operation = BlockOperation()
                 operation.addExecutionBlock { [weak self, weak operation] in
@@ -4550,12 +4581,29 @@ extension EditorTextView {
             delimiterMatchRevision = contentRevision
             delimiterMatchSelection = selection
             // Снимок обнуляет правка: новый снимок всего текста делается один раз за серию клавиш, а не на каждую.
-            let wait = delay > 0 && delimiterSnapshot == nil ? max(delay, 0.12) : delay
+            let wait = delay > 0 && liveTextSnapshot == nil ? max(delay, 0.12) : delay
             if wait <= 0 {
                 DispatchQueue.main.async(execute: workItem)
             } else {
                 DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: workItem)
             }
+        }
+
+        /// Длина страхует от правки мимо shouldChangeText: `insertBacktab` меняет текст без смены версии.
+        private func currentLiveTextSnapshot(in textView: NSTextView) -> (revision: UInt, length: Int, text: String)? {
+            guard let snapshot = liveTextSnapshot, !textView.hasMarkedText(), snapshot.revision == contentRevision,
+                  snapshot.length == textView.textStorage?.length else { return nil }
+            return snapshot
+        }
+
+        private func makeLiveTextSnapshot(in textView: NSTextView) -> String {
+            if let snapshot = currentLiveTextSnapshot(in: textView) { return snapshot.text }
+            let snapshotSignpostID = OSSignpostID(log: editorPerformanceLog)
+            os_signpost(.begin, log: editorPerformanceLog, name: "EditorLiveTextSnapshot", signpostID: snapshotSignpostID)
+            let text = textView.string
+            os_signpost(.end, log: editorPerformanceLog, name: "EditorLiveTextSnapshot", signpostID: snapshotSignpostID)
+            liveTextSnapshot = (contentRevision, textView.textStorage?.length ?? 0, text)
+            return text
         }
 
         private func applyDelimiterMatch(_ match: DelimiterMatchingService.Match) {
@@ -4662,8 +4710,7 @@ extension EditorTextView {
             document.taskCoordinator.cancel(.delimiterMatch)
             if clearHighlight { clearDelimiterHighlight() }
             if releaseSnapshot {
-                delimiterSnapshot = nil
-                delimiterSnapshotRevision = nil
+                liveTextSnapshot = nil
             }
         }
 
@@ -4699,7 +4746,6 @@ extension EditorTextView {
                   let storage = textView.textStorage else { return }
             highlightWorkItem = nil
 
-            flushModelText(reconcileDirtyState: false)
             let revision = contentRevision
             let language = currentLanguage
             let fontSize = currentFontSize
@@ -4727,10 +4773,11 @@ extension EditorTextView {
                 return
             }
 
-            let synchronizedSnapshot = document.text
-            let snapshot = (synchronizedSnapshot as NSString).length == storage.length
-                ? synchronizedSnapshot
-                : storage.string
+            // Модель годится только без ожидающих правок: при той же длине она могла отстать от показанного текста.
+            let snapshot = !document.hasPendingLiveEdits && lastSynchronizedRevision == document.textRevision
+                && markdownImageProjection.entries.isEmpty && (document.text as NSString).length == storage.length
+                ? document.text
+                : makeLiveTextSnapshot(in: textView)
             let edit = lastSyntaxEdit
             let documentID = document.id
             highlightOperation?.cancel()
@@ -4931,15 +4978,20 @@ extension EditorTextView {
                   let text = textView.textStorage?.mutableString else { return }
             let selection = textView.selectedRange()
             let sourceSelection = markdownImageProjectionEnabled && !markdownImageProjection.entries.isEmpty
-                ? markdownImageProjection.sourceRange(for: selection, in: text as String)
+                ? markdownImageProjection.sourceRange(for: selection, in: text)
                 : selection
             if document.selectionRange != sourceSelection {
                 document.selectionRange = sourceSelection
             }
             let location = min(selection.location, text.length)
+            // Поиск данных верен только для текущей версии; иначе столбец считается обычным проходом.
+            let currentScan = mediaPayloadScan.flatMap {
+                $0.document === document && $0.revision == contentRevision && $0.textLength == text.length ? $0 : nil
+            }
             let position = lineIndex.position(
                 at: location,
-                in: text
+                in: text,
+                asciiRuns: currentScan?.ranges ?? []
             )
             if document.cursorLine != position.line { document.cursorLine = position.line }
             if document.cursorColumn != position.column { document.cursorColumn = position.column }
@@ -5034,8 +5086,7 @@ extension EditorTextView {
             highlightedRanges.removeAll(keepingCapacity: true)
             pendingHighlightRanges.clear()
             delimiterMatchingContext.reset()
-            delimiterSnapshot = nil
-            delimiterSnapshotRevision = nil
+            liveTextSnapshot = nil
             cancelDelimiterMatch(clearHighlight: true)
         }
 
@@ -5223,8 +5274,14 @@ extension EditorTextView {
 
         private func refreshFoldLayout(fullLayout: Bool = true) {
             guard let textView else { return }
+            let refreshSignpostID = OSSignpostID(log: editorPerformanceLog)
+            os_signpost(.begin, log: editorPerformanceLog, name: "EditorRefreshFoldLayout", signpostID: refreshSignpostID)
+            defer { os_signpost(.end, log: editorPerformanceLog, name: "EditorRefreshFoldLayout", signpostID: refreshSignpostID) }
             if fullLayout, let textContainer = textView.textContainer {
+                let layoutSignpostID = OSSignpostID(log: editorPerformanceLog)
+                os_signpost(.begin, log: editorPerformanceLog, name: "EditorFoldFullLayout", signpostID: layoutSignpostID)
                 foldLayoutManager?.ensureLayout(for: textContainer)
+                os_signpost(.end, log: editorPerformanceLog, name: "EditorFoldFullLayout", signpostID: layoutSignpostID)
             }
             textView.needsLayout = true
             textView.needsDisplay = true
@@ -5244,8 +5301,13 @@ extension EditorTextView {
         private func applySourceMediaFolds() {
             guard needsSourceMediaFolds else { return }
             needsSourceMediaFolds = false
+            let foldsSignpostID = OSSignpostID(log: editorPerformanceLog)
+            os_signpost(.begin, log: editorPerformanceLog, name: "EditorSourceMediaFolds", signpostID: foldsSignpostID)
+            defer { os_signpost(.end, log: editorPerformanceLog, name: "EditorSourceMediaFolds", signpostID: foldsSignpostID) }
             guard allowsAutomaticMediaFolds, let text = textView?.string else { return }
-            applyAutomaticMediaFolds(FoldService.mediaPayloadRanges(in: text))
+            let ranges = FoldService.mediaPayloadRanges(in: text)
+            mediaPayloadScan = (document, contentRevision, (text as NSString).length, ranges)
+            applyAutomaticMediaFolds(ranges)
         }
 
         private func applyAutomaticMediaFolds(_ ranges: [NSRange]) {
@@ -5259,6 +5321,20 @@ extension EditorTextView {
             // Те же сворачивания на новых местах (набор выше) общую геометрию не меняют: полная раскладка нужна только при другом их наборе.
             let current = foldLayoutManager?.automaticMediaFoldedRanges ?? []
             refreshFoldLayout(fullLayout: previous != current)
+        }
+
+        /// Переносит прошлый поиск через одну правку. При любом сомнении поиск сбрасывается,
+        /// и отложенная задача просмотрит весь документ заново.
+        private func carryMediaPayloadScan(in textView: NSTextView) {
+            guard let scan = mediaPayloadScan else { return }
+            mediaPayloadScan = nil
+            guard allowsAutomaticMediaFolds, scan.document === document, scan.revision &+ 1 == contentRevision,
+                  let edit = lastSyntaxEdit, edit.revision == contentRevision,
+                  let text = textView.textStorage?.mutableString, text.length == scan.textLength + edit.changeInLength,
+                  let ranges = FoldService.shiftedMediaPayloadRanges(scan.ranges, editedRange: edit.editedRange,
+                                                                     replacementLength: edit.replacementLength, in: text)
+            else { return }
+            mediaPayloadScan = (document, contentRevision, text.length, ranges)
         }
 
         private func scheduleAutomaticMediaFolds() {
@@ -5276,15 +5352,34 @@ extension EditorTextView {
             let revision = contentRevision
             automaticMediaFoldTask = Task { [weak self] in
                 try? await Task.sleep(for: .milliseconds(80))
-                // Копия всего текста делается после паузы: отменённая следующей клавишей задача её не платит.
-                guard !Task.isCancelled, let self, self.contentRevision == revision,
-                      let snapshot = self.textView?.string else { return }
-                let ranges = await Task.detached(priority: .utility) {
-                    FoldService.mediaPayloadRanges(in: snapshot, isCancelled: { Task.isCancelled })
-                }.value
+                guard !Task.isCancelled, let self, self.contentRevision == revision else { return }
+                let ranges: [NSRange]
+                let textLength: Int
+                // Текст не менялся или поиск перенесён через правку: повторно весь документ не просматриваем.
+                if let scan = self.mediaPayloadScan, scan.document === self.document, scan.revision == revision,
+                   scan.textLength == self.textView?.textStorage?.length {
+                    ranges = scan.ranges
+                    textLength = scan.textLength
+                } else {
+                    // Копия всего текста делается после паузы: отменённая следующей клавишей задача её не платит.
+                    let snapshotSignpostID = OSSignpostID(log: editorPerformanceLog)
+                    os_signpost(.begin, log: editorPerformanceLog, name: "EditorMediaFoldSnapshot", signpostID: snapshotSignpostID)
+                    let liveText = self.textView?.string
+                    os_signpost(.end, log: editorPerformanceLog, name: "EditorMediaFoldSnapshot", signpostID: snapshotSignpostID)
+                    guard let snapshot = liveText else { return }
+                    textLength = self.textView?.textStorage?.length ?? 0
+                    ranges = await Task.detached(priority: .utility) {
+                        let scanSignpostID = OSSignpostID(log: editorPerformanceLog)
+                        os_signpost(.begin, log: editorPerformanceLog, name: "EditorMediaFoldScan", signpostID: scanSignpostID)
+                        let found = FoldService.mediaPayloadRanges(in: snapshot, isCancelled: { Task.isCancelled })
+                        os_signpost(.end, log: editorPerformanceLog, name: "EditorMediaFoldScan", signpostID: scanSignpostID)
+                        return found
+                    }.value
+                }
                 guard !Task.isCancelled, self.isActive,
                       self.contentRevision == revision, self.currentLanguage == .markdown,
                       !self.document.isMarkdownFormatted, self.document.isFoldingEnabled else { return }
+                self.mediaPayloadScan = (self.document, revision, textLength, ranges)
                 self.applyAutomaticMediaFolds(ranges)
             }
         }

@@ -162,18 +162,30 @@ final class LogicalLineIndex {
         upperBound(for: min(max(0, location), textLength))
     }
 
+    /// `asciiRuns` — отсортированные участки, где каждый элемент UTF-16 является символом (Base64).
+    /// Их не нужно разбирать на Character. Последний элемент участка считается вместе с хвостом:
+    /// следующий за ним знак может к нему присоединиться.
     func position(
         at location: Int,
-        in text: NSString
+        in text: NSString,
+        asciiRuns: [NSRange] = []
     ) -> (line: Int, column: Int) {
         let safeLocation = min(max(0, location), text.length)
         let line = upperBound(for: safeLocation)
-        let lineStart = lineStarts[max(0, line - 1)]
+        var cursor = lineStarts[max(0, line - 1)]
+        var column = 1
+        for run in asciiRuns where run.location >= cursor && run.location < safeLocation {
+            let skippedEnd = min(NSMaxRange(run) - 1, safeLocation)
+            guard skippedEnd > run.location else { continue }
+            column += text.substring(with: NSRange(location: cursor, length: run.location - cursor)).count
+            column += skippedEnd - run.location
+            cursor = skippedEnd
+        }
         let columnText = text.substring(with: NSRange(
-            location: lineStart,
-            length: max(0, safeLocation - lineStart)
+            location: cursor,
+            length: max(0, safeLocation - cursor)
         ))
-        return (line, columnText.count + 1)
+        return (line, column + columnText.count)
     }
 
     var lineCount: Int { lineStarts.count }

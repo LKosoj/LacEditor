@@ -1047,12 +1047,12 @@ final class MarkdownPresentationController {
         guard isActive else { needsRefresh = true; return }
         if needsRefresh {
             needsRefresh = false
-            clear()
+            if presentation != nil || !styledRanges.isEmpty { clear() }
             if enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || elementPathEnabled || (mathPairEnabled && mathPairContext?.revision != revision) { schedule(revision: revision) }
         } else if enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled {
             invalidatePresentation(in: visibleRange())
             schedule(revision: revision)
-        } else {
+        } else if presentation != nil || !styledRanges.isEmpty {
             clear()
         }
     }
@@ -3021,7 +3021,7 @@ final class MarkdownPresentationController {
     }
 
     /// Готовые картинки, формулы и эмодзи переезжают вместе с элементами: меняются только ключи, объекты слоя сдвигает `shiftMarkdownMedia`.
-    /// Незавершённые загрузки уже отменены (`cancelPending`): после разбора они запустятся заново только для пропущенных ключей.
+    /// Незавершённые загрузки картинок продолжаются: их ключи переносятся здесь, а чужие задания отменяются. После разбора запускаются только пропущенные ключи.
     private func shiftInstalledMedia(_ edit: MarkdownTextEdit) {
         // Значения эмодзи разбираются заново после разбора: заголовки и читаемый текст должны получить замену.
         emojiValues = nil
@@ -3344,12 +3344,13 @@ final class MarkdownPresentationController {
                       self.generation == generation,
                       !self.hasMarkedText,
                       let currentDiagram = self.presentation?.diagrams.first(where: { $0.range == currentRange && $0.kind.rawValue == identity.kind && $0.source == identity.source }),
-                      let visible = self.visibleRange(), NSIntersectionRange(currentDiagram.range, visible).length > 0,
                       let geometry = self.diagramGeometry, geometry.0 == width, geometry.1 == dark else { return }
+                // Готовая картинка ушедшей из вида диаграммы остаётся в кэше: при возврате её не рисуем заново.
+                if case let .success(image) = result { self.diagramCache[cacheKey] = CachedDiagram(image: image, svg: svg) }
+                guard let visible = self.visibleRange(), NSIntersectionRange(currentDiagram.range, visible).length > 0 else { return }
                 self.diagramCompleted.insert(currentDiagram.range)
                 if case let .success(image) = result {
                     self.diagramResources[currentDiagram.range] = (image, svg)
-                    self.diagramCache[cacheKey] = CachedDiagram(image: image, svg: svg)
                     self.layout?.setMarkdownBlockImage(image, for: currentDiagram.range)
                     self.notifyGeometryChanged()
                 }
@@ -3712,7 +3713,7 @@ final class MarkdownPresentationController {
             installImagePlaceholder(for: image, key: key, layout: layout)
             if let url = URL(string: image.url), ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil {
                 guard remoteImageJobs[key] == nil else { continue }
-                let token = UUID(), generation = self.generation, revision = self.revision, baseURL = document.url
+                let token = UUID(), generation = self.generation, baseURL = document.url
                 let downloader = remoteImageDownloader ?? MarkdownRemoteImageDownloader(session: imageSession)
                 remoteImageDownloader = downloader
                 let task = Task { @MainActor [weak self, weak document] in
@@ -3730,12 +3731,12 @@ final class MarkdownPresentationController {
                           let currentImage = self.image(at: currentKey) else { return }
                     self.remoteImageJobs.removeValue(forKey: currentKey)
                     guard let document, self.document === document, self.enabled, self.isActive, document.allowsRemoteImages,
-                          self.generation == generation, self.currentRevision?() == revision, document.url == baseURL,
-                          !self.hasMarkedText,
+                          self.generation == generation, self.currentRevision?() == self.revision, document.url == baseURL,
+                          currentImage.url == image.url, !self.hasMarkedText,
                           let visible = self.visibleRange(), NSIntersectionRange(currentImage.paragraphRange, visible).length > 0 else { return }
                     guard let raster = decoded.0 else {
                         if let encoded = decoded.1 {
-                            self.startSVG(encoded, for: currentImage, key: currentKey, document: document, generation: generation, revision: revision, baseURL: baseURL)
+                            self.startSVG(encoded, for: currentImage, key: currentKey, document: document, generation: generation, baseURL: baseURL)
                             return
                         }
                         self.loadedImageRanges.insert(currentKey)
@@ -3747,7 +3748,6 @@ final class MarkdownPresentationController {
                 continue
             }
             let generation = self.generation
-            let revision = self.revision
             let baseURL = document.url
             let paths = resourcePaths, rootInvalid = resourceRootInvalid
             let projectedSource = projectedImageSource?(image.url)
@@ -3774,11 +3774,11 @@ final class MarkdownPresentationController {
                     self.imageOperations.removeValue(forKey: currentKey)
                     guard let document, !operation.isCancelled,
                           self.document === document, self.enabled, self.isActive, self.generation == generation,
-                          self.currentRevision?() == revision, document.url == baseURL,
-                          !self.hasMarkedText,
+                          self.currentRevision?() == self.revision, document.url == baseURL,
+                          currentImage.url == image.url, !self.hasMarkedText,
                           let visible = self.visibleRange(), NSIntersectionRange(currentImage.paragraphRange, visible).length > 0 else { return }
                     if let decoded { self.installImage(decoded, data: data, isAnimated: isAnimated, for: currentImage, key: currentKey) }
-                    else if let encoded { self.startSVG(encoded, for: currentImage, key: currentKey, document: document, generation: generation, revision: revision, baseURL: baseURL) }
+                    else if let encoded { self.startSVG(encoded, for: currentImage, key: currentKey, document: document, generation: generation, baseURL: baseURL) }
                 }
             }
             imageOperations[key] = operation
@@ -3816,7 +3816,7 @@ final class MarkdownPresentationController {
     }
 
     private func startSVG(_ encoded: String, for image: MarkdownImage, key: NSRange, document: EditorDocument,
-                          generation: UInt, revision: UInt, baseURL: URL?) {
+                          generation: UInt, baseURL: URL?) {
         guard let width = imageWidth(for: image) else { return }
         let token = UUID()
         let service = MarkdownSVGRenderService(encoded: encoded, fragment: MarkdownImageUploadService.fragmentSuffix(image.url), width: width) { [weak self, weak document] value in
@@ -3825,8 +3825,8 @@ final class MarkdownPresentationController {
             let intrinsic = self.svgImageJobs[currentKey]?.2.intrinsicSize
             self.svgImageJobs.removeValue(forKey: currentKey)
             guard let document, self.document === document, self.enabled, self.isActive,
-                  self.generation == generation, self.currentRevision?() == revision, document.url == baseURL,
-                  !self.hasMarkedText,
+                  self.generation == generation, self.currentRevision?() == self.revision, document.url == baseURL,
+                  currentImage.url == image.url, !self.hasMarkedText,
                   let visible = self.visibleRange(), NSIntersectionRange(currentImage.paragraphRange, visible).length > 0 else { return }
             guard self.imageWidth(for: currentImage) == width else { self.loadVisibleImages(in: visible); return }
             guard let value else { self.loadedImageRanges.insert(currentKey); return }

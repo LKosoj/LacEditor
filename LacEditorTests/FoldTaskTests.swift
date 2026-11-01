@@ -194,6 +194,46 @@ final class FoldTaskTests: XCTestCase {
         XCTAssertEqual(editor.layout.automaticMediaFoldedRanges, [(source as NSString).range(of: payload)])
     }
 
+    func testMediaPayloadRangesFollowEditsWithoutFullScan() {
+        let payload = String(repeating: "QUJD", count: 100)
+        let source = "text ![a](data:image/png;base64,\(payload)) middle ![b](data:image/png;base64,\(payload)) end"
+        func edited(_ range: NSRange, _ replacement: String) -> (text: String, ranges: [NSRange]?) {
+            let text = (source as NSString).replacingCharacters(in: range, with: replacement)
+            return (text, FoldService.shiftedMediaPayloadRanges(
+                FoldService.mediaPayloadRanges(in: source), editedRange: range,
+                replacementLength: (replacement as NSString).length, in: text as NSString))
+        }
+        let raw = source as NSString
+        for (range, replacement) in [
+            (NSRange(location: 0, length: 0), "абв"),
+            (raw.range(of: "middle"), "x"),
+            (raw.range(of: "end"), ""),
+            (raw.range(of: "image/png"), "image/jpeg"),
+            (raw.range(of: "image/png"), "text/plain"),
+            (raw.range(of: ";base64"), "")
+        ] {
+            let result = edited(range, replacement)
+            XCTAssertEqual(result.ranges, FoldService.mediaPayloadRanges(in: result.text))
+        }
+        // Правка внутри данных и большая вставка оставляют ответ полному поиску.
+        XCTAssertNil(edited(NSRange(location: raw.range(of: payload).location + 10, length: 0), "A").ranges)
+        XCTAssertNil(edited(NSRange(location: 0, length: 0), String(repeating: "a", count: 5000)).ranges)
+    }
+
+    func testPlainEditKeepsAutomaticFoldListWithoutLayoutChange() async throws {
+        let payload = String(repeating: "QUJD", count: 100)
+        let source = "head\n![a](data:image/png;base64,\(payload))\ntail"
+        let document = EditorDocument(text: source, language: .markdown)
+        let editor = makeEditor(document, formatted: false)
+        defer { editor.close() }
+        for _ in 0..<100 where editor.layout.automaticMediaFoldedRanges.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+        let folded = try XCTUnwrap(editor.layout.automaticMediaFoldedRanges.first)
+        editor.view.setSelectedRange(NSRange(location: 0, length: 0))
+        editor.view.insertText("абв", replacementRange: NSRange(location: 0, length: 0))
+        // Сдвиг виден сразу, без ожидания отложенной задачи.
+        XCTAssertEqual(editor.layout.automaticMediaFoldedRanges, [NSRange(location: folded.location + 3, length: folded.length)])
+    }
+
     private struct Editor {
         let coordinator: EditorTextView.Coordinator
         let view: LacTextView
