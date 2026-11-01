@@ -4,7 +4,7 @@ import ImageIO
 enum AITransportFailure: Equatable { case timedOut, offline, cannotConnect, secureConnection }
 
 enum AIError: LocalizedError {
-    case invalidConfiguration, disabled, keychain, network, transport(AITransportFailure), http(Int, String?), invalidResponse, refused, truncated
+    case invalidConfiguration, disabled, keychain, network, transport(AITransportFailure), http(Int, String?), invalidResponse, refused, truncated, lostMedia
 
     var errorDescription: String? {
         switch self {
@@ -25,6 +25,7 @@ enum AIError: LocalizedError {
         case .invalidResponse: return L10n.tr("AI 服务返回了无效或不完整的结果")
         case .refused: return L10n.tr("AI 服务拒绝了请求")
         case .truncated: return L10n.tr("AI 回复因长度限制被截断，请缩短输入或提高输出上限后重试。")
+        case .lostMedia: return L10n.tr("AI 回复丢失了文档中的内嵌文件，请重试。")
         }
     }
 
@@ -138,10 +139,26 @@ private final class AIRedirectDelegate: NSObject, URLSessionTaskDelegate {
     }
 }
 
+/// `reading`: модель только читает текст, и изображение без описания ей не нужно совсем.
+/// `editing`: ответ заменяет текст, поэтому метка нужна, иначе изображение пропадёт из документа.
+enum AIMediaMode: Sendable { case reading, editing }
+
 enum AIRequestMediaSanitizer {
     private static let omitted = "[media omitted]"
+    /// Символ на месте удалённого адреса: разметку вокруг него убирает `withoutRemoved`.
+    private static let removed = "\u{E000}"
+    private static let tokenPattern = try! NSRegularExpression(pattern: "data:[^,\\s]{1,256},AA==#lac-media-[0-9a-f]{16}(?:-[0-9]+)?")
+    private static let markersNote = "Markers ⟦image N⟧ and ⟦media N⟧ stand for embedded files that work correctly; text after a colon inside a marker describes the image. Do not comment on the markers, do not call them broken or placeholders. If your output keeps an embedded file, copy its marker unchanged."
 
-    static func sanitize(_ text: String) -> String {
+    static func sanitize(_ text: String) -> String { sanitize(text, descriptions: [:]) }
+
+    static func sanitize(_ value: Any) -> Any { sanitize(value, descriptions: [:]) }
+
+    /// Токен media не уходит в модель никогда: вместо него метка `AIMediaPlaceholders`, которую ответ вернёт обратно.
+    /// `descriptions` - описания по якорю; `found` получает изображения текста, описание которых может понадобиться.
+    /// В режиме `reading` изображение без описания исчезает вместе со своей разметкой.
+    static func sanitize(_ text: String, descriptions: [String: String], mode: AIMediaMode = .editing,
+                         found: ((AIMediaImage) -> Void)? = nil) -> String {
         var result = ""
         var cursor = text.startIndex
         while let marker = text.range(of: "data:", options: .caseInsensitive, range: cursor..<text.endIndex) {
@@ -152,30 +169,113 @@ enum AIRequestMediaSanitizer {
                 cursor = marker.upperBound
                 continue
             }
-            let header = text[marker.upperBound..<comma].lowercased()
+            // Текст источников закодирован в JSON, где косая черта записана как `\/`.
+            let header = unescaped(text[marker.upperBound..<comma]).lowercased()
+            if let tokenEnd = editorTokenEnd(in: text, after: comma) {
+                let token = unescaped(text[marker.lowerBound..<tokenEnd])
+                let key = anchor(of: token)
+                if header.hasPrefix("image/") { found?(AIMediaImage(anchor: key, token: token, address: nil)) }
+                if mode == .reading, descriptions[key] == nil {
+                    result += removed
+                } else {
+                    result += AIMediaPlaceholders.shared.placeholder(for: token, description: descriptions[key])
+                }
+                cursor = tokenEnd
+                continue
+            }
             guard header.hasPrefix("image/") || header.hasPrefix("audio/")
                     || header.hasPrefix("video/") || header.hasPrefix("application/pdf") else {
                 result += text[marker]
                 cursor = marker.upperBound
                 continue
             }
-            // Токен редактора (`...,AA==#lac-media-<16 hex>`) модели отдаётся целиком: так она может вернуть его на место.
-            if let tokenEnd = editorTokenEnd(in: text, after: comma) {
-                result += text[marker.lowerBound..<tokenEnd]
-                cursor = tokenEnd
-                continue
-            }
             let isBase64 = header.split(separator: ";").dropFirst().contains("base64")
             var end = text.index(after: comma)
-            while end < text.endIndex,
-                  isBase64 ? isBase64Character(text[end]) : !isTerminator(text[end]) {
-                end = text.index(after: end)
+            while end < text.endIndex {
+                if text[end] == "\\", text[text.index(after: end)...].first == "/" {
+                    end = text.index(end, offsetBy: 2)
+                } else if isBase64 ? isBase64Character(text[end]) : !isTerminator(text[end]) {
+                    end = text.index(after: end)
+                } else {
+                    break
+                }
             }
-            result += omitted
+            var description: String?
+            if header.hasPrefix("image/"), found != nil || !descriptions.isEmpty {
+                let address = unescaped(text[marker.lowerBound..<end])
+                var table = MarkdownMediaTable()
+                _ = table.project(address)
+                if let token = table.entries.first?.token {
+                    found?(AIMediaImage(anchor: anchor(of: token), token: nil, address: address))
+                    description = descriptions[anchor(of: token)]
+                }
+            }
+            result += description.map { "[image: \($0)]" } ?? (mode == .reading ? removed : omitted)
             cursor = end
         }
         result += text[cursor...]
-        return result
+        // Обрывок токена: окно вокруг совпадения или обрезка результата инструмента могли разрезать адрес.
+        if result.contains("#lac-media-") {
+            result = result.replacingOccurrences(of: "#lac-media-[0-9a-f]*(-[0-9]+)?", with: "", options: .regularExpression)
+        }
+        return result.contains(removed) ? withoutRemoved(result) : result
+    }
+
+    static func sanitize(_ value: Any, descriptions: [String: String], mode: AIMediaMode = .editing,
+                         found: ((AIMediaImage) -> Void)? = nil) -> Any {
+        if let text = value as? String { return sanitize(text, descriptions: descriptions, mode: mode, found: found) }
+        if let array = value as? [Any] { return array.map { sanitize($0, descriptions: descriptions, mode: mode, found: found) } }
+        if let dictionary = value as? [String: Any] {
+            return dictionary.mapValues { sanitize($0, descriptions: descriptions, mode: mode, found: found) }
+        }
+        return value
+    }
+
+    /// Пояснение к меткам для инструкций запроса; пусто, если меток в запросе не будет.
+    static func note(for value: Any, descriptions: [String: String], mode: AIMediaMode) -> String {
+        hasToken(value) && (mode == .editing || !descriptions.isEmpty) ? " " + markersNote : ""
+    }
+
+    /// Токены `original`, которых нет в `replacement`: так видно, что модель потеряла метку.
+    static func lostTokens(original: String, replacement: String) -> [String] {
+        guard original.contains("#lac-media-") else { return [] }
+        var kept = tokens(in: replacement)
+        return tokens(in: original).filter { token in
+            guard let index = kept.firstIndex(of: token) else { return true }
+            kept.remove(at: index)
+            return false
+        }
+    }
+
+    private static func tokens(in text: String) -> [String] {
+        let source = text as NSString
+        return tokenPattern.matches(in: text, range: NSRange(location: 0, length: source.length)).map { source.substring(with: $0.range) }
+    }
+
+    private static func withoutRemoved(_ text: String) -> String {
+        let rules = [
+            ("(?m)^[ \\t]*\\[[^\\]\\n]*\\]:[ \\t]*\(removed).*\\n?", ""),
+            ("!\\[[^\\]\\n]*\\]\\(<?\(removed)[^)\\n]*\\)", ""),
+            ("\\[([^\\]\\n]*)\\]\\(<?\(removed)[^)\\n]*\\)", "$1"),
+            ("<(?:[a-zA-Z][^<>]*)?\(removed)[^<>]*>(?:</(?:video|audio|object|iframe)>)?", ""),
+            (removed, ""),
+        ]
+        return rules.reduce(text) { $0.replacingOccurrences(of: $1.0, with: $1.1, options: .regularExpression) }
+    }
+
+    private static func hasToken(_ value: Any) -> Bool {
+        if let text = value as? String { return text.contains("#lac-media-") }
+        if let array = value as? [Any] { return array.contains(where: hasToken) }
+        if let dictionary = value as? [String: Any] { return dictionary.values.contains(where: hasToken) }
+        return false
+    }
+
+    private static func unescaped(_ text: Substring) -> String {
+        text.replacingOccurrences(of: "\\/", with: "/")
+    }
+
+    private static func anchor(of token: String) -> String {
+        token.firstIndex(of: "#").map { String(token[token.index(after: $0)...]) } ?? token
     }
 
     private static func editorTokenEnd(in text: String, after comma: String.Index) -> String.Index? {
@@ -195,13 +295,6 @@ enum AIRequestMediaSanitizer {
             }
         }
         return end
-    }
-
-    static func sanitize(_ value: Any) -> Any {
-        if let text = value as? String { return sanitize(text) }
-        if let array = value as? [Any] { return array.map { sanitize($0) } }
-        if let dictionary = value as? [String: Any] { return dictionary.mapValues { sanitize($0) } }
-        return value
     }
 
     private static func isBase64Character(_ character: Character) -> Bool {
@@ -301,7 +394,8 @@ struct AIClient {
     }
 
     private func request(_ profile: AIModelProfile, path: String, key: String?, body: [String: Any]? = nil,
-                         allowsMediaData: Bool = false, timeout: TimeInterval = AIClient.requestTimeout) throws -> URLRequest {
+                         allowsMediaData: Bool = false, descriptions: [String: String] = [:], mode: AIMediaMode = .editing,
+                         timeout: TimeInterval = AIClient.requestTimeout) throws -> URLRequest {
         var request = URLRequest(url: try endpoint(profile, path: path))
         request.timeoutInterval = timeout
         request.setValue(AIClient.titleHeaderValue, forHTTPHeaderField: "X-Title")
@@ -309,9 +403,17 @@ struct AIClient {
         if let body {
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONSerialization.data(withJSONObject: allowsMediaData ? body : AIRequestMediaSanitizer.sanitize(body))
+            request.httpBody = try JSONSerialization.data(withJSONObject: allowsMediaData ? body : AIRequestMediaSanitizer.sanitize(body, descriptions: descriptions, mode: mode))
         }
         return request
+    }
+
+    /// Описания изображений текста запроса, если они включены, и инструкции с пояснением к меткам.
+    private func described(_ content: Any, instructions: String, profile: AIModelProfile,
+                           mode: AIMediaMode) async throws -> (instructions: String, descriptions: [String: String]) {
+        guard profile.api == .responses || profile.api == .chatCompletions else { throw AIError.invalidConfiguration }
+        let descriptions = try await AIImageDescriber.descriptions(for: content)
+        return (instructions + AIRequestMediaSanitizer.note(for: content, descriptions: descriptions, mode: mode), descriptions)
     }
 
     private func imageEditRequest(_ profile: AIModelProfile, data: Data, prompt: String, key: String?) throws -> URLRequest {
@@ -328,7 +430,7 @@ struct AIClient {
         var body = Data()
         func append(_ value: String) { body.append(Data(value.utf8)) }
         append("--\(boundary)\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n\(try model(profile))\r\n")
-        append("--\(boundary)\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\n\(AIRequestMediaSanitizer.sanitize(prompt))\r\n")
+        append("--\(boundary)\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\n\(AIRequestMediaSanitizer.sanitize(prompt, descriptions: [:], mode: .reading))\r\n")
         append("--\(boundary)\r\nContent-Disposition: form-data; name=\"image\"; filename=\"\(filename)\"\r\nContent-Type: \(mime)\r\n\r\n")
         body.append(data)
         append("\r\n--\(boundary)--\r\n")
@@ -377,9 +479,11 @@ struct AIClient {
         return data.compactMap { $0["id"] as? String }
     }
 
-    func generateText(input: String, instructions: String, profile: AIModelProfile, key: String?) async throws -> String {
+    func generateText(input: String, instructions: String, profile: AIModelProfile, key: String?,
+                      mode: AIMediaMode = .editing) async throws -> String {
         guard profile.isEnabled else { throw AIError.disabled }
         let model = try model(profile)
+        let (instructions, descriptions) = try await described(input, instructions: instructions, profile: profile, mode: mode)
         let path: String
         let body: [String: Any]
         switch profile.api {
@@ -391,8 +495,8 @@ struct AIClient {
             body = ["model": model, "messages": [["role": "system", "content": instructions], ["role": "user", "content": input]]]
         default: throw AIError.invalidConfiguration
         }
-        let result = try object(await fetch(request(profile, path: path, key: key, body: body)))
-        return try responseText(result, api: profile.api)
+        let result = try object(await fetch(request(profile, path: path, key: key, body: body, descriptions: descriptions, mode: mode)))
+        return AIMediaPlaceholders.shared.restore(try responseText(result, api: profile.api))
     }
 
     /// Автодополнение: температура 0.2, лимит 60 токенов, в Chat Completions ещё остановка на переводе строки.
@@ -443,7 +547,7 @@ struct AIClient {
             }
         default: throw AIError.invalidConfiguration
         }
-        let result = try object(await fetch(request(profile, path: path, key: key, body: body)))
+        let result = try object(await fetch(request(profile, path: path, key: key, body: body, mode: .reading)))
         let text = try responseText(result, api: profile.api, forCompletion: true)
         let truncated = profile.api == .responses
             ? result["status"] as? String == "incomplete"
@@ -452,10 +556,12 @@ struct AIClient {
     }
 
     /// Один шаг разговора: единственное место, где вопрос к документу обращается к модели (вариант без инструментов).
-    func generateConversation(messages: [AIConversationMessage], instructions: String, profile: AIModelProfile, key: String?) async throws -> String {
+    func generateConversation(messages: [AIConversationMessage], instructions: String, profile: AIModelProfile, key: String?,
+                              mode: AIMediaMode = .editing) async throws -> String {
         guard profile.isEnabled else { throw AIError.disabled }
         let model = try model(profile)
         let items = AIToolResultItem.conversationItems(messages)
+        let (instructions, descriptions) = try await described(items, instructions: instructions, profile: profile, mode: mode)
         let path: String
         let body: [String: Any]
         switch profile.api {
@@ -467,15 +573,16 @@ struct AIClient {
             body = ["model": model, "messages": [["role": "system", "content": instructions]] + items]
         default: throw AIError.invalidConfiguration
         }
-        let result = try object(await fetch(request(profile, path: path, key: key, body: body)))
-        return try responseText(result, api: profile.api)
+        let result = try object(await fetch(request(profile, path: path, key: key, body: body, descriptions: descriptions, mode: mode)))
+        return AIMediaPlaceholders.shared.restore(try responseText(result, api: profile.api))
     }
 
     /// Один запрос цикла инструментов: вызовы модели с элементами для возврата либо итоговый текст. Обрезка ответа проверяется первой.
     func agentStep(items: [[String: Any]], instructions: String, tools: [AIToolDefinition], toolChoice: String,
-                   profile: AIModelProfile, key: String?) async throws -> AIAgentStep {
+                   profile: AIModelProfile, key: String?, mode: AIMediaMode = .editing) async throws -> AIAgentStep {
         guard profile.isEnabled else { throw AIError.disabled }
         let model = try model(profile)
+        let (instructions, descriptions) = try await described(items, instructions: instructions, profile: profile, mode: mode)
         let path: String
         var body: [String: Any]
         switch profile.api {
@@ -495,7 +602,7 @@ struct AIClient {
             }
         default: throw AIError.invalidConfiguration
         }
-        let result = try object(await fetch(request(profile, path: path, key: key, body: body)))
+        let result = try object(await fetch(request(profile, path: path, key: key, body: body, descriptions: descriptions, mode: mode)))
         var calls: [AIToolCall] = []
         var echoed: [[String: Any]] = []
         if profile.api == .responses {
@@ -503,7 +610,7 @@ struct AIClient {
             for item in output where item["type"] as? String == "function_call" {
                 guard let id = item["call_id"] as? String, !id.isEmpty, let name = item["name"] as? String,
                       let arguments = item["arguments"] as? String else { throw AIError.invalidResponse }
-                calls.append(AIToolCall(id: id, name: name, arguments: arguments))
+                calls.append(AIToolCall(id: id, name: name, arguments: AIMediaPlaceholders.shared.restore(arguments)))
             }
             if !calls.isEmpty {
                 // При store:false сервер не хранит reasoning: без encrypted_content такой элемент вернуть нельзя (404).
@@ -525,24 +632,24 @@ struct AIClient {
                 for raw in rawCalls {
                     guard let id = raw["id"] as? String, !id.isEmpty, let function = raw["function"] as? [String: Any],
                           let name = function["name"] as? String, let arguments = function["arguments"] as? String else { throw AIError.invalidResponse }
-                    calls.append(AIToolCall(id: id, name: name, arguments: arguments))
+                    calls.append(AIToolCall(id: id, name: name, arguments: AIMediaPlaceholders.shared.restore(arguments)))
                 }
                 echoed = [message]
             }
         }
-        let text: String? = try calls.isEmpty ? responseText(result, api: profile.api) : nil
+        let text: String? = try calls.isEmpty ? AIMediaPlaceholders.shared.restore(responseText(result, api: profile.api)) : nil
         return AIAgentStep(calls: calls, echoed: echoed, text: text, usage: AIUsage(response: result))
     }
 
     /// Разговор с инструментами (по умолчанию web_search): пока модель просит вызов, результат возвращается ей; на последнем раунде tool_choice = "none".
     func generateConversation(messages: [AIConversationMessage], instructions: String, profile: AIModelProfile, key: String?,
-                              maxToolRounds: Int = 5, tools: [AIToolDefinition] = [.webSearch],
+                              maxToolRounds: Int = 5, tools: [AIToolDefinition] = [.webSearch], mode: AIMediaMode = .editing,
                               toolHandler: (AIToolCall) async throws -> String) async throws -> String {
         var items = AIToolResultItem.conversationItems(messages)
         for round in 0...maxToolRounds {
             try Task.checkCancellation()
             let step = try await agentStep(items: items, instructions: instructions, tools: tools,
-                                           toolChoice: round == maxToolRounds ? "none" : "auto", profile: profile, key: key)
+                                           toolChoice: round == maxToolRounds ? "none" : "auto", profile: profile, key: key, mode: mode)
             if step.calls.isEmpty {
                 guard let text = step.text else { throw AIError.invalidResponse }
                 return text
@@ -644,7 +751,7 @@ struct AIClient {
         guard profile.api == .decisions else { throw AIError.invalidConfiguration }
         let body: [String: Any] = ["model": try model(profile), "input": input,
                                   "questions": [["type": "predicate", "name": "result", "instructions": question]]]
-        let result = try object(await fetch(request(profile, path: "decisions", key: key, body: body)))
+        let result = try object(await fetch(request(profile, path: "decisions", key: key, body: body, mode: .reading)))
         guard let answers = result["answers"] as? [[String: Any]], answers.count == 1,
               let answer = answers.first, answer["name"] as? String == "result" else { throw AIError.invalidResponse }
         if answer["type"] as? String == "refusal" { throw AIError.refused }
@@ -659,7 +766,7 @@ struct AIClient {
         guard profile.isEnabled else { throw AIError.disabled }
         guard profile.api == .images else { throw AIError.invalidConfiguration }
         let body: [String: Any] = ["model": try model(profile), "prompt": prompt]
-        let result = try object(await fetch(request(profile, path: "images/generations", key: key, body: body)))
+        let result = try object(await fetch(request(profile, path: "images/generations", key: key, body: body, mode: .reading)))
         return try await imageData(result)
     }
 

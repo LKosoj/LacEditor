@@ -490,6 +490,7 @@
 "AI 服务返回错误（HTTP %d）" = "AI service returned an error (HTTP %d)";
 "AI 服务返回了无效或不完整的结果" = "AI service returned an invalid or incomplete result";
 "AI 回复因长度限制被截断，请缩短输入或提高输出上限后重试。" = "AI reply was cut off by the length limit. Shorten the input or raise the output limit and try again.";
+"AI 回复丢失了文档中的内嵌文件，请重试。" = "The AI response lost an embedded file from the document. Please try again.";
 "AI 服务拒绝了请求" = "AI service refused the request";
 "AI 功能已关闭" = "AI feature is disabled";
 
@@ -1805,3 +1806,5 @@
 "退出阅读模式" = "Exit Reading Mode";
 "文档含无法识别的媒体标记，请撤销最近的修改" = "The document contains an unrecognized media marker; undo the latest changes";
 "AI 返回的媒体标记无效，已拒绝插入" = "The AI returned an invalid media marker; insertion was rejected";
+"向 AI 描述图片" = "Describe images for AI";
+"文档内嵌图片只发送给「%@」模型一次，保存描述后随文本一起发送。" = "Each embedded image is sent to the “%@” model once; the saved description then goes along with the text.";

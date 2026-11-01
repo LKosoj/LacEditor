@@ -172,12 +172,14 @@ final class MarkdownMediaIntegrationTests: XCTestCase {
         XCTAssertEqual(editor.shown as String, before)
     }
 
-    func testSanitizerKeepsEditorTokenForModel() {
+    func testSanitizerReplacesEditorTokenForModel() {
         let editor = makeEditor(sources[0])
         defer { editor.coordinator.updateActivity(false) }
         let sent = AIRequestMediaSanitizer.sanitize(editor.shown as String)
-        XCTAssertTrue(sent.contains("#lac-media-"))
+        XCTAssertFalse(sent.contains("lac-media"))
+        XCTAssertTrue(sent.contains("⟦"))
         XCTAssertFalse(sent.contains("[media omitted]"))
+        XCTAssertEqual(AIMediaPlaceholders.shared.restore(sent), editor.shown as String)
         XCTAssertEqual(AIRequestMediaSanitizer.sanitize(sources[0]).contains("[media omitted]"), true)
     }
 

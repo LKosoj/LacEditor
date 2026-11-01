@@ -580,14 +580,15 @@ final class MarkdownMediaProjectionTests: XCTestCase {
         check(MarkdownMediaMap().coveringRange(NSRange(location: 3, length: 2)) == NSRange(location: 3, length: 2), "пустая карта")
     }
 
-    func testSanitizerKeepsEditorTokenAndOmitsOtherMedia() {
+    func testSanitizerHidesEditorTokenAndOmitsOtherMedia() {
         var table = MarkdownMediaTable()
         let shown = table.project("![a](data:image/png;base64,AAAAAAAAAAAAAAAA) ![b](data:image/svg+xml,%3Csvg%3E)")
         let output = AIRequestMediaSanitizer.sanitize(shown.text)
-        check(output.contains(token(of: shown, 0)) && output.contains(token(of: shown, 1)), "токены сохранены целиком")
-        check(!output.contains("[media omitted]"), "токены не заменены")
+        check(!output.contains("lac-media") && !output.contains("AA=="), "токены не уходят в модель: \(output)")
+        check(!output.contains("[media omitted]"), "токены заменены метками, а не удалены")
+        check(AIMediaPlaceholders.shared.restore(output) == shown.text, "метки возвращаются в токены")
         let raw = AIRequestMediaSanitizer.sanitize("![a](data:image/png;base64,AAAA) и " + token(of: shown, 0))
-        check(raw.hasPrefix("![a]([media omitted]) и ") && raw.hasSuffix(token(of: shown, 0)), "настоящие media по-прежнему скрыты: \(raw)")
+        check(raw.hasPrefix("![a]([media omitted]) и ⟦image "), "настоящие media по-прежнему скрыты: \(raw)")
     }
 
     func testProfileIgnoresMediaPayload() {

@@ -158,6 +158,58 @@ extension AIWritingServiceTests {
         }
     }
 
+    private func lostMediaRun(replies: [String]) async throws -> (result: AIWritingResult?, error: Error?, instructions: [String], token: String) {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [AITranslationURLProtocol.self]
+        let client = AIClient(session: URLSession(configuration: configuration))
+        var table = MarkdownMediaTable()
+        let input = table.project("Text ![a](data:image/png;base64,AAAAAAAA)").text
+        let token = String(input[input.range(of: "data:[^)]+", options: .regularExpression)!])
+        let sentMarker = AIRequestMediaSanitizer.sanitize(token)
+        var profile = AIModelProfile(api: .responses)
+        profile.baseURL = "https://example.com/v1"
+        profile.modelID = "test"
+        profile.isEnabled = true
+        var instructions: [String] = []
+        AITranslationURLProtocol.handler = { request in
+            let stream = try XCTUnwrap(request.httpBodyStream)
+            stream.open(); defer { stream.close() }
+            var data = Data()
+            var buffer = [UInt8](repeating: 0, count: 4_096)
+            while stream.hasBytesAvailable {
+                let count = stream.read(&buffer, maxLength: buffer.count)
+                if count <= 0 { break }
+                data.append(buffer, count: count)
+            }
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            instructions.append(try XCTUnwrap(body["instructions"] as? String))
+            let reply = replies[min(instructions.count, replies.count) - 1].replacingOccurrences(of: "MARKER", with: sentMarker)
+            let json = try JSONSerialization.data(withJSONObject: ["replacement": reply, "report": ""])
+            let text = try XCTUnwrap(String(data: json, encoding: .utf8))
+            return try JSONSerialization.data(withJSONObject: ["status": "completed", "output": [["type": "message", "content": [["type": "output_text", "text": text]]]]])
+        }
+        do {
+            let result = try await AIWritingService.generate(feature: .translation, input: input, option: "ru", profile: profile, key: nil, client: client)
+            return (result, nil, instructions, token)
+        } catch {
+            return (nil, error, instructions, token)
+        }
+    }
+
+    func testLostMarkerIsRequestedAgainOnce() async throws {
+        let run = try await lostMediaRun(replies: ["Lost", "Text MARKER"])
+        XCTAssertEqual(run.instructions.count, 2)
+        XCTAssertTrue(run.instructions[1].contains("lost these markers"))
+        XCTAssertFalse(run.instructions[1].contains("lac-media"))
+        XCTAssertEqual(run.result?.suggestions.first?.replacement, "Text " + run.token)
+    }
+
+    func testMarkerLostTwiceIsAnError() async throws {
+        let run = try await lostMediaRun(replies: ["Lost"])
+        XCTAssertEqual(run.instructions.count, 2)
+        guard case .lostMedia? = run.error as? AIError else { return XCTFail("expected lostMedia") }
+    }
+
     func testConsistencyReportHasTwoSectionsAndOrderedReferences() throws {
         let json = #"{"findings":[{"kind":"contradiction","first":"always","second":"never","explanation":"c"},{"kind":"terminology","first":"😀 file","second":"文档","explanation":"t"}]}"#
         let input = "always 😀 file 文档 never"

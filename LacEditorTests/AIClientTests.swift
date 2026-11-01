@@ -19,6 +19,20 @@ private final class AIURLProtocol: URLProtocol {
 
 }
 
+private final class LockedCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.lock(); defer { lock.unlock() }; return count }
+    func increment() { lock.lock(); defer { lock.unlock() }; count += 1 }
+}
+
+private final class LockedStrings: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [String] = []
+    var values: [String] { lock.lock(); defer { lock.unlock() }; return items }
+    func append(_ value: String) { lock.lock(); defer { lock.unlock() }; items.append(value) }
+}
+
 final class AIClientTests: XCTestCase {
     private func makeClient() -> AIClient {
         let configuration = URLSessionConfiguration.ephemeral
@@ -251,6 +265,133 @@ final class AIClientTests: XCTestCase {
         }
         let description = try await makeClient().generateImageDescription(data: png, instructions: "describe", profile: profile(.responses), key: nil)
         XCTAssertEqual(description, "A dot")
+    }
+
+    private func outputText(_ text: String) throws -> Data {
+        try JSONSerialization.data(withJSONObject: ["status": "completed", "output": [["type": "message", "content": [["type": "output_text", "text": text]]]]])
+    }
+
+    private func descriptionStore() -> (store: AIImageDescriptionStore, url: URL) {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("descriptions.json")
+        addTeardownBlock { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        return (AIImageDescriptionStore(url: url), url)
+    }
+
+    private func installDescriber(_ store: AIImageDescriptionStore, tables: [MarkdownMediaTable], calls: @escaping @Sendable () -> String) async {
+        await MainActor.run {
+            let previous = AIImageDescriber.source
+            AIImageDescriber.source = { .init(tables: tables, store: store) { _ in calls() } }
+            addTeardownBlock { @MainActor in AIImageDescriber.source = previous }
+        }
+    }
+
+    func testTokenNeverReachesModelAndComesBackInResponse() async throws {
+        var table = MarkdownMediaTable()
+        let shown = table.project("Before ![a](data:image/png;base64,AAAAAAAA) after").text
+        AIURLProtocol.handler = { request in
+            let body = try self.body(request)
+            let input = try XCTUnwrap(body["input"] as? String)
+            XCTAssertFalse(input.contains("lac-media"))
+            XCTAssertTrue((body["instructions"] as? String)?.contains("⟦image N⟧") == true)
+            return (200, try self.outputText("Rewritten " + input))
+        }
+        let result = try await makeClient().generateText(input: shown, instructions: "write", profile: profile(.responses), key: nil)
+        XCTAssertEqual(result, "Rewritten " + shown)
+    }
+
+    func testReadingRemovesImageWithoutDescriptionTogetherWithItsMarkup() {
+        var table = MarkdownMediaTable()
+        let shown = table.project("a ![cap](data:image/png;base64,AAAAAAAA) b").text
+        let token = String(shown[shown.range(of: "data:[^)]+", options: .regularExpression)!])
+        let anchor = String(token[token.index(after: token.firstIndex(of: "#")!)...])
+        func read(_ text: String, _ descriptions: [String: String] = [:]) -> String {
+            AIRequestMediaSanitizer.sanitize(text, descriptions: descriptions, mode: .reading)
+        }
+        XCTAssertEqual(read(shown), "a  b")
+        XCTAssertEqual(read("x [link](\(token)) y"), "x link y")
+        XCTAssertEqual(read("[r]: \(token)\nnext"), "next")
+        XCTAssertEqual(read("t <img src=\"\(token)\"> e"), "t  e")
+        XCTAssertEqual(read("t <video src=\"\(token)\" controls></video> e"), "t  e")
+        XCTAssertEqual(read("![a](data:image/png;base64,AAAA) z"), " z")
+        XCTAssertTrue(read(shown, [anchor: "cat"]).contains(": cat⟧"))
+        XCTAssertTrue(AIRequestMediaSanitizer.note(for: shown, descriptions: [:], mode: .reading).isEmpty)
+        XCTAssertFalse(AIRequestMediaSanitizer.note(for: shown, descriptions: [anchor: "cat"], mode: .reading).isEmpty)
+        XCTAssertTrue(AIRequestMediaSanitizer.sanitize(shown).contains("⟦image "))
+    }
+
+    func testLostTokensCountsEveryOccurrence() {
+        var table = MarkdownMediaTable()
+        let shown = table.project("![a](data:image/png;base64,AAAAAAAA)").text
+        let token = String(shown[shown.range(of: "data:[^)]+", options: .regularExpression)!])
+        XCTAssertEqual(AIRequestMediaSanitizer.lostTokens(original: shown, replacement: "x"), [token])
+        XCTAssertEqual(AIRequestMediaSanitizer.lostTokens(original: token + token, replacement: token), [token])
+        XCTAssertEqual(AIRequestMediaSanitizer.lostTokens(original: shown, replacement: "new " + token), [])
+    }
+
+    func testReadingRequestSendsNoMarkerWhenDescriptionsAreOff() async throws {
+        var table = MarkdownMediaTable()
+        let shown = table.project("Before ![a](data:image/png;base64,AAAAAAAA) after").text
+        AIURLProtocol.handler = { request in
+            let body = try self.body(request)
+            XCTAssertEqual(body["input"] as? String, "Before  after")
+            XCTAssertEqual(body["instructions"] as? String, "summary")
+            return (200, try self.outputText("ok"))
+        }
+        _ = try await makeClient().generateText(input: shown, instructions: "summary", profile: profile(.responses), key: nil, mode: .reading)
+    }
+
+    func testTokenOfAnyTypeAndJSONEscapedAddressesAreHidden() {
+        var table = MarkdownMediaTable()
+        let shown = table.project("![a](data:image/png;base64,AAAAAAAA) data:text/plain;base64,QUJDRA==").text
+        XCTAssertTrue(shown.contains("data:text/plain"))
+        XCTAssertFalse(AIRequestMediaSanitizer.sanitize(shown).contains("lac-media"))
+        let escaped = shown.replacingOccurrences(of: "/", with: "\\/")
+        XCTAssertFalse(AIRequestMediaSanitizer.sanitize(escaped).contains("lac-media"))
+        XCTAssertEqual(AIRequestMediaSanitizer.sanitize(#"x data:image\/png;base64,AB\/CD y"#), "x [media omitted] y")
+        XCTAssertEqual(AIRequestMediaSanitizer.sanitize("cut #lac-media-0254f09 end"), "cut  end")
+    }
+
+    func testUnknownPlaceholderBecomesTokenThatIncomingRejects() {
+        var table = MarkdownMediaTable()
+        let restored = AIMediaPlaceholders.shared.restore("⟦image 999999⟧")
+        XCTAssertFalse(table.incoming(restored).invalid.isEmpty)
+    }
+
+    func testImageIsDescribedOnceAndDescriptionIsKeptByAnchor() async throws {
+        let (store, url) = descriptionStore()
+        var table = MarkdownMediaTable()
+        let shown = table.project("![a](data:image/png;base64,AAAAAAAA)").text
+        let count = LockedCounter()
+        await installDescriber(store, tables: [table]) { count.increment(); return "A \"red\" ⟦cat⟧\non a mat" }
+        let sentInputs = LockedStrings()
+        AIURLProtocol.handler = { request in
+            sentInputs.append(try XCTUnwrap(try self.body(request)["input"] as? String))
+            return (200, try self.outputText("ok"))
+        }
+        _ = try await makeClient().generateText(input: shown, instructions: "i", profile: profile(.responses), key: nil)
+        // Другой документ с тем же изображением: якорь тот же, запроса описания нет.
+        _ = try await makeClient().generateText(input: "Other " + shown, instructions: "i", profile: profile(.responses), key: nil)
+        // Файловый текст с настоящим адресом получает то же описание.
+        _ = try await makeClient().generateText(input: "![a](data:image/png;base64,AAAAAAAA)", instructions: "i", profile: profile(.responses), key: nil)
+        XCTAssertEqual(count.value, 1)
+        XCTAssertTrue(sentInputs.values[0].contains(": A red cat on a mat⟧"), sentInputs.values[0])
+        XCTAssertTrue(sentInputs.values[1].contains(": A red cat on a mat⟧"))
+        XCTAssertEqual(sentInputs.values[2], "![a]([image: A red cat on a mat])")
+        let saved = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: url))
+        XCTAssertEqual(saved.count, 1)
+        XCTAssertEqual(saved.keys.first.map { String($0.prefix(10)) }, "lac-media-")
+        XCTAssertEqual(AIImageDescriptionStore(url: url).description(for: saved.keys.first!), "A red cat on a mat")
+    }
+
+    func testDescriptionIsNotSentWhenSwitchIsOff() async throws {
+        var table = MarkdownMediaTable()
+        let shown = table.project("![a](data:image/png;base64,AAAAAAAA)").text
+        AIURLProtocol.handler = { request in
+            let input = try XCTUnwrap(try self.body(request)["input"] as? String)
+            XCTAssertNil(input.range(of: ": "))
+            return (200, try self.outputText("ok"))
+        }
+        _ = try await makeClient().generateText(input: shown, instructions: "i", profile: profile(.responses), key: nil)
     }
 
     func testTextRequestsOmitEmbeddedMediaData() async throws {

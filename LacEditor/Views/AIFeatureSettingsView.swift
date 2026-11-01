@@ -44,6 +44,14 @@ struct AIFeatureSettingsView: View {
                 Toggle(L10n.tr("系统拼写检查"), isOn: $preferences.systemSpellingEnabled).padding(.horizontal, 16).padding(.vertical, 8)
                 Divider().padding(.horizontal, 16).opacity(0.5)
                 Toggle(L10n.tr("系统语法检查"), isOn: $preferences.systemGrammarEnabled).padding(.horizontal, 16).padding(.vertical, 8)
+                Divider().padding(.horizontal, 16).opacity(0.5)
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(L10n.tr("向 AI 描述图片"), isOn: $preferences.aiImageDescriptionsEnabled)
+                        .disabled(!preferences.aiProfile(for: .imageDescription).isEnabled)
+                    Text(L10n.tr("文档内嵌图片只发送给「%@」模型一次，保存描述后随文本一起发送。", AIFeature.imageDescription.title))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 8)
             }
             ForEach(AIFeatureGroup.allCases) { group in
                 PreferenceGroup(title: group.title) {

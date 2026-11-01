@@ -156,6 +156,20 @@ final class AIAgentEditsTests: XCTestCase {
         XCTAssertTrue(draft.edits.isEmpty)
     }
 
+    func testProposeLosingMarkerIsRefusedOnceAndRepeatIsAccepted() throws {
+        var table = MarkdownMediaTable()
+        let token = table.incoming("![a](data:image/png;base64,iVBORw0KGgo=)").text
+        var document = openDocument("before " + token + " after")
+        document.mediaTable = table
+        let draft = AIAgentEditDraft()
+        guard case let .failed(code, message) = propose(draft, document, "before " + token, "before") else { return XCTFail("expected refusal") }
+        XCTAssertEqual(code, .badArguments)
+        XCTAssertTrue(message.contains("send the same edit again"), message)
+        XCTAssertTrue(draft.edits.isEmpty)
+        guard case .failed = propose(draft, document, "before " + token, "before ") else { return XCTFail("another edit is checked separately") }
+        guard case .added = propose(draft, document, "before " + token, "before") else { return XCTFail("repeat is intentional") }
+    }
+
     func testProposeRefusesOldTextCuttingMediaToken() throws {
         var table = MarkdownMediaTable()
         let token = table.incoming("![a](data:image/png;base64,iVBORw0KGgo=)").text
@@ -174,7 +188,7 @@ final class AIAgentEditsTests: XCTestCase {
         XCTAssertEqual(startCode, .badArguments)
         XCTAssertTrue(draft.edits.isEmpty)
         // Токен целиком и текст рядом принимаются.
-        _ = try added(propose(draft, document, "before " + token, "x"))
+        _ = try added(propose(draft, document, "before " + token, "x " + token))
     }
 
     func testEmptyOldTextAndNoChange() async throws {

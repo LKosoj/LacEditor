@@ -157,10 +157,10 @@ enum AIQuestionService {
     }
 
     static func converse(messages: [AIConversationMessage], profile: AIModelProfile, key: String?) async throws -> String {
-        try await AIClient().generateConversation(messages: messages, instructions: instructions, profile: profile, key: key)
+        try await AIClient().generateConversation(messages: messages, instructions: instructions, profile: profile, key: key, mode: .reading)
     }
 
     static func converse(messages: [AIConversationMessage], profile: AIModelProfile, key: String?, web: AIWebSearchSession, client: AIClient = AIClient()) async throws -> String {
-        try await client.generateConversation(messages: messages, instructions: webInstructions, profile: profile, key: key, toolHandler: web.run)
+        try await client.generateConversation(messages: messages, instructions: webInstructions, profile: profile, key: key, mode: .reading, toolHandler: web.run)
     }
 }

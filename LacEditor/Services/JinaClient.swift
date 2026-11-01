@@ -34,7 +34,7 @@ struct JinaClient {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let key, !key.isEmpty { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
-        request.httpBody = try JSONSerialization.data(withJSONObject: body.mapValues(AIRequestMediaSanitizer.sanitize))
+        request.httpBody = try JSONSerialization.data(withJSONObject: body.mapValues { AIRequestMediaSanitizer.sanitize($0, descriptions: [:], mode: .reading) })
         let data: Data
         do {
             let (result, response) = try await session.data(for: request, delegate: JinaRedirectDelegate())

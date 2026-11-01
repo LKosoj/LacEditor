@@ -237,6 +237,8 @@ final class AIAgentEditDraft: @unchecked Sendable {
     private var entries: [UUID: Entry] = [:]
     private var order: [UUID] = []
     private var calls: [String: Int] = [:]
+    /// Правки, уже отклонённые из-за потерянной метки: повтор той же правки значит, что удаление намеренное.
+    private var mediaRejected: Set<String> = []
     private var nextNumber = 1
     /// Поколение запуска: правка от уже остановленного запуска в черновик не попадает.
     private var currentEpoch = 0
@@ -313,7 +315,11 @@ final class AIAgentEditDraft: @unchecked Sendable {
             // У закрытых файлов и не Markdown таблицы нет.
             entry.table = entry.closed == nil ? document.mediaTable : nil
             if let table = entry.table, AIAgentEditEngine.cutsMediaToken(found[0], in: entry.text, table: table) {
-                return .failed(.badArguments, "old_text cuts through a media token (a name like ...#lac-media-0123456789abcdef); include the whole token or none of it.")
+                return .failed(.badArguments, "old_text cuts through a media token (a marker like ⟦image 1⟧); include the whole marker or none of it.")
+            }
+            let lost = AIRequestMediaSanitizer.lostTokens(original: oldText, replacement: newText)
+            if !lost.isEmpty, mediaRejected.insert([path, oldText, newText].joined(separator: "\u{1}")).inserted {
+                return .failed(.badArguments, "new_text lost \(lost.joined(separator: ", ")). Keep these markers unchanged. If the user asked to remove them, send the same edit again.")
             }
             if entries.values.reduce(0, { $0 + $1.edits.count }) >= AIAgentEditLimits.maxPendingEdits {
                 return .failed(.limitReached, "Too many proposed edits are waiting for review (\(AIAgentEditLimits.maxPendingEdits)). Stop proposing and summarize.")
@@ -473,7 +479,7 @@ final class AIAgentEditDraft: @unchecked Sendable {
 
     func clear() {
         lock.withLock {
-            entries = [:]; order = []; calls = [:]; nextNumber = 1
+            entries = [:]; order = []; calls = [:]; mediaRejected = []; nextNumber = 1
         }
     }
 }

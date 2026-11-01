@@ -578,6 +578,7 @@ final class AppState: ObservableObject {
         isSidebarVisible = UserDefaults.standard.object(
             forKey: "isSidebarVisible"
         ) as? Bool ?? true
+        AIImageDescriber.register(self)
         preferencesCancellable = preferences.objectWillChange.sink { [weak self] in
             self?.objectWillChange.send()
         }

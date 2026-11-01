@@ -514,6 +514,9 @@ final class AppPreferences: ObservableObject {
     @Published var systemGrammarEnabled: Bool {
         didSet { defaults.set(systemGrammarEnabled, forKey: Keys.systemGrammarEnabled) }
     }
+    @Published var aiImageDescriptionsEnabled: Bool {
+        didSet { defaults.set(aiImageDescriptionsEnabled, forKey: Keys.aiImageDescriptionsEnabled) }
+    }
 
     private let defaults: UserDefaults
 
@@ -635,6 +638,7 @@ final class AppPreferences: ObservableObject {
         mathNumbering = MarkdownMathNumbering(rawValue: defaults.string(forKey: Keys.mathNumbering) ?? "") ?? .none
         systemSpellingEnabled = defaults.bool(forKey: Keys.systemSpellingEnabled)
         systemGrammarEnabled = defaults.bool(forKey: Keys.systemGrammarEnabled)
+        aiImageDescriptionsEnabled = defaults.bool(forKey: Keys.aiImageDescriptionsEnabled)
         aiConfiguration = defaults.data(forKey: Keys.aiConfiguration)
             .flatMap { try? JSONDecoder().decode(AIConfiguration.self, from: $0) }
             ?? AIConfiguration()
@@ -812,6 +816,7 @@ final class AppPreferences: ObservableObject {
         static let mathNumbering = "mathNumbering"
         static let systemSpellingEnabled = "systemSpellingEnabled"
         static let systemGrammarEnabled = "systemGrammarEnabled"
+        static let aiImageDescriptionsEnabled = "aiImageDescriptionsEnabled"
         static let markdownExportConfiguration = "markdownExportConfiguration"
         static let statisticsDisplayUnit = "statisticsDisplayUnit"
         static let readingWordsPerMinute = "readingWordsPerMinute"

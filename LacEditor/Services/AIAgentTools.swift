@@ -782,7 +782,7 @@ final class AIAgentTools: @unchecked Sendable {
         // Токен принимается только свой: известный открытому документу. Закрытый файл токенов не содержит.
         var knownTokens = document.isClosedFile ? MarkdownMediaTable() : document.mediaTable
         if knownTokens?.incoming(newText).invalid.isEmpty == false {
-            throw ToolFailure(code: .badArguments, message: "new_text contains a media token (#lac-media-...) that is not in this document. Copy tokens from the document text unchanged, or leave the media out.")
+            throw ToolFailure(code: .badArguments, message: "new_text contains a media marker that is not in this document. Copy markers like ⟦image 1⟧ from the document text unchanged, or leave the media out.")
         }
         let number: Int, pending: Int
         switch draft.propose(callKey: callKey, document: document, path: path, oldText: oldText, newText: newText, explanation: explanation, epoch: epoch, closed: closed) {
