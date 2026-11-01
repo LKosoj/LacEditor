@@ -323,6 +323,16 @@ final class MarkdownMediaIntegrationTests: XCTestCase {
         XCTAssertEqual(FoldLayoutManager.mediaAnchor(among: candidates, top: 800)?.0.location, 40)
     }
 
+    func testReferenceSlidesToBottomOnLastScreen() {
+        typealias Position = MarkdownPreviewScrollRelay.Position
+        XCTAssertEqual(Position.referenceY(top: 500, height: 800, contentHeight: 5000), 500, "до последнего экрана — верхний край")
+        XCTAssertEqual(Position.referenceY(top: 3400, height: 800, contentHeight: 5000), 3400)
+        XCTAssertEqual(Position.referenceY(top: 3800, height: 800, contentHeight: 5000), 4400, "середина последнего экрана")
+        XCTAssertEqual(Position.referenceY(top: 4200, height: 800, contentHeight: 5000), 5000, "конец — нижний край")
+        XCTAssertEqual(Position.referenceY(top: 150, height: 800, contentHeight: 1100), 550, "короткий документ скользит на всю прокрутку")
+        XCTAssertEqual(Position.referenceY(top: 0, height: 800, contentHeight: 700), 0)
+    }
+
     func testPositionInBlockCoversAllItsLines() {
         let middle = MarkdownPreviewScrollRelay.Position.inBlock(firstLine: 10, lastLine: 19, progress: 0.55, atBottom: false)
         XCTAssertEqual(middle.line, 15)

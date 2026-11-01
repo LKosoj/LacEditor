@@ -906,7 +906,10 @@ struct MarkdownPreview: NSViewRepresentable {
             service.start()
         }
 
-        // Прокрутка всегда мгновенная (behavior: 'instant'), поэтому «уменьшение движения» учитывается само.
+        // Скорость панели ограничена примерно 40 точками за кадр: высота диаграммы или картинки не совпадает с их текстом
+        // в обычном режиме, и мгновенный переход проносил бы панель мимо соседнего абзаца. Малые сдвиги идут вровень с окном.
+        // Дальний переход и «уменьшение движения» остаются мгновенными.
+        // Если панель сдвинул кто-то другой (колесо, обновление страницы), погоня останавливается, а при новой цели идёт от этого места.
         private static let scrollToLineScript = """
             const root = document.documentElement;
             const article = document.querySelector('article');
@@ -954,7 +957,40 @@ struct MarkdownPreview: NSViewRepresentable {
                     }
                 }
             }
-            window.scrollTo({top: Math.max(0, Math.min(maximum, target)), left: window.scrollX, behavior: 'instant'});
+            const destination = Math.max(0, Math.min(maximum, target));
+            const scroll = top => window.scrollTo({top, left: window.scrollX, behavior: 'instant'});
+            const chase = globalThis.lacScrollChase ??= {running: false, cycle: 0};
+            if (matchMedia('(prefers-reduced-motion: reduce)').matches ||
+                Math.abs(destination - window.scrollY) > 4 * window.innerHeight) {
+                chase.running = false;
+                chase.cycle += 1;
+                scroll(destination);
+                return null;
+            }
+            chase.target = destination;
+            chase.fresh = true;
+            if (chase.running) return null;
+            chase.running = true;
+            chase.position = window.scrollY;
+            const cycle = ++chase.cycle;
+            const step = () => {
+                if (cycle !== chase.cycle) return;
+                if (Math.abs(window.scrollY - chase.position) > 2) {
+                    if (!chase.fresh) { chase.running = false; return; }
+                    chase.position = window.scrollY;
+                }
+                chase.fresh = false;
+                const left = chase.target - chase.position;
+                if (Math.abs(left) < 1) {
+                    chase.running = false;
+                    scroll(chase.target);
+                    return;
+                }
+                chase.position += Math.sign(left) * Math.max(Math.abs(left) * 0.05, Math.min(Math.abs(left), 40));
+                scroll(chase.position);
+                requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
             return null;
             """
 

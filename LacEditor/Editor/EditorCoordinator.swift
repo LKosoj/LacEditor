@@ -2245,7 +2245,13 @@ extension EditorTextView {
             let visible = textView.visibleRect
             if visible.minY <= 0.5 { return .init(line: 1, atBottom: false) }
             let atBottom = visible.maxY >= textView.bounds.maxY - 1
-            let rect = visible.offsetBy(dx: -textView.textContainerOrigin.x, dy: -textView.textContainerOrigin.y)
+            let viewport = visible.offsetBy(dx: -textView.textContainerOrigin.x, dy: -textView.textContainerOrigin.y)
+            let reference = MarkdownPreviewScrollRelay.Position.referenceY(top: Double(visible.minY), height: Double(visible.height),
+                                                                           contentHeight: Double(textView.bounds.maxY))
+            // Снизу у текста может быть пустое поле: опорная точка не уходит ниже последней строки.
+            let probeY = max(viewport.minY, min(viewport.minY + CGFloat(reference) - visible.minY,
+                                                layoutManager.usedRect(for: container).maxY - 1))
+            let rect = NSRect(x: viewport.minX, y: probeY, width: viewport.width, height: 1)
             if let (range, frame) = foldLayoutManager?.markdownMediaSourceAnchor(in: rect, container: container) {
                 let first = min(range.location, storage.length)
                 let end = min(NSMaxRange(range), storage.length)
@@ -2254,7 +2260,8 @@ extension EditorTextView {
                 return .inBlock(firstLine: firstLine, lastLine: max(firstLine, lastLine),
                                 progress: frame.height > 0 ? Double((rect.minY - frame.minY) / frame.height) : 0, atBottom: atBottom)
             }
-            let glyphs = layoutManager.glyphRange(forBoundingRect: rect, in: container)
+            var glyphs = layoutManager.glyphRange(forBoundingRect: rect, in: container)
+            if glyphs.length == 0 { glyphs = layoutManager.glyphRange(forBoundingRect: viewport, in: container) }
             let characters = layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
             let location = min(characters.location, storage.length)
             let line = liveMediaMap.sourceLine(forDisplayLine: lineIndex.lineNumber(at: location), atDisplayLocation: location)

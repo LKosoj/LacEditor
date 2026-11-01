@@ -672,9 +672,7 @@ final class MarkdownPreviewTests: XCTestCase {
         try await fixture.waitForRevision(1)
         // Абзац k стоит на строке 2k - 1: строка 79 — абзац 40.
         fixture.coordinator.scrollToEditorPosition(.init(line: 79, atBottom: false))
-        try await fixture.waitUntil("scrollY > 0")
-        let top: Double = try await fixture.value("document.querySelectorAll('article p')[39].getBoundingClientRect().top")
-        XCTAssertEqual(top, 0, accuracy: 4)
+        try await fixture.waitUntil("Math.abs(document.querySelectorAll('article p')[39].getBoundingClientRect().top) < 4")
         fixture.coordinator.scrollToEditorPosition(.init(line: 80, atBottom: false))
         try await fixture.waitUntil("document.querySelectorAll('article p')[39].getBoundingClientRect().top < -1")
         let below: Double = try await fixture.value("document.querySelectorAll('article p')[40].getBoundingClientRect().top")
