@@ -25,7 +25,9 @@ enum SyntaxHighlighter {
         let kind: TokenKind
     }
 
-    final class IncrementalContext {
+    // Access is synchronized by the nested scanner contexts. The coordinator
+    // also serializes highlighting work on its dedicated operation queue.
+    final class IncrementalContext: @unchecked Sendable {
         fileprivate let codeLexicalContext = CodeLexicalScanner.IncrementalContext()
         fileprivate let markupContext = MarkupContext()
 
