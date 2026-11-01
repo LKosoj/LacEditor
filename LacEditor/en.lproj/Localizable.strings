@@ -1829,6 +1829,12 @@
 "比较的文档已关闭" = "The document to compare has been closed";
 "安装 lacedit 命令…" = "Install lacedit Command…";
 "安装 lacedit 命令" = "Install the lacedit Command";
+"LacEditor 请求 macOS 授权，将命令安装到 /usr/local/bin。密码在系统对话框中输入，不会传递给应用。" = "LacEditor will request macOS authorization to install the command in /usr/local/bin. Enter your password in the system dialog; it is not given to the app.";
+"安装" = "Install";
+"lacedit 命令已安装到 /usr/local/bin。" = "The lacedit command was installed in /usr/local/bin.";
+"安装错误" = "Installation Error";
+"命令已安装" = "Command Installed";
+"无法安装 lacedit 命令：%@" = "Could not install the lacedit command: %@";
 "在终端中运行下面的命令，之后即可用 lacedit 打开文件。LacEditor 不会自行写入系统目录。" = "Run the command below in Terminal, and you will be able to open files with lacedit. LacEditor does not write to system folders by itself.";
 "复制命令" = "Copy Command";
 "无法读取标准输入内容" = "Could not read the text passed through standard input";

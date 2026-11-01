@@ -1829,6 +1829,12 @@
 "比较的文档已关闭" = "比较的文档已关闭";
 "安装 lacedit 命令…" = "安装 lacedit 命令…";
 "安装 lacedit 命令" = "安装 lacedit 命令";
+"LacEditor 请求 macOS 授权，将命令安装到 /usr/local/bin。密码在系统对话框中输入，不会传递给应用。" = "LacEditor 请求 macOS 授权，将命令安装到 /usr/local/bin。密码在系统对话框中输入，不会传递给应用。";
+"安装" = "安装";
+"lacedit 命令已安装到 /usr/local/bin。" = "lacedit 命令已安装到 /usr/local/bin。";
+"安装错误" = "安装错误";
+"命令已安装" = "命令已安装";
+"无法安装 lacedit 命令：%@" = "无法安装 lacedit 命令：%@";
 "在终端中运行下面的命令，之后即可用 lacedit 打开文件。LacEditor 不会自行写入系统目录。" = "在终端中运行下面的命令，之后即可用 lacedit 打开文件。LacEditor 不会自行写入系统目录。";
 "复制命令" = "复制命令";
 "无法读取标准输入内容" = "无法读取标准输入内容";

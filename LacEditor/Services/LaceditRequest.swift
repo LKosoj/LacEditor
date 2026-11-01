@@ -78,9 +78,49 @@ enum LaceditStdinInbox {
 enum LaceditInstall {
     static let linkPath = "/usr/local/bin/lacedit"
 
+    enum InstallError: LocalizedError {
+        case failed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case let .failed(message): return message
+            }
+        }
+    }
+
     /// Строка для Терминала. Путь к скрипту берётся в одинарные кавычки, одиночная кавычка внутри экранируется.
     static func command(scriptPath: String) -> String {
         let quoted = "'" + scriptPath.replacingOccurrences(of: "'", with: "'\\''") + "'"
         return "sudo mkdir -p /usr/local/bin && sudo ln -sf \(quoted) \(linkPath)"
+    }
+
+    static func install(scriptPath: String) async throws {
+        try await Task.detached {
+            try runInstall(scriptPath: scriptPath)
+        }.value
+    }
+
+    private static func runInstall(scriptPath: String) throws {
+        let source = """
+        on run argv
+            set scriptPath to item 1 of argv
+            do shell script "mkdir -p /usr/local/bin && ln -sf " & quoted form of scriptPath & " /usr/local/bin/lacedit" with administrator privileges
+        end run
+        """
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", source, scriptPath]
+        let errorPipe = Pipe()
+        process.standardError = errorPipe
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            let message = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw InstallError.failed(message?.isEmpty == false ? message! : "安装已取消。")
+        }
+        guard FileManager.default.isExecutableFile(atPath: linkPath) else {
+            throw InstallError.failed("lacedit 命令未安装。")
+        }
     }
 }

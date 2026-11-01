@@ -1371,7 +1371,8 @@ final class WindowManager: ObservableObject {
         let command = LaceditInstall.command(scriptPath: script.path)
         let alert = NSAlert()
         alert.messageText = L10n.tr("安装 lacedit 命令")
-        alert.informativeText = L10n.tr("在终端中运行下面的命令，之后即可用 lacedit 打开文件。LacEditor 不会自行写入系统目录。")
+        alert.informativeText = L10n.tr("LacEditor 请求 macOS 授权，将命令安装到 /usr/local/bin。密码在系统对话框中输入，不会传递给应用。")
+        alert.addButton(withTitle: L10n.tr("安装"))
         alert.addButton(withTitle: L10n.tr("复制命令"))
         alert.addButton(withTitle: L10n.tr("关闭"))
         let field = NSTextField(wrappingLabelWithString: command)
@@ -1379,10 +1380,28 @@ final class WindowManager: ObservableObject {
         field.frame = NSRect(x: 0, y: 0, width: 480, height: 60)
         alert.accessoryView = field
         present(alert) { response in
-            guard response == .alertFirstButtonReturn else { return }
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(command, forType: .string)
+            if response == .alertFirstButtonReturn {
+                Task { @MainActor in
+                    do {
+                        try await LaceditInstall.install(scriptPath: script.path)
+                        self.presentLaceditInstallResult(L10n.tr("lacedit 命令已安装到 /usr/local/bin。"), isError: false)
+                    } catch {
+                        self.presentLaceditInstallResult(L10n.tr("无法安装 lacedit 命令：%@", error.localizedDescription), isError: true)
+                    }
+                }
+            } else if response == .alertSecondButtonReturn {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(command, forType: .string)
+            }
         }
+    }
+
+    private func presentLaceditInstallResult(_ message: String, isError: Bool) {
+        let alert = NSAlert()
+        alert.messageText = isError ? L10n.tr("安装错误") : L10n.tr("命令已安装")
+        alert.informativeText = message
+        alert.addButton(withTitle: L10n.tr("Закрыть"))
+        present(alert) { _ in }
     }
 
     private func presentTextPrompt(
