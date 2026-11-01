@@ -124,6 +124,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
 
     private(set) var foldedRange: NSRange?
     private(set) var automaticMediaFoldedRanges: [NSRange] = []
+    var showMarkdownImagesWhenMediaFolded = false
     private struct MarkdownMarker {
         var range: NSRange
         var owner: NSRange
@@ -1125,7 +1126,9 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
 
     private func imageIsVisible(_ range: NSRange) -> Bool {
         guard textContainers.first?.textView?.hasMarkedText() != true else { return false }
-        if intersectsFoldedRange(range) { return false }
+        if let foldedRange, NSIntersectionRange(foldedRange, range).length > 0 { return false }
+        if !showMarkdownImagesWhenMediaFolded,
+           automaticMediaFoldedRanges.contains(where: { NSIntersectionRange($0, range).length > 0 }) { return false }
         guard let revealed = markdownRevealedRange, touches(range, revealed) else { return true }
 
         // Only source-backed blocks are revealable.  In particular, an image
