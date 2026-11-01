@@ -114,6 +114,10 @@ final class AIDictationTests: XCTestCase {
         XCTAssertEqual(AIDictationController.cleaned("  \n", fallback: "э привет"), "э привет")
     }
 
+    func testCleanupInputWrapsTranscriptInTags() {
+        XCTAssertEqual(AIDictationController.cleanupInput("какая столица франции"), "<transcript>\nкакая столица франции\n</transcript>")
+    }
+
     func testVoiceCleanupProfileUsesTextProfileAndOwnModel() throws {
         let environment = try makeEnvironment()
         defer { environment.cleanup() }
