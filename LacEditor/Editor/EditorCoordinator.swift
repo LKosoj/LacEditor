@@ -3678,6 +3678,8 @@ extension EditorTextView {
                 markdownPresentation?.geometryDidChange = { [weak self] in
                     self?.ruler?.requestRedraw()
                     self?.updateTableCellFrame()
+                    // Высоты блоков меняются без прокрутки: верхняя строка при этом сдвигается.
+                    self?.schedulePreviewScrollSync()
                 }
                 markdownPresentation?.restoreCodeColors = { [weak self] ranges in
                     guard let self, let storage = self.textView?.textStorage else { return }
@@ -3874,6 +3876,7 @@ extension EditorTextView {
                     force: false,
                     duringLiveResize: stillLiveResizing
                 )
+                schedulePreviewScrollSync()
                 if !stillLiveResizing, isLiveResizing {
                     finishLiveResize()
                 }

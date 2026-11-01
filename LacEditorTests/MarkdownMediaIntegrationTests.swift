@@ -312,4 +312,14 @@ final class MarkdownMediaIntegrationTests: XCTestCase {
         XCTAssertEqual(heading.range.location, (source as NSString).range(of: "# Title").location)
         XCTAssertEqual((source as NSString).substring(with: heading.range), "# Title")
     }
+
+    func testMediaAnchorRequiresMediaAtTopEdge() {
+        let image = NSRange(location: 10, length: 5), lower = NSRange(location: 40, length: 5)
+        let candidates = [(image, NSRect(x: 0, y: 100, width: 50, height: 300)),
+                          (lower, NSRect(x: 0, y: 700, width: 50, height: 300))]
+        XCTAssertNil(FoldLayoutManager.mediaAnchor(among: candidates, top: 50), "картинка ниже верхнего края не становится якорем")
+        XCTAssertEqual(FoldLayoutManager.mediaAnchor(among: candidates, top: 250), 10)
+        XCTAssertNil(FoldLayoutManager.mediaAnchor(among: candidates, top: 500), "между картинками позицию даёт текст")
+        XCTAssertEqual(FoldLayoutManager.mediaAnchor(among: candidates, top: 800), 40)
+    }
 }

@@ -1121,9 +1121,13 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         candidates += markdownBlockImages.compactMap { entry in
             imageRect(entry, in: container).map { (entry.range, $0) }
         }
-        return candidates
-            .filter { $0.1.maxY >= visible.minY && $0.1.minY <= visible.maxY }
-            .min { abs($0.1.minY - visible.minY) < abs($1.1.minY - visible.minY) }?.0.location
+        return Self.mediaAnchor(among: candidates, top: visible.minY)
+    }
+
+    /// Media считается верхним элементом окна, только если накрывает верхний край:
+    /// картинка ниже него не должна уводить предпросмотр вперёд текста над ней.
+    static func mediaAnchor(among candidates: [(NSRange, NSRect)], top: CGFloat) -> Int? {
+        candidates.filter { $0.1.minY <= top && $0.1.maxY >= top }.max { $0.1.minY < $1.1.minY }?.0.location
     }
 
     private func imageIsVisible(_ range: NSRange) -> Bool {
