@@ -2816,6 +2816,46 @@ final class MarkdownLayoutTests: XCTestCase {
         XCTAssertFalse(layout.isMarkdownMarkerHidden(at: 0))
         XCTAssertEqual(storage.string, source)
     }
+    func testHiddenCodeMarkersDoNotPaintPreviousLinesOrAdjacentSpaces() throws {
+        _ = NSApplication.shared
+        let source = "intro\n\n```bash\nbody\n```\n\nreads `verify_aim`, not\n", raw = source as NSString
+        let (storage, layout, container) = makeLayout(source)
+        let parsed = MarkdownPresentationParser.parse(source)
+        layout.setMarkdownPresentation(parsed, revealedRange: nil)
+        for span in parsed.spans where span.kind == .code || span.kind == .codeBlock {
+            layout.addTemporaryAttribute(.backgroundColor, value: NSColor.lightGray.withAlphaComponent(0.12), forCharacterRange: span.range)
+        }
+        layout.ensureLayout(for: container)
+        let size = NSSize(width: container.containerSize.width, height: ceil(layout.usedRect(for: container).height))
+        let image = NSImage(size: size, flipped: true) { _ in
+            layout.drawBackground(forGlyphRange: layout.glyphRange(for: container), at: .zero)
+            return true
+        }
+        let bitmap = try XCTUnwrap(image.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:)))
+        func alpha(x: Int, y: Int) throws -> CGFloat {
+            try XCTUnwrap(bitmap.colorAt(x: x, y: y)).alphaComponent
+        }
+        func blankLine(before location: Int) -> NSRange {
+            let line = raw.lineRange(for: NSRange(location: location, length: 0))
+            return raw.lineRange(for: NSRange(location: line.location - 1, length: 0))
+        }
+        let block = try XCTUnwrap(parsed.codeBlocks.first)
+        let inline = try XCTUnwrap(parsed.spans.first { $0.kind == .code })
+        for range in [blankLine(before: block.range.location), blankLine(before: inline.range.location)] {
+            let glyph = layout.glyphIndexForCharacter(at: range.location)
+            let rect = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            XCTAssertEqual(try alpha(x: Int(size.width - 10), y: Int(rect.midY)), 0, accuracy: 0.01)
+        }
+        let space = NSRange(location: inline.range.location - 1, length: 1)
+        XCTAssertEqual(raw.substring(with: space), " ")
+        let spaceRect = layout.boundingRect(forGlyphRange: layout.glyphRange(forCharacterRange: space, actualCharacterRange: nil), in: container)
+        XCTAssertEqual(try alpha(x: Int(spaceRect.midX), y: Int(spaceRect.midY)), 0, accuracy: 0.01)
+        let content = raw.range(of: "verify_aim")
+        let contentRect = layout.boundingRect(forGlyphRange: layout.glyphRange(forCharacterRange: content, actualCharacterRange: nil), in: container)
+        XCTAssertGreaterThan(try alpha(x: Int(contentRect.midX), y: Int(contentRect.midY)), 0.1)
+        XCTAssertEqual(storage.string, source)
+    }
+
     func testHighlightBackgroundRestoresAfterSourceMode() async throws {
         _ = NSApplication.shared
         let source = "==中文😀==\n\nnext"

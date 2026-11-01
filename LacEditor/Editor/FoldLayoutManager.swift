@@ -1472,9 +1472,35 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     }
 
     override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
-        super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
-        guard let container = textContainers.first else { return }
         let visible = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
+        var drawableRanges = [glyphsToShow]
+        var markerIndex = upperBound(max(visible.location, NSMaxRange(visible) - 1), count: markdownMarkers.count) { markdownMarkers[$0].range.location }
+        while markerIndex > 0 {
+            markerIndex -= 1
+            if markdownMarkerEnds[markerIndex] <= visible.location { break }
+            let marker = markdownMarkers[markerIndex]
+            guard NSIntersectionRange(marker.range, visible).length > 0, isMarkdownMarkerHidden(at: marker.range.location),
+                  temporaryAttribute(.backgroundColor, atCharacterIndex: marker.range.location, effectiveRange: nil) != nil
+                    || textStorage?.attribute(.backgroundColor, at: marker.range.location, effectiveRange: nil) != nil else { continue }
+            let hidden = NSIntersectionRange(glyphRange(forCharacterRange: marker.range, actualCharacterRange: nil), glyphsToShow)
+            guard hidden.length > 0 else { continue }
+            drawableRanges = drawableRanges.flatMap { candidate -> [NSRange] in
+                let intersection = NSIntersectionRange(candidate, hidden)
+                guard intersection.length > 0 else { return [candidate] }
+                var result: [NSRange] = []
+                if candidate.location < intersection.location {
+                    result.append(NSRange(location: candidate.location, length: intersection.location - candidate.location))
+                }
+                if NSMaxRange(intersection) < NSMaxRange(candidate) {
+                    result.append(NSRange(location: NSMaxRange(intersection), length: NSMaxRange(candidate) - NSMaxRange(intersection)))
+                }
+                return result
+            }
+        }
+        for range in drawableRanges where range.length > 0 {
+            super.drawBackground(forGlyphRange: range, at: origin)
+        }
+        guard let container = textContainers.first else { return }
         for entry in markdownInlineImages where NSIntersectionRange(entry.range, visible).length > 0 {
             guard let rect = inlineImageRect(entry, in: container) else { continue }
             drawMarkdownImage(entry.image, in: rect.offsetBy(dx: origin.x, dy: origin.y), container: container)
