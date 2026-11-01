@@ -28,6 +28,7 @@
 		141E16893097E77400079103 /* FolderFileFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E16883097E77400079103 /* FolderFileFilter.swift */; };
 		141E168B3097E78100079103 /* SnippetSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E168A3097E78100079103 /* SnippetSettingsView.swift */; };
 		141E168D3097E7A400079103 /* LaceditRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E168C3097E7A400079103 /* LaceditRequest.swift */; };
+		141E168F3097EDDE00079103 /* lacedit in Resources */ = {isa = PBXBuildFile; fileRef = 141E168E3097EDDE00079103 /* lacedit */; };
 		14E906EC309332F00019953B /* CMarkOpaquePointerCompatibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14E906EB309332F00019953B /* CMarkOpaquePointerCompatibility.swift */; };
 		A00000000000000000000101 /* LacEditorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000001 /* LacEditorApp.swift */; };
 		A00000000000000000000102 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000002 /* AppState.swift */; };
@@ -284,6 +285,7 @@
 		141E16883097E77400079103 /* FolderFileFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderFileFilter.swift; sourceTree = "<group>"; };
 		141E168A3097E78100079103 /* SnippetSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetSettingsView.swift; sourceTree = "<group>"; };
 		141E168C3097E7A400079103 /* LaceditRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaceditRequest.swift; sourceTree = "<group>"; };
+		141E168E3097EDDE00079103 /* lacedit */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; name = lacedit; path = Scripts/lacedit; sourceTree = "<group>"; };
 		14E906EB309332F00019953B /* CMarkOpaquePointerCompatibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CMarkOpaquePointerCompatibility.swift; sourceTree = "<group>"; };
 		A00000000000000000000001 /* LacEditorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LacEditorApp.swift; sourceTree = "<group>"; };
 		A00000000000000000000002 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -528,6 +530,7 @@
 		A00000000000000000000300 = {
 			isa = PBXGroup;
 			children = (
+				141E168E3097EDDE00079103 /* lacedit */,
 				A00000000000000000000901 /* Config/UIExperiment.xcconfig */,
 				A00000000000000000000301 /* LacEditor */,
 				A00000000000000000000309 /* Frameworks */,
@@ -910,6 +913,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				141E168F3097EDDE00079103 /* lacedit in Resources */,
 				D00C00000000000000000001 /* Mermaid in Resources */,
 				D01200000000000000000021 /* MathJax in Resources */,
 				D0120000000000000000003D /* LegacyDiagrams in Resources */,
