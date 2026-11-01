@@ -1,4 +1,6 @@
+import AppKit
 import Foundation
+import SwiftUI
 import XCTest
 @testable import LacEditor
 
@@ -886,5 +888,101 @@ final class StabilityTests: XCTestCase {
         state = nil
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
         XCTAssertNil(weakState)
+    }
+
+    // MARK: Перечитывание файла в редакторе
+
+    @MainActor
+    private struct ReloadFixture {
+        let document: EditorDocument
+        let store: EditorSessionStore
+        let host: NSHostingView<AnyView>
+        let window: NSWindow
+        let textView: NSTextView
+        func render() {
+            host.rootView = AnyView(EditorTextView(document: document, sessionStore: store, fontSize: 14,
+                lineSpacing: 2, indentationStyle: .spaces, tabWidth: 4, wordWrap: true, showsLineNumbers: false,
+                topInset: 0, isActive: true, requestTextTransformation: { _ in }))
+            host.layoutSubtreeIfNeeded()
+        }
+    }
+
+    @MainActor
+    private func makeReloadFixture(text: String) async throws -> ReloadFixture {
+        _ = NSApplication.shared
+        let document = EditorDocument(text: text)
+        let store = EditorSessionStore(limit: 1)
+        let host = NSHostingView(rootView: AnyView(EmptyView()))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 200),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        host.rootView = AnyView(EditorTextView(document: document, sessionStore: store, fontSize: 14,
+            lineSpacing: 2, indentationStyle: .spaces, tabWidth: 4, wordWrap: true, showsLineNumbers: false,
+            topInset: 0, isActive: true, requestTextTransformation: { _ in }))
+        host.layoutSubtreeIfNeeded()
+        for _ in 0..<100 where store.coordinator(for: document).textView?.string != text {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let textView = try XCTUnwrap(store.coordinator(for: document).textView)
+        XCTAssertEqual(textView.string, text)
+        return ReloadFixture(document: document, store: store, host: host, window: window, textView: textView)
+    }
+
+    @MainActor
+    func testReloadKeepsSelectionClampedToNewLength() async throws {
+        let fixture = try await makeReloadFixture(text: "中文😀 hello world, long line")
+        defer { fixture.store.coordinator(for: fixture.document).updateActivity(false); fixture.document.cancelMetricsRefresh(); fixture.window.close() }
+        fixture.document.selectionRange = NSRange(location: 14, length: 6)
+        fixture.document.text = "中文😀 x"
+        fixture.document.markExternalReplacement()
+        fixture.render()
+        let length = ("中文😀 x" as NSString).length
+        XCTAssertEqual(fixture.textView.string, "中文😀 x")
+        XCTAssertEqual(fixture.textView.selectedRange(), NSRange(location: length, length: 0))
+    }
+
+    @MainActor
+    func testReloadClearsUndoHistory() async throws {
+        let fixture = try await makeReloadFixture(text: "abc")
+        defer { fixture.store.coordinator(for: fixture.document).updateActivity(false); fixture.document.cancelMetricsRefresh(); fixture.window.close() }
+        fixture.textView.insertText("x", replacementRange: NSRange(location: 0, length: 0))
+        XCTAssertEqual(fixture.textView.undoManager?.canUndo, true)
+        fixture.document.text = "disk text"
+        fixture.document.markExternalReplacement()
+        fixture.render()
+        XCTAssertEqual(fixture.textView.string, "disk text")
+        XCTAssertEqual(fixture.textView.undoManager?.canUndo, false)
+        fixture.textView.undoManager?.undo()
+        XCTAssertEqual(fixture.textView.string, "disk text")
+    }
+
+    @MainActor
+    func testOrdinaryExternalTextChangeKeepsUndoAndOldBehavior() async throws {
+        let fixture = try await makeReloadFixture(text: "abc")
+        defer { fixture.store.coordinator(for: fixture.document).updateActivity(false); fixture.document.cancelMetricsRefresh(); fixture.window.close() }
+        fixture.textView.insertText("x", replacementRange: NSRange(location: 0, length: 0))
+        XCTAssertEqual(fixture.textView.undoManager?.canUndo, true)
+        fixture.document.text = "other text"
+        fixture.render()
+        XCTAssertEqual(fixture.textView.string, "other text")
+        XCTAssertEqual(fixture.textView.undoManager?.canUndo, true, "без отметки перечитывания история не сбрасывается")
+    }
+
+    @MainActor
+    func testReloadKeepsScrollOrigin() async throws {
+        let lines = (0..<400).map { "line \($0)" }.joined(separator: "\n")
+        let fixture = try await makeReloadFixture(text: lines)
+        defer { fixture.store.coordinator(for: fixture.document).updateActivity(false); fixture.document.cancelMetricsRefresh(); fixture.window.close() }
+        let scrollView = try XCTUnwrap(fixture.textView.enclosingScrollView)
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: 300))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        fixture.document.text = lines.replacingOccurrences(of: "line 399", with: "line 399!")
+        fixture.document.markExternalReplacement()
+        fixture.render()
+        for _ in 0..<100 where abs(scrollView.contentView.bounds.origin.y - 300) > 1 {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(scrollView.contentView.bounds.origin.y, 300, accuracy: 1)
     }
 }

@@ -2,12 +2,16 @@ import Combine
 import CoreServices
 import Foundation
 
-private final class FolderWorkspaceEvents: @unchecked Sendable {
+final class FolderWorkspaceEvents: @unchecked Sendable {
     struct Event: Sendable { let path: String; let flags: FSEventStreamEventFlags }
     private var stream: FSEventStreamRef?
     private let receive: @Sendable ([Event]) -> Void
 
-    init?(root: URL, receive: @escaping @Sendable ([Event]) -> Void) {
+    convenience init?(root: URL, receive: @escaping @Sendable ([Event]) -> Void) {
+        self.init(paths: [root.path], receive: receive)
+    }
+
+    init?(paths: [String], receive: @escaping @Sendable ([Event]) -> Void) {
         self.receive = receive
         var context = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(self).toOpaque(),
             retain: { pointer in
@@ -25,7 +29,7 @@ private final class FolderWorkspaceEvents: @unchecked Sendable {
             let paths = unsafeBitCast(rawPaths, to: NSArray.self) as? [String] ?? []
             guard paths.count == count else { return }
             owner.receive(paths.indices.map { Event(path: paths[$0], flags: flags[$0]) })
-        }, &context, [root.path] as CFArray, FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 0.2, flags) else { return nil }
+        }, &context, paths as CFArray, FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 0.2, flags) else { return nil }
         self.stream = stream
         FSEventStreamSetDispatchQueue(stream, DispatchQueue(label: "com.laceditor.folder-events", qos: .utility))
         guard FSEventStreamStart(stream) else {

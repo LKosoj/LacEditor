@@ -112,6 +112,8 @@ final class MarkdownTableCellEditor: NSTextView, NSTextViewDelegate {
     var canTransferImage: ((NSPasteboard, Bool) -> Bool)?
     var richPaste: ((NSPasteboard) -> Bool)?
     var richCopy: ((NSPasteboard) -> Bool)?
+    /// Вырезание пишет в буфер сразу, как и в тексте окна.
+    private var isCutting = false
     /// Выделение с media-токенами для буфера; nil, если токенов в выделении нет.
     var mediaClipboard: ((NSRange) -> MediaClipboardPayload?)?
     var mediaPaste: ((NSPasteboard) -> Bool)?
@@ -228,7 +230,7 @@ final class MarkdownTableCellEditor: NSTextView, NSTextViewDelegate {
     }
 
     override func copy(_ sender: Any?) {
-        if richCopy?(.general) == true { return }
+        if !isCutting, richCopy?(.general) == true { return }
         super.copy(sender)
     }
 
@@ -253,6 +255,8 @@ final class MarkdownTableCellEditor: NSTextView, NSTextViewDelegate {
 
     override func cut(_ sender: Any?) {
         extendSelectionOverMedia()
+        isCutting = true
+        defer { isCutting = false }
         super.cut(sender)
     }
 

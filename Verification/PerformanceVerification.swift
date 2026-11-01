@@ -127,6 +127,34 @@ struct PerformanceVerification {
             "middle TextKit layout took \(middleLayoutResult.seconds)s"
         )
 
+        let invisiblesStorage = NSTextStorage(string: source)
+        let invisiblesManager = FoldLayoutManager()
+        invisiblesStorage.addLayoutManager(invisiblesManager)
+        let invisiblesContainer = NSTextContainer(containerSize: NSSize(width: 900, height: CGFloat.greatestFiniteMagnitude))
+        invisiblesManager.addTextContainer(invisiblesContainer)
+        EditorLayoutPolicy.configure(invisiblesManager, textLength: sourceLength)
+        if let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: 900, pixelsHigh: 2_000, bitsPerSample: 8, samplesPerPixel: 4,
+            hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ), let drawingContext = NSGraphicsContext(bitmapImageRep: bitmap) {
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = drawingContext
+            for start in [0, sourceLength / 2, sourceLength - 4_000] {
+                let slice = NSRange(location: start, length: 3_000)
+                invisiblesManager.ensureLayout(forCharacterRange: slice)
+                let glyphs = invisiblesManager.glyphRange(forCharacterRange: slice, actualCharacterRange: nil)
+                for shows in [false, true] {
+                    invisiblesManager.showsInvisibles = shows
+                    let drawResult = measure { invisiblesManager.drawGlyphs(forGlyphRange: glyphs, at: .zero) }
+                    require(
+                        drawResult.seconds < 1,
+                        "drawing with invisibles \(shows) at \(start) took \(drawResult.seconds)s"
+                    )
+                }
+            }
+            NSGraphicsContext.restoreGraphicsState()
+        }
+
         let extendedSource = String(repeating: line, count: 200_000)
         require(extendedSource.utf8.count >= 10_000_000, "extended fixture must be at least 10 MB")
         let extendedLength = (extendedSource as NSString).length

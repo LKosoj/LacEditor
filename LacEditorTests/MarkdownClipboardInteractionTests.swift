@@ -2252,6 +2252,59 @@ final class MarkdownMediaClipboardTests: XCTestCase {
         XCTAssertEqual(document.synchronizedText(), source)
     }
 
+    func testCutInFormattedModeWritesPlainTextAtOnceAndPasteReturnsIt() {
+        let board = NSPasteboard.general
+        let saved = (board.pasteboardItems ?? []).map { item -> NSPasteboardItem in
+            let copy = NSPasteboardItem()
+            for type in item.types { if let data = item.data(forType: type) { copy.setData(data, forType: type) } }
+            return copy
+        }
+        defer { board.clearContents(); board.writeObjects(saved) }
+        let (_, coordinator, view) = makeEditor("alpha beta")
+        defer { coordinator.updateActivity(false) }
+        view.isRichText = false
+        board.clearContents()
+        view.setSelectedRange(NSRange(location: 6, length: 4))
+        view.cut(nil)
+        XCTAssertEqual(view.string, "alpha ")
+        XCTAssertEqual(board.string(forType: .string), "beta")
+        view.paste(nil)
+        XCTAssertEqual(view.string, "alpha beta")
+    }
+
+    func testFormattedPasteRightAfterCutIsNotDropped() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let executable = directory.appendingPathComponent("convert.sh")
+        try "#!/bin/sh\nprintf '%s' '**rich**'\n".write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        let board = NSPasteboard.general
+        let saved = (board.pasteboardItems ?? []).map { item -> NSPasteboardItem in
+            let copy = NSPasteboardItem()
+            for type in item.types { if let data = item.data(forType: type) { copy.setData(data, forType: type) } }
+            return copy
+        }
+        defer { board.clearContents(); board.writeObjects(saved) }
+        let (document, coordinator, view) = makeEditor("alpha beta")
+        defer { coordinator.updateActivity(false) }
+        view.isRichText = false
+        coordinator.clipboardConversionExecutable = executable
+        view.setSelectedRange(NSRange(location: 6, length: 4))
+        view.cut(nil)
+        let item = NSPasteboardItem()
+        item.setString("<strong>rich</strong>", forType: .html)
+        item.setString("rich", forType: .string)
+        board.clearContents()
+        board.writeObjects([item])
+        view.paste(nil)
+        // Запоздавшая синхронизация во время конвертации не должна отменять вставку.
+        document.synchronizeLiveText()
+        let task = try XCTUnwrap(coordinator.clipboardPasteTask)
+        await task.value
+        XCTAssertEqual(view.string, "alpha **rich**")
+    }
+
     func testPasteInternalTypeBringsTokenBack() {
         let (document, coordinator, view) = makeEditor("начало")
         defer { coordinator.updateActivity(false) }

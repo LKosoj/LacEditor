@@ -36,7 +36,7 @@ enum FolderReplaceService {
     enum EditError: Error { case selectionChanged }
 
     /// Замены для совпадений запроса; `only` оставляет только выбранные диапазоны (регулярка идёт по всему тексту, как при поиске).
-    static func edits(in text: String, request: Request, only: Set<NSRange>? = nil,
+    static func edits(in text: String, request: Request, only: Set<NSRange>? = nil, scope: NSRange? = nil,
                       isCancelled: () -> Bool = { false }) throws -> [Edit] {
         guard !request.query.isEmpty else { return [] }
         let source = text as NSString
@@ -44,7 +44,7 @@ enum FolderReplaceService {
         if request.options.isPlain {
             let replacement = TextSearchService.interpreted(request.replacement, enabled: request.interpretsEscapes)
             let ranges = TextSearchService.allRanges(in: text, query: request.query,
-                                                     caseSensitive: request.options.caseSensitive, isCancelled: isCancelled)
+                                                     caseSensitive: request.options.caseSensitive, scope: scope, isCancelled: isCancelled)
             if isCancelled() { throw CancellationError() }
             for range in ranges where only?.contains(range) ?? true {
                 result.append(Edit(range: range, original: source.substring(with: range), replacement: replacement))
@@ -54,7 +54,7 @@ enum FolderReplaceService {
             let template = TextSearchService.template(for: request.replacement, options: request.options,
                                                       interpretsEscapes: request.interpretsEscapes)
             var cancelled = false
-            TextSearchService.enumerateMatches(of: regex, in: text) { match, stop in
+            TextSearchService.enumerateMatches(of: regex, in: text, scope: scope) { match, stop in
                 if isCancelled() { cancelled = true; stop.pointee = true; return }
                 // Пустые совпадения пропускаются, как в поиске.
                 guard let match, match.range.length > 0, only?.contains(match.range) ?? true else { return }
@@ -102,6 +102,7 @@ enum FolderReplaceService {
     /// Закрытый файл: повторное чтение, сверка отметки и точных фрагментов, атомарная запись UTF-8.
     static func replaceOnDisk(file: FolderSearchService.File, expected: FileRevisionSnapshot,
                               matches: [FolderSearchService.Match], request: Request, root: URL,
+                              backup: FolderReplaceBackupStore.Recorder? = nil,
                               isCancelled: () -> Bool = { false }) throws -> Outcome {
         let text: String
         do { text = try FolderSearchService.readForReplace(url: file.url, root: root, expected: expected, isCancelled: isCancelled) }
@@ -122,6 +123,11 @@ enum FolderReplaceService {
             return .skipped(.changed)
         }
         if isCancelled() { throw CancellationError() }
+        // Копия старых байтов фиксируется до записи; без неё файл не трогаем.
+        if output != text, let backup {
+            do { try backup.record(originalText: text, futureText: output, relativePath: file.relativePath) }
+            catch { return .skipped(.writeFailed) }
+        }
         // Запущенную атомарную запись отмена не прерывает; окно подмены между проверкой и записью остаётся.
         guard (try? FileRevisionSnapshot.capture(file.url)) == expected else { return .skipped(.changed) }
         if output != text {

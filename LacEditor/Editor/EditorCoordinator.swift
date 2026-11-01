@@ -586,6 +586,18 @@ extension EditorTextView {
             }
         }
 
+        /// Возвращает прокрутку после перечитывания файла; точка ограничивается новым размером текста.
+        func restoreScrollOrigin(_ origin: NSPoint) {
+            DispatchQueue.main.async { [weak scrollView] in
+                guard let scrollView, let documentView = scrollView.documentView else { return }
+                let clip = scrollView.contentView
+                let maxX = max(0, documentView.bounds.width - clip.bounds.width)
+                let maxY = max(0, documentView.bounds.height - clip.bounds.height)
+                clip.scroll(to: NSPoint(x: min(max(origin.x, 0), maxX), y: min(max(origin.y, 0), maxY)))
+                scrollView.reflectScrolledClipView(clip)
+            }
+        }
+
         // `isolated deinit` есть только в Swift 6.2+: условие даёт разобрать файл более старым компилятором, сборка на Mac не меняется.
 #if compiler(>=6.2)
         isolated deinit {
@@ -2946,6 +2958,9 @@ extension EditorTextView {
             guard let source, selection.location != NSNotFound, selection.location <= source.length,
                   selection.length <= source.length - selection.location else { return true }
             let original = source.substring(with: selection)
+            // Текст недавней правки (например, вырезания) приходит в документ с задержкой: без этого версия сменится во время
+            // конвертации, и результат молча отбросится.
+            document.synchronizeLiveText()
             let revision = contentRevision, documentID = document.id, contextID = tableCellContextID
             let documentRevision = document.textRevision
             let executable = clipboardConversionExecutable

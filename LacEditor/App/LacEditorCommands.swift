@@ -163,6 +163,8 @@ struct LacEditorCommands: Commands {
                 .disabled(appState?.canShowVersionHistory != true)
             Button(L10n.tr("与磁盘文件比较…")) { appState?.presentVersionHistory(mode: .disk) }
                 .disabled(appState?.canShowVersionHistory != true)
+            Button(L10n.tr("比较文本…")) { appState?.presentTextCompare() }
+                .disabled(appState?.canShowTextCompare != true)
             Divider()
             Button {
                 if let keyWindow = NSApp.keyWindow,
@@ -208,6 +210,10 @@ struct LacEditorCommands: Commands {
                 .keyboardShortcut("/", modifiers: .command)
                 .disabled(appState?.selectedDocument?.language.commentSyntax == nil
                           || appState?.selectedDocument?.ioState != .idle || isReadingMode)
+            Button(L10n.tr("插入文本片段…")) { appState?.showSnippetPicker() }
+                .disabled(appState?.selectedDocument == nil || appState?.selectedDocument?.ioState != .idle || isReadingMode)
+            Button(L10n.tr("将所选内容存为文本片段…")) { appState?.createSnippetFromSelection() }
+                .disabled(appState?.selectedDocument == nil || appState?.selectedDocument?.ioState != .idle)
             Divider()
             Button {
                 appState?.presentFindReplace(mode: .find)
@@ -250,6 +256,12 @@ struct LacEditorCommands: Commands {
                 Label(L10n.tr("跳转到行…"), systemImage: "arrow.right.to.line")
             }
                 .keyboardShortcut("l", modifiers: .command)
+                .disabled(appState == nil)
+            Button {
+                appState?.revertLastFolderReplace()
+            } label: {
+                Label(L10n.tr("撤销上次文件夹替换…"), systemImage: "arrow.uturn.backward")
+            }
                 .disabled(appState == nil)
             Divider()
             Menu {
@@ -314,6 +326,8 @@ struct LacEditorCommands: Commands {
             Button(L10n.tr("LacEditor 帮助")) {
                 if let url = URL(string: "https://github.com/LKosoj/LacEditor") { NSWorkspace.shared.open(url) }
             }
+            Button(L10n.tr("安装 lacedit 命令…")) { windowManager.presentLaceditInstall() }
+                .disabled(Bundle.main.url(forResource: "lacedit", withExtension: nil) == nil)
         }
 
         CommandMenu(L10n.tr("AI 写作助手")) {
@@ -390,6 +404,13 @@ struct LacEditorCommands: Commands {
             Button(L10n.tr("命令面板…")) { appState?.showCommandPalette() }
                 .keyboardShortcut("a", modifiers: [.command, .shift])
                 .disabled(appState?.hostWindow == nil)
+            Divider()
+            Button(L10n.tr("返回上一个位置")) { windowManager.navigateBack() }
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .control])
+                .disabled(!windowManager.navigationHistory.canGoBack)
+            Button(L10n.tr("前进到下一个位置")) { windowManager.navigateForward() }
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .control])
+                .disabled(!windowManager.navigationHistory.canGoForward)
             Divider()
             Toggle(L10n.tr("聚焦当前段落"), isOn: Binding(
                 get: { appState?.isFocusMode == true && appState?.focusScope == .paragraph },
@@ -496,6 +517,11 @@ struct LacEditorCommands: Commands {
                 )
             }
             .disabled(appState == nil)
+            Toggle(L10n.tr("显示不可见字符"), isOn: Binding(
+                get: { appState?.preferences.showsInvisibles ?? false },
+                set: { appState?.preferences.showsInvisibles = $0 }
+            ))
+            .disabled(appState?.selectedDocument == nil)
             Button {
                 guard let documentID = appState?.selectedDocumentID else { return }
                 NotificationCenter.default.post(

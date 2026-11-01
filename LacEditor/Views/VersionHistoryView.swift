@@ -76,13 +76,13 @@ struct VersionHistoryView: View {
                 if controller.changes.isEmpty {
                     Text(L10n.tr("与当前文本相同")).font(.subheadline)
                 } else {
-                    Text(summary).font(.subheadline)
+                    Text(textDiffSummary(controller.changes)).font(.subheadline)
                 }
             }
             ScrollView([.vertical, .horizontal]) {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(controller.changes.indices, id: \.self) { index in
-                        row(controller.changes[index])
+                        TextDiffRow(change: controller.changes[index])
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -90,26 +90,5 @@ struct VersionHistoryView: View {
             .border(Color(nsColor: .separatorColor))
             .accessibilityIdentifier("versions.diff")
         }
-    }
-
-    private var summary: String {
-        let added = controller.changes.filter { $0.kind == .added }.count
-        return L10n.tr("新增 %lld 行，删除 %lld 行", added, controller.changes.count - added)
-    }
-
-    private func row(_ change: AITextComparison.Change) -> some View {
-        let isAdded = change.kind == .added
-        let text = change.text.trimmingCharacters(in: .newlines)
-        return HStack(alignment: .top, spacing: 8) {
-            Text("\(change.line)").frame(width: 56, alignment: .trailing).foregroundStyle(.secondary)
-            Text(isAdded ? "+" : "−")
-            Text(text)
-        }
-        .font(.system(.body, design: .monospaced))
-        .padding(.horizontal, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background((isAdded ? Color.green : Color.red).opacity(0.18))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(L10n.tr("%@，第 %lld 行：%@", isAdded ? L10n.tr("已添加") : L10n.tr("已删除"), change.line, text))
     }
 }

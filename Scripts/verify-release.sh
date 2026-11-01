@@ -132,4 +132,6 @@ xcodebuild \
     CODE_SIGNING_ALLOWED=NO \
     build
 
+[[ -x .build/XcodeDerivedData/Build/Products/Release/LacEditor.app/Contents/Resources/lacedit ]] || { print -u2 '缺少 lacedit 命令脚本。'; exit 1; }
+
 print "发布验证通过：LacEditor $version ($build_numbers)"

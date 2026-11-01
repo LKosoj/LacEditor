@@ -25,6 +25,17 @@
     <string>$(MARKETING_VERSION)</string>
     <key>CFBundleVersion</key>
     <string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>LacEditor</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>laceditor</string>
+            </array>
+        </dict>
+    </array>
     <key>LacEditorExperimentIteration</key>
     <string>UI9</string>
     <key>LSMinimumSystemVersion</key>

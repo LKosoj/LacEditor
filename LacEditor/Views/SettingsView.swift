@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case editor = "编辑器", images = "图片设置", appearance = "外观", files = "文件与恢复", associations = "文件关联", performance = "性能", export = "导出", ai = "人工智能", about = "关于"
+    case editor = "编辑器", images = "图片设置", appearance = "外观", files = "文件与恢复", snippets = "文本片段", associations = "文件关联", performance = "性能", export = "导出", ai = "人工智能", about = "关于"
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -10,6 +10,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .images: "photo"
         case .appearance: "circle.lefthalf.filled"
         case .files: "clock.arrow.circlepath"
+        case .snippets: "text.badge.plus"
         case .associations: "doc.badge.gearshape"
         case .performance: "gauge.with.dots.needle.33percent"
         case .export: "square.and.arrow.up"
@@ -23,6 +24,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .images: L10n.tr("配置图片上传、复制位置和文档级图片规则。")
         case .appearance: L10n.tr("选择舒适的外观，让界面保持安静。")
         case .files: L10n.tr("离开之后，下次继续。")
+        case .snippets: L10n.tr("保存常用文字，随时插入到光标处。")
         case .associations: L10n.tr("选择哪些文本格式默认使用 LacEditor 打开。")
         case .performance: L10n.tr("按文档大小自动管理，优先保持编辑顺畅。")
         case .export: L10n.tr("配置 Pandoc 导出项目。")
@@ -50,6 +52,8 @@ extension SettingsSection {
             ["界面主题", "外观", "语言", "界面语言", "窗口界面", "显示状态栏", "Markdown 浅色外观颜色", "Markdown 深色外观颜色"]
         case .files:
             ["离开与继续", "启动文件夹", "模板与每日笔记", "模板文件夹", "每日笔记文件夹", "每日笔记日期格式", "本地恢复", "异常关闭保护"]
+        case .snippets:
+            ["文本片段列表", "添加文本片段"]
         case .associations:
             ["当前应用位置", "文件格式", "设为默认"]
         case .performance:
@@ -277,6 +281,7 @@ struct SettingsView: View {
         case .images: MarkdownImageUploadSettingsView(preferences: appState.preferences, isActive: selection == .images)
         case .appearance: appearanceSettings
         case .files: fileSettings
+        case .snippets: SnippetSettingsView(store: .shared)
         case .associations: FileAssociationSettingsView()
         case .performance: performanceSettings
         case .export: MarkdownExportSettingsView(preferences: appState.preferences)

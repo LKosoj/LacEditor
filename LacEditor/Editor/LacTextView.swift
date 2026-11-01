@@ -399,6 +399,8 @@ final class LacTextView: NSTextView {
     var acceptWikiCompletion: ((String, NSRange) -> Bool)?
     var dismissWikiCompletion: (() -> Void)?
     var editSource: EditSource = .unknown
+    /// Вырезание пишет в буфер сразу: фоновое оформленное копирование отменила бы последующая правка.
+    private var isCutting = false
     var autoPairBracketsEnabled = false
     var autoPairMarkdownEnabled = false
     var autoPairAllowed: (() -> Bool)?
@@ -541,7 +543,7 @@ final class LacTextView: NSTextView {
     }
 
     override func copy(_ sender: Any?) {
-        if richCopyHandler?(.general) == true { return }
+        if !isCutting, richCopyHandler?(.general) == true { return }
         super.copy(sender)
     }
 
@@ -555,6 +557,8 @@ final class LacTextView: NSTextView {
 
     override func cut(_ sender: Any?) {
         extendSelectionOverMedia()
+        isCutting = true
+        defer { isCutting = false }
         super.cut(sender)
     }
 

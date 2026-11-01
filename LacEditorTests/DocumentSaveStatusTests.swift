@@ -127,4 +127,75 @@ final class DocumentSaveStatusTests: XCTestCase {
         document.noteSavedToDisk(at: date)
         XCTAssertEqual(document.lastSavedAt, date)
     }
+
+    private func diskSnapshot(_ number: Int) -> FileRevisionSnapshot {
+        FileRevisionSnapshot(
+            identity: DocumentFileIdentity(canonicalPath: "/tmp/disk", resourceIdentifier: "id\(number)"),
+            modificationDate: Date(timeIntervalSince1970: Double(number)),
+            fileSize: number
+        )
+    }
+
+    func testNoteDiskStateLogic() {
+        let document = EditorDocument(text: "a", url: URL(fileURLWithPath: "/tmp/disk.md"), fileRevisionSnapshot: diskSnapshot(1))
+        document.noteDiskState(nil)
+        XCTAssertNil(document.externalChange)
+        document.noteDiskState(.present(diskSnapshot(1)))
+        XCTAssertNil(document.externalChange)
+        document.noteDiskState(.present(diskSnapshot(2)))
+        XCTAssertEqual(document.externalChange, .present(diskSnapshot(2)))
+        document.noteDiskState(nil)
+        XCTAssertEqual(document.externalChange, .present(diskSnapshot(2)))
+        document.noteDiskState(.present(diskSnapshot(3)))
+        XCTAssertEqual(document.externalChange, .present(diskSnapshot(3)))
+        document.noteDiskState(.missing)
+        XCTAssertEqual(document.externalChange, .missing)
+        document.keepMyVersion()
+        XCTAssertNil(document.externalChange)
+        document.noteDiskState(.missing)
+        XCTAssertNil(document.externalChange)
+        document.noteDiskState(.present(diskSnapshot(3)))
+        XCTAssertEqual(document.externalChange, .present(diskSnapshot(3)))
+        document.noteDiskState(.present(diskSnapshot(1)))
+        XCTAssertNil(document.externalChange)
+        // Возврат к baseline сбрасывает и «оставить мою версию».
+        document.noteDiskState(.missing)
+        XCTAssertEqual(document.externalChange, .missing)
+        XCTAssertEqual(document.text, "a")
+    }
+
+    func testUpdateFileRevisionSnapshotClearsBannerAndDismissal() {
+        let document = EditorDocument(text: "a", url: URL(fileURLWithPath: "/tmp/disk2.md"), fileRevisionSnapshot: diskSnapshot(1))
+        document.noteDiskState(.present(diskSnapshot(2)))
+        document.updateFileRevisionSnapshot(diskSnapshot(2))
+        XCTAssertNil(document.externalChange)
+        document.noteDiskState(.present(diskSnapshot(3)))
+        document.keepMyVersion()
+        document.updateFileRevisionSnapshot(diskSnapshot(4))
+        document.noteDiskState(.present(diskSnapshot(3)))
+        XCTAssertEqual(document.externalChange, .present(diskSnapshot(3)), "отказ относился к прежнему baseline")
+    }
+
+    func testExternalReplacementMarkerIsOneShotAndTiedToRevision() {
+        let document = EditorDocument(text: "a", url: URL(fileURLWithPath: "/tmp/disk3.md"))
+        XCTAssertFalse(document.consumeExternalReplacement())
+        document.text = "b"
+        document.markExternalReplacement()
+        XCTAssertTrue(document.consumeExternalReplacement())
+        XCTAssertFalse(document.consumeExternalReplacement())
+        document.markExternalReplacement()
+        document.text = "c"
+        XCTAssertFalse(document.consumeExternalReplacement(), "отметка устарела после новой правки")
+    }
+
+    func testSaveStatusUnchangedByBanner() {
+        let document = EditorDocument(text: "a", url: URL(fileURLWithPath: "/tmp/disk4.md"), fileRevisionSnapshot: diskSnapshot(1))
+        let before = (document.saveStatus, document.isDirty)
+        document.noteDiskState(.present(diskSnapshot(2)))
+        XCTAssertEqual(document.saveStatus, before.0)
+        XCTAssertEqual(document.isDirty, before.1)
+        document.noteDiskState(.missing)
+        XCTAssertEqual(document.saveStatus, before.0)
+        XCTAssertEqual(document.isDirty, before.1)
+    }
 }

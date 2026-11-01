@@ -286,13 +286,13 @@ final class CommandPaletteTests: XCTestCase {
         controller.run(command)
         XCTAssertTrue(controller.performPending(menu: menu))
         XCTAssertEqual(target.count, 1)
-        XCTAssertEqual(preferences.commandPaletteRecent, [command.path])
+        XCTAssertEqual(preferences.commandPaletteRecent, [command.key])
 
-        preferences.commandPalettePinned = [pinnedCommand.path]
+        preferences.commandPalettePinned = [pinnedCommand.key]
         controller.present(menu: menu, preferences: preferences)
         controller.run(pinnedCommand)
         XCTAssertTrue(controller.performPending(menu: menu))
-        XCTAssertEqual(preferences.commandPaletteRecent, [command.path])
+        XCTAssertEqual(preferences.commandPaletteRecent, [command.key])
     }
 
     func testPinnedSurvivesNewPreferencesAndStaleAfterRename() {
@@ -324,8 +324,146 @@ final class CommandPaletteTests: XCTestCase {
         let a = controller.commands[0], b = controller.commands[1]
         controller.run(b)
         controller.togglePin(a)
-        XCTAssertEqual(preferences.commandPalettePinned, [a.path])
+        XCTAssertEqual(preferences.commandPalettePinned, [a.key])
         XCTAssertTrue(controller.performPending(menu: menu))
-        XCTAssertEqual(preferences.commandPaletteRecent, [b.path])
+        XCTAssertEqual(preferences.commandPaletteRecent, [b.key])
+    }
+
+    // MARK: - Стабильные ключи
+
+    func testKeyIndexMapsTranslationFromAnyLanguageToSameKey() {
+        let index = L10nKeyIndex(catalogs: [["保存": "保存"], ["保存": "Save"], ["保存": "Сохранить"]])
+        XCTAssertEqual(index.key(for: "Save"), "保存")
+        XCTAssertEqual(index.key(for: "Сохранить"), "保存")
+        XCTAssertEqual(index.key(for: "保存"), "保存")
+    }
+
+    func testKeyIndexMergesKeysWithSameTranslations() {
+        let index = L10nKeyIndex(catalogs: [["File": "文件", "文件": "文件"], ["File": "File", "文件": "File"],
+                                            ["File": "Файл", "文件": "Файл"]])
+        XCTAssertEqual(index.key(for: "File"), "File")
+        XCTAssertEqual(index.key(for: "文件"), "File")
+        XCTAssertEqual(index.key(for: "Файл"), "File")
+    }
+
+    func testKeyIndexKeepsOwnKeyWhenTitleIsKey() {
+        let index = L10nKeyIndex(catalogs: [["View": "显示", "查看": "查看"], ["View": "View", "查看": "View"],
+                                            ["View": "Вид", "查看": "Просмотр"]])
+        XCTAssertEqual(index.key(for: "View"), "View")
+        XCTAssertEqual(index.key(for: "查看"), "查看")
+    }
+
+    func testKeyIndexAmbiguousTranslationReturnsNil() {
+        let index = L10nKeyIndex(catalogs: [["查找": "查找", "搜索": "搜索"], ["查找": "Find", "搜索": "Search"],
+                                            ["查找": "Найти", "搜索": "Найти"]])
+        XCTAssertNil(index.key(for: "Найти"))
+        XCTAssertEqual(index.key(for: "Find"), "查找")
+    }
+
+    func testKeyIndexUnknownTitleReturnsNil() {
+        let index = L10nKeyIndex(catalogs: [["保存": "保存"], ["保存": "Save"], ["保存": "Сохранить"]])
+        XCTAssertNil(index.key(for: "Отменить"))
+        let key = index.key(for: "Save")
+        XCTAssertEqual(index.key(for: try XCTUnwrap(key)), key)
+    }
+
+    func testStableKeyUsesRealCatalogs() throws {
+        let file = try XCTUnwrap(L10n.stableKey(forDisplayed: "Файл"))
+        XCTAssertEqual(L10n.stableKey(forDisplayed: "File"), file)
+        XCTAssertEqual(L10n.stableKey(forDisplayed: "文件"), file)
+        let view = try XCTUnwrap(L10n.stableKey(forDisplayed: "Вид"))
+        XCTAssertEqual(L10n.stableKey(forDisplayed: "View"), view)
+        XCTAssertEqual(L10n.stableKey(forDisplayed: "显示"), view)
+        XCTAssertNil(L10n.stableKey(forDisplayed: "Правка"))
+    }
+
+    func testCollectBuildsKeyPathFromCatalogTitles() throws {
+        let target = Target()
+        let menu = mainMenu([submenu("App", [item("About", target)]), submenu("File", [item("保存", target)])])
+        let command = try XCTUnwrap(CommandPaletteService.collect(from: menu).last)
+        XCTAssertEqual(command.path, ["File", "保存"])
+        XCTAssertEqual(command.key, [try XCTUnwrap(L10n.stableKey(forDisplayed: "File")), "保存"])
+    }
+
+    func testCollectKeyForUnknownTitleFallsBackToTitle() throws {
+        let target = Target()
+        let menu = mainMenu([submenu("App", [item("Zzyzx", target)])])
+        let command = try XCTUnwrap(CommandPaletteService.collect(from: menu).first)
+        XCTAssertEqual(command.key.last, "Zzyzx")
+        XCTAssertEqual(command.key.count, command.path.count)
+    }
+
+    func testCollectUsesSelectorKeyForResponderChainItem() throws {
+        let target = Target()
+        let bare = NSMenuItem(title: "Zzyzx", action: #selector(Target.ping), keyEquivalent: "")
+        let menu = mainMenu([submenu("App", [bare, item("Qwxyz", target)])])
+        let commands = CommandPaletteService.collect(from: menu)
+        XCTAssertEqual(commands[0].key.last, "sel:ping")
+        XCTAssertEqual(commands[1].key.last, "Qwxyz")
+    }
+
+    func testPinnedFoundAfterLanguageChange() {
+        let russian = PaletteCommand(path: ["Файл", "Сохранить"], indexPath: [1, 0], shortcut: "", key: ["File", "保存"])
+        let english = PaletteCommand(path: ["File", "Save"], indexPath: [1, 0], shortcut: "", key: ["File", "保存"])
+        for command in [russian, english] {
+            let entries = CommandPaletteService.entries([command], query: "", pinned: [["File", "保存"]], recent: [])
+            XCTAssertEqual(entries.first?.section, .pinned)
+            XCTAssertEqual(entries.first?.isPinned, true)
+        }
+    }
+
+    func testMigratedConvertsEntriesFromAllThreeLanguages() throws {
+        let key = [try XCTUnwrap(L10n.stableKey(forDisplayed: "File")), "保存"]
+        let migrated = CommandPaletteService.migrated([["Файл", "Сохранить"], ["File", "Save"], ["文件", "保存"]])
+        XCTAssertEqual(migrated, [key])
+    }
+
+    func testMigratedKeepsUnknownEntries() throws {
+        let file = try XCTUnwrap(L10n.stableKey(forDisplayed: "Файл"))
+        XCTAssertEqual(CommandPaletteService.migrated([["Qwe", "Asd"], ["Файл", "Asd"], []]),
+                       [["Qwe", "Asd"], [file, "Asd"]])
+    }
+
+    func testMigratedIsIdempotent() {
+        let source = [["Файл", "Сохранить"], ["Qwe", "Asd"], ["View", "x"]]
+        let once = CommandPaletteService.migrated(source)
+        XCTAssertEqual(CommandPaletteService.migrated(once), once)
+    }
+
+    func testPreferencesMigrateStoredPathsOnLoad() throws {
+        let suite = "CommandPaletteTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let key = [try XCTUnwrap(L10n.stableKey(forDisplayed: "File")), "保存"]
+        defaults.set([["Файл", "Сохранить"], ["Qwe", "Asd"]], forKey: "commandPalettePinned")
+        defaults.set((0..<8).map { ["Qwe", "\($0)"] }, forKey: "commandPaletteRecent")
+        let preferences = AppPreferences(defaults: defaults)
+        XCTAssertEqual(preferences.commandPalettePinned, [key, ["Qwe", "Asd"]])
+        XCTAssertLessThanOrEqual(preferences.commandPaletteRecent.count, CommandPaletteService.recentLimit)
+        XCTAssertEqual(preferences.commandPaletteRecent.first, ["Qwe", "0"])
+    }
+
+    func testPresentUpgradesStoredEntryEqualToShownPath() throws {
+        let (preferences, defaults, suite) = isolatedPreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let bare = NSMenuItem(title: "Zzyzx", action: #selector(Target.ping), keyEquivalent: "")
+        let menu = mainMenu([submenu("App", [bare])])
+        let shown = [AppEnvironment.displayName, "Zzyzx"]
+        let other = ["Qwe", "Asd"]
+        preferences.commandPalettePinned = [shown, other]
+        let controller = CommandPaletteController()
+        controller.present(menu: menu, preferences: preferences)
+        let key = try XCTUnwrap(controller.commands.first?.key)
+        XCTAssertEqual(key.last, "sel:ping")
+        XCTAssertEqual(preferences.commandPalettePinned, [key, other])
+        controller.dismiss()
+        controller.present(menu: menu, preferences: preferences)
+        XCTAssertEqual(preferences.commandPalettePinned, [key, other])
+    }
+
+    func testUpgradingRemovesDuplicates() {
+        let command = PaletteCommand(path: ["Правка", "Отменить"], indexPath: [0, 0], shortcut: "", key: ["Правка", "sel:undo:"])
+        let result = CommandPaletteService.upgrading([["Правка", "Отменить"], ["Правка", "sel:undo:"], ["Qwe"]], with: [command])
+        XCTAssertEqual(result, [["Правка", "sel:undo:"], ["Qwe"]])
     }
 }

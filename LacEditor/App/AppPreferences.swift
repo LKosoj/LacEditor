@@ -435,6 +435,9 @@ final class AppPreferences: ObservableObject {
     @Published var lineNumbersVisible: Bool {
         didSet { defaults.set(lineNumbersVisible, forKey: Keys.lineNumbers) }
     }
+    @Published var showsInvisibles: Bool {
+        didSet { defaults.set(showsInvisibles, forKey: Keys.showsInvisibles) }
+    }
     @Published var statusBarVisible: Bool {
         didSet { defaults.set(statusBarVisible, forKey: Keys.statusBar) }
     }
@@ -571,8 +574,8 @@ final class AppPreferences: ObservableObject {
         editorLigatures = savedLigatures.flatMap { (0...2).contains($0) ? $0 : nil }
         let savedTOCLevel = defaults.integer(forKey: Keys.markdownTOCMaxLevel)
         markdownTOCMaxLevel = (1...6).contains(savedTOCLevel) ? savedTOCLevel : 6
-        commandPalettePinned = (defaults.array(forKey: Keys.commandPalettePinned) as? [[String]] ?? []).filter { !$0.isEmpty }
-        commandPaletteRecent = Array((defaults.array(forKey: Keys.commandPaletteRecent) as? [[String]] ?? []).filter { !$0.isEmpty }.prefix(CommandPaletteService.recentLimit))
+        commandPalettePinned = CommandPaletteService.migrated((defaults.array(forKey: Keys.commandPalettePinned) as? [[String]] ?? []).filter { !$0.isEmpty })
+        commandPaletteRecent = Array(CommandPaletteService.migrated((defaults.array(forKey: Keys.commandPaletteRecent) as? [[String]] ?? []).filter { !$0.isEmpty }).prefix(CommandPaletteService.recentLimit))
         markdownLightColors = defaults.data(forKey: Keys.markdownLightColors).flatMap { try? JSONDecoder().decode(MarkdownColorOverrides.self, from: $0) } ?? MarkdownColorOverrides()
         markdownDarkColors = defaults.data(forKey: Keys.markdownDarkColors).flatMap { try? JSONDecoder().decode(MarkdownColorOverrides.self, from: $0) } ?? MarkdownColorOverrides()
         let savedWidth = (defaults.object(forKey: Keys.markdownMaximumWidth) as? NSNumber)?.doubleValue
@@ -662,6 +665,7 @@ final class AppPreferences: ObservableObject {
         let storedTabWidth = defaults.integer(forKey: Keys.tabWidth)
         tabWidth = [2, 4, 8].contains(storedTabWidth) ? storedTabWidth : 4
         lineNumbersVisible = defaults.object(forKey: Keys.lineNumbers) as? Bool ?? true
+        showsInvisibles = defaults.object(forKey: Keys.showsInvisibles) as? Bool ?? false
         statusBarVisible = defaults.object(forKey: Keys.statusBar) as? Bool ?? true
         let storedTheme = defaults.string(forKey: Keys.theme)
         theme = AppTheme(rawValue: storedTheme ?? "") ?? .system
@@ -752,6 +756,15 @@ final class AppPreferences: ObservableObject {
         return profile
     }
 
+    /// Текстовый профиль для построения регулярных выражений: модель из aiFeatureModelIDs["regexBuilder"], пусто = модель профиля текста.
+    static let regexBuilderModelKey = "regexBuilder"
+    func regexBuilderProfile() -> AIModelProfile {
+        var profile = aiConfiguration[.text]
+        let model = aiFeatureModelIDs[Self.regexBuilderModelKey]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !model.isEmpty { profile.modelID = model }
+        return profile
+    }
+
     var hasConfirmedWorkspaceExitPrompt: Bool {
         defaults.bool(forKey: Keys.confirmedWorkspaceExitPrompt)
     }
@@ -792,6 +805,7 @@ final class AppPreferences: ObservableObject {
         static let indentationStyle = "editorIndentationStyle"
         static let tabWidth = "editorTabWidth"
         static let lineNumbers = "isLineNumbersVisible"
+        static let showsInvisibles = "isShowsInvisibles"
         static let statusBar = "isStatusBarVisible"
         static let theme = "appTheme"
         static let exitBehavior = "workspaceExitBehavior"

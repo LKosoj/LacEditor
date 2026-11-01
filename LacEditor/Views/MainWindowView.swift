@@ -80,6 +80,7 @@ struct MainWindowView: View {
         }
         .overlay(alignment: .top) { QuickOpenOverlay(controller: appState.folderSearch) }
         .overlay(alignment: .top) { CommandPaletteOverlay(controller: appState.commandPalette, folderSearch: appState.folderSearch) }
+        .overlay(alignment: .top) { SnippetPickerOverlay(controller: appState.snippetPicker, folderSearch: appState.folderSearch) }
         .background(
             // Cmd-= — привычный псевдоним Cmd-+ (на US-раскладке плюс — это Shift-=); пункт меню остаётся один.
             Button("") { appState.increaseFontSize() }
@@ -289,6 +290,15 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         )
         findBarAccessory.isHidden = !appState.findReplace.isBarVisible
         contentItem.addTopAlignedAccessoryViewController(findBarAccessory)
+        let externalChangeAccessory = FindBarAccessoryController(
+            rootView: AnyView(
+                ExternalChangeBannerHost()
+                    .environmentObject(appState)
+                    .environmentObject(windowManager)
+            )
+        )
+        externalChangeAccessory.isHidden = true
+        contentItem.addTopAlignedAccessoryViewController(externalChangeAccessory)
         controller.splitView.dividerStyle = .thin
         controller.splitView.isVertical = true
         controller.view.wantsLayer = true
@@ -306,6 +316,8 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         context.coordinator.sidebarItem = sidebarItem
         context.coordinator.findBarAccessory = findBarAccessory
         context.coordinator.observeFindBarVisibility(appState: appState)
+        context.coordinator.externalChangeAccessory = externalChangeAccessory
+        context.coordinator.observeExternalChange(appState: appState)
         context.coordinator.applyCollapseState(
             isVisible: appState.isSidebarEffectivelyVisible
         )
@@ -341,7 +353,9 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         var contentController: NSHostingController<AnyView>?
         weak var sidebarItem: NSSplitViewItem?
         weak var findBarAccessory: NSSplitViewItemAccessoryViewController?
+        weak var externalChangeAccessory: NSSplitViewItemAccessoryViewController?
         private var findBarObservation: AnyCancellable?
+        private var externalChangeObservation: AnyCancellable?
         private var collapseObservation: NSKeyValueObservation?
         private var splitResizeObservation: NSObjectProtocol?
         private var isApplyingCollapseState = false
@@ -380,6 +394,22 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
                 }
         }
 
+        /// Плашка видна, пока у выбранного документа есть `externalChange`.
+        func observeExternalChange(appState: AppState) {
+            externalChangeObservation = Publishers.CombineLatest(appState.$selectedDocumentID, appState.$documents)
+                .map { id, documents -> AnyPublisher<Bool, Never> in
+                    guard let document = documents.first(where: { $0.id == id }) else {
+                        return Just(false).eraseToAnyPublisher()
+                    }
+                    return document.$externalChange.map { $0 != nil }.eraseToAnyPublisher()
+                }
+                .switchToLatest()
+                .removeDuplicates()
+                .sink { [weak self] isVisible in
+                    self?.externalChangeAccessory?.isHidden = !isVisible
+                }
+        }
+
         private func synchronizeCollapseState(item: NSSplitViewItem, appState: AppState?) {
             guard let appState, !isDismantling, !isApplyingCollapseState,
                   !appState.isDistractionFree else { return }
@@ -392,6 +422,7 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         func stopObservingCollapseState() {
             isDismantling = true
             findBarObservation = nil
+            externalChangeObservation = nil
             collapseObservation?.invalidate()
             collapseObservation = nil
             if let splitResizeObservation {
@@ -429,6 +460,67 @@ private final class FindBarAccessoryController: NSSplitViewItemAccessoryViewCont
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func loadView() { view = hostingView }
+}
+
+/// Плашка об изменении открытого файла на диске: показывает состояние и три действия, текст сама не меняет.
+private struct ExternalChangeBannerHost: View {
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        if let document = appState.selectedDocument {
+            ExternalChangeBanner(document: document)
+                .id(document.id)
+        }
+    }
+}
+
+private struct ExternalChangeBanner: View {
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject var document: EditorDocument
+
+    private var message: String? {
+        switch document.externalChange {
+        case .present: L10n.tr("磁盘上的文件已被其他程序修改")
+        case .missing: L10n.tr("磁盘上的文件已被删除或移动")
+        case nil: nil
+        }
+    }
+
+    var body: some View {
+        if let message {
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                        .accessibilityHidden(true)
+                    Text(message)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 8)
+                    if case .present = document.externalChange {
+                        Button(L10n.tr("重新载入")) { appState.reloadExternalChange(document) }
+                            .disabled(document.ioState != .idle)
+                        Button(L10n.tr("比较")) { appState.presentVersionHistory(mode: .disk) }
+                            .disabled(document.ioState != .idle)
+                    }
+                    Button(L10n.tr("保留我的版本")) { document.keepMyVersion() }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(LacEditorDesign.surface)
+                Divider()
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(message)
+            .onAppear { AccessibilityNotification.Announcement(message).post() }
+            .onChange(of: document.externalChange) { _, _ in
+                AccessibilityNotification.Announcement(message).post()
+            }
+        }
+    }
 }
 
 private struct DocumentEditorPane: View {

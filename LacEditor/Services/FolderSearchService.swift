@@ -242,11 +242,12 @@ enum FolderSearchService {
     /// Общий обход папки: открытые документы приоритетнее диска, символические ссылки и изменившиеся файлы попадают в проблемы.
     /// `include` решает по файлу до его чтения: отклонённый файл не читается и не попадает в проблемы.
     private static func scan(root: URL, openDocuments: [OpenDocument], markdownOnly: Bool, include: (File) -> Bool = { _ in true },
+                             pruneDirectory: (String) -> Bool = { _ in false },
                              isCancelled: () -> Bool,
                              skip: (URL, DocumentFileIdentity?) -> Bool = { _, _ in false },
                              prepare: ([File]) throws -> Void = { _ in },
                              visit: (String, File, Source) throws -> Void) throws -> [Problem] {
-        let listing = try enumerate(root: root, isCancelled: isCancelled)
+        let listing = try enumerate(root: root, pruneDirectory: pruneDirectory, isCancelled: isCancelled)
         var problems = listing.problems
         var documents: [OpenDocument] = []
         var excluded: Set<URL> = []
@@ -331,13 +332,15 @@ enum FolderSearchService {
 
     static func search(root: URL, query: String, caseSensitive: Bool, openDocuments: [OpenDocument], kind: SearchKind = .text,
                        options: TextSearchService.Options? = nil, include: (File) -> Bool = { _ in true },
+                       pruneDirectory: (String) -> Bool = { _ in false },
                        isCancelled: () -> Bool = { false }) throws -> Result<Match> {
         let root = normalized(root)
         try checkCancellation(isCancelled)
         guard !query.isEmpty else { return Result(root: root, values: [], problems: []) }
         var matches: [Match] = []
         var tagProblems: [Problem] = []
-        let problems = try scan(root: root, openDocuments: openDocuments, markdownOnly: kind == .tags, include: include, isCancelled: isCancelled) { text, file, source in
+        let problems = try scan(root: root, openDocuments: openDocuments, markdownOnly: kind == .tags, include: include,
+                                pruneDirectory: pruneDirectory, isCancelled: isCancelled) { text, file, source in
             if kind == .text {
                 try appendMatches(text, file: file, source: source, query: query,
                                   options: options ?? TextSearchService.Options(caseSensitive: caseSensitive),
@@ -349,6 +352,29 @@ enum FolderSearchService {
         }
         try checkCancellation(isCancelled)
         return Result(root: root, values: matches, problems: problems + tagProblems)
+    }
+
+    struct ExtractedFile: Sendable {
+        let file: File
+        let records: [MatchExtractionService.Record]
+    }
+
+    /// Извлечение найденного из файлов папки (только чтение); файлы без записей в результат не попадают.
+    static func extract(root: URL, request: MatchExtractionService.Request, openDocuments: [OpenDocument],
+                        include: (File) -> Bool = { _ in true },
+                        pruneDirectory: (String) -> Bool = { _ in false },
+                        isCancelled: () -> Bool = { false }) throws -> Result<ExtractedFile> {
+        let root = normalized(root)
+        try checkCancellation(isCancelled)
+        guard !request.query.isEmpty else { return Result(root: root, values: [], problems: []) }
+        var values: [ExtractedFile] = []
+        let problems = try scan(root: root, openDocuments: openDocuments, markdownOnly: false, include: include,
+                                pruneDirectory: pruneDirectory, isCancelled: isCancelled) { text, file, _ in
+            let records = try MatchExtractionService.records(in: text, request: request, isCancelled: isCancelled)
+            if !records.isEmpty { values.append(ExtractedFile(file: file, records: records)) }
+        }
+        try checkCancellation(isCancelled)
+        return Result(root: root, values: values, problems: problems)
     }
 
     /// Тег папки: имя в первом встреченном написании и число файлов, где он есть (YAML и встроенные, повтор в файле — один).
@@ -506,7 +532,8 @@ enum FolderSearchService {
         }
     }
 
-    private static func enumerate(root: URL, includeMetadata: Bool = false, isCancelled: () -> Bool) throws -> (files: [File], listedFiles: [ListedFile], problems: [Problem]) {
+    private static func enumerate(root: URL, includeMetadata: Bool = false, pruneDirectory: (String) -> Bool = { _ in false },
+                                  isCancelled: () -> Bool) throws -> (files: [File], listedFiles: [ListedFile], problems: [Problem]) {
         var files: [File] = [], listedFiles: [ListedFile] = [], problems: [Problem] = [], pending = [root]
         while let directory = pending.popLast() {
             try checkCancellation(isCancelled)
@@ -522,7 +549,10 @@ enum FolderSearchService {
                         if includeMetadata { keys.formUnion([.creationDateKey, .contentModificationDateKey]) }
                         let values = try url.resourceValues(forKeys: keys)
                         try checkCancellation(isCancelled)
-                        if values.isSymbolicLink != true && values.isDirectory == true { pending.append(url) }
+                        if values.isSymbolicLink != true && values.isDirectory == true {
+                            if let relative = relativePath(url, root: root), pruneDirectory(relative) { continue }
+                            pending.append(url)
+                        }
                         else if (values.isSymbolicLink == true || values.isRegularFile == true), let relative = relativePath(url, root: root) {
                             let file = File(url: url, relativePath: relative)
                             files.append(file)

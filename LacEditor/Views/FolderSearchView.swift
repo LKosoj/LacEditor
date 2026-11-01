@@ -15,14 +15,30 @@ struct FolderSearchView: View {
                     Text(L10n.tr("搜索文件内容")).tag(FolderSearchController.Mode.text)
                     Text(L10n.tr("搜索标签")).tag(FolderSearchController.Mode.tags)
                 }.pickerStyle(.segmented).disabled(controller.root == nil)
+                    .onChange(of: controller.mode) { _, _ in
+                        if appState.aiRegex.target == .folderSearch { appState.aiRegex.cancel() }
+                    }
                 HStack {
                     TextField(L10n.tr("搜索文件夹"), text: $controller.query)
                         .onSubmit { controller.submit() }
                         .disabled(controller.replaceState == .applying)
+                        .onChange(of: controller.query) { _, value in appState.aiRegex.queryEdited(value, target: .folderSearch) }
+                    if controller.mode == .text { aiRegexButton }
                     Button(L10n.tr("搜索")) { controller.start() }
                         .disabled(controller.query.isEmpty || controller.replaceState == .applying)
                 }
-                if controller.mode == .text { replaceControls }
+                if appState.aiRegex.target == .folderSearch, let message = appState.aiRegex.message {
+                    StatusMessageView(kind: message.kind, text: message.text)
+                        .accessibilityIdentifier("folderSearch.aiRegex.message")
+                }
+                if controller.mode == .text {
+                    TextField(L10n.tr("文件过滤，例如 *.md, !build"), text: $controller.fileMask)
+                        .disabled(controller.replaceState == .applying)
+                        .help(L10n.tr("用逗号分隔。* 匹配任意字符，** 可跨文件夹，? 匹配一个字符，以 ! 开头表示排除。"))
+                        .accessibilityLabel(L10n.tr("文件过滤")).accessibilityIdentifier("folderSearch.fileMask")
+                        .onSubmit { controller.start() }
+                    replaceControls
+                }
                 if controller.isWorking && controller.quickOpenRequest == nil { ProgressView().controlSize(.small) }
                 if controller.message == .stale { Text(L10n.tr("结果已过期，请重新搜索")).foregroundStyle(.secondary) }
                 if controller.message == .invalidPattern { Text(L10n.tr("正则表达式无效")).foregroundStyle(.secondary) }
@@ -40,6 +56,35 @@ struct FolderSearchView: View {
 }
 
 extension FolderSearchView {
+    /// Кнопка видна при включённом текстовом профиле; в модель уходит только фраза из поля. Поиск и замену не запускает.
+    @ViewBuilder
+    var aiRegexButton: some View {
+        if AIRegexController.isAvailable(preferences: appState.preferences) {
+            if appState.aiRegex.isWorking && appState.aiRegex.target == .folderSearch {
+                ProgressView().controlSize(.small)
+                Button { appState.aiRegex.cancel() } label: { Image(systemName: "xmark.circle") }
+                    .buttonStyle(.borderless)
+                    .help(L10n.tr("取消生成"))
+                    .accessibilityLabel(L10n.tr("取消生成"))
+                    .accessibilityIdentifier("folderSearch.aiRegex.cancel")
+            } else {
+                Button {
+                    appState.aiRegex.start(phrase: controller.query, target: .folderSearch) { result in
+                        controller.wholeWord = false
+                        controller.caseSensitive = result.caseSensitive
+                        controller.usesRegex = true
+                        controller.query = result.pattern
+                    }
+                } label: { Image(systemName: "sparkles") }
+                    .buttonStyle(.borderless)
+                    .disabled(controller.query.isEmpty || controller.replaceState != .idle || appState.aiRegex.isWorking)
+                    .help(L10n.tr("把查找框里的描述交给 AI 生成正则表达式；只发送这段描述，不发送文档内容"))
+                    .accessibilityLabel(L10n.tr("用 AI 生成正则表达式"))
+                    .accessibilityIdentifier("folderSearch.aiRegex")
+            }
+        }
+    }
+
     @ViewBuilder
     var replaceControls: some View {
         let isBusy = controller.replaceState != .idle
@@ -51,8 +96,18 @@ extension FolderSearchView {
             Toggle("ab", isOn: $controller.wholeWord).help(L10n.tr("全字匹配"))
                 .accessibilityLabel(L10n.tr("全字匹配")).accessibilityIdentifier("folderSearch.word")
             Spacer()
+            extractMenu
             Toggle(L10n.tr("替换"), isOn: $controller.isReplaceEnabled).accessibilityIdentifier("folderSearch.replaceToggle")
         }.toggleStyle(.button).controlSize(.small).disabled(isBusy)
+        if controller.isExtracting {
+            HStack {
+                ProgressView().controlSize(.small)
+                Button(L10n.tr("停止")) { controller.cancelExtraction() }.controlSize(.small)
+            }
+        }
+        if let note = controller.extractionNote {
+            Text(extractionText(note)).foregroundStyle(.secondary)
+        }
         if controller.isReplaceEnabled {
             TextField(L10n.tr("替换为"), text: $controller.replacement).disabled(isBusy)
                 .accessibilityIdentifier("folderSearch.replacement")
@@ -71,6 +126,32 @@ extension FolderSearchView {
                         .disabled(!controller.canReplace).accessibilityIdentifier("folderSearch.replaceSelected")
                 }.controlSize(.small).disabled(controller.replaceState != .idle)
             }
+        }
+    }
+
+    private var extractMenu: some View {
+        Menu {
+            Button(L10n.tr("匹配内容")) { controller.extract(.match) }
+            Button(L10n.tr("按模板提取")) { controller.extract(.template) }
+                .disabled(!controller.isReplaceEnabled || controller.replacement.isEmpty)
+                .help(L10n.tr("使用“替换为”中的模板，例如 $1"))
+            Button(L10n.tr("匹配所在的行")) { controller.extract(.line) }
+            Button(L10n.tr("不含匹配的行")) { controller.extract(.withoutMatch) }
+        } label: {
+            Image(systemName: "list.bullet.rectangle")
+        }
+        .menuStyle(.borderlessButton).fixedSize()
+        .disabled(controller.query.isEmpty || controller.isWorking || controller.isExtracting
+                  || controller.replaceState != .idle || controller.root == nil)
+        .help(L10n.tr("提取")).accessibilityLabel(L10n.tr("提取")).accessibilityIdentifier("folderSearch.extract")
+    }
+
+    private func extractionText(_ note: FolderSearchController.ExtractionNote) -> String {
+        switch note {
+        case .empty: L10n.tr("没有可提取的内容")
+        case .stale: L10n.tr("结果已过期，请重新搜索")
+        case .invalidPattern: L10n.tr("正则表达式无效")
+        case .failed: L10n.tr("提取失败")
         }
     }
 
@@ -95,7 +176,14 @@ extension FolderSearchView {
         }
         .font(.caption)
         .accessibilityIdentifier("folderSearch.report")
-        Button(L10n.tr("关闭")) { controller.dismissReport() }.controlSize(.small)
+        HStack {
+            Button(L10n.tr("关闭")) { controller.dismissReport() }
+            if !report.replaced.allSatisfy(\.isOpen) {
+                Button(L10n.tr("撤销替换")) { controller.revertLastReplace() }
+                    .disabled(!controller.hasReplaceBackup || controller.replaceState != .idle)
+                    .accessibilityIdentifier("folderSearch.revert")
+            }
+        }.controlSize(.small)
     }
 
     private func skipText(_ reason: FolderReplaceService.SkipReason) -> String {
@@ -203,7 +291,13 @@ struct FolderSearchRowView: View {
     }
 
     private func reason(_ reason: FolderSearchService.ProblemReason) -> String {
-        switch reason {
+        reason.localizedText
+    }
+}
+
+extension FolderSearchService.ProblemReason {
+    var localizedText: String {
+        switch self {
         case .inaccessible: L10n.tr("无法读取")
         case .symbolicLink: L10n.tr("已跳过符号链接")
         case .invalidUTF8: L10n.tr("不是有效的 UTF-8")

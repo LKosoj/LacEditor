@@ -5,6 +5,7 @@ import Foundation
 final class FolderSearchController: ObservableObject {
     enum Mode: String, CaseIterable, Sendable { case files, text, tags }
     enum Message: Equatable { case stale, failed, invalidPattern }
+    enum ExtractionNote: Equatable { case empty, stale, failed, invalidPattern }
     enum QuickOpenItem: Equatable, Sendable {
         case file(FolderSearchService.File), folder(URL)
     }
@@ -38,7 +39,14 @@ final class FolderSearchController: ObservableObject {
         var isCancelled = false
         var replacedCount: Int { replaced.reduce(0) { $0 + $1.count } }
     }
-    enum ReplaceState: Equatable { case idle, confirming, applying }
+    enum ReplaceState: Equatable { case idle, confirming, applying, reverting }
+    /// Что показать в подтверждении отката.
+    struct RevertPreview: Equatable, Sendable { let fileCount: Int; let createdAt: Date }
+    enum RevertOutcome: Equatable, Sendable {
+        case nothing
+        case otherFolder(String)
+        case done(FolderReplaceBackupStore.RevertResult)
+    }
 
     private enum Output: Sendable {
         case files(FolderSearchService.Result<FolderSearchService.File>)
@@ -51,6 +59,8 @@ final class FolderSearchController: ObservableObject {
     @Published var caseSensitive = false { didSet { if caseSensitive != oldValue { invalidate() } } }
     @Published var usesRegex = false { didSet { if usesRegex != oldValue { invalidate() } } }
     @Published var wholeWord = false { didSet { if wholeWord != oldValue { invalidate() } } }
+    /// Маска файлов только для режима текста; не сохраняется между запусками.
+    @Published var fileMask = "" { didSet { if fileMask != oldValue { report = nil; invalidate() } } }
     @Published var isReplaceEnabled = false { didSet { if isReplaceEnabled != oldValue { schedulePreviews() } } }
     @Published var replacement = "" { didSet { if replacement != oldValue { schedulePreviews() } } }
     @Published var mode: Mode = .files {
@@ -77,6 +87,10 @@ final class FolderSearchController: ObservableObject {
     @Published private(set) var previews: [FolderSearchService.MatchKey: String] = [:]
     @Published private(set) var replaceState: ReplaceState = .idle
     @Published private(set) var report: ReplaceReport?
+    @Published private(set) var extractionNote: ExtractionNote?
+    @Published private(set) var isExtracting = false
+    /// Есть копия последней замены закрытых файлов: показывает кнопку отката в отчёте.
+    @Published private(set) var hasReplaceBackup = false
 
     private let snapshots: () -> [FolderSearchService.OpenDocument]?
     private let open: (URL) async -> FolderSearchService.OpenDocument?
@@ -87,11 +101,18 @@ final class FolderSearchController: ObservableObject {
     private let confirmReplace: (ReplaceSummary) -> Bool
     private let interpretsEscapes: () -> Bool
     private let applyOpen: (OpenReplace) async -> FolderReplaceService.Outcome
+    private let showExtraction: (String, Int) -> Void
+    private let backupStore: FolderReplaceBackupStore?
+    private let confirmRevert: (RevertPreview) -> Bool
+    private let showRevertResult: (RevertOutcome) -> Void
+    /// Копия одна на приложение: пока замена или откат идут в одном окне, в другом они не начинаются.
+    private static weak var busyController: FolderSearchController?
     private var previewTask: Task<Void, Never>?
     private var replaceTask: Task<Void, Never>?
     private var quickFolderSnapshot: [URL]?
     private var generation: UInt = 0
     private var task: Task<Void, Never>?
+    private var extractionTask: Task<Void, Never>?
 
     init(snapshots: @escaping () -> [FolderSearchService.OpenDocument]?,
          open: @escaping (URL) async -> FolderSearchService.OpenDocument?,
@@ -100,7 +121,11 @@ final class FolderSearchController: ObservableObject {
          folderLocations: @escaping () -> [URL] = { [] }, openFolder: @escaping (URL) -> Void = { _ in },
          confirmReplace: @escaping (ReplaceSummary) -> Bool = { _ in false },
          interpretsEscapes: @escaping () -> Bool = { true },
-         applyOpen: @escaping (OpenReplace) async -> FolderReplaceService.Outcome = { _ in .skipped(.openInEditorFailed) }) {
+         applyOpen: @escaping (OpenReplace) async -> FolderReplaceService.Outcome = { _ in .skipped(.openInEditorFailed) },
+         showExtraction: @escaping (String, Int) -> Void = { _, _ in },
+         backupStore: FolderReplaceBackupStore? = nil,
+         confirmRevert: @escaping (RevertPreview) -> Bool = { _ in false },
+         showRevertResult: @escaping (RevertOutcome) -> Void = { _ in }) {
         self.snapshots = snapshots
         self.open = open
         self.reveal = reveal
@@ -110,6 +135,11 @@ final class FolderSearchController: ObservableObject {
         self.confirmReplace = confirmReplace
         self.interpretsEscapes = interpretsEscapes
         self.applyOpen = applyOpen
+        self.showExtraction = showExtraction
+        self.backupStore = backupStore
+        self.confirmRevert = confirmRevert
+        self.showRevertResult = showRevertResult
+        hasReplaceBackup = backupStore?.hasBackup ?? false
     }
 
     func setRoot(_ root: URL?) {
@@ -168,6 +198,7 @@ final class FolderSearchController: ObservableObject {
 
     private func invalidate() {
         generation &+= 1
+        cancelExtraction()
         task?.cancel()
         task = nil
         files = []
@@ -192,6 +223,7 @@ final class FolderSearchController: ObservableObject {
         guard (mode == .files && locations != nil) || (root != nil && !query.isEmpty) else { return nil }
         let generation = self.generation, query = self.query, mode = self.mode
         let options = TextSearchService.Options(caseSensitive: caseSensitive, usesRegex: usesRegex, wholeWord: wholeWord)
+        let filter = FolderFileFilter(fileMask)
         guard let documents = mode != .files ? snapshots() : [] else {
             message = .stale
             return nil
@@ -230,7 +262,10 @@ final class FolderSearchController: ObservableObject {
             case .text, .tags:
                 guard let root else { throw CancellationError() }
                 return .text(try FolderSearchService.search(root: root, query: query, caseSensitive: false, openDocuments: documents,
-                    kind: mode == .tags ? .tags : .text, options: mode == .text ? options : nil, isCancelled: { Task.isCancelled }))
+                    kind: mode == .tags ? .tags : .text, options: mode == .text ? options : nil,
+                    include: { mode == .text ? filter.includes(relativePath: $0.relativePath) : true },
+                    pruneDirectory: { mode == .text ? filter.excludesDirectory(relativePath: $0) : false },
+                    isCancelled: { Task.isCancelled }))
             }
         }
         let task = Task { [weak self] in
@@ -284,6 +319,87 @@ final class FolderSearchController: ObservableObject {
         return relevant.count == currentRelevant.count && currentByID.count == currentRelevant.count &&
             Set(relevant.map { $0.snapshot.documentID }).count == relevant.count &&
             relevant.allSatisfy { old in currentByID[old.snapshot.documentID].map { sameSnapshot(old, $0) } == true }
+    }
+
+    // MARK: Извлечение
+
+    /// Собирает найденное в текст для новой вкладки (только чтение: результаты поиска и файлы не меняются).
+    @discardableResult
+    func extract(_ extractionMode: MatchExtractionService.Mode) -> Task<Void, Never>? {
+        guard mode == .text, let root, !query.isEmpty, !isWorking, !isExtracting, replaceState == .idle else { return nil }
+        if extractionMode == .template, replacement.isEmpty { return nil }
+        let options = TextSearchService.Options(caseSensitive: caseSensitive, usesRegex: usesRegex, wholeWord: wholeWord)
+        extractionNote = nil
+        if options.usesRegex, (try? TextSearchService.regularExpression(query: query, options: options)) == nil {
+            extractionNote = .invalidPattern
+            return nil
+        }
+        guard let documents = snapshots() else {
+            extractionNote = .stale
+            return nil
+        }
+        let generation = self.generation, query = self.query
+        let filter = FolderFileFilter(fileMask)
+        let request = MatchExtractionService.Request(query: query, options: options, interpretsEscapes: interpretsEscapes(),
+                                                     replacement: replacement, mode: extractionMode)
+        isExtracting = true
+        let worker = Task.detached(priority: .userInitiated) { () throws -> FolderSearchService.Result<FolderSearchService.ExtractedFile> in
+            try FolderSearchService.extract(root: root, request: request, openDocuments: documents,
+                include: { filter.includes(relativePath: $0.relativePath) },
+                pruneDirectory: { filter.excludesDirectory(relativePath: $0) },
+                isCancelled: { Task.isCancelled })
+        }
+        let task = Task { [weak self] in
+            do {
+                let result = try await withTaskCancellationHandler(operation: { try await worker.value }, onCancel: { worker.cancel() })
+                guard let self, !Task.isCancelled, self.generation == generation, self.root == root,
+                      self.query == query, self.mode == .text else { return }
+                guard let current = self.snapshots() else { self.finishExtraction(.stale); return }
+                guard self.generation == generation, self.root == root, self.query == query, self.mode == .text else { return }
+                guard Self.snapshotsStable(old: documents, current: current, root: root) else { self.finishExtraction(.stale); return }
+                let count = result.values.reduce(0) { $0 + $1.records.count }
+                guard count > 0 else { self.finishExtraction(.empty); return }
+                var records: [MatchExtractionService.Record] = []
+                for item in result.values {
+                    for record in item.records {
+                        records.append(.init(line: record.line, text: "\(item.file.relativePath):\(record.line): \(record.text)"))
+                    }
+                }
+                var text = MatchExtractionService.text(of: records)
+                if !result.problems.isEmpty {
+                    let lines = result.problems.map {
+                        "\(FolderSearchService.relativePath($0.url, root: root) ?? $0.url.path) — \($0.reason.localizedText)"
+                    }
+                    text += "\n" + L10n.tr("未能读取的文件：") + "\n" + lines.joined(separator: "\n") + "\n"
+                }
+                self.finishExtraction(nil)
+                self.showExtraction(text, count)
+            } catch is CancellationError { }
+            catch is TextSearchService.SearchError {
+                guard let self, !Task.isCancelled, self.generation == generation else { return }
+                self.finishExtraction(.invalidPattern)
+            }
+            catch {
+                guard let self, !Task.isCancelled, self.generation == generation else { return }
+                self.finishExtraction(.failed)
+            }
+        }
+        extractionTask = task
+        return task
+    }
+
+    private func finishExtraction(_ note: ExtractionNote?) {
+        isExtracting = false
+        extractionTask = nil
+        extractionNote = note
+    }
+
+    /// Отменяет извлечение: вкладка не создаётся, сообщение и признак работы сбрасываются.
+    func cancelExtraction() {
+        extractionTask?.cancel()
+        extractionTask = nil
+        isExtracting = false
+        extractionNote = nil
     }
 
     // MARK: Замена
@@ -396,17 +512,18 @@ final class FolderSearchController: ObservableObject {
 
     @discardableResult
     func replaceSelected() -> Task<Void, Never>? {
-        guard replaceState == .idle, let plan = makePlan(), let root else { return nil }
+        guard replaceState == .idle, Self.busyController == nil, let plan = makePlan(), let root else { return nil }
         guard openDocumentsAreCurrent(plan) else { message = .stale; return nil }
         let generation = self.generation, query = self.query
         replaceState = .confirming
+        Self.busyController = self
         let task = Task { [weak self] in
             guard let self else { return }
             let summary = ReplaceSummary(matchCount: plan.matchCount, fileCount: plan.files.count, openCount: plan.openCount)
-            guard self.confirmReplace(summary) else { self.replaceState = .idle; self.replaceTask = nil; return }
+            guard self.confirmReplace(summary) else { self.finishOperation(); return }
             guard !Task.isCancelled, self.generation == generation, self.root == root, self.query == query,
                   self.makePlan() == plan, self.openDocumentsAreCurrent(plan) else {
-                self.replaceState = .idle; self.replaceTask = nil
+                self.finishOperation()
                 if self.generation == generation { self.message = .stale }
                 return
             }
@@ -421,9 +538,49 @@ final class FolderSearchController: ObservableObject {
 
     func dismissReport() { report = nil }
 
+    private func finishOperation() {
+        replaceState = .idle
+        replaceTask = nil
+        if Self.busyController === self { Self.busyController = nil }
+    }
+
+    /// Возвращает закрытые файлы последней замены, если после неё они не менялись и не открыты в редакторе.
+    @discardableResult
+    func revertLastReplace() -> Task<Void, Never>? {
+        guard replaceState == .idle, Self.busyController == nil else { return nil }
+        guard let store = backupStore, let loaded = store.load() else { showRevertResult(.nothing); return nil }
+        guard let root, root.path == loaded.manifest.rootPath else {
+            showRevertResult(.otherFolder(loaded.manifest.rootPath))
+            return nil
+        }
+        guard confirmRevert(RevertPreview(fileCount: loaded.entries.count, createdAt: loaded.manifest.createdAt)) else { return nil }
+        // Открытые документы определяются в основном потоке до фоновой работы; без снимков все файлы считаются открытыми.
+        let documents = snapshots()
+        let base = URL(fileURLWithPath: loaded.manifest.rootPath, isDirectory: true)
+        let openURLs = Set(loaded.entries.compactMap { entry -> URL? in
+            let url = base.appendingPathComponent(entry.relativePath)
+            guard let documents else { return url }
+            return documents.contains { Self.refers($0, to: url) } ? url : nil
+        })
+        let query = self.query, mode = self.mode
+        replaceState = .reverting
+        Self.busyController = self
+        // Контроллер удерживается до конца отката (задача нигде не хранится, цикла нет): иначе закрытие окна снимет занятость.
+        return Task {
+            let result = await Task.detached(priority: .userInitiated) {
+                store.revert(isOpen: { openURLs.contains($0) })
+            }.value
+            self.finishOperation()
+            self.hasReplaceBackup = store.hasBackup
+            self.showRevertResult(.done(result))
+            if self.root == root, self.query == query, self.mode == mode { self.start() }
+        }
+    }
+
     private func apply(_ plan: ReplacePlan, root: URL) async {
         replaceState = .applying
         let query = self.query, mode = self.mode
+        let recorder = backupStore?.makeRecorder(root: root)
         var result = ReplaceReport()
         func record(_ file: ReplaceFilePlan, _ outcome: FolderReplaceService.Outcome) {
             switch outcome {
@@ -447,7 +604,8 @@ final class FolderSearchController: ObservableObject {
             }
             let worker = Task.detached(priority: .userInitiated) { () throws -> FolderReplaceService.Outcome in
                 try FolderReplaceService.replaceOnDisk(file: file.file, expected: expected, matches: file.matches,
-                                                       request: plan.request, root: root, isCancelled: { Task.isCancelled })
+                                                       request: plan.request, root: root, backup: recorder,
+                                                       isCancelled: { Task.isCancelled })
             }
             do {
                 record(file, try await withTaskCancellationHandler(operation: { try await worker.value }, onCancel: { worker.cancel() }))
@@ -455,8 +613,8 @@ final class FolderSearchController: ObservableObject {
         }
         // Корень сменился или контроллер закрыт: отчёт относится к прежнему поиску и отбрасывается.
         if self.root == root { report = result }
-        replaceState = .idle
-        replaceTask = nil
+        hasReplaceBackup = backupStore?.hasBackup ?? false
+        finishOperation()
         if self.root == root, self.query == query, self.mode == mode { start() }
     }
 

@@ -58,6 +58,7 @@ private func documentTaskSignpostName(
     case .aiQuestion: "AIQuestion"
     case .lineEndings: "LineEndings"
     case .lineEndingConversion: "LineEndingConversion"
+    case .symbolOutline: "SymbolOutline"
     }
 }
 
@@ -320,6 +321,7 @@ final class AppState: ObservableObject {
     private var searchMatchCache = SearchMatchCacheStore()
     @Published var selectedDocumentID: UUID? {
         didSet {
+            if oldValue != selectedDocumentID, findReplace.scope != nil { findReplace.scope = nil }
             if oldValue != selectedDocumentID { aiWriting.selectedDocumentChanged() }
             if oldValue != selectedDocumentID, let selectedDocumentID {
                 windowManager?.prioritizeRestoration(selectedDocumentID)
@@ -330,6 +332,7 @@ final class AppState: ObservableObject {
             }
             guard oldValue != selectedDocumentID,
                   findReplace.isWorking,
+                  !findReplace.searchesOpenDocuments,
                   let activeID = findReplace.activeDocumentID,
                   activeID != selectedDocumentID else { return }
             documents.first(where: { $0.id == activeID })?.taskCoordinator.cancel(.search)
@@ -354,6 +357,7 @@ final class AppState: ObservableObject {
     @Published private(set) var viewMagnification: CGFloat = 1
     @Published var isMarkdownOutlineExpanded = false
     @Published var isBacklinksExpanded = false
+    @Published var isSymbolOutlineExpanded = false
     var isWordWrapEnabled: Bool {
         get { preferences.wordWrapEnabled }
         set { preferences.wordWrapEnabled = newValue }
@@ -423,7 +427,7 @@ final class AppState: ObservableObject {
             let alert = NSAlert()
             alert.alertStyle = .warning
             alert.messageText = L10n.tr("确认替换？")
-            var text = L10n.tr("将在 %d 个文件中替换 %d 处。已关闭的文件将直接写入磁盘，此操作无法用“撤销”命令撤回；已打开的文档会作为一次编辑进行，可以撤销。", summary.fileCount, summary.matchCount)
+            var text = L10n.tr("将在 %d 个文件中替换 %d 处。已关闭的文件将直接写入磁盘，可用“撤销上次文件夹替换”还原（仅限替换后未再修改的文件）；已打开的文档会作为一次编辑进行，可以撤销。", summary.fileCount, summary.matchCount)
             if summary.openCount > 0 {
                 text += "\n" + L10n.tr("其中 %d 个文件已在编辑器中打开，将切换到对应窗口。", summary.openCount)
             }
@@ -437,6 +441,42 @@ final class AppState: ObservableObject {
         }, applyOpen: { [weak self] replace in
             guard let manager = self?.windowManager else { return .skipped(.changed) }
             return await manager.applyFolderReplace(replace)
+        }, showExtraction: { [weak self] text, count in
+            self?.openExtractedText(text, count: count)
+        }, backupStore: FolderReplaceBackupStore(), confirmRevert: { preview in
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = L10n.tr("撤销文件夹替换？")
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .short
+            alert.informativeText = L10n.tr("将把 %d 个文件还原为 %@ 替换前的内容。替换后又被修改过的文件不会被改动。",
+                                            preview.fileCount, formatter.string(from: preview.createdAt))
+                + "\n" + L10n.tr("只保留最近一次替换的备份，且不包含当时已在编辑器中打开的文档。")
+            alert.addButton(withTitle: L10n.tr("取消"))
+            alert.addButton(withTitle: L10n.tr("还原"))
+            return alert.runModal() == .alertSecondButtonReturn
+        }, showRevertResult: { outcome in
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            switch outcome {
+            case .nothing:
+                alert.messageText = L10n.tr("没有可撤销的文件夹替换")
+                alert.informativeText = L10n.tr("只保留最近一次替换的备份，且不包含当时已在编辑器中打开的文档。")
+            case let .otherFolder(path):
+                alert.messageText = L10n.tr("请先打开文件夹：%@", path)
+            case let .done(result):
+                alert.messageText = L10n.tr("文件夹替换已撤销")
+                var lines: [String] = []
+                if result.reverted > 0 { lines.append(L10n.tr("已还原 %d 个文件", result.reverted)) }
+                if result.conflicts > 0 { lines.append(L10n.tr("%d 个文件在替换后被修改，未改动", result.conflicts)) }
+                if result.openInEditor > 0 { lines.append(L10n.tr("%d 个文件已在编辑器中打开，未改动", result.openInEditor)) }
+                if result.notApplied > 0 { lines.append(L10n.tr("%d 个文件当时未写入，无需还原", result.notApplied)) }
+                if result.failed > 0 { lines.append(L10n.tr("%d 个文件无法还原", result.failed)) }
+                alert.informativeText = lines.joined(separator: "\n")
+            }
+            alert.addButton(withTitle: L10n.tr("确定"))
+            alert.runModal()
         })
         controller.setRoot(folderWorkspace.rootURL)
         folderSearchStorage = controller
@@ -445,6 +485,7 @@ final class AppState: ObservableObject {
         }
         return controller
     }
+    func revertLastFolderReplace() { folderSearch.revertLastReplace() }
     /// Обратные ссылки текущего документа; панель вызывает `update`, события папки — `refreshSoon`.
     private var backlinksStorage: MarkdownBacklinksController?
     var backlinks: MarkdownBacklinksController {
@@ -484,8 +525,11 @@ final class AppState: ObservableObject {
     let textTransformation = TextTransformationPreviewState()
     lazy var aiWriting = AIWritingController(appState: self)
     lazy var aiDictation = AIDictationController(appState: self)
+    lazy var aiRegex = AIRegexController(appState: self)
+    lazy var symbolOutline = SymbolOutlineController()
     @Published var isAIWritingVisible = false
     let commandPalette = CommandPaletteController()
+    let snippetPicker = SnippetPickerController()
     weak var hostWindow: NSWindow? {
         didSet {
             if oldValue !== hostWindow && isDistractionFree { toggleDistractionFree() }
@@ -495,6 +539,27 @@ final class AppState: ObservableObject {
     private var previousToolbarVisibility: Bool?
     weak var windowManager: WindowManager?
     private var findRefreshTask: Task<Void, Never>?
+    private var openDocumentsTask: Task<Void, Never>?
+    private var openDocumentsGeneration: UInt = 0
+    /// Поиск и замена по всем открытым документам (область «Все открытые» в панели поиска).
+    lazy var openDocuments = OpenDocumentsSearchController(sources: { [weak self] forReplace in
+        self?.windowManager?.openDocumentSearchSources(forReplace: forReplace) ?? []
+    }, reveal: { [weak self] position, revision, focusEditor in
+        guard let self else { return false }
+        return self.windowManager?.revealOpenDocumentMatch(position, revision: revision, from: self, focusEditor: focusEditor) == true
+    }, replace: { [weak self] documentID, revision, request in
+        guard let manager = self?.windowManager else { return .skipped(.changed) }
+        return await manager.applyOpenDocumentsReplace(documentID: documentID, revision: revision, request: request)
+    }, confirmReplace: { summary in
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L10n.tr("确认在所有打开的文档中替换？")
+        alert.informativeText = L10n.tr("文档：%d 个，替换：%d 处。每个文档作为一次编辑进行，可分别撤销，不会写入磁盘。", summary.documentCount, summary.matchCount)
+        alert.addButton(withTitle: L10n.tr("取消"))
+        let replace = alert.addButton(withTitle: L10n.tr("替换"))
+        replace.hasDestructiveAction = true
+        return alert.runModal() == .alertSecondButtonReturn
+    })
     var templateTask: Task<Void, Never>?
     var renameLinkTask: Task<Void, Never>?
     var manuscriptSheet: NSWindow?
@@ -550,6 +615,7 @@ final class AppState: ObservableObject {
     private var openingOperations: [URL: Operation] = [:]
     private var openingPlaceholderIDs: Set<UUID> = []
     private var versionHistorySheet: NSWindow?
+    private var textCompareSheet: NSWindow?
     private var contentChangeObserver: NSObjectProtocol?
     private var markdownLinkObserver: NSObjectProtocol?
     private var markdownLinkTask: (id: UUID, documentID: UUID, task: Task<Void, Never>)?
@@ -665,9 +731,14 @@ final class AppState: ObservableObject {
                     || document.statusMessage?.hasPrefix(L10n.tr("正在压缩")) == true {
                     document.statusMessage = L10n.tr("内容已变化，JSON 操作已取消")
                 }
-                if self.findReplace.isWorking {
+                // Операции по всем вкладкам сами сверяют версии и завершаются своим отчётом.
+                if self.findReplace.isWorking, !self.findReplace.searchesOpenDocuments {
                     self.findReplace.isWorking = false
                     self.findReplace.message = L10n.tr("内容已变化，任务已取消")
+                }
+                if self.findReplace.scope?.documentID == documentID {
+                    self.findReplace.scope = nil
+                    self.findReplace.show(L10n.tr("文本已变化，已取消选区查找"), kind: .notice)
                 }
                 if documentID == self.selectedDocumentID, self.findReplace.isBarVisible {
                     self.clearFindResults()
@@ -808,11 +879,13 @@ final class AppState: ObservableObject {
         if commandPalette.isPresented { commandPalette.dismiss(); return }
         if (window.firstResponder as? NSTextView)?.hasMarkedText() == true { return }
         folderSearch.cancelQuickOpen()
+        snippetPicker.dismiss()
         commandPalette.present(menu: NSApp.mainMenu, preferences: preferences)
     }
 
     func showQuickOpen() {
         commandPalette.dismiss()
+        snippetPicker.dismiss()
         folderSearch.requestQuickOpen()
     }
 
@@ -1228,6 +1301,49 @@ final class AppState: ObservableObject {
     private func closeVersionHistory() {
         guard let sheet = versionHistorySheet else { return }
         versionHistorySheet = nil
+        sheet.sheetParent?.endSheet(sheet)
+    }
+
+    var canShowTextCompare: Bool {
+        guard let document = selectedDocument else { return false }
+        return document.ioState == .idle && !isOpeningPlaceholder(document)
+    }
+
+    /// Лист сравнения текущего текста с другим документом или файлом; `initial` задаёт готовую левую сторону (например, диск).
+    func presentTextCompare(initial: TextCompareSource? = nil) {
+        guard canShowTextCompare, textCompareSheet == nil, versionHistorySheet == nil, manuscriptSheet == nil,
+              let document = selectedDocument,
+              let window = hostWindow, let manager = windowManager, manager.activeState === self,
+              manager.ownsVisibleState(self, window: window) else { return }
+        if let refusal = TextCompareService.refusal(for: document) {
+            document.statusMessage = refusal
+            return
+        }
+        let candidates: [TextCompareSource] = initial != nil ? [] : manager.documentsForAI
+            .filter { $0 !== document && $0.ioState != .opening }
+            .map { TextCompareService.source(of: $0) }
+        let chooseFile: (@MainActor () -> TextCompareSource?)? = initial != nil ? nil : { [weak document] in
+            guard let document else { return nil }
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = true
+            panel.canChooseDirectories = false
+            panel.allowsMultipleSelection = false
+            guard panel.runModal() == .OK, let url = panel.url else { return nil }
+            return TextCompareService.source(ofFile: url, fallback: document.fileEncoding, fallbackName: document.encodingName)
+        }
+        let controller = TextCompareController(document: document, candidates: candidates, initial: initial, chooseFile: chooseFile)
+        let sheet = NSWindow(contentViewController: NSHostingController(rootView: TextCompareView(
+            controller: controller,
+            close: { [weak self] in self?.closeTextCompare() }
+        )))
+        sheet.styleMask.remove(.closable)
+        textCompareSheet = sheet
+        window.beginSheet(sheet)
+    }
+
+    private func closeTextCompare() {
+        guard let sheet = textCompareSheet else { return }
+        textCompareSheet = nil
         sheet.sheetParent?.endSheet(sheet)
     }
 
@@ -2385,9 +2501,12 @@ final class AppState: ObservableObject {
     }
 
     func closeAuxiliaryWindows() {
+        snippetPicker.dismiss()
         aiWriting.windowClosed()
         aiDictation.windowClosed()
+        aiRegex.windowClosed()
         closeVersionHistory()
+        closeTextCompare()
         closeManuscript()
         templateTask?.cancel()
         templateTask = nil
@@ -2455,11 +2574,17 @@ final class AppState: ObservableObject {
             document.taskCoordinator.cancel(.search)
             document.taskCoordinator.cancel(.replace)
         }
+        aiRegex.cancel()
         findRefreshTask?.cancel()
         findRefreshTask = nil
+        openDocumentsTask?.cancel()
+        openDocumentsTask = nil
+        openDocumentsGeneration += 1
         findReplace.isWorking = false
         findReplace.activeDocumentID = nil
         findReplace.isBarVisible = false
+        findReplace.scope = nil
+        findReplace.searchesOpenDocuments = false
         clearFindResults()
         if returnFocus, let document = selectedDocument {
             NotificationCenter.default.post(
@@ -2475,6 +2600,10 @@ final class AppState: ObservableObject {
         let query = interpretedSearchQuery()
         guard !query.isEmpty else {
             presentFindReplace(mode: .find)
+            return
+        }
+        if findReplace.searchesOpenDocuments {
+            stepOpenDocuments(backwards: false, keepFocusInBar: keepFocusInBar)
             return
         }
         performFind(
@@ -2493,6 +2622,10 @@ final class AppState: ObservableObject {
         let query = interpretedSearchQuery()
         guard !query.isEmpty else {
             presentFindReplace(mode: .find)
+            return
+        }
+        if findReplace.searchesOpenDocuments {
+            stepOpenDocuments(backwards: true, keepFocusInBar: keepFocusInBar)
             return
         }
         performFind(
@@ -2517,6 +2650,8 @@ final class AppState: ObservableObject {
             findReplace.show(L10n.tr("请输入查找内容"), kind: .error)
             return
         }
+        let resolution = resolveFindScope(for: document)
+        if case .stale = resolution { return }
         let replacement: String?
         do {
             replacement = try TextSearchService.replacement(
@@ -2525,7 +2660,8 @@ final class AppState: ObservableObject {
                 query: query,
                 replacement: findReplace.replacement,
                 options: findReplace.searchOptions,
-                interpretsEscapes: findReplace.interpretsEscapes
+                interpretsEscapes: findReplace.interpretsEscapes,
+                scope: resolution.range
             )
         } catch {
             findReplace.show(L10n.tr("正则表达式无效"), kind: .error)
@@ -2543,12 +2679,28 @@ final class AppState: ObservableObject {
             location: originalRange.location,
             length: (replacement as NSString).length
         )
+        // Область не снимается при «Заменить»: её длина пересчитывается по разнице длин замены.
+        let previousScope = findReplace.scope
+        findReplace.scope = nil
         guard applyTextUpdate(
             mutable as String,
             to: document,
             selectionRange: nextSelection,
             actionName: L10n.tr("替换")
-        ) else { return }
+        ) else {
+            findReplace.scope = previousScope
+            return
+        }
+        if let previousScope {
+            findReplace.scope = FindReplaceState.Scope(
+                documentID: previousScope.documentID,
+                range: NSRange(
+                    location: previousScope.range.location,
+                    length: previousScope.range.length + nextSelection.length - originalRange.length
+                ),
+                revision: document.synchronizedSnapshot().revision
+            )
+        }
         findReplace.show(L10n.tr("已替换 1 处"), kind: .success)
         findNext(keepFocusInBar: keepFocusInBar)
     }
@@ -2565,6 +2717,87 @@ final class AppState: ObservableObject {
             ? NSRegularExpression.escapedPattern(for: selected)
             : (findReplace.interpretsEscapes ? TextSearchService.escapedForInterpretation(selected) : selected)
         if findReplace.isBarVisible, findReplace.mode != .goToLine { scheduleFindRefresh() }
+    }
+
+    /// «В выделении»: включает область по текущему выделению (координаты файла) или выключает её.
+    func setFindInSelection(_ enabled: Bool) {
+        cancelFindReplaceTask()
+        guard enabled else {
+            findReplace.scope = nil
+            if findReplace.messageKind == .notice { findReplace.show(nil, kind: .info) }
+            clearFindResults()
+            scheduleFindRefresh()
+            return
+        }
+        guard let document = selectedDocument else { return }
+        let snapshot = document.synchronizedSnapshot()
+        let selection = document.selectionRange
+        guard selection.length > 0, NSMaxRange(selection) <= (snapshot.text as NSString).length else {
+            findReplace.show(L10n.tr("请先选中文本"), kind: .error)
+            return
+        }
+        findReplace.scope = FindReplaceState.Scope(documentID: document.id, range: selection, revision: snapshot.revision)
+        findReplace.show(nil, kind: .info)
+        clearFindResults()
+        scheduleFindRefresh()
+    }
+
+    /// Список области в панели: документ, выделение или все открытые документы.
+    func setFindScope(_ area: FindScope) {
+        cancelFindReplaceTask()
+        openDocumentsTask?.cancel()
+        openDocumentsTask = nil
+        openDocumentsGeneration += 1
+        findReplace.setOpenDocumentsSummary(nil)
+        findReplace.searchesOpenDocuments = area == .openDocuments
+        switch area {
+        case .selection:
+            setFindInSelection(true)
+        case .document, .openDocuments:
+            findReplace.scope = nil
+            if findReplace.messageKind == .notice { findReplace.show(nil, kind: .info) }
+            clearFindResults()
+            scheduleFindRefresh()
+        }
+    }
+
+    /// Панель переезжает в окно другой вкладки: запрос, флаги и область «Все открытые» копируются из прежней панели.
+    func adoptOpenDocumentsSearch(from other: FindReplaceState) {
+        findReplace.query = other.query
+        findReplace.replacement = other.replacement
+        findReplace.isCaseSensitive = other.isCaseSensitive
+        findReplace.usesRegex = other.usesRegex
+        findReplace.matchesWholeWord = other.matchesWholeWord
+        findReplace.interpretsEscapes = other.interpretsEscapes
+        findReplace.mode = other.mode == .replace ? .replace : .find
+        findReplace.scope = nil
+        findReplace.searchesOpenDocuments = true
+        findReplace.message = nil
+        findReplace.isBarVisible = true
+        findReplace.focusRequestID = UUID()
+        scheduleFindRefresh()
+    }
+
+    private enum FindScopeResolution {
+        case none, active(NSRange), stale
+
+        var range: NSRange? {
+            if case let .active(range) = self { return range }
+            return nil
+        }
+    }
+
+    /// Область поиска актуальна, только пока ревизия текста та же; иначе её снимают и работу не продолжают.
+    private func resolveFindScope(for document: EditorDocument) -> FindScopeResolution {
+        guard let scope = findReplace.scope else { return .none }
+        guard scope.documentID == document.id else {
+            findReplace.scope = nil
+            return .none
+        }
+        if document.synchronizedSnapshot().revision == scope.revision { return .active(scope.range) }
+        findReplace.scope = nil
+        findReplace.show(L10n.tr("文本已变化，已取消选区查找"), kind: .notice)
+        return .stale
     }
 
     /// Ввод «строка» или «строка:столбец» (с 1). Успех закрывает панель и переносит курсор.
@@ -2588,7 +2821,7 @@ final class AppState: ObservableObject {
             findReplace.show(L10n.tr("行号超出范围（1–%@）", String(index.lineCount)), kind: .error)
             return false
         }
-        reveal(NSRange(location: location, length: 0), in: document, space: document.language == .markdown ? .display : .source)
+        jump(to: NSRange(location: location, length: 0), in: document, space: document.language == .markdown ? .display : .source)
         findReplace.show(nil, kind: .info)
         dismissFindReplace()
         return true
@@ -2597,7 +2830,7 @@ final class AppState: ObservableObject {
     func scheduleFindRefresh() {
         findRefreshTask?.cancel()
         guard findReplace.isBarVisible, findReplace.mode != .goToLine, !findReplace.query.isEmpty,
-              let document = selectedDocument, !document.isLargeFileMode else {
+              let document = selectedDocument, findReplace.searchesOpenDocuments || !document.isLargeFileMode else {
             clearFindResults()
             if findReplace.mode != .goToLine, findReplace.messageKind == .error { findReplace.show(nil, kind: .info) }
             return
@@ -2610,11 +2843,18 @@ final class AppState: ObservableObject {
     }
 
     private func refreshFindMatches(in document: EditorDocument) {
+        if findReplace.searchesOpenDocuments {
+            refreshOpenDocuments(origin: document)
+            return
+        }
         let snapshot = document.synchronizedSnapshot()
         let query = interpretedSearchQuery()
         let options = findReplace.searchOptions
         let rawQuery = findReplace.query
         guard !query.isEmpty else { clearFindResults(); return }
+        let resolution = resolveFindScope(for: document)
+        if case .stale = resolution { return }
+        let scope = resolution.range
         if !options.isPlain {
             do { _ = try TextSearchService.regularExpression(query: query, options: options) }
             catch {
@@ -2629,13 +2869,14 @@ final class AppState: ObservableObject {
             query: query,
             caseSensitive: options.caseSensitive,
             usesRegex: options.usesRegex,
-            wholeWord: options.wholeWord
+            wholeWord: options.wholeWord,
+            scope: scope
         )
         if let cached = searchMatchCache.value(for: document.id, key: key) {
             publishFindMatches(cached.matches, in: document, revision: snapshot.revision)
             return
         }
-        performAsyncSearchTask(document, source: snapshot.text, query: query, options: options) { [weak self, weak document] matches in
+        performAsyncSearchTask(document, source: snapshot.text, query: query, options: options, scope: scope) { [weak self, weak document] matches in
             guard let self, let document,
                   self.findReplace.query == rawQuery,
                   self.findReplace.searchOptions == options else { return }
@@ -2649,7 +2890,7 @@ final class AppState: ObservableObject {
               selectedDocument === document,
               findReplace.isBarVisible else { return }
         findReplace.setMatches(matches, documentID: document.id)
-        if findReplace.message != nil, findReplace.messageKind != .success, !findReplace.isWorking {
+        if findReplace.message != nil, findReplace.messageKind != .success, findReplace.messageKind != .notice, !findReplace.isWorking {
             findReplace.show(nil, kind: .info)
         }
         NotificationCenter.default.post(
@@ -2666,9 +2907,15 @@ final class AppState: ObservableObject {
             )
         }
         findReplace.setMatches(nil, documentID: nil)
+        findReplace.setOpenDocumentsSummary(nil)
     }
 
     func replaceAllMatches() {
+        // Режим чтения этой вкладки не должен блокировать остальные вкладки.
+        if findReplace.searchesOpenDocuments {
+            replaceAllInOpenDocuments()
+            return
+        }
         guard let document = selectedDocument else { return }
         guard !document.isReadingMode else {
             findReplace.show(L10n.tr("阅读模式下无法修改"), kind: .error)
@@ -2681,6 +2928,9 @@ final class AppState: ObservableObject {
             findReplace.show(L10n.tr("请输入查找内容"), kind: .error)
             return
         }
+        let resolution = resolveFindScope(for: document)
+        if case .stale = resolution { return }
+        let scopeRange = resolution.range
         let options = findReplace.searchOptions
         if !options.isPlain {
             do { _ = try TextSearchService.regularExpression(query: query, options: options) }
@@ -2704,6 +2954,7 @@ final class AppState: ObservableObject {
                 replacement: replacement,
                 options: options,
                 interpretsEscapes: interpretsEscapes,
+                scope: scopeRange,
                 isCancelled: isCancelled
             )) ?? (source, 0)
         } completion: { [weak self, weak document] result in
@@ -2713,6 +2964,7 @@ final class AppState: ObservableObject {
             self.findReplace.activeDocumentID = nil
             guard self.findReplace.query == rawQuery,
                   self.findReplace.searchOptions == options,
+                  self.findReplace.scope?.range == scopeRange,
                   self.isTaskResultCurrent(document, revision: revision) else {
                 self.findReplace.message = L10n.tr("内容已变化，已取消替换")
                 return
@@ -2721,12 +2973,16 @@ final class AppState: ObservableObject {
                 self.findReplace.show(L10n.tr("未找到匹配内容"), kind: .error)
                 return
             }
+            // Область после «Заменить все» снимается: её границы после замены уже не известны.
+            let previousScope = self.findReplace.scope
+            self.findReplace.scope = nil
             guard self.applyTextUpdate(
                 result.text,
                 to: document,
                 selectionRange: NSRange(location: 0, length: 0),
                 actionName: L10n.tr("全部替换")
             ) else {
+                self.findReplace.scope = previousScope
                 self.findReplace.show(L10n.tr("阅读模式下无法修改"), kind: .error)
                 return
             }
@@ -2735,7 +2991,287 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Собирает найденное в новую несохранённую вкладку «Обычный текст»; документ не меняется.
+    func extractMatches(_ mode: MatchExtractionService.Mode) {
+        guard let document = selectedDocument else { return }
+        let snapshot = document.synchronizedSnapshot()
+        let source = snapshot.text
+        let query = interpretedSearchQuery()
+        guard !query.isEmpty else {
+            findReplace.show(L10n.tr("请输入查找内容"), kind: .error)
+            return
+        }
+        if mode == .template, findReplace.replacement.isEmpty {
+            findReplace.show(L10n.tr("请先在“替换为”中输入模板"), kind: .error)
+            return
+        }
+        let resolution = resolveFindScope(for: document)
+        if case .stale = resolution { return }
+        let options = findReplace.searchOptions
+        if !options.isPlain {
+            do { _ = try TextSearchService.regularExpression(query: query, options: options) }
+            catch {
+                findReplace.show(L10n.tr("正则表达式无效"), kind: .error)
+                return
+            }
+        }
+        let request = MatchExtractionService.Request(
+            query: query,
+            options: options,
+            interpretsEscapes: findReplace.interpretsEscapes,
+            replacement: findReplace.replacement,
+            mode: mode,
+            scope: resolution.range
+        )
+        if findReplace.searchesOpenDocuments {
+            extractFromOpenDocuments(request: request, origin: document)
+            return
+        }
+        let revision = snapshot.revision
+        let rawQuery = findReplace.query
+        findReplace.isWorking = true
+        findReplace.activeDocumentID = document.id
+        findReplace.message = L10n.tr("正在提取…")
+        performCancellableDocumentTask(document, kind: .search) { isCancelled in
+            // Выражение проверено на главном потоке до запуска.
+            try? MatchExtractionService.records(in: source, request: request, isCancelled: isCancelled)
+        } completion: { [weak self, weak document] records in
+            guard let self, let document else { return }
+            guard self.findReplace.activeDocumentID == document.id else { return }
+            self.findReplace.isWorking = false
+            self.findReplace.activeDocumentID = nil
+            guard self.findReplace.query == rawQuery,
+                  self.findReplace.searchOptions == options,
+                  self.isTaskResultCurrent(document, revision: revision) else {
+                self.findReplace.message = L10n.tr("内容已变化，已取消查找")
+                return
+            }
+            guard let records else {
+                self.findReplace.show(nil, kind: .info)
+                return
+            }
+            guard !records.isEmpty else {
+                self.findReplace.show(L10n.tr("没有可提取的内容"), kind: .error)
+                return
+            }
+            self.findReplace.show(L10n.tr("已提取 %d 条", records.count), kind: .success)
+            self.openExtractedText(MatchExtractionService.text(of: records), count: records.count)
+            // Задача извлечения занимала вид .search, поэтому счётчик пересчитывается заново.
+            self.scheduleFindRefresh()
+        }
+    }
+
+    /// Счётчик по всем открытым документам: считает фоновая задача окна, поздний результат отбрасывается по поколению.
+    private func refreshOpenDocuments(origin document: EditorDocument) {
+        let query = interpretedSearchQuery()
+        let options = findReplace.searchOptions
+        let rawQuery = findReplace.query
+        guard !query.isEmpty else { clearFindResults(); return }
+        if !options.isPlain {
+            do { _ = try TextSearchService.regularExpression(query: query, options: options) }
+            catch {
+                findReplace.show(L10n.tr("正则表达式无效"), kind: .error)
+                clearFindResults()
+                return
+            }
+        }
+        if findReplace.messageKind == .error { findReplace.show(nil, kind: .info) }
+        openDocumentsTask?.cancel()
+        openDocumentsGeneration += 1
+        let generation = openDocumentsGeneration
+        openDocumentsTask = Task { @MainActor [weak self, weak document] in
+            guard let self else { return }
+            do {
+                let result = try await self.openDocuments.search(query: query, options: options)
+                guard !Task.isCancelled, self.openDocumentsGeneration == generation,
+                      self.findReplace.searchesOpenDocuments, self.findReplace.query == rawQuery,
+                      self.findReplace.searchOptions == options else { return }
+                self.findReplace.setOpenDocumentsSummary(Self.openDocumentsSummary(result))
+                // Подсветка и текущее положение остаются у выбранной вкладки.
+                guard let document, self.selectedDocument === document,
+                      let revision = result.revisions[document.id] else { self.clearHighlights(); return }
+                let matches = result.documents.first { $0.documentID == document.id }?.ranges ?? []
+                self.publishFindMatches(matches, in: document, revision: revision)
+            } catch is CancellationError {
+            } catch {
+                guard self.openDocumentsGeneration == generation else { return }
+                self.findReplace.show(L10n.tr("正则表达式无效"), kind: .error)
+                self.clearFindResults()
+            }
+        }
+    }
+
+    private static func openDocumentsSummary(_ result: OpenDocumentsSearchService.Result) -> OpenDocumentsSummary {
+        OpenDocumentsSummary(matchCount: result.matchCount, documentCount: result.documents.count,
+                             skippedTitles: result.skipped.map(\.localizedTitle))
+    }
+
+    /// Подсветка выбранной вкладки снимается, когда её нет среди просмотренных (пропущена).
+    private func clearHighlights() {
+        if let id = findReplace.matchesDocumentID {
+            NotificationCenter.default.post(name: EditorCommandNotification.findHighlights, object: FindHighlightRequest(documentID: id, matches: []))
+        }
+        findReplace.setMatches(nil, documentID: nil)
+    }
+
+    /// ⌘G / ⇧⌘G при области «Все открытые»: следующее совпадение в порядке вкладок, с переходом в другое окно.
+    private func stepOpenDocuments(backwards: Bool, keepFocusInBar: Bool) {
+        guard !findReplace.isWorking else { return }
+        guard let selected = selectedDocument else { return }
+        let query = interpretedSearchQuery()
+        let options = findReplace.searchOptions
+        let rawQuery = findReplace.query
+        if !options.isPlain {
+            do { _ = try TextSearchService.regularExpression(query: query, options: options) }
+            catch {
+                findReplace.show(L10n.tr("正则表达式无效"), kind: .error)
+                return
+            }
+        }
+        openDocumentsTask?.cancel()
+        openDocumentsGeneration += 1
+        let generation = openDocumentsGeneration
+        findReplace.isWorking = true
+        findReplace.activeDocumentID = selected.id
+        findReplace.message = L10n.tr("正在查找…")
+        let from = OpenDocumentsSearchService.Position(documentID: selected.id, range: selected.selectionRange)
+        openDocumentsTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let outcome = try await self.openDocuments.step(from: from, backwards: backwards, query: query, options: options)
+                guard !Task.isCancelled, self.openDocumentsGeneration == generation,
+                      self.findReplace.query == rawQuery, self.findReplace.searchOptions == options else { return }
+                self.findReplace.isWorking = false
+                self.findReplace.activeDocumentID = nil
+                self.findReplace.setOpenDocumentsSummary(Self.openDocumentsSummary(outcome.result))
+                guard let target = outcome.target, let revision = outcome.revision else {
+                    self.findReplace.show(L10n.tr("未找到匹配内容"), kind: .error)
+                    return
+                }
+                if self.openDocuments.reveal(target, revision: revision, focusEditor: !keepFocusInBar) {
+                    self.findReplace.show(nil, kind: .info)
+                } else {
+                    self.findReplace.show(L10n.tr("内容已变化，已取消查找"), kind: .notice)
+                    self.scheduleFindRefresh()
+                }
+            } catch is CancellationError {
+            } catch {
+                guard self.openDocumentsGeneration == generation else { return }
+                self.findReplace.isWorking = false
+                self.findReplace.activeDocumentID = nil
+                self.findReplace.show(L10n.tr("正则表达式无效"), kind: .error)
+            }
+        }
+    }
+
+    /// «Заменить все» по всем вкладкам: подтверждение, затем по одному документу одной правкой с отдельной отменой.
+    private func replaceAllInOpenDocuments() {
+        guard !findReplace.isWorking else { return }
+        guard let origin = selectedDocument else { return }
+        let query = interpretedSearchQuery()
+        guard !query.isEmpty else {
+            findReplace.show(L10n.tr("请输入查找内容"), kind: .error)
+            return
+        }
+        let options = findReplace.searchOptions
+        if !options.isPlain {
+            do { _ = try TextSearchService.regularExpression(query: query, options: options) }
+            catch {
+                findReplace.show(L10n.tr("正则表达式无效"), kind: .error)
+                return
+            }
+        }
+        let request = FolderReplaceService.Request(query: query, replacement: findReplace.replacement,
+                                                   options: options, interpretsEscapes: findReplace.interpretsEscapes)
+        openDocumentsTask?.cancel()
+        openDocumentsGeneration += 1
+        let generation = openDocumentsGeneration
+        findReplace.isWorking = true
+        findReplace.activeDocumentID = origin.id
+        findReplace.message = L10n.tr("正在替换…")
+        openDocumentsTask = Task { @MainActor [weak self, weak origin] in
+            guard let self else { return }
+            do {
+                let report = try await self.openDocuments.replaceAll(request: request)
+                guard self.openDocumentsGeneration == generation else { return }
+                self.findReplace.isWorking = false
+                self.findReplace.activeDocumentID = nil
+                guard let report else {
+                    self.findReplace.show(nil, kind: .info)
+                    return
+                }
+                // Замена переключала вкладки и окна: возвращаем ту, с которой она запущена.
+                if let origin, let manager = self.windowManager, self.documents.contains(where: { $0 === origin }) {
+                    manager.focus(origin, in: self)
+                }
+                if report.replaced.isEmpty && report.skipped.isEmpty {
+                    self.findReplace.show(L10n.tr("未找到匹配内容"), kind: .error)
+                } else if report.skipped.isEmpty {
+                    self.findReplace.show(L10n.tr("已替换 %@ 处（%@ 个文档）", String(report.replacedCount), String(report.replaced.count)), kind: .success)
+                } else {
+                    self.findReplace.show(L10n.tr("已替换 %@ 处（%@ 个文档），跳过 %@ 个：%@", String(report.replacedCount),
+                                                  String(report.replaced.count), String(report.skipped.count),
+                                                  report.skipped.map(\.localizedTitle).joined(separator: ", ")), kind: .notice)
+                }
+                self.scheduleFindRefresh()
+            } catch is CancellationError {
+            } catch {
+                guard self.openDocumentsGeneration == generation else { return }
+                self.findReplace.isWorking = false
+                self.findReplace.activeDocumentID = nil
+                self.findReplace.show(L10n.tr("正则表达式无效"), kind: .error)
+            }
+        }
+    }
+
+    /// Извлечение по всем вкладкам: записи с префиксом «имя:строка», пропущенные вкладки отдельным блоком в конце.
+    private func extractFromOpenDocuments(request: MatchExtractionService.Request, origin: EditorDocument) {
+        guard !findReplace.isWorking else { return }
+        let options = request.options
+        let rawQuery = findReplace.query
+        openDocumentsTask?.cancel()
+        openDocumentsGeneration += 1
+        let generation = openDocumentsGeneration
+        findReplace.isWorking = true
+        findReplace.activeDocumentID = origin.id
+        findReplace.message = L10n.tr("正在提取…")
+        openDocumentsTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let extraction = try await self.openDocuments.extract(request: request)
+                guard !Task.isCancelled, self.openDocumentsGeneration == generation,
+                      self.findReplace.query == rawQuery, self.findReplace.searchOptions == options else { return }
+                self.findReplace.isWorking = false
+                self.findReplace.activeDocumentID = nil
+                guard !extraction.records.isEmpty else {
+                    self.findReplace.show(L10n.tr("没有可提取的内容"), kind: .error)
+                    return
+                }
+                var text = MatchExtractionService.text(of: extraction.records)
+                if !extraction.skipped.isEmpty {
+                    text += "\n" + L10n.tr("已跳过：%@", extraction.skipped.map(\.localizedTitle).joined(separator: ", ")) + "\n"
+                }
+                self.findReplace.show(L10n.tr("已提取 %d 条", extraction.records.count), kind: .success)
+                self.openExtractedText(text, count: extraction.records.count)
+                self.scheduleFindRefresh()
+            } catch is CancellationError {
+            } catch {
+                guard self.openDocumentsGeneration == generation else { return }
+                self.findReplace.isWorking = false
+                self.findReplace.activeDocumentID = nil
+                self.findReplace.show(L10n.tr("正则表达式无效"), kind: .error)
+            }
+        }
+    }
+
     func cancelFindReplaceTask() {
+        if findReplace.isWorking, findReplace.searchesOpenDocuments {
+            openDocumentsTask?.cancel()
+            findReplace.isWorking = false
+            findReplace.activeDocumentID = nil
+            findReplace.message = L10n.tr("已取消")
+            return
+        }
         guard findReplace.isWorking,
               let documentID = findReplace.activeDocumentID,
               let document = documents.first(where: { $0.id == documentID }) else { return }
@@ -3278,6 +3814,9 @@ final class AppState: ObservableObject {
         backwards: Bool,
         focusEditor: Bool
     ) {
+        let resolution = resolveFindScope(for: document)
+        if case .stale = resolution { return }
+        let scope = resolution.range
         let options = findReplace.searchOptions
         if !options.isPlain {
             do { _ = try TextSearchService.regularExpression(query: query, options: options) }
@@ -3295,7 +3834,8 @@ final class AppState: ObservableObject {
             query: query,
             caseSensitive: options.caseSensitive,
             usesRegex: options.usesRegex,
-            wholeWord: options.wholeWord
+            wholeWord: options.wholeWord,
+            scope: scope
         )
         findReplace.isWorking = true
         findReplace.activeDocumentID = document.id
@@ -3327,7 +3867,8 @@ final class AppState: ObservableObject {
             document,
             source: source,
             query: query,
-            options: options
+            options: options,
+            scope: scope
         ) { [weak self, weak document] matches in
             guard let self, let document else { return }
             self.searchMatchCache.insert(
@@ -3363,6 +3904,7 @@ final class AppState: ObservableObject {
         source: String,
         query: String,
         options: TextSearchService.Options,
+        scope: NSRange? = nil,
         completion: @escaping ([NSRange]) -> Void
     ) {
         var task: Task<Void, Never>?
@@ -3384,6 +3926,7 @@ final class AppState: ObservableObject {
                 in: source,
                 query: query,
                 options: options,
+                scope: scope,
                 isCancelled: { Task.isCancelled }
             )) ?? []
             os_signpost(
@@ -4593,7 +5136,14 @@ final class AppState: ObservableObject {
         guard selectedDocument === document, document.language == .markdown,
               document.ioState == .idle, document.isMarkdownOutlineCurrent,
               document.markdownHeadings.contains(where: { $0.sameSource(as: heading) }) else { return }
-        reveal(NSRange(location: heading.range.location, length: 0), in: document)
+        jump(to: NSRange(location: heading.range.location, length: 0), in: document)
+    }
+
+    /// Переход к символу из раздела «Символы»; результат должен относиться к текущей версии текста.
+    func revealSymbol(_ symbol: OutlineSymbol, in document: EditorDocument) {
+        guard selectedDocument === document, document.ioState == .idle,
+              symbolOutline.isCurrent(for: document) else { return }
+        jump(to: NSRange(location: symbol.range.location, length: 0), in: document)
     }
 
     /// Можно ли сдвинуть раздел заголовка на одного соседа (для меню оглавления). Считает по полному списку заголовков.
@@ -4699,7 +5249,7 @@ final class AppState: ObservableObject {
                 else if let heading = MarkdownHeadingAnchors.target(for: fragment, in: request.headings) { location = heading.range.location }
                 else if let anchor = request.namedAnchors.first(where: { $0.name.utf8.elementsEqual(fragment.utf8) }) { location = anchor.range.location }
                 else { document.statusMessage = L10n.tr("找不到链接目标"); return }
-                reveal(NSRange(location: location, length: 0), in: document)
+                jump(to: NSRange(location: location, length: 0), in: document)
             case let .external(url):
                 if !NSWorkspace.shared.open(url) { document.statusMessage = L10n.tr("无法打开链接") }
             case let .data(address):
@@ -4756,6 +5306,8 @@ final class AppState: ObservableObject {
                     }
                     guard !Task.isCancelled, let opened, self?.selectedDocument?.url == sourceURL, self?.isCurrentMarkdownLink(request) == true,
                           manager.activeState?.selectedDocument?.id == opened.snapshot.documentID else { return }
+                    // Ссылка без якоря тоже переход: место записываем сразу, якорь потом не пишет второй раз.
+                    manager.commitPendingNavigationOrigin()
                     guard let fragment else { return }
                     let location: Int
                     if fragment.isEmpty { location = 0 }
@@ -4780,7 +5332,7 @@ final class AppState: ObservableObject {
                     let match = FolderSearchService.Match(file: .init(url: opened.url, relativePath: opened.url.lastPathComponent),
                         range: range, matchedText: "", contextRange: range, context: "",
                         source: .open(documentID: opened.snapshot.documentID, revision: opened.snapshot.revision, identity: opened.identity))
-                    _ = manager.revealFolderSearchMatch(match, expected: opened)
+                    _ = manager.revealFolderSearchMatch(match, expected: opened, recordsOrigin: false)
                 }
                 markdownLinkTask = (token, document.id, task)
             }
@@ -4789,12 +5341,18 @@ final class AppState: ObservableObject {
         }
     }
 
-    func revealFolderSearchRange(_ range: NSRange, in document: EditorDocument) {
+    func revealFolderSearchRange(_ range: NSRange, in document: EditorDocument, focusEditor: Bool = true) {
         guard selectedDocument === document else { return }
-        reveal(range, in: document)
+        reveal(range, in: document, focusEditor: focusEditor)
     }
 
-    private func reveal(_ range: NSRange, in document: EditorDocument, focusEditor: Bool = true, space: EditorTextSpace = .source) {
+    /// Переход «по ссылке» (оглавление, строка, #якорь): запоминает прежнее место для «Назад» и показывает цель.
+    func jump(to range: NSRange, in document: EditorDocument, space: EditorTextSpace = .source) {
+        windowManager?.recordNavigationOrigin(from: document)
+        reveal(range, in: document, space: space)
+    }
+
+    func reveal(_ range: NSRange, in document: EditorDocument, focusEditor: Bool = true, space: EditorTextSpace = .source) {
         // Модель хранит выделение в координатах файла; экранный диапазон редактор переведёт и запишет сам.
         if space == .source { document.selectionRange = range }
         NotificationCenter.default.post(
@@ -5016,7 +5574,8 @@ final class AppState: ObservableObject {
         }
     }
 
-    func reloadFromDisk(_ document: EditorDocument, at url: URL) {
+    /// `releasesOnReadFailure`: плашка об изменении файла; ошибка чтения не оставляет документ в `.failed`, иначе слежение его пропускает.
+    func reloadFromDisk(_ document: EditorDocument, at url: URL, releasesOnReadFailure: Bool = false) {
         _ = document.synchronizedText()
         let expectedRevision = document.textRevision
         let normalized = url.standardizedFileURL
@@ -5054,11 +5613,40 @@ final class AppState: ObservableObject {
                     self.openingOperations.removeValue(forKey: normalized)
                     document.ioState = .failed(error.localizedDescription)
                     self.presentError(title: L10n.tr("无法重新载入文件"), error: error)
+                    if releasesOnReadFailure { document.ioState = .idle }
                 }
             }
         }
         openingOperations[normalized] = operation
         fileOpeningQueue.addOperation(operation)
+    }
+
+    /// Кнопка «Перезагрузить» на плашке: файл читается только по нажатию; несохранённые правки сначала подтверждаются.
+    func reloadExternalChange(_ document: EditorDocument, confirmed: Bool = false) {
+        guard let url = document.url, document.ioState == .idle,
+              !openingPlaceholderIDs.contains(document.id),
+              case .present = document.externalChange else { return }
+        _ = document.synchronizedText()
+        if document.isDirty, !confirmed {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = L10n.tr("要丢弃未保存的修改并重新打开吗？")
+            alert.informativeText = L10n.tr("“%@”有未保存的修改，重新打开会丢弃这些修改和撤销记录。", document.displayName)
+            alert.addButton(withTitle: L10n.tr("重新打开"))
+            alert.addButton(withTitle: L10n.tr("取消"))
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            // Пока окно было открыто, документ мог измениться.
+            guard document.ioState == .idle, document.externalChange != nil else { return }
+        }
+        // Идёт системный ввод: подождать, не теряя подтверждения.
+        if selectedDocument === document, (hostWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self, weak document] in
+                guard let self, let document, self.documents.contains(where: { $0 === document }) else { return }
+                self.reloadExternalChange(document, confirmed: true)
+            }
+            return
+        }
+        reloadFromDisk(document, at: url, releasesOnReadFailure: true)
     }
 
     private func decodeReloadInBackground(
@@ -5111,9 +5699,23 @@ final class AppState: ObservableObject {
             document.statusMessage = L10n.tr("重新载入期间内容已变化，已保留本地修改")
             return
         }
-        document.text = decoded.text
+        // Системный ввод держит свой текст: подмена тут потерялась бы. Плашка остаётся, пользователь нажмёт снова.
+        if selectedDocument === document, (hostWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true {
+            document.ioState = .idle
+            document.statusMessage = L10n.tr("重新载入期间内容已变化，已保留本地修改")
+            return
+        }
+        // Одинаковый текст не подменяем: история отмены и выделение остаются.
+        if decoded.text != document.text {
+            document.text = decoded.text
+            document.markExternalReplacement()
+        }
         document.updateFileEncoding(decoded.encoding)
         document.updateFileRevisionSnapshot(decoded.fileRevisionSnapshot)
+        document.updatePerformanceProfile(
+            byteCount: decoded.profileByteCount ?? decoded.byteCount,
+            lineCount: decoded.profileLineCount ?? decoded.lineCount
+        )
         document.markSaved()
         document.ioState = .idle
         scheduleRecoverySnapshot(for: document, delay: 0)
@@ -5442,6 +6044,7 @@ final class AppState: ObservableObject {
     private func removeDocument(_ document: EditorDocument) {
         guard let index = documents.firstIndex(where: { $0.id == document.id }) else { return }
         closeVersionHistory()
+        closeTextCompare()
         previousMarkdownExports.removeValue(forKey: document.id)
         _ = windowManager?.cancelRestoration(document)
         if document.ioState == .opening, let url = document.url?.standardizedFileURL {
@@ -5816,6 +6419,20 @@ extension AppState {
         sheet.sheetParent?.endSheet(sheet)
     }
 
+    /// Новая несохранённая вкладка «Обычный текст» с извлечённым списком.
+    func openExtractedText(_ text: String, count: Int) {
+        let document = EditorDocument(text: text, language: .plainText, isDirty: true, requiresExplicitSave: true)
+        document.statusMessage = L10n.tr("已提取 %d 条", count)
+        if let manager = windowManager, let window = hostWindow {
+            guard manager.ownsVisibleState(self, window: window) else { return }
+            manager.openNativeTab(from: self, with: document)
+            return
+        }
+        documents.append(document)
+        selectedDocumentID = document.id
+        observe(document)
+    }
+
     /// Результат применяется, только если лист жив, окно и корень прежние; исходные файлы и документы не меняются.
     private func finishManuscript(_ output: ManuscriptService.Output) {
         guard manuscriptSheet != nil, let window = hostWindow, let manager = windowManager,
@@ -5866,6 +6483,61 @@ extension AppState {
         case .invalidTags: L10n.tr("无法读取 YAML 标签")
         case .changed: L10n.tr("文件已变化")
         case .conflictingOpenDocuments: L10n.tr("打开的文档冲突")
+        }
+    }
+}
+
+@MainActor
+extension AppState {
+    /// Панель сниппетов взаимно исключается с палитрой и быстрым открытием; повторный вызов закрывает её.
+    func showSnippetPicker(store: SnippetStore = .shared) {
+        guard let window = hostWindow, let document = selectedDocument,
+              document.ioState == .idle, !document.isReadingMode else { return }
+        if snippetPicker.isPresented { snippetPicker.dismiss(); return }
+        if (window.firstResponder as? NSTextView)?.hasMarkedText() == true { return }
+        folderSearch.cancelQuickOpen()
+        commandPalette.dismiss()
+        snippetPicker.present(snippets: store.snippets, message: store.issueMessage)
+    }
+
+    /// Вставляет сниппет по свежему выделению одной правкой; отказ (чтение, marked text, пустая ячейка таблицы) не меняет текст.
+    func insertSnippet(_ snippet: Snippet, date: Date = Date()) {
+        guard let document = selectedDocument, document.ioState == .idle else { return }
+        let extraction = EditorTextExtractionRequest(documentID: document.id, allowsTokenAtCaret: false,
+            allowsInsertionPoint: true, requiresEditable: true)
+        NotificationCenter.default.post(name: EditorCommandNotification.extractTextSelection, object: extraction)
+        guard let selection = extraction.result, selection.virtualTableTarget == nil else {
+            document.setStatusError(document.isReadingMode ? L10n.tr("阅读模式下无法修改") : L10n.tr("当前文本无法修改"))
+            return
+        }
+        let request = SnippetService.insertionRequest(snippet: snippet, selection: selection, date: date)
+        NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
+        if !request.wasHandled { document.setStatusError(request.failureMessage ?? L10n.tr("当前文本无法修改")) }
+    }
+
+    func createSnippetFromSelection(store: SnippetStore = .shared) {
+        guard let document = selectedDocument, document.ioState == .idle else { return }
+        let extraction = EditorTextExtractionRequest(documentID: document.id, allowsTokenAtCaret: false)
+        NotificationCenter.default.post(name: EditorCommandNotification.extractTextSelection, object: extraction)
+        guard let selection = extraction.result, !selection.text.isEmpty else {
+            document.setStatusError(L10n.tr("请先选中要保存的文字"))
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = L10n.tr("存为文本片段")
+        alert.addButton(withTitle: L10n.tr("保存"))
+        alert.addButton(withTitle: L10n.tr("取消"))
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        field.stringValue = SnippetService.suggestedName(for: selection.text)
+        field.placeholderString = L10n.tr("文本片段名称")
+        field.setAccessibilityLabel(L10n.tr("文本片段名称"))
+        alert.accessoryView = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        do {
+            try store.add(name: field.stringValue, text: selection.text)
+            document.statusMessage = L10n.tr("已保存文本片段")
+        } catch {
+            presentError(title: L10n.tr("无法保存文本片段"), error: error)
         }
     }
 }

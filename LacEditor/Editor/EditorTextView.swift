@@ -45,6 +45,11 @@ struct EditorTextView: NSViewRepresentable {
     var requestWikiCatalog: (() -> Void)? = nil
     var wikiSource: (() -> MarkdownWikiLinkSource)? = nil
 
+    /// Невидимые символы рисуются только в исходном тексте: в оформленном Markdown (и режиме чтения) раскладка меняет вид строк.
+    static func showsInvisibles(setting: Bool, language: EditorLanguage, isMarkdownFormatted: Bool) -> Bool {
+        setting && !(language == .markdown && isMarkdownFormatted)
+    }
+
     /// Поиск идёт по строке хранилища без её копирования.
     static func containsDataImage(in textView: NSTextView) -> Bool {
         guard let text = textView.textStorage?.mutableString else { return false }
@@ -242,6 +247,9 @@ struct EditorTextView: NSViewRepresentable {
         context.coordinator.lastSynchronizedRevision = document.textRevision
         context.coordinator.installObservers(scrollView: scrollView)
         context.coordinator.updateLineNumbersVisibility(showsLineNumbers)
+        context.coordinator.foldLayoutManager?.invisiblesColor = .lacMutedText
+        context.coordinator.foldLayoutManager?.showsInvisibles = Self.showsInvisibles(
+            setting: aiPreferences?.showsInvisibles ?? false, language: document.language, isMarkdownFormatted: document.isMarkdownFormatted)
         context.coordinator.updateWritingModes(focus: isFocusMode, focusScope: focusScope, typewriter: isTypewriterMode)
         context.coordinator.updateTopInset(topInset)
         context.coordinator.foldLayoutManager?.markdownTOCMaxLevel = markdownTOCMaxLevel
@@ -446,6 +454,9 @@ struct EditorTextView: NSViewRepresentable {
         }
         context.coordinator.updatePerformanceFeatures()
         context.coordinator.updateLineNumbersVisibility(showsLineNumbers)
+        context.coordinator.foldLayoutManager?.invisiblesColor = .lacMutedText
+        context.coordinator.foldLayoutManager?.showsInvisibles = Self.showsInvisibles(
+            setting: aiPreferences?.showsInvisibles ?? false, language: document.language, isMarkdownFormatted: document.isMarkdownFormatted)
         context.coordinator.updateWritingModes(focus: isFocusMode, focusScope: focusScope, typewriter: isTypewriterMode)
         context.coordinator.updateTopInset(topInset)
         context.coordinator.updateActivity(isActive)
@@ -467,6 +478,9 @@ struct EditorTextView: NSViewRepresentable {
             if revisionChanged, !documentChanged {
                 context.coordinator.resetSyntaxHighlightContext()
             }
+            // Отметка ставится только перечитыванием с диска: обычные внешние замены текста остаются как были.
+            let reload = revisionChanged && !documentChanged && document.consumeExternalReplacement()
+            let keptOrigin = scrollView.contentView.bounds.origin
             context.coordinator.advanceContentRevision()
             context.coordinator.isApplyingExternalUpdate = true
             context.coordinator.clearFold()
@@ -485,6 +499,11 @@ struct EditorTextView: NSViewRepresentable {
                 location: selectionLocation,
                 length: selectionLength
             ))
+            if reload {
+                // Записи отмены относятся к тексту до перечитывания.
+                textView.undoManager?.removeAllActions()
+                context.coordinator.restoreScrollOrigin(keptOrigin)
+            }
             context.coordinator.isApplyingExternalUpdate = false
             context.coordinator.lastSynchronizedRevision = document.textRevision
             context.coordinator.updateMarkdownPresentation()

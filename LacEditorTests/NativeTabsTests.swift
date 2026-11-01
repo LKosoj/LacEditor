@@ -128,6 +128,92 @@ final class NativeTabsTests: XCTestCase {
         XCTAssertEqual(document.ioState, .idle)
     }
 
+    private func makeReloadFixture(_ name: String, disk: String) throws -> (AppState, EditorDocument, URL, UserDefaults, String, URL) {
+        let suiteName = "LacEditorIOTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appendingPathComponent(name)
+        try disk.write(to: url, atomically: true, encoding: .utf8)
+        let document = EditorDocument(text: disk, url: url, fileRevisionSnapshot: try FileRevisionSnapshot.capture(url))
+        let state = AppState(initialDocument: document, recentFiles: RecentFilesStore(defaults: defaults), preferences: AppPreferences(defaults: defaults))
+        return (state, document, url, defaults, suiteName, folder)
+    }
+
+    private func waitForIdle(_ document: EditorDocument) async throws {
+        for _ in 0..<150 where document.ioState != .idle { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(document.ioState, .idle)
+    }
+
+    func testReloadExternalChangeReplacesTextOnlyAfterButton() async throws {
+        let (state, document, url, defaults, suite, folder) = try makeReloadFixture("external.txt", disk: "one")
+        defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: folder) }
+        try "two!".write(to: url, atomically: true, encoding: .utf8)
+        document.noteDiskState(.present(try FileRevisionSnapshot.capture(url)))
+        XCTAssertNotNil(document.externalChange)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(document.text, "one", "без нажатия кнопки текст не меняется")
+        state.reloadExternalChange(document)
+        try await waitForIdle(document)
+        XCTAssertEqual(document.text, "two!")
+        XCTAssertFalse(document.isDirty)
+        XCTAssertNil(document.externalChange)
+        XCTAssertEqual(document.fileRevisionSnapshot, try FileRevisionSnapshot.capture(url))
+        XCTAssertTrue(document.consumeExternalReplacement())
+    }
+
+    func testReloadWhileTypingKeepsLocalText() async throws {
+        let (state, document, url, defaults, suite, folder) = try makeReloadFixture("typing.txt", disk: "one")
+        defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: folder) }
+        try "two!".write(to: url, atomically: true, encoding: .utf8)
+        document.noteDiskState(.present(try FileRevisionSnapshot.capture(url)))
+        state.reloadExternalChange(document)
+        document.text = "edited"
+        try await waitForIdle(document)
+        XCTAssertEqual(document.text, "edited")
+        XCTAssertNotNil(document.externalChange, "плашка остаётся: пользователь может нажать снова")
+        XCTAssertFalse(document.consumeExternalReplacement())
+    }
+
+    func testReloadWithoutBannerStateDoesNothing() async throws {
+        let (state, document, url, defaults, suite, folder) = try makeReloadFixture("nobanner.txt", disk: "one")
+        defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: folder) }
+        try "two!".write(to: url, atomically: true, encoding: .utf8)
+        state.reloadExternalChange(document)
+        XCTAssertEqual(document.ioState, .idle)
+        document.noteDiskState(.missing)
+        state.reloadExternalChange(document)
+        XCTAssertEqual(document.ioState, .idle)
+        XCTAssertEqual(document.text, "one")
+    }
+
+    func testReloadIdenticalTextKeepsUndoMarkerUnset() async throws {
+        let (state, document, url, defaults, suite, folder) = try makeReloadFixture("same.txt", disk: "same")
+        defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: folder) }
+        let revision = document.textRevision
+        // Содержимое прежнее, но файл заменён: другая идентичность файла.
+        try "same".write(to: url, atomically: true, encoding: .utf8)
+        document.noteDiskState(.present(try FileRevisionSnapshot.capture(url)))
+        state.reloadExternalChange(document)
+        try await waitForIdle(document)
+        XCTAssertEqual(document.textRevision, revision, "одинаковый текст не подменяется")
+        XCTAssertFalse(document.consumeExternalReplacement())
+        XCTAssertNil(document.externalChange)
+        XCTAssertEqual(document.fileRevisionSnapshot, try FileRevisionSnapshot.capture(url))
+    }
+
+    func testReloadRefreshesPerformanceProfile() async throws {
+        let (state, document, url, defaults, suite, folder) = try makeReloadFixture("grow.txt", disk: "small")
+        defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: folder) }
+        XCTAssertEqual(document.performanceProfile, .standard)
+        try Data(repeating: 97, count: DocumentPerformanceProfile.largeFileByteThreshold + 1_024).write(to: url, options: .atomic)
+        document.noteDiskState(.present(try FileRevisionSnapshot.capture(url)))
+        state.reloadExternalChange(document)
+        for _ in 0..<500 where document.ioState != .idle { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(document.ioState, .idle)
+        XCTAssertNotEqual(document.performanceProfile, .standard)
+    }
+
     func testClosingDuringOpeningAllowsReopeningSameFile() async throws {
         let suiteName = "LacEditorIOTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

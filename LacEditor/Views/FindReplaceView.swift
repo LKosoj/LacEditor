@@ -30,6 +30,7 @@ struct FindBarView: View {
                 goToLineRow
             } else {
                 findRow
+                aiRegexMessage
                 if state.mode == .replace { replaceRow }
             }
         }
@@ -43,7 +44,10 @@ struct FindBarView: View {
         .onAppear { focusRequestedField() }
         .onChange(of: state.focusRequestID) { focusRequestedField() }
         .onChange(of: state.mode) { focusRequestedField() }
-        .onChange(of: state.query) { queryOptionsChanged() }
+        .onChange(of: state.query) {
+            appState.aiRegex.queryEdited(state.query, target: .findBar)
+            queryOptionsChanged()
+        }
         .onChange(of: state.isCaseSensitive) { queryOptionsChanged() }
         .onChange(of: state.usesRegex) { queryOptionsChanged() }
         .onChange(of: state.matchesWholeWord) { queryOptionsChanged() }
@@ -95,12 +99,21 @@ struct FindBarView: View {
             .accessibilityAddTraits(state.mode == .replace ? .isSelected : [])
             .accessibilityIdentifier("find.toggleReplace")
             queryField
+            aiRegexButton
             optionToggle("Aa", isOn: $state.isCaseSensitive, label: L10n.tr("区分大小写"))
             optionToggle(".*", isOn: $state.usesRegex, label: L10n.tr("正则表达式"))
             optionToggle("W", isOn: $state.matchesWholeWord, label: L10n.tr("全字匹配"))
             optionToggle("\\n", isOn: $state.interpretsEscapes, label: L10n.tr("解释转义字符"), help: escapeHelp)
                 .disabled(state.usesRegex)
+            Picker(L10n.tr("查找范围"), selection: Binding(get: { state.area }, set: { appState.setFindScope($0) })) {
+                ForEach(FindScope.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.menu).labelsHidden().fixedSize().controlSize(.small)
+            .help(state.area == .selection ? L10n.tr("仅在启用时选中的文本范围内查找和替换") : L10n.tr("查找范围"))
+            .accessibilityLabel(L10n.tr("查找范围"))
+            .accessibilityIdentifier("find.scope")
             resultLabel
+            extractMenu
             Spacer(minLength: 0)
             Button { appState.findPrevious(keepFocusInBar: true) } label: { Image(systemName: "chevron.up") }
                 .disabled(actionsDisabled)
@@ -114,6 +127,22 @@ struct FindBarView: View {
         }
         .buttonStyle(.borderless)
         .controlSize(.small)
+    }
+
+    private var extractMenu: some View {
+        Menu {
+            Button(L10n.tr("匹配内容")) { appState.extractMatches(.match) }
+            Button(L10n.tr("按模板提取")) { appState.extractMatches(.template) }
+                .disabled(state.mode != .replace || state.replacement.isEmpty)
+                .help(L10n.tr("使用“替换为”中的模板，例如 $1"))
+            Button(L10n.tr("匹配所在的行")) { appState.extractMatches(.line) }
+            Button(L10n.tr("不含匹配的行")) { appState.extractMatches(.withoutMatch) }
+        } label: {
+            Image(systemName: "list.bullet.rectangle")
+        }
+        .menuStyle(.borderlessButton).fixedSize()
+        .disabled(actionsDisabled)
+        .help(L10n.tr("提取")).accessibilityLabel(L10n.tr("提取")).accessibilityIdentifier("find.extract")
     }
 
     private var replaceRow: some View {
@@ -164,6 +193,44 @@ struct FindBarView: View {
         }
     }
 
+    /// Кнопка видна при включённом текстовом профиле; в модель уходит только фраза из поля, не документ.
+    @ViewBuilder private var aiRegexButton: some View {
+        if AIRegexController.isAvailable(preferences: appState.preferences) {
+            if appState.aiRegex.isWorking && appState.aiRegex.target == .findBar {
+                ProgressView().controlSize(.small)
+                Button { appState.aiRegex.cancel() } label: { Image(systemName: "xmark.circle") }
+                    .help(L10n.tr("取消生成"))
+                    .accessibilityLabel(L10n.tr("取消生成"))
+                    .accessibilityIdentifier("find.aiRegex.cancel")
+            } else {
+                Button {
+                    appState.aiRegex.start(phrase: state.query, target: .findBar) { applyAIRegex($0) }
+                } label: { Image(systemName: "sparkles") }
+                    .disabled(state.query.isEmpty || appState.aiRegex.isWorking)
+                    .help(L10n.tr("把查找框里的描述交给 AI 生成正则表达式；只发送这段描述，不发送文档内容"))
+                    .accessibilityLabel(L10n.tr("用 AI 生成正则表达式"))
+                    .accessibilityIdentifier("find.aiRegex")
+            }
+        }
+    }
+
+    @ViewBuilder private var aiRegexMessage: some View {
+        if appState.aiRegex.target == .findBar, let message = appState.aiRegex.message {
+            StatusMessageView(kind: message.kind, text: message.text)
+                .lineLimit(2).help(message.text)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("find.aiRegex.message")
+        }
+    }
+
+    /// Сначала параметры, потом текст: «全字匹配» оборачивает выражение и меняет его смысл, поэтому выключается.
+    private func applyAIRegex(_ result: AIRegexBuilder.Result) {
+        state.matchesWholeWord = false
+        state.isCaseSensitive = result.caseSensitive
+        state.usesRegex = true
+        state.query = result.pattern
+    }
+
     private var closeButton: some View {
         Button { appState.dismissFindReplace(returnFocus: true) } label: { Image(systemName: "xmark") }
             .buttonStyle(.borderless)
@@ -191,6 +258,8 @@ struct FindBarView: View {
                 }
                 .lineLimit(1).help(message)
                 .accessibilityIdentifier("find.result.message")
+            } else if state.searchesOpenDocuments {
+                if let summary = state.openDocumentsSummary { openDocumentsText(summary) }
             } else if let matches = state.matches, state.matchesDocumentID == document.id {
                 if matches.isEmpty {
                     Text(L10n.tr("未找到匹配内容")).foregroundStyle(.secondary)
@@ -204,6 +273,23 @@ struct FindBarView: View {
         .font(.subheadline)
         .monospacedDigit()
         .lineLimit(1)
+    }
+
+    @ViewBuilder private func openDocumentsText(_ summary: OpenDocumentsSummary) -> some View {
+        let skipped = summary.skippedTitles.joined(separator: ", ")
+        Group {
+            if summary.matchCount == 0 {
+                Text(L10n.tr("未找到匹配内容"))
+            } else if summary.skippedTitles.isEmpty {
+                Text(L10n.tr("共 %@ 个匹配，%@ 个文档", String(summary.matchCount), String(summary.documentCount)))
+            } else {
+                Text(L10n.tr("共 %@ 个匹配，%@ 个文档，跳过 %@ 个", String(summary.matchCount), String(summary.documentCount),
+                             String(summary.skippedTitles.count)))
+            }
+        }
+        .foregroundStyle(.secondary)
+        .help(skipped.isEmpty ? "" : L10n.tr("已跳过：%@", skipped))
+        .accessibilityIdentifier("find.result.openDocuments")
     }
 
     private var actionsDisabled: Bool { state.query.isEmpty || state.isWorking }
@@ -236,6 +322,16 @@ struct FindBarView: View {
             case .replace: focusedField = state.query.isEmpty ? .query : .replacement
             case .find: focusedField = .query
             }
+        }
+    }
+}
+
+private extension FindScope {
+    var title: String {
+        switch self {
+        case .document: L10n.tr("当前文档")
+        case .selection: L10n.tr("在选区内")
+        case .openDocuments: L10n.tr("全部打开的文档")
         }
     }
 }

@@ -21,6 +21,36 @@ enum EditorLayoutPolicy {
     }
 }
 
+/// Какие символы получают пометку при показе невидимых символов.
+enum InvisibleCharacters {
+    /// Пометки в `range` (UTF-16): индекс символа и строка пометки. `range` ограничивается длиной текста.
+    /// Пара CRLF даёт одну пометку на CR; одиночный LF после CR, лежащего перед `range`, пропускается.
+    static func marks(in text: NSString, range: NSRange) -> [(index: Int, symbol: String)] {
+        let clamped = NSIntersectionRange(range, NSRange(location: 0, length: text.length))
+        guard clamped.length > 0 else { return [] }
+        var buffer = [unichar](repeating: 0, count: clamped.length)
+        text.getCharacters(&buffer, range: clamped)
+        var result: [(index: Int, symbol: String)] = []
+        for offset in 0..<buffer.count {
+            let symbol: String
+            switch buffer[offset] {
+            case 0x20: symbol = "·"
+            case 0x09: symbol = "→"
+            case 0xA0: symbol = "°"
+            case 0x0D, 0x2028, 0x2029: symbol = "¶"
+            case 0x0A:
+                let previous = offset > 0 ? buffer[offset - 1]
+                    : (clamped.location > 0 ? text.character(at: clamped.location - 1) : 0)
+                if previous == 0x0D { continue }
+                symbol = "¶"
+            default: continue
+            }
+            result.append((clamped.location + offset, symbol))
+        }
+        return result
+    }
+}
+
 final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     static let defaultLineSpacing: CGFloat = 4
 
@@ -45,6 +75,17 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             invalidateEditorLayout()
         }
     }
+
+    /// Рисовать пометки пробелов, табуляций и переносов поверх текста. Раскладка не меняется, перерисовывается только окно просмотра.
+    var showsInvisibles = false {
+        didSet {
+            guard showsInvisibles != oldValue else { return }
+            textContainers.first?.textView?.needsDisplay = true
+        }
+    }
+
+    /// Цвет пометок; `EditorTextView` ставит `lacMutedText` (он лежит в файле, которого нет в прямых списках `swiftc`).
+    var invisiblesColor = NSColor.secondaryLabelColor
 
     var markdownCodeFont: NSFont? {
         didSet {
@@ -1696,6 +1737,34 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
                 (heading.numberedTitle as NSString).draw(with: target, options: [.usesLineFragmentOrigin, .usesFontLeading],
                     attributes: attributes)
             }
+        }
+        if showsInvisibles { drawInvisibleCharacters(in: visible, origin: origin, container: container) }
+    }
+
+    /// Пометки только для символов видимого диапазона; свёрнутые символы и незавершённый ввод пропускаются. Раскладку не запрашивает.
+    private func drawInvisibleCharacters(in visible: NSRange, origin: NSPoint, container: NSTextContainer) {
+        guard let storage = textStorage, container.layoutOrientation == .horizontal else { return }
+        let textView = container.textView
+        let marked = textView?.hasMarkedText() == true ? textView?.markedRange() : nil
+        let attributes: [NSAttributedString.Key: Any] = [.font: textFont, .foregroundColor: invisiblesColor]
+        var fragment = NSRect.zero
+        var fragmentGlyphs = NSRange(location: NSNotFound, length: 0)
+        for (index, symbol) in InvisibleCharacters.marks(in: storage.mutableString, range: visible) {
+            if isCharacterFolded(index) { continue }
+            if let marked, NSLocationInRange(index, marked) { continue }
+            let glyph = glyphIndexForCharacter(at: index)
+            if !NSLocationInRange(glyph, fragmentGlyphs) {
+                fragment = lineFragmentRect(forGlyphAt: glyph, effectiveRange: &fragmentGlyphs)
+            }
+            let position = location(forGlyphAt: glyph)
+            var x = fragment.minX + position.x + origin.x
+            if symbol == "·" || symbol == "°" {
+                let glyphWidth = boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container).width
+                let markWidth = (symbol as NSString).size(withAttributes: attributes).width
+                x += (glyphWidth - markWidth) / 2
+            }
+            let y = fragment.minY + position.y - textFont.ascender + origin.y
+            (symbol as NSString).draw(at: NSPoint(x: x, y: y), withAttributes: attributes)
         }
     }
 

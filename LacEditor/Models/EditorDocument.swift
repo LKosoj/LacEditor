@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import os
 
@@ -73,6 +74,12 @@ struct DocumentSaveResult: Sendable {
     var succeeded: Bool { errorDescription == nil && fileRevisionSnapshot != nil }
 }
 
+/// Состояние файла на диске, найденное при слежении; временное, в сессию не пишется.
+enum ExternalFileState: Equatable, Sendable {
+    case present(FileRevisionSnapshot)
+    case missing
+}
+
 final class DocumentTaskCoordinator: @unchecked Sendable {
     enum Kind: Hashable {
         case search
@@ -92,6 +99,7 @@ final class DocumentTaskCoordinator: @unchecked Sendable {
         case aiQuestion
         case lineEndings
         case lineEndingConversion
+        case symbolOutline
     }
 
     private let lock = NSLock()
@@ -212,6 +220,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
             if !isTakingMetricsSnapshot {
                 scheduleMetricsRefresh()
                 scheduleLineEndingRefresh()
+                textEdits.send()
             }
         }
     }
@@ -264,6 +273,12 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     var foldedRange: NSRange?
     private(set) var fileIdentity: DocumentFileIdentity?
     private(set) var fileRevisionSnapshot: FileRevisionSnapshot?
+    /// Что показывает плашка об изменении файла на диске; nil — плашки нет. В сессию и восстановление не пишется.
+    @Published private(set) var externalChange: ExternalFileState?
+    /// Состояние диска, для которого пользователь выбрал «Оставить мою версию».
+    private var dismissedExternalState: ExternalFileState?
+    /// Одноразовая отметка для редактора: текст заменён перечитыванием с диска (текущий `textRevision`).
+    private(set) var externalReplacementRevision: UInt?
     let taskCoordinator = DocumentTaskCoordinator()
     let previewScrollRelay = MarkdownPreviewScrollRelay()
     var aiMetadata: String?
@@ -280,7 +295,9 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     private var liveTextAcknowledgement: ((UInt) -> Void)?
     private(set) var hasPendingLiveEdits = false
     private var pendingLiveTextIsEmpty: Bool?
-    private static let typingPause: TimeInterval = 1
+    static let typingPause: TimeInterval = 1
+    /// Сигнал правки текста для фоновых разделов; не публикуется через objectWillChange.
+    let textEdits = PassthroughSubject<Void, Never>()
     private var lastLiveEditTime: DispatchTime?
     private var isUpdatingDirtyState = false
     private var metricsGeneration: UInt = 0
@@ -384,6 +401,39 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     func updateFileRevisionSnapshot(_ snapshot: FileRevisionSnapshot?) {
         fileRevisionSnapshot = snapshot
         if let snapshot { fileIdentity = snapshot.identity }
+        externalChange = nil
+        dismissedExternalState = nil
+    }
+
+    /// Результат проверки диска; nil — состояние неизвестно, ничего не меняется. Текст документа не трогается.
+    func noteDiskState(_ state: ExternalFileState?) {
+        guard let state else { return }
+        if case let .present(snapshot) = state, snapshot == fileRevisionSnapshot {
+            externalChange = nil
+            dismissedExternalState = nil
+            return
+        }
+        if state == dismissedExternalState {
+            externalChange = nil
+            return
+        }
+        if state != externalChange { externalChange = state }
+    }
+
+    /// «Оставить мою версию»: плашка не возвращается, пока состояние диска не изменится снова.
+    func keepMyVersion() {
+        dismissedExternalState = externalChange
+        externalChange = nil
+    }
+
+    func markExternalReplacement() {
+        externalReplacementRevision = textRevision
+    }
+
+    /// true один раз, если текущая подмена текста в редакторе — перечитывание с диска.
+    func consumeExternalReplacement() -> Bool {
+        defer { externalReplacementRevision = nil }
+        return externalReplacementRevision == textRevision
     }
 
     var isDisposableBlank: Bool {
@@ -622,6 +672,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         if pendingLiveTextIsEmpty != isEmpty { pendingLiveTextIsEmpty = isEmpty }
         scheduleMetricsRefresh()
         scheduleLineEndingRefresh()
+        textEdits.send()
         let shouldBeDirty = !(url == nil && isEmpty)
         updateDirtyState(shouldBeDirty)
     }
@@ -672,7 +723,16 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         guard url?.standardizedFileURL == oldURL.standardizedFileURL else {
             return
         }
+        let oldBaseline = fileRevisionSnapshot
         updateLocation(to: newURL)
+        // Переименование не меняет файл: идентичность, дата и размер те же, путь не сравниваем. Иначе слежение покажет ложную плашку.
+        if let oldBaseline, let oldID = oldBaseline.identity.resourceIdentifier,
+           let fresh = try? FileRevisionSnapshot.capture(newURL),
+           fresh.identity.resourceIdentifier == oldID,
+           fresh.modificationDate == oldBaseline.modificationDate,
+           fresh.fileSize == oldBaseline.fileSize {
+            updateFileRevisionSnapshot(fresh)
+        }
     }
 
     func updateLocation(to newURL: URL) {
@@ -719,6 +779,14 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         markdownReadableText = (snapshot.revision, value)
         scheduleMetricsRefresh()
         return true
+    }
+
+    /// Снимок для оглавления по символам. Флаг не даёт записи живого текста снова запускать пересчёты.
+    func symbolOutlineSnapshot() -> DocumentTextSnapshot? {
+        if performanceProfile != .standard, hasPendingLiveEdits { return nil }
+        isTakingMetricsSnapshot = true
+        defer { isTakingMetricsSnapshot = false }
+        return synchronizedSnapshot()
     }
 
     func invalidateMarkdownReadableText() {

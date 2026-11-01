@@ -169,7 +169,48 @@ enum FoldLayoutVerification {
             "large replacement after folding keeps layout valid"
         )
 
+        verifyInvisibleCharacters()
+
         print("Fold layout verification passed")
+    }
+
+    private static func verifyInvisibleCharacters() {
+        let marks = InvisibleCharacters.marks(in: "a b\t\r\n" as NSString, range: NSRange(location: 0, length: 6))
+        require(marks.map(\.index) == [1, 3, 4], "invisible marks: space, tab, one mark for CRLF")
+        require(marks.map(\.symbol) == ["·", "→", "¶"], "invisible mark symbols")
+
+        let text = "# Head\n a b\t\nbody space\nnext\n"
+        let storage = NSTextStorage(string: text, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)])
+        let invisiblesManager = FoldLayoutManager()
+        storage.addLayoutManager(invisiblesManager)
+        let invisiblesContainer = NSTextContainer(containerSize: NSSize(width: 480, height: 20_000))
+        invisiblesManager.addTextContainer(invisiblesContainer)
+        invisiblesManager.ensureLayout(for: invisiblesContainer)
+        let heightBefore = invisiblesManager.usedRect(for: invisiblesContainer).height
+        invisiblesManager.showsInvisibles = true
+        require(
+            invisiblesManager.usedRect(for: invisiblesContainer).height == heightBefore,
+            "showing invisibles does not change layout"
+        )
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: 480, pixelsHigh: 200, bitsPerSample: 8, samplesPerPixel: 4,
+            hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ), let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
+            require(false, "bitmap context for invisibles drawing")
+            return
+        }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        let allGlyphs = invisiblesManager.glyphRange(for: invisiblesContainer)
+        invisiblesManager.drawGlyphs(forGlyphRange: allGlyphs, at: .zero)
+        invisiblesManager.setFoldedRange((text as NSString).range(of: "body space\n"))
+        invisiblesManager.drawGlyphs(forGlyphRange: allGlyphs, at: .zero)
+        invisiblesManager.setFoldedRange(nil)
+        NSGraphicsContext.restoreGraphicsState()
+        require(
+            invisiblesManager.usedRect(for: invisiblesContainer).height == heightBefore,
+            "drawing invisibles does not change layout"
+        )
     }
 
     private static func verifyEditorLineSpacing() {

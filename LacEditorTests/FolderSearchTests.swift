@@ -172,4 +172,74 @@ final class FolderSearchTests: XCTestCase {
         let result = try FolderSearchService.markdownFiles(root: root)
         XCTAssertEqual(Set(result.values.map(\.relativePath)), ["a.md", "sub/b.MARKDOWN"])
     }
+
+    func testIncludeFilterDoesNotReadExcludedFiles() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data([0xff]).write(to: root.appendingPathComponent("bad.md"))
+        try Data([0xff]).write(to: root.appendingPathComponent("skipped.txt"))
+        try "needle".write(to: root.appendingPathComponent("good.md"), atomically: true, encoding: .utf8)
+        let result = try FolderSearchService.search(root: root, query: "needle", caseSensitive: true, openDocuments: [],
+                                                    include: { $0.relativePath.hasSuffix(".md") })
+        XCTAssertEqual(result.values.map(\.file.relativePath), ["good.md"])
+        XCTAssertEqual(result.problems.map { $0.url.lastPathComponent }, ["bad.md"])
+        XCTAssertEqual(result.problems.first?.reason, .invalidUTF8)
+    }
+
+    func testPruneDirectorySkipsDescent() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("node_modules/pkg"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("src"), withIntermediateDirectories: true)
+        try "needle".write(to: root.appendingPathComponent("node_modules/pkg/a.md"), atomically: true, encoding: .utf8)
+        try Data([0xff]).write(to: root.appendingPathComponent("node_modules/bad.md"))
+        try "needle".write(to: root.appendingPathComponent("src/b.md"), atomically: true, encoding: .utf8)
+        var asked: [String] = []
+        let result = try FolderSearchService.search(root: root, query: "needle", caseSensitive: true, openDocuments: [],
+                                                    pruneDirectory: { asked.append($0); return $0 == "node_modules" })
+        XCTAssertEqual(result.values.map(\.file.relativePath), ["src/b.md"])
+        XCTAssertTrue(result.problems.isEmpty)
+        XCTAssertTrue(asked.contains("node_modules"))
+        XCTAssertTrue(asked.contains("src"))
+        XCTAssertFalse(asked.contains("node_modules/pkg"))
+    }
+
+    private func extractionRequest(_ query: String, _ mode: MatchExtractionService.Mode = .match) -> MatchExtractionService.Request {
+        .init(query: query, options: .init(), interpretsEscapes: true, replacement: "", mode: mode)
+    }
+
+    func testExtractUsesOpenDocumentBeforeDisk() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("a.md")
+        try "disk".write(to: file, atomically: true, encoding: .utf8)
+        let snapshot = DocumentTextSnapshot(documentID: UUID(), revision: 1, text: "x\nneedle here")
+        let open = FolderSearchService.OpenDocument(url: file, identity: DocumentFileIdentity.resolve(file), snapshot: snapshot)
+        let result = try FolderSearchService.extract(root: root, request: extractionRequest("needle"), openDocuments: [open])
+        XCTAssertEqual(result.values.count, 1)
+        XCTAssertEqual(result.values.first?.file.relativePath, "a.md")
+        XCTAssertEqual(result.values.first?.records, [MatchExtractionService.Record(line: 2, text: "needle")])
+    }
+
+    func testExtractReportsProblemsAndRespectsInclude() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "needle".write(to: root.appendingPathComponent("ok.md"), atomically: true, encoding: .utf8)
+        try "needle".write(to: root.appendingPathComponent("skip.txt"), atomically: true, encoding: .utf8)
+        try Data([0xff]).write(to: root.appendingPathComponent("bad.md"))
+        let result = try FolderSearchService.extract(root: root, request: extractionRequest("needle"), openDocuments: [],
+                                                     include: { $0.relativePath.hasSuffix(".md") })
+        XCTAssertEqual(result.values.map(\.file.relativePath), ["ok.md"])
+        XCTAssertEqual(result.problems.map { $0.url.lastPathComponent }, ["bad.md"])
+    }
+
+    func testExtractCancellation() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "needle".write(to: root.appendingPathComponent("ok.md"), atomically: true, encoding: .utf8)
+        XCTAssertThrowsError(try FolderSearchService.extract(root: root, request: extractionRequest("needle"), openDocuments: [],
+                                                             isCancelled: { true })) { error in
+            XCTAssertTrue(error is CancellationError)
+        }
+    }
 }

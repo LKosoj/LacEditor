@@ -376,4 +376,140 @@ final class FolderOpeningTests: XCTestCase {
         XCTAssertEqual(original.ioState, .idle)
     }
 
+    private func laceditURL(_ file: URL, line: Int? = nil, column: Int? = nil) -> URL {
+        var components = URLComponents()
+        components.scheme = "laceditor"
+        components.host = "open"
+        components.queryItems = [URLQueryItem(name: "path", value: file.path)]
+            + (line.map { [URLQueryItem(name: "line", value: String($0))] } ?? [])
+            + (column.map { [URLQueryItem(name: "column", value: String($0))] } ?? [])
+        return components.url!
+    }
+
+    private func waitForSelection(_ state: AppState, url: URL, location: Int) async throws {
+        for _ in 0..<200 where state.documents.first(where: { $0.url == url })?.selectionRange.location != location {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+    }
+
+    func testLaceditURLOpensFileAtLineAndColumnWithEmoji() async throws {
+        let root = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("a.txt")
+        try "a😀b\nsecond 😀x\nthird".write(to: file, atomically: true, encoding: .utf8)
+        let fixture = try fixture()
+        defer { fixture.close() }
+        fixture.manager.openLaceditURL(laceditURL(file, line: 2, column: 9))
+        try await waitForSelection(fixture.state, url: file, location: 14)
+        XCTAssertEqual(fixture.state.selectedDocument?.selectionRange, NSRange(location: 14, length: 0))
+    }
+
+    func testLaceditURLWorksForCRLFTextAndColumnPastLineEnd() async throws {
+        let root = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("crlf.txt")
+        try "a\r\nbc\r\nd".write(to: file, atomically: true, encoding: .utf8)
+        let fixture = try fixture()
+        defer { fixture.close() }
+        fixture.manager.openLaceditURL(laceditURL(file, line: 2, column: 99))
+        try await waitForSelection(fixture.state, url: file, location: 5)
+        XCTAssertEqual(fixture.state.selectedDocument?.selectionRange, NSRange(location: 5, length: 0))
+    }
+
+    func testLaceditURLLineBeyondEndMovesToEndOfFile() async throws {
+        let root = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("short.txt")
+        try "one\ntwo".write(to: file, atomically: true, encoding: .utf8)
+        let fixture = try fixture()
+        defer { fixture.close() }
+        fixture.manager.openLaceditURL(laceditURL(file, line: 50))
+        try await waitForSelection(fixture.state, url: file, location: 7)
+        XCTAssertEqual(fixture.state.selectedDocument?.selectionRange, NSRange(location: 7, length: 0))
+    }
+
+    func testLaceditURLBeforeRegistrationIsQueued() async throws {
+        let root = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("queued.txt")
+        try "one\ntwo".write(to: file, atomically: true, encoding: .utf8)
+        let url = laceditURL(file, line: 2, column: 2)
+        let fixture = try fixture(beforeRegistration: { $0.openLaceditURL(url) })
+        defer { fixture.close() }
+        try await waitForSelection(fixture.state, url: file, location: 5)
+        XCTAssertEqual(fixture.state.documents.filter { $0.url == file }.count, 1)
+        XCTAssertEqual(fixture.state.documents.first { $0.url == file }?.selectionRange, NSRange(location: 5, length: 0))
+    }
+
+    func testLaceditURLIgnoresMissingFileAndOpensFolderIgnoringLine() async throws {
+        let root = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let missing = root.appendingPathComponent("missing.txt")
+        let fixture = try fixture()
+        defer { fixture.close() }
+        let before = fixture.state.documents.count
+        fixture.manager.openLaceditURL(laceditURL(missing, line: 1))
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(fixture.state.documents.count, before)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: missing.path))
+        fixture.manager.openLaceditURL(laceditURL(root, line: 3))
+        XCTAssertEqual(fixture.state.folderWorkspace.rootURL?.path, root.resolvingSymlinksInPath().path)
+    }
+
+    func testLaceditURLForAlreadyOpenFileMovesCursorWithoutDuplicate() async throws {
+        let root = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("open.txt")
+        try "one\ntwo".write(to: file, atomically: true, encoding: .utf8)
+        let fixture = try fixture()
+        defer { fixture.close() }
+        fixture.manager.openLaceditURL(laceditURL(file, line: 1, column: 2))
+        try await waitForSelection(fixture.state, url: file, location: 1)
+        let count = fixture.state.documents.count
+        fixture.manager.openLaceditURL(laceditURL(file, line: 2))
+        try await waitForSelection(fixture.state, url: file, location: 4)
+        XCTAssertEqual(fixture.state.documents.count, count)
+        XCTAssertEqual(fixture.state.documents.filter { $0.url == file }.count, 1)
+        XCTAssertEqual(fixture.state.documents.first { $0.url == file }?.selectionRange, NSRange(location: 4, length: 0))
+    }
+
+    func testLaceditStdinDocumentIsUnsavedAndInboxFileRemoved() async throws {
+        let id = UUID()
+        let directory = LaceditStdinInbox.directory()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent(id.uuidString + ".txt")
+        try "привет 中😀".write(to: file, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let fixture = try fixture()
+        defer { fixture.close() }
+        let document = await fixture.manager.stdinDocument(id: id)
+        XCTAssertEqual(document?.synchronizedText(), "привет 中😀")
+        XCTAssertEqual(document?.isDirty, true)
+        XCTAssertNil(document?.url)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+    }
+
+    func testLaceditFolderURLAsksBeforeReplacingOpenWorkspace() async throws {
+        let first = try temporaryFolder(), second = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: first); try? FileManager.default.removeItem(at: second) }
+        let fixture = try fixture()
+        defer { fixture.close() }
+        // Без рабочей папки адрес открывает папку сразу.
+        fixture.manager.openLaceditURL(laceditURL(first))
+        XCTAssertEqual(fixture.state.folderWorkspace.rootURL?.path, first.resolvingSymlinksInPath().path)
+        // Рабочая папка уже есть: сначала вопрос, отказ ничего не меняет.
+        fixture.manager.openLaceditURL(laceditURL(second))
+        for _ in 0..<200 where fixture.window.attachedSheet == nil { try await Task.sleep(for: .milliseconds(20)) }
+        let sheet = try XCTUnwrap(fixture.window.attachedSheet)
+        fixture.window.endSheet(sheet, returnCode: .alertSecondButtonReturn)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(fixture.state.folderWorkspace.rootURL?.path, first.resolvingSymlinksInPath().path)
+    }
+
+    func testLaceditStdinUnknownIdReturnsNil() async throws {
+        let fixture = try fixture()
+        defer { fixture.close() }
+        let document = await fixture.manager.stdinDocument(id: UUID())
+        XCTAssertNil(document)
+    }
 }

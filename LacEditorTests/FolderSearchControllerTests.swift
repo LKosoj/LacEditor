@@ -335,4 +335,161 @@ final class FolderSearchControllerTests: XCTestCase {
         XCTAssertEqual(controller.message, .stale)
         XCTAssertFalse(controller.hasSearched)
     }
+
+    private func write(_ text: String, _ name: String, in root: URL) throws {
+        let url = root.appendingPathComponent(name)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try text.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    private func textController(_ root: URL, confirm: Bool = false,
+                                snapshots: @escaping () -> [FolderSearchService.OpenDocument]? = { [] },
+                                extraction: @escaping (String, Int) -> Void = { _, _ in }) -> FolderSearchController {
+        let controller = FolderSearchController(snapshots: snapshots, open: { _ in nil }, reveal: { _, _ in false }, openFile: { _ in },
+                                                confirmReplace: { _ in confirm }, showExtraction: extraction)
+        controller.setRoot(root)
+        controller.mode = .text
+        return controller
+    }
+
+    func testFileMaskChangeInvalidatesResultsAndAppliesOnlyToText() async throws {
+        let root = try directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try write("needle", "a.md", in: root)
+        try write("needle", "b.txt", in: root)
+        let controller = textController(root)
+        controller.query = "needle"
+        await controller.start()?.value
+        XCTAssertEqual(controller.matches.count, 2)
+        controller.fileMask = "*.md"
+        XCTAssertTrue(controller.matches.isEmpty)
+        XCTAssertFalse(controller.hasSearched)
+        await controller.start()?.value
+        XCTAssertEqual(controller.matches.map(\.file.relativePath), ["a.md"])
+    }
+
+    func testMaskedSearchLimitsMatchesAndReplace() async throws {
+        let root = try directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try write("needle", "a.md", in: root)
+        try write("needle", "b.txt", in: root)
+        let controller = textController(root, confirm: true)
+        controller.query = "needle"
+        controller.fileMask = "*.md"
+        controller.isReplaceEnabled = true
+        controller.replacement = "x"
+        await controller.start()?.value
+        XCTAssertEqual(controller.matches.count, 1)
+        await controller.replaceSelected()?.value
+        XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("a.md"), encoding: .utf8), "x")
+        XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("b.txt"), encoding: .utf8), "needle")
+    }
+
+    func testExtractCreatesOneTabAndKeepsSearchResults() async throws {
+        let root = try directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try write("x needle\ny", "a.md", in: root)
+        try write("needle", "sub/b.md", in: root)
+        var shown: [(String, Int)] = []
+        let controller = textController(root, extraction: { shown.append(($0, $1)) })
+        controller.query = "needle"
+        await controller.start()?.value
+        let before = controller.matches
+        await controller.extract(.line)?.value
+        XCTAssertEqual(shown.count, 1)
+        XCTAssertEqual(shown.first?.0, "a.md:1: x needle\nsub/b.md:1: needle\n")
+        XCTAssertEqual(shown.first?.1, 2)
+        XCTAssertEqual(controller.matches, before)
+        XCTAssertTrue(controller.hasSearched)
+        XCTAssertFalse(controller.isExtracting)
+        XCTAssertNil(controller.extractionNote)
+    }
+
+    func testExtractZeroMatchesShowsNoteAndCreatesNoTab() async throws {
+        let root = try directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try write("hay", "a.md", in: root)
+        var calls = 0
+        let controller = textController(root, extraction: { _, _ in calls += 1 })
+        controller.query = "needle"
+        await controller.extract(.match)?.value
+        XCTAssertEqual(calls, 0)
+        XCTAssertEqual(controller.extractionNote, .empty)
+        XCTAssertFalse(controller.isExtracting)
+    }
+
+    func testExtractCancelledCreatesNoTab() async throws {
+        let root = try directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try write("needle", "a.md", in: root)
+        var calls = 0
+        let controller = textController(root, extraction: { _, _ in calls += 1 })
+        controller.query = "needle"
+        let task = controller.extract(.match)
+        XCTAssertTrue(controller.isExtracting)
+        controller.cancelExtraction()
+        XCTAssertFalse(controller.isExtracting)
+        await task?.value
+        XCTAssertEqual(calls, 0)
+        XCTAssertNil(controller.extractionNote)
+    }
+
+    func testExtractStaleSnapshotsReportStale() async throws {
+        let root = try directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try write("needle", "a.md", in: root)
+        let unavailable = textController(root, snapshots: { nil })
+        unavailable.query = "needle"
+        XCTAssertNil(unavailable.extract(.match))
+        XCTAssertEqual(unavailable.extractionNote, .stale)
+
+        let file = root.appendingPathComponent("a.md")
+        let document = FolderSearchService.OpenDocument(url: file, identity: DocumentFileIdentity.resolve(file),
+            snapshot: DocumentTextSnapshot(documentID: UUID(), revision: 1, text: "needle"))
+        var calls = 0
+        var shown = 0
+        let changing = textController(root, snapshots: { calls += 1; return calls == 1 ? [] : [document] }, extraction: { _, _ in shown += 1 })
+        changing.query = "needle"
+        await changing.extract(.match)?.value
+        XCTAssertEqual(shown, 0)
+        XCTAssertEqual(changing.extractionNote, .stale)
+    }
+
+    func testExtractInvalidPatternReportsInvalidPattern() throws {
+        let root = try directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let controller = textController(root)
+        controller.usesRegex = true
+        controller.query = "("
+        XCTAssertNil(controller.extract(.match))
+        XCTAssertEqual(controller.extractionNote, .invalidPattern)
+    }
+
+    func testExtractAppendsReadProblemsBlock() async throws {
+        let root = try directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try write("needle", "a.md", in: root)
+        try Data([0xff]).write(to: root.appendingPathComponent("bad.md"))
+        var text = ""
+        let controller = textController(root, extraction: { value, _ in text = value })
+        controller.query = "needle"
+        await controller.extract(.match)?.value
+        XCTAssertEqual(text, "a.md:1: needle\n\n" + L10n.tr("未能读取的文件：") + "\nbad.md — " + L10n.tr("不是有效的 UTF-8") + "\n")
+    }
+
+    func testExtractUnavailableWhileSearchBusy() async throws {
+        let root = try directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try write("needle", "a.md", in: root)
+        var calls = 0
+        let controller = textController(root, extraction: { _, _ in calls += 1 })
+        controller.query = "needle"
+        let search = controller.start()
+        XCTAssertTrue(controller.isWorking)
+        XCTAssertNil(controller.extract(.match))
+        await search?.value
+        XCTAssertEqual(calls, 0)
+        controller.mode = .tags
+        XCTAssertNil(controller.extract(.match))
+    }
 }

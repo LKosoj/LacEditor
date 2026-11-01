@@ -29,6 +29,8 @@ struct SidebarView: View {
                 .padding(.horizontal, 10)
                 .padding(.top, 12)
                 BacklinksSection(document: document)
+            } else if let document = appState.selectedDocument, SymbolOutlineService.supports(document.language) {
+                SymbolOutlineSection(document: document)
             }
             FolderTagsSection(store: appState.folderWorkspace, controller: appState.folderTags, search: appState.folderSearch)
             HStack(spacing: 7) {

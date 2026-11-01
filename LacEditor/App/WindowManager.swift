@@ -93,6 +93,10 @@ final class WindowManager: ObservableObject {
     let workspaceStore: WorkspaceSessionStore?
     let experimentSamples: ExperimentSampleLibrary?
     @Published private(set) var activeState: AppState?
+    /// Общая история переходов всех окон; от неё зависят пункты меню, поэтому @Published.
+    @Published private(set) var navigationHistory = NavigationHistory()
+    /// Место, откуда начат переход в файл, который ещё открывается (поиск по папке, ссылка на другой файл).
+    private var pendingNavigationOrigin: (url: URL, location: NavigationLocation)?
     /// Changes whenever the retained primary window is reopened. Sidebar
     /// scroll views use this identity to discard stale content offsets from a
     /// window that was closed after its last tab was removed.
@@ -105,6 +109,11 @@ final class WindowManager: ObservableObject {
     private var folderMovePaths: [URL] = []
     private var folderMoveIdentities: [DocumentFileIdentity] = []
     private var states: [UUID: AppState] = [:]
+    private var openFileObservations: [UUID: AnyCancellable] = [:]
+    /// Слежение за файлами открытых документов; набор каталогов пересчитывается по изменениям состояний окон.
+    private(set) lazy var openFileWatcher = OpenFileWatcher(documents: { [weak self] in
+        self?.documentsForAI.filter { $0.url != nil && self?.isRestorationPlaceholder($0) == false } ?? []
+    })
     private var windowControllers: [UUID: NSWindowController] = [:]
     // Retain the initial editor state and its native window across closing the
     // last window. App, document, and Dock launches share this single owner.
@@ -134,8 +143,12 @@ final class WindowManager: ObservableObject {
         let url: URL
         let allowsCreation: Bool
         let confirm: ((URL) -> CommandLineCreation?)?
+        var line: Int? = nil
+        var column: Int? = nil
+        var confirmsFolderReplacement = false
     }
     private var pendingFinderURLs: [PendingOpen] = []
+    private var pendingStdinIDs: [UUID] = []
     private var didApplyInitialRestoration = false
     private var didConsiderStartupFolder = false
     private lazy var appearanceMenuController = AppearanceMenuController(
@@ -237,6 +250,9 @@ final class WindowManager: ObservableObject {
             primaryWindowID = windowID
         }
         states[windowID] = state
+        openFileObservations[windowID] = state.objectWillChange
+            .debounce(for: .milliseconds(200), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in self?.openFileWatcher.refreshTargets() }
         state.windowManager = self
         state.hostWindow = window
         if wasDetachedPrimaryWindow {
@@ -267,6 +283,7 @@ final class WindowManager: ObservableObject {
                 state.openFolder(URL(fileURLWithPath: preferences.startupFolderPath, isDirectory: true))
             }
         }
+        openFileWatcher.refreshTargets()
     }
 
     /// Routes files opened from Finder into the already registered editor
@@ -276,6 +293,57 @@ final class WindowManager: ObservableObject {
     func openFilesFromFinder(_ urls: [URL]) {
         guard startupError == nil else { return }
         routeOpenRequests(urls.filter(\.isFileURL).map { PendingOpen(url: $0, allowsCreation: false, confirm: nil) })
+    }
+
+    /// Адрес laceditor:// от команды lacedit. Неверный адрес и отсутствующий файл молча игнорируются.
+    func openLaceditURL(_ url: URL) {
+        guard startupError == nil, let request = LaceditRequest(url: url) else { return }
+        switch request {
+        case let .open(path, line, column):
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else { return }
+            let folder = isDirectory.boolValue
+            routeOpenRequests([PendingOpen(url: URL(fileURLWithPath: path, isDirectory: folder), allowsCreation: false, confirm: nil,
+                                           line: folder ? nil : line, column: folder ? nil : column,
+                                           confirmsFolderReplacement: folder)])
+        case let .stdin(id):
+            if activeState == nil { pendingStdinIDs.append(id) } else { openStdinDocument(id: id) }
+        }
+    }
+
+    /// Открывает файл и ставит курсор на строку и столбец (с 1) по тексту файла. Строка за концом файла — конец файла.
+    private func openFile(_ url: URL, line: Int, column: Int) {
+        guard let state = activeState else { return }
+        Task { @MainActor [weak self, weak state] in
+            guard let self, let state, let opened = await self.openFolderSearchFile(url, preferredState: state) else { return }
+            let text = opened.snapshot.text
+            let location = LogicalLineIndex(text: text).location(line: line, column: column, in: text as NSString)
+                ?? (text as NSString).length
+            let range = NSRange(location: location, length: 0)
+            let match = FolderSearchService.Match(file: .init(url: opened.url, relativePath: opened.url.lastPathComponent),
+                range: range, matchedText: "", contextRange: range, context: "",
+                source: .open(documentID: opened.snapshot.documentID, revision: opened.snapshot.revision, identity: opened.identity))
+            // Файл уже открыт и выбран: прежнее место ждало в pendingNavigationOrigin, пишем его сейчас.
+            self.commitPendingNavigationOrigin()
+            _ = self.revealFolderSearchMatch(match, expected: opened, recordsOrigin: false)
+        }
+    }
+
+    /// Текст из стандартного ввода: читает и удаляет файл-«ящик». nil — адрес не подошёл.
+    func stdinDocument(id: UUID) async -> EditorDocument? {
+        let text = await Task.detached(priority: .userInitiated) { LaceditStdinInbox.take(id: id) }.value
+        return text.map { EditorDocument(text: $0, language: .plainText, isDirty: true, requiresExplicitSave: true) }
+    }
+
+    private func openStdinDocument(id: UUID) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard let document = await self.stdinDocument(id: id) else {
+                self.activeState?.selectedDocument?.statusMessage = L10n.tr("无法读取标准输入内容")
+                return
+            }
+            self.openNativeTab(with: document)
+        }
     }
 
     nonisolated static func commandLineURLs(arguments: [String], workingDirectory: URL) -> [URL] {
@@ -302,7 +370,7 @@ final class WindowManager: ObservableObject {
             for request in requests {
                 let identity = DocumentFileIdentity.resolve(request.url)
                 if let index = pendingFinderURLs.firstIndex(where: { DocumentFileIdentity.resolve($0.url).matches(identity) }) {
-                    if request.allowsCreation { pendingFinderURLs[index] = request }
+                    if request.allowsCreation || request.line != nil { pendingFinderURLs[index] = request }
                 } else { pendingFinderURLs.append(request) }
             }
             return
@@ -311,16 +379,23 @@ final class WindowManager: ObservableObject {
     }
 
     private func drainPendingFinderURLs() {
-        guard activeState != nil, !pendingFinderURLs.isEmpty else { return }
-        let files = pendingFinderURLs
-        pendingFinderURLs.removeAll()
-        files.forEach(openPendingRequest)
+        guard activeState != nil else { return }
+        if !pendingFinderURLs.isEmpty {
+            let files = pendingFinderURLs
+            pendingFinderURLs.removeAll()
+            files.forEach(openPendingRequest)
+        }
+        let ids = pendingStdinIDs
+        pendingStdinIDs.removeAll()
+        ids.forEach { openStdinDocument(id: $0) }
     }
 
     private func openPendingRequest(_ request: PendingOpen) {
         let url = request.url
         guard request.allowsCreation, !FileManager.default.fileExists(atPath: url.path) else {
-            openFinderURL(url)
+            if let line = request.line { openFile(url, line: line, column: request.column ?? 1) }
+            else if request.confirmsFolderReplacement, activeState?.folderWorkspace.rootURL != nil { presentLaceditFolderConfirmation(url) }
+            else { openFinderURL(url) }
             return
         }
         guard let state = activeState, let window = state.hostWindow else { return }
@@ -394,16 +469,19 @@ final class WindowManager: ObservableObject {
             setActiveState(states.values.first(where: {
                 $0 !== state && $0.hostWindow?.isVisible == true
             }) ?? state)
+            openFileWatcher.refreshTargets()
             return
         }
 
         let removedState = states.removeValue(forKey: windowID)
+        openFileObservations.removeValue(forKey: windowID)
         windowControllers.removeValue(forKey: windowID)
         if activeState === removedState {
             setActiveState(states.values.first(where: {
                 $0.hostWindow?.isVisible == true
             }))
         }
+        openFileWatcher.refreshTargets()
     }
 
     /// Create or re-show the same primary editor for app/file launch and Dock
@@ -890,17 +968,72 @@ final class WindowManager: ObservableObject {
         return result
     }
 
+    /// Документы для поиска по всем открытым: сначала группа вкладок активного окна, затем остальные группы.
+    /// Текст читается только у не пропущенных документов.
+    func openDocumentSearchSources(forReplace: Bool) -> [OpenDocumentsSearchService.Source] {
+        var visited = Set<ObjectIdentifier>()
+        var seenStates = Set<ObjectIdentifier>()
+        var result: [OpenDocumentsSearchService.Source] = []
+        let windows = (activeState?.hostWindow.map { [$0] } ?? []) + NSApp.orderedWindows + states.values.compactMap(\.hostWindow)
+        for window in windows where !visited.contains(ObjectIdentifier(window)) {
+            let members = window.tabGroup?.windows ?? [window]
+            members.forEach { visited.insert(ObjectIdentifier($0)) }
+            for member in members {
+                guard let state = states.values.first(where: { $0.hostWindow === member }),
+                      seenStates.insert(ObjectIdentifier(state)).inserted else { continue }
+                result += state.documents.map { openDocumentSearchSource($0, in: state, forReplace: forReplace) }
+            }
+        }
+        // Состояния без окна (ещё не показаны) тоже участвуют, после остальных.
+        for state in states.values where seenStates.insert(ObjectIdentifier(state)).inserted {
+            result += state.documents.map { openDocumentSearchSource($0, in: state, forReplace: forReplace) }
+        }
+        return result
+    }
+
+    private func openDocumentSearchSource(_ document: EditorDocument, in state: AppState, forReplace: Bool) -> OpenDocumentsSearchService.Source {
+        func skipped(_ reason: OpenDocumentsSearchService.SkipReason) -> OpenDocumentsSearchService.Source {
+            .init(documentID: document.id, title: document.displayName, snapshot: nil, skip: reason)
+        }
+        if state.isOpeningPlaceholder(document) || document.ioState == .opening { return skipped(.opening) }
+        if document.isLargeFileMode { return skipped(.largeFile) }
+        if forReplace {
+            if document.isReadingMode { return skipped(.readingMode) }
+            if document.ioState != .idle { return skipped(.busy) }
+        }
+        let snapshot = document.synchronizedSnapshot()
+        if document.hasPendingLiveEdits { return skipped(.busy) }
+        return .init(documentID: document.id, title: document.displayName, snapshot: snapshot, skip: nil)
+    }
+
     func openFolderSearchFile(_ url: URL, preferredState: AppState) async -> FolderSearchService.OpenDocument? {
         guard !Task.isCancelled else { return nil }
         let expected = DocumentFileIdentity.resolve(url)
-        guard !Task.isCancelled, let opened = openFile(url, preferredState: preferredState), !Task.isCancelled else { return nil }
+        pendingNavigationOrigin = preferredState.selectedDocument.map { (url: url, location: navigationLocation(of: $0)) }
+        guard !Task.isCancelled, let opened = openFile(url, preferredState: preferredState), !Task.isCancelled else {
+            pendingNavigationOrigin = nil
+            return nil
+        }
         let waiter = FolderSearchOpenWaiter(manager: self, state: opened.state, document: opened.document, expected: expected)
         return await waiter.wait()
     }
 
-    func revealFolderSearchMatch(_ match: FolderSearchService.Match, expected: FolderSearchService.OpenDocument) -> Bool {
+    /// `recordsOrigin: false` — прежнее место уже записано вызывающим (ссылка на другой файл).
+    func revealFolderSearchMatch(_ match: FolderSearchService.Match, expected: FolderSearchService.OpenDocument,
+                                 recordsOrigin: Bool = true) -> Bool {
         guard let document = documentsForAI.first(where: { $0.id == expected.snapshot.documentID }),
               let state = stateContaining(document), document.ioState == .idle else { return false }
+        // Прежнее место берётся до focus: для .disk файл уже открыт и выбран, поэтому место ждало в pendingNavigationOrigin.
+        var origin: NavigationLocation?
+        if case .disk = match.source, let pending = pendingNavigationOrigin,
+           pending.url.standardizedFileURL == expected.url.standardizedFileURL {
+            origin = pending.location
+            pendingNavigationOrigin = nil
+        } else if let current = activeState?.selectedDocument {
+            // Для .disk выбранной уже может быть сама цель: её место до перехода неизвестно, не записываем.
+            if case .disk = match.source, current.id == expected.snapshot.documentID { origin = nil }
+            else { origin = navigationLocation(of: current) }
+        }
         func isCurrent() -> Bool {
             guard stateContaining(document) === state, document.url == expected.url,
                   document.fileIdentity == expected.identity else { return false }
@@ -926,7 +1059,79 @@ final class WindowManager: ObservableObject {
         guard state.selectedDocument === document,
               (state.hostWindow?.firstResponder as? NSTextView)?.hasMarkedText() != true,
               isCurrent() else { return false }
+        if recordsOrigin, let origin { navigationHistory.record(origin) }
         state.revealFolderSearchRange(match.range, in: document)
+        return true
+    }
+
+    func navigationLocation(of document: EditorDocument) -> NavigationLocation {
+        NavigationLocation.make(documentID: document.id, text: document.synchronizedSnapshot().text,
+                                location: document.selectionRange.location)
+    }
+
+    func recordNavigationOrigin(from document: EditorDocument) {
+        navigationHistory.record(navigationLocation(of: document))
+    }
+
+    /// Записывает место, ожидавшее открытия файла (ссылка на другой файл без поиска по папке).
+    func commitPendingNavigationOrigin() {
+        guard let pending = pendingNavigationOrigin else { return }
+        pendingNavigationOrigin = nil
+        navigationHistory.record(pending.location)
+    }
+
+    func navigateBack() { navigate(forward: false) }
+
+    func navigateForward() { navigate(forward: true) }
+
+    private func navigate(forward: Bool) {
+        guard let state = activeState, let current = state.selectedDocument,
+              (state.hostWindow?.firstResponder as? NSTextView)?.hasMarkedText() != true else { return }
+        let here = navigationLocation(of: current)
+        // Закрытый или ещё читаемый документ пропускается.
+        func resolve(_ location: NavigationLocation) -> (document: EditorDocument, state: AppState)? {
+            guard let document = documentsForAI.first(where: { $0.id == location.documentID }),
+                  let owner = stateContaining(document), document.ioState == .idle,
+                  !owner.isOpeningPlaceholder(document) else { return nil }
+            return (document, owner)
+        }
+        var history = navigationHistory
+        let target = forward ? history.goForward(from: here, isValid: { resolve($0) != nil })
+                             : history.goBack(from: here, isValid: { resolve($0) != nil })
+        // Отброшенные непригодные записи не должны вернуться, поэтому историю сохраняем всегда.
+        navigationHistory = history
+        guard let target, let resolved = resolve(target) else { return }
+        focus(resolved.document, in: resolved.state)
+        let text = resolved.document.synchronizedSnapshot().text
+        resolved.state.reveal(NSRange(location: target.location(in: text), length: 0), in: resolved.document)
+    }
+
+    /// Документ, к которому готова замена: найден, версия известна, редактор не занят.
+    private typealias OpenReplaceTarget = (document: EditorDocument, state: AppState, snapshot: DocumentTextSnapshot)
+
+    /// Переход к совпадению в любом окне. Если документ в другом окне, панель поиска переезжает туда.
+    func revealOpenDocumentMatch(_ position: OpenDocumentsSearchService.Position, revision: UInt, from origin: AppState, focusEditor: Bool) -> Bool {
+        guard let document = documentsForAI.first(where: { $0.id == position.documentID }),
+              let state = stateContaining(document), document.ioState == .idle,
+              !state.isOpeningPlaceholder(document) else { return false }
+        func isCurrent() -> Bool {
+            guard stateContaining(document) === state, !document.hasPendingLiveEdits else { return false }
+            let snapshot = document.synchronizedSnapshot()
+            let range = position.range
+            return snapshot.revision == revision && range.location >= 0 && range.length >= 0
+                && range.location <= snapshot.utf16Length && range.length <= snapshot.utf16Length - range.location
+        }
+        guard (state.hostWindow?.firstResponder as? NSTextView)?.hasMarkedText() != true, isCurrent() else { return false }
+        if state !== origin {
+            state.adoptOpenDocumentsSearch(from: origin.findReplace)
+            origin.dismissFindReplace()
+        }
+        focus(document, in: state)
+        guard state.selectedDocument === document,
+              (state.hostWindow?.firstResponder as? NSTextView)?.hasMarkedText() != true,
+              isCurrent() else { return false }
+        // В другом окне фокус остаётся в поле запроса переехавшей панели.
+        state.revealFolderSearchRange(position.range, in: document, focusEditor: state === origin ? focusEditor : false)
         return true
     }
 
@@ -939,7 +1144,7 @@ final class WindowManager: ObservableObject {
            document.ioState != .idle || state.isOpeningPlaceholder(document) || document.isReadingMode {
             return .skipped(.openDocumentBusy)
         }
-        func current() -> (document: EditorDocument, state: AppState, snapshot: DocumentTextSnapshot)? {
+        func current() -> OpenReplaceTarget? {
             guard let document = documentsForAI.first(where: { $0.id == id }), let state = stateContaining(document),
                   let url = document.url, let identity = document.fileIdentity, document.ioState == .idle,
                   !state.isOpeningPlaceholder(document), !document.hasPendingLiveEdits,
@@ -961,7 +1166,47 @@ final class WindowManager: ObservableObject {
               second.snapshot == first.snapshot else { return .skipped(.changed) }
         // Уже в нужном виде: редактор отвергает замену, равную оригиналу.
         guard let enclosing = built.enclosing else { return .replaced(built.count) }
-        focus(second.document, in: second.state)
+        return await applyEnclosingReplacement(enclosing, count: built.count, documentID: id, target: second,
+                                               actionName: L10n.tr("在文件夹中替换"), current: current)
+    }
+
+    /// Замена во всех открытых документах: по `documentID` и версии текста, без адреса файла (несохранённые вкладки тоже).
+    func applyOpenDocumentsReplace(documentID id: UUID, revision: UInt, request: FolderReplaceService.Request) async -> FolderReplaceService.Outcome {
+        guard let found = documentsForAI.first(where: { $0.id == id }), let foundState = stateContaining(found) else {
+            return .skipped(.changed)
+        }
+        if found.ioState != .idle || foundState.isOpeningPlaceholder(found) || found.isReadingMode {
+            return .skipped(.openDocumentBusy)
+        }
+        func current() -> OpenReplaceTarget? {
+            guard let document = documentsForAI.first(where: { $0.id == id }), let state = stateContaining(document),
+                  document.ioState == .idle, !state.isOpeningPlaceholder(document), !document.isReadingMode,
+                  !document.hasPendingLiveEdits,
+                  (state.hostWindow?.firstResponder as? NSTextView)?.hasMarkedText() != true else { return nil }
+            let snapshot = document.synchronizedSnapshot()
+            guard snapshot.revision == revision, !document.hasPendingLiveEdits else { return nil }
+            return (document, state, snapshot)
+        }
+        guard let first = current() else { return .skipped(.changed) }
+        let text = first.snapshot.text
+        let worker = Task.detached(priority: .userInitiated) { () -> (count: Int, enclosing: FolderReplaceService.Enclosing?)? in
+            guard let edits = try? FolderReplaceService.edits(in: text, request: request, only: nil, isCancelled: { Task.isCancelled }) else { return nil }
+            return (edits.count, FolderReplaceService.enclosing(edits, in: text))
+        }
+        let built = await withTaskCancellationHandler { await worker.value } onCancel: { worker.cancel() }
+        guard !Task.isCancelled, let built, let second = current(), second.document === first.document,
+              second.snapshot == first.snapshot else { return .skipped(.changed) }
+        guard let enclosing = built.enclosing else { return .replaced(built.count) }
+        return await applyEnclosingReplacement(enclosing, count: built.count, documentID: id, target: second,
+                                               actionName: L10n.tr("在所有打开的文档中替换"), current: current)
+    }
+
+    /// Общая часть замены в открытом документе: выбрать вкладку, дождаться редактора, применить одну правку одной группой отмены.
+    private func applyEnclosingReplacement(
+        _ enclosing: FolderReplaceService.Enclosing, count: Int, documentID id: UUID, target: OpenReplaceTarget,
+        actionName: String, current: () -> OpenReplaceTarget?
+    ) async -> FolderReplaceService.Outcome {
+        focus(target.document, in: target.state)
         func extract() -> EditorTextSelectionSnapshot? {
             let extraction = EditorTextExtractionRequest(documentID: id, allowsTokenAtCaret: false, allowsWholeDocument: true, requiresEditable: true)
             NotificationCenter.default.post(name: EditorCommandNotification.extractTextSelection, object: extraction)
@@ -975,16 +1220,16 @@ final class WindowManager: ObservableObject {
             try? await Task.sleep(nanoseconds: 50_000_000)
             selection = extract()
         }
-        guard let selection, !Task.isCancelled, let third = current(), third.document === first.document,
-              third.state.selectedDocument === third.document, third.snapshot == first.snapshot else { return .skipped(.openInEditorFailed) }
+        guard let selection, !Task.isCancelled, let third = current(), third.document === target.document,
+              third.state.selectedDocument === third.document, third.snapshot == target.snapshot else { return .skipped(.openInEditorFailed) }
         let apply = EditorRangeReplacementRequest(documentID: id, range: enclosing.range, originalText: enclosing.original,
             replacementText: enclosing.replacement, expectedEditorRevision: selection.editorRevision,
-            actionName: L10n.tr("在文件夹中替换"))
+            actionName: actionName)
         apply.groupsUndo = true
         // Курсор в начало заменённого участка, а не выделение всего объемлющего диапазона.
         apply.resultingSelection = NSRange(location: enclosing.range.location, length: 0)
         NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: apply)
-        return apply.wasHandled ? .replaced(built.count) : .skipped(.openInEditorFailed)
+        return apply.wasHandled ? .replaced(count) : .skipped(.openInEditorFailed)
     }
 
     var openDocumentURLs: [URL] {
@@ -1105,6 +1350,38 @@ final class WindowManager: ObservableObject {
             panel.beginSheetModal(for: window, completionHandler: apply)
         } else {
             apply(panel.runModal())
+        }
+    }
+
+    /// Папка из адреса laceditor:// заменяет уже открытую рабочую папку только после согласия пользователя.
+    private func presentLaceditFolderConfirmation(_ url: URL) {
+        let alert = NSAlert()
+        alert.messageText = L10n.tr("通过链接打开文件夹？")
+        alert.informativeText = String(format: L10n.tr("外部链接请求把工作文件夹切换为“%@”。"), url.path)
+        alert.addButton(withTitle: L10n.tr("打开文件夹"))
+        alert.addButton(withTitle: L10n.tr("取消"))
+        present(alert) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            self?.openFinderURL(url)
+        }
+    }
+
+    func presentLaceditInstall() {
+        guard let script = Bundle.main.url(forResource: "lacedit", withExtension: nil) else { return }
+        let command = LaceditInstall.command(scriptPath: script.path)
+        let alert = NSAlert()
+        alert.messageText = L10n.tr("安装 lacedit 命令")
+        alert.informativeText = L10n.tr("在终端中运行下面的命令，之后即可用 lacedit 打开文件。LacEditor 不会自行写入系统目录。")
+        alert.addButton(withTitle: L10n.tr("复制命令"))
+        alert.addButton(withTitle: L10n.tr("关闭"))
+        let field = NSTextField(wrappingLabelWithString: command)
+        field.isSelectable = true
+        field.frame = NSRect(x: 0, y: 0, width: 480, height: 60)
+        alert.accessoryView = field
+        present(alert) { response in
+            guard response == .alertFirstButtonReturn else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(command, forType: .string)
         }
     }
 

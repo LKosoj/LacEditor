@@ -110,9 +110,16 @@
 		D01000000000000000000003 /* AIContextService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01000000000000000000004 /* AIContextService.swift */; };
 		D01000000000000000000005 /* AITextComparison.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01000000000000000000006 /* AITextComparison.swift */; };
 		D01302000000000000000007 /* VersionHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01302000000000000000008 /* VersionHistoryView.swift */; };
+		D01900000000000000000001 /* TextCompareController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01900000000000000000002 /* TextCompareController.swift */; };
+		D01900000000000000000003 /* TextCompareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01900000000000000000004 /* TextCompareView.swift */; };
+		D01900000000000000000005 /* TextDiffRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01900000000000000000006 /* TextDiffRows.swift */; };
 		D01302000000000000000005 /* VersionHistoryController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01302000000000000000006 /* VersionHistoryController.swift */; };
 		D01302000000000000000001 /* FileVersionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01302000000000000000002 /* FileVersionService.swift */; };
 		D01408000000000000000001 /* WritingGoalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01408000000000000000002 /* WritingGoalStore.swift */; };
+		D01461000000000000000001 /* SnippetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01461000000000000000002 /* SnippetStore.swift */; };
+		D01462000000000000000001 /* SnippetService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01462000000000000000002 /* SnippetService.swift */; };
+		D01463000000000000000001 /* SnippetPickerPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01463000000000000000002 /* SnippetPickerPanel.swift */; };
+		D01464000000000000000001 /* SnippetSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01464000000000000000002 /* SnippetSettingsView.swift */; };
 		D01410000000000000000001 /* CriticMarkupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01410000000000000000002 /* CriticMarkupService.swift */; };
 		D01407000000000000000005 /* ManuscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01407000000000000000006 /* ManuscriptView.swift */; };
 		D01407000000000000000003 /* ManuscriptController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01407000000000000000004 /* ManuscriptController.swift */; };
@@ -189,6 +196,7 @@
 		D01200000000000000000090 /* SidebarKeyboardNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000091 /* SidebarKeyboardNavigation.swift */; };
 		D01200000000000000000092 /* QuickOpenPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01200000000000000000093 /* QuickOpenPanel.swift */; };
 		D01301000000000000000001 /* CommandPaletteService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01301000000000000000002 /* CommandPaletteService.swift */; };
+		D09100000000000000000001 /* NavigationHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = D09100000000000000000002 /* NavigationHistory.swift */; };
 		D01301000000000000000003 /* CommandPalettePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01301000000000000000004 /* CommandPalettePanel.swift */; };
 		D01302000000000000000001 /* FileVersionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01302000000000000000002 /* FileVersionService.swift */; };
 		D01302000000000000000005 /* VersionHistoryController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01302000000000000000006 /* VersionHistoryController.swift */; };
@@ -196,14 +204,25 @@
 		D01303000000000000000002 /* LineEndingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01303000000000000000001 /* LineEndingService.swift */; };
 		D01304000000000000000001 /* LineEditingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01304000000000000000002 /* LineEditingService.swift */; };
 		D01307000000000000000002 /* FolderReplaceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01307000000000000000001 /* FolderReplaceService.swift */; };
+		D0130C000000000000000004 /* OpenDocumentsSearchController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0130C000000000000000003 /* OpenDocumentsSearchController.swift */; };
+		D0130C000000000000000002 /* OpenDocumentsSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0130C000000000000000001 /* OpenDocumentsSearchService.swift */; };
+		B5E0500000000000000A0002 /* FolderReplaceBackupStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E0500000000000000A0001 /* FolderReplaceBackupStore.swift */; };
+		D01302A000000000000000F4 /* MatchExtractionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01302A000000000000000F3 /* MatchExtractionService.swift */; };
+		D01302A000000000000000F2 /* FolderFileFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01302A000000000000000F1 /* FolderFileFilter.swift */; };
+		D0F120000000000000000001 /* LaceditRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F120000000000000000002 /* LaceditRequest.swift */; };
+		D0F120000000000000000003 /* Scripts/lacedit in Resources */ = {isa = PBXBuildFile; fileRef = D0F120000000000000000004 /* Scripts/lacedit */; };
 		D01309000000000000000001 /* MarkdownWikiLinkExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01309000000000000000002 /* MarkdownWikiLinkExtractor.swift */; };
 		D01309000000000000000003 /* MarkdownWikiLinkResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01309000000000000000004 /* MarkdownWikiLinkResolver.swift */; };
 		D01309000000000000000005 /* WikiLinkCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01309000000000000000006 /* WikiLinkCatalog.swift */; };
 		D01310000000000000000001 /* MarkdownBacklinkScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01310000000000000000002 /* MarkdownBacklinkScanner.swift */; };
 		D01310000000000000000003 /* MarkdownBacklinksController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01310000000000000000004 /* MarkdownBacklinksController.swift */; };
+		D02200000000000000000003 /* SymbolOutlineController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D02200000000000000000004 /* SymbolOutlineController.swift */; };
+		D02200000000000000000001 /* SymbolOutlineService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D02200000000000000000002 /* SymbolOutlineService.swift */; };
 		D01310000000000000000005 /* MarkdownBacklinksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01310000000000000000006 /* MarkdownBacklinksView.swift */; };
 		D01311000000000000000002 /* FolderTagsController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01311000000000000000001 /* FolderTagsController.swift */; };
+		D07700000000000000000002 /* OpenFileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = D07700000000000000000001 /* OpenFileWatcher.swift */; };
 		D01311000000000000000004 /* FolderTagsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01311000000000000000003 /* FolderTagsSection.swift */; };
+		D02200000000000000000005 /* SymbolOutlineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D02200000000000000000006 /* SymbolOutlineView.swift */; };
 		D0131200000000000000000F /* NoteTemplateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01312000000000000000010 /* NoteTemplateService.swift */; };
 		D01400000000000000000001 /* AIQuestionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01400000000000000000002 /* AIQuestionController.swift */; };
 		D01400000000000000000003 /* AIQuestionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01400000000000000000004 /* AIQuestionService.swift */; };
@@ -217,6 +236,8 @@
 		D01600000000000000000009 /* AIAgentEdits.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0160000000000000000000A /* AIAgentEdits.swift */; };
 		D0160000000000000000000B /* AIAgentPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0160000000000000000000C /* AIAgentPreset.swift */; };
 		D01700000000000000000001 /* AIDictationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01700000000000000000002 /* AIDictationController.swift */; };
+		D01A00000000000000000001 /* AIRegexBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01A00000000000000000002 /* AIRegexBuilder.swift */; };
+		D01A00000000000000000003 /* AIRegexController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01A00000000000000000004 /* AIRegexController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -342,9 +363,16 @@
 		D01000000000000000000004 /* AIContextService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIContextService.swift; path = Services/AIContextService.swift; sourceTree = "<group>"; };
 		D01000000000000000000006 /* AITextComparison.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AITextComparison.swift; path = Services/AITextComparison.swift; sourceTree = "<group>"; };
 		D01302000000000000000008 /* VersionHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VersionHistoryView.swift; path = Views/VersionHistoryView.swift; sourceTree = "<group>"; };
+		D01900000000000000000002 /* TextCompareController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TextCompareController.swift; path = Services/TextCompareController.swift; sourceTree = "<group>"; };
+		D01900000000000000000004 /* TextCompareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TextCompareView.swift; path = Views/TextCompareView.swift; sourceTree = "<group>"; };
+		D01900000000000000000006 /* TextDiffRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TextDiffRows.swift; path = Views/TextDiffRows.swift; sourceTree = "<group>"; };
 		D01302000000000000000006 /* VersionHistoryController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VersionHistoryController.swift; path = Services/VersionHistoryController.swift; sourceTree = "<group>"; };
 		D01302000000000000000002 /* FileVersionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FileVersionService.swift; path = Services/FileVersionService.swift; sourceTree = "<group>"; };
 		D01408000000000000000002 /* WritingGoalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WritingGoalStore.swift; path = Services/WritingGoalStore.swift; sourceTree = "<group>"; };
+		D01461000000000000000002 /* SnippetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SnippetStore.swift; path = Services/SnippetStore.swift; sourceTree = "<group>"; };
+		D01462000000000000000002 /* SnippetService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SnippetService.swift; path = Services/SnippetService.swift; sourceTree = "<group>"; };
+		D01463000000000000000002 /* SnippetPickerPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SnippetPickerPanel.swift; path = Views/SnippetPickerPanel.swift; sourceTree = "<group>"; };
+		D01464000000000000000002 /* SnippetSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SnippetSettingsView.swift; path = Views/SnippetSettingsView.swift; sourceTree = "<group>"; };
 		D01410000000000000000002 /* CriticMarkupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CriticMarkupService.swift; path = Services/CriticMarkupService.swift; sourceTree = "<group>"; };
 		D01407000000000000000006 /* ManuscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ManuscriptView.swift; path = Views/ManuscriptView.swift; sourceTree = "<group>"; };
 		D01407000000000000000004 /* ManuscriptController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ManuscriptController.swift; path = Services/ManuscriptController.swift; sourceTree = "<group>"; };
@@ -419,6 +447,7 @@
 		D01200000000000000000091 /* SidebarKeyboardNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarKeyboardNavigation.swift; sourceTree = "<group>"; };
 		D01200000000000000000093 /* QuickOpenPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickOpenPanel.swift; sourceTree = "<group>"; };
 		D01301000000000000000002 /* CommandPaletteService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPaletteService.swift; sourceTree = "<group>"; };
+		D09100000000000000000002 /* NavigationHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationHistory.swift; sourceTree = "<group>"; };
 		D01301000000000000000004 /* CommandPalettePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPalettePanel.swift; sourceTree = "<group>"; };
 		D01302000000000000000002 /* FileVersionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FileVersionService.swift; path = Services/FileVersionService.swift; sourceTree = "<group>"; };
 		D01302000000000000000006 /* VersionHistoryController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VersionHistoryController.swift; path = Services/VersionHistoryController.swift; sourceTree = "<group>"; };
@@ -426,14 +455,25 @@
 		D01303000000000000000001 /* LineEndingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LineEndingService.swift; sourceTree = "<group>"; };
 		D01304000000000000000002 /* LineEditingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LineEditingService.swift; sourceTree = "<group>"; };
 		D01307000000000000000001 /* FolderReplaceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderReplaceService.swift; sourceTree = "<group>"; };
+		D0130C000000000000000003 /* OpenDocumentsSearchController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenDocumentsSearchController.swift; sourceTree = "<group>"; };
+		D0130C000000000000000001 /* OpenDocumentsSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenDocumentsSearchService.swift; sourceTree = "<group>"; };
+		B5E0500000000000000A0001 /* FolderReplaceBackupStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderReplaceBackupStore.swift; sourceTree = "<group>"; };
+		D01302A000000000000000F3 /* MatchExtractionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchExtractionService.swift; sourceTree = "<group>"; };
+		D01302A000000000000000F1 /* FolderFileFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderFileFilter.swift; sourceTree = "<group>"; };
+		D0F120000000000000000002 /* LaceditRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaceditRequest.swift; sourceTree = "<group>"; };
+		D0F120000000000000000004 /* Scripts/lacedit */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = Scripts/lacedit; sourceTree = SOURCE_ROOT; };
 		D01309000000000000000002 /* MarkdownWikiLinkExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownWikiLinkExtractor.swift; sourceTree = "<group>"; };
 		D01309000000000000000004 /* MarkdownWikiLinkResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownWikiLinkResolver.swift; sourceTree = "<group>"; };
 		D01309000000000000000006 /* WikiLinkCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiLinkCatalog.swift; sourceTree = "<group>"; };
 		D01310000000000000000002 /* MarkdownBacklinkScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownBacklinkScanner.swift; sourceTree = "<group>"; };
 		D01310000000000000000004 /* MarkdownBacklinksController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownBacklinksController.swift; sourceTree = "<group>"; };
+		D02200000000000000000004 /* SymbolOutlineController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SymbolOutlineController.swift; sourceTree = "<group>"; };
+		D02200000000000000000002 /* SymbolOutlineService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SymbolOutlineService.swift; sourceTree = "<group>"; };
 		D01310000000000000000006 /* MarkdownBacklinksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownBacklinksView.swift; sourceTree = "<group>"; };
 		D01311000000000000000001 /* FolderTagsController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderTagsController.swift; sourceTree = "<group>"; };
+		D07700000000000000000001 /* OpenFileWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenFileWatcher.swift; sourceTree = "<group>"; };
 		D01311000000000000000003 /* FolderTagsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderTagsSection.swift; sourceTree = "<group>"; };
+		D02200000000000000000006 /* SymbolOutlineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SymbolOutlineView.swift; sourceTree = "<group>"; };
 		D01312000000000000000010 /* NoteTemplateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteTemplateService.swift; sourceTree = "<group>"; };
 		D01400000000000000000002 /* AIQuestionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIQuestionController.swift; path = Services/AIQuestionController.swift; sourceTree = "<group>"; };
 		D01400000000000000000004 /* AIQuestionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIQuestionService.swift; path = Services/AIQuestionService.swift; sourceTree = "<group>"; };
@@ -447,6 +487,8 @@
 		D0160000000000000000000A /* AIAgentEdits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIAgentEdits.swift; path = Services/AIAgentEdits.swift; sourceTree = "<group>"; };
 		D0160000000000000000000C /* AIAgentPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIAgentPreset.swift; path = Models/AIAgentPreset.swift; sourceTree = "<group>"; };
 		D01700000000000000000002 /* AIDictationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIDictationController.swift; path = Services/AIDictationController.swift; sourceTree = "<group>"; };
+		D01A00000000000000000002 /* AIRegexBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIRegexBuilder.swift; path = Services/AIRegexBuilder.swift; sourceTree = "<group>"; };
+		D01A00000000000000000004 /* AIRegexController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIRegexController.swift; path = Services/AIRegexController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -527,9 +569,16 @@
 				D01000000000000000000004 /* AIContextService.swift */,
 				D01000000000000000000006 /* AITextComparison.swift */,
 				D01302000000000000000008 /* VersionHistoryView.swift */,
+				D01900000000000000000002 /* TextCompareController.swift */,
+				D01900000000000000000004 /* TextCompareView.swift */,
+				D01900000000000000000006 /* TextDiffRows.swift */,
 				D01302000000000000000006 /* VersionHistoryController.swift */,
 				D01302000000000000000002 /* FileVersionService.swift */,
 				D01408000000000000000002 /* WritingGoalStore.swift */,
+				D01461000000000000000002 /* SnippetStore.swift */,
+				D01462000000000000000002 /* SnippetService.swift */,
+				D01463000000000000000002 /* SnippetPickerPanel.swift */,
+				D01464000000000000000002 /* SnippetSettingsView.swift */,
 				D01410000000000000000002 /* CriticMarkupService.swift */,
 				D01407000000000000000006 /* ManuscriptView.swift */,
 				D01407000000000000000004 /* ManuscriptController.swift */,
@@ -552,12 +601,15 @@
 				D01600000000000000000008 /* AIAgentView.swift */,
 				D0160000000000000000000A /* AIAgentEdits.swift */,
 				D01700000000000000000002 /* AIDictationController.swift */,
+				D01A00000000000000000002 /* AIRegexBuilder.swift */,
+				D01A00000000000000000004 /* AIRegexController.swift */,
 				D01100000000000000000002 /* Models/AITranslationLanguage.swift */,
 				D00C00000000000000000002 /* Mermaid */,
 				D01200000000000000000022 /* MathJax */,
 				D0120000000000000000003E /* LegacyDiagrams */,
 				D01200000000000000000059 /* PrismJS */,
 				D01200000000000000000072 /* LacEditor/Resources/Gemoji */,
+				D0F120000000000000000004 /* Scripts/lacedit */,
 				D01200000000000000000053 /* HighlightJS */,
 				D01200000000000000000051 /* CodeMirror */,
 				D01200000000000000000038 /* LacEditor/Resources/HTML-Entities-LICENSE.txt */,
@@ -621,6 +673,8 @@
 				D0120000000000000000005B /* MarkdownEmojiCandidateExtractor.swift */,
 				D01309000000000000000002 /* MarkdownWikiLinkExtractor.swift */,
 				D01310000000000000000004 /* MarkdownBacklinksController.swift */,
+				D02200000000000000000004 /* SymbolOutlineController.swift */,
+				D02200000000000000000002 /* SymbolOutlineService.swift */,
 				D01310000000000000000002 /* MarkdownBacklinkScanner.swift */,
 				D01309000000000000000004 /* MarkdownWikiLinkResolver.swift */,
 				D01309000000000000000006 /* WikiLinkCatalog.swift */,
@@ -632,6 +686,7 @@
 				D0120000000000000000002E /* MarkdownTagReader.swift */,
 				D01800000000000000000002 /* MarkdownRemoteImageDownloader.swift */,
 				D01311000000000000000001 /* FolderTagsController.swift */,
+				D07700000000000000000001 /* OpenFileWatcher.swift */,
 				D01200000000000000000034 /* MarkdownLinkNavigationService.swift */,
 				D01200000000000000000036 /* MarkdownImageCopyService.swift */,
 				D0120000000000000000001E /* EmojiShortcodeResolver.swift */,
@@ -639,10 +694,17 @@
 				D01200000000000000000018 /* MarkdownImageEditingService.swift */,
 				D01200000000000000000014 /* FolderSearchController.swift */,
 				D01301000000000000000002 /* CommandPaletteService.swift */,
+				D09100000000000000000002 /* NavigationHistory.swift */,
 				D01200000000000000000091 /* SidebarKeyboardNavigation.swift */,
 				D01200000000000000000010 /* FolderSearchService.swift */,
 				D01312000000000000000010 /* NoteTemplateService.swift */,
 				D01307000000000000000001 /* FolderReplaceService.swift */,
+				D0130C000000000000000003 /* OpenDocumentsSearchController.swift */,
+				D0130C000000000000000001 /* OpenDocumentsSearchService.swift */,
+				B5E0500000000000000A0001 /* FolderReplaceBackupStore.swift */,
+				D01302A000000000000000F3 /* MatchExtractionService.swift */,
+				D01302A000000000000000F1 /* FolderFileFilter.swift */,
+				D0F120000000000000000002 /* LaceditRequest.swift */,
 				D0120000000000000000000E /* MarkdownAutoPairService.swift */,
 				D0120000000000000000000A /* FolderWorkspaceStore.swift */,
 				D01200000000000000000006 /* MarkdownLinkEditingService.swift */,
@@ -723,6 +785,7 @@
 				D00B00000000000000000004 /* MarkdownOutlineView.swift */,
 				D01310000000000000000006 /* MarkdownBacklinksView.swift */,
 				D01311000000000000000003 /* FolderTagsSection.swift */,
+				D02200000000000000000006 /* SymbolOutlineView.swift */,
 				A00000000000000000000027 /* LacEditorDesign.swift */,
 				A00000000000000000000011 /* MainWindowView.swift */,
 				A00000000000000000000012 /* TitleToolbar.swift */,
@@ -863,6 +926,7 @@
 				D0120000000000000000003D /* LegacyDiagrams in Resources */,
 				D01200000000000000000058 /* PrismJS in Resources */,
 				D01200000000000000000071 /* LacEditor/Resources/Gemoji in Resources */,
+				D0F120000000000000000003 /* Scripts/lacedit in Resources */,
 				D01200000000000000000052 /* HighlightJS in Resources */,
 				D01200000000000000000050 /* CodeMirror in Resources */,
 				D01200000000000000000037 /* LacEditor/Resources/HTML-Entities-LICENSE.txt in Resources */,
@@ -909,6 +973,8 @@
 				D0120000000000000000005A /* MarkdownEmojiCandidateExtractor.swift in Sources */,
 				D01309000000000000000001 /* MarkdownWikiLinkExtractor.swift in Sources */,
 				D01310000000000000000003 /* MarkdownBacklinksController.swift in Sources */,
+				D02200000000000000000003 /* SymbolOutlineController.swift in Sources */,
+				D02200000000000000000001 /* SymbolOutlineService.swift in Sources */,
 				D01310000000000000000001 /* MarkdownBacklinkScanner.swift in Sources */,
 				D01309000000000000000003 /* MarkdownWikiLinkResolver.swift in Sources */,
 				D01309000000000000000005 /* WikiLinkCatalog.swift in Sources */,
@@ -943,7 +1009,9 @@
 				D0120000000000000000002D /* MarkdownTagReader.swift in Sources */,
 				D01800000000000000000001 /* MarkdownRemoteImageDownloader.swift in Sources */,
 				D01311000000000000000002 /* FolderTagsController.swift in Sources */,
+				D07700000000000000000002 /* OpenFileWatcher.swift in Sources */,
 				D01311000000000000000004 /* FolderTagsSection.swift in Sources */,
+				D02200000000000000000005 /* SymbolOutlineView.swift in Sources */,
 				D01200000000000000000033 /* MarkdownLinkNavigationService.swift in Sources */,
 				D01200000000000000000035 /* MarkdownImageCopyService.swift in Sources */,
 				D0120000000000000000001D /* EmojiShortcodeResolver.swift in Sources */,
@@ -955,11 +1023,18 @@
 				D01200000000000000000090 /* SidebarKeyboardNavigation.swift in Sources */,
 				D01200000000000000000092 /* QuickOpenPanel.swift in Sources */,
 				D01301000000000000000001 /* CommandPaletteService.swift in Sources */,
+				D09100000000000000000001 /* NavigationHistory.swift in Sources */,
 				D01301000000000000000003 /* CommandPalettePanel.swift in Sources */,
 				D01200000000000000000011 /* MarkdownTableCellEditor.swift in Sources */,
 				D0120000000000000000000F /* FolderSearchService.swift in Sources */,
 				D0131200000000000000000F /* NoteTemplateService.swift in Sources */,
 				D01307000000000000000002 /* FolderReplaceService.swift in Sources */,
+				D0130C000000000000000004 /* OpenDocumentsSearchController.swift in Sources */,
+				D0130C000000000000000002 /* OpenDocumentsSearchService.swift in Sources */,
+				B5E0500000000000000A0002 /* FolderReplaceBackupStore.swift in Sources */,
+				D01302A000000000000000F4 /* MatchExtractionService.swift in Sources */,
+				D01302A000000000000000F2 /* FolderFileFilter.swift in Sources */,
+				D0F120000000000000000001 /* LaceditRequest.swift in Sources */,
 				D0120000000000000000000D /* MarkdownAutoPairService.swift in Sources */,
 				D01200000000000000000003 /* MarkdownTableEditingService.swift in Sources */,
 				D01200000000000000000005 /* MarkdownLinkEditingService.swift in Sources */,
@@ -981,9 +1056,16 @@
 				D01000000000000000000003 /* AIContextService.swift in Sources */,
 				D01000000000000000000005 /* AITextComparison.swift in Sources */,
 				D01302000000000000000007 /* VersionHistoryView.swift in Sources */,
+				D01900000000000000000001 /* TextCompareController.swift in Sources */,
+				D01900000000000000000003 /* TextCompareView.swift in Sources */,
+				D01900000000000000000005 /* TextDiffRows.swift in Sources */,
 				D01302000000000000000005 /* VersionHistoryController.swift in Sources */,
 				D01302000000000000000001 /* FileVersionService.swift in Sources */,
 				D01408000000000000000001 /* WritingGoalStore.swift in Sources */,
+				D01461000000000000000001 /* SnippetStore.swift in Sources */,
+				D01462000000000000000001 /* SnippetService.swift in Sources */,
+				D01463000000000000000001 /* SnippetPickerPanel.swift in Sources */,
+				D01464000000000000000001 /* SnippetSettingsView.swift in Sources */,
 				D01410000000000000000001 /* CriticMarkupService.swift in Sources */,
 				D01407000000000000000005 /* ManuscriptView.swift in Sources */,
 				D01407000000000000000003 /* ManuscriptController.swift in Sources */,
@@ -1003,6 +1085,8 @@
 				D01600000000000000000009 /* AIAgentEdits.swift in Sources */,
 				D0160000000000000000000B /* AIAgentPreset.swift in Sources */,
 				D01700000000000000000001 /* AIDictationController.swift in Sources */,
+				D01A00000000000000000001 /* AIRegexBuilder.swift in Sources */,
+				D01A00000000000000000003 /* AIRegexController.swift in Sources */,
 				D01400000000000000000003 /* AIQuestionService.swift in Sources */,
 				D01500000000000000000011 /* AIImageDescriptions.swift in Sources */,
 				D01500000000000000000001 /* AIWebSearchService.swift in Sources */,

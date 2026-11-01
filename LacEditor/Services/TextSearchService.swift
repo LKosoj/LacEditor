@@ -9,9 +9,23 @@ enum FindReplaceMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// Область поиска в панели: документ, выделение (`FindReplaceState.scope`) или все открытые документы.
+enum FindScope: String, CaseIterable, Identifiable {
+    case document, selection, openDocuments
+
+    var id: String { rawValue }
+}
+
+/// Итог поиска по открытым документам для строки счётчика панели.
+struct OpenDocumentsSummary: Equatable {
+    var matchCount: Int
+    var documentCount: Int
+    var skippedTitles: [String]   // «имя (причина)», уже готовый текст
+}
+
 @MainActor
 final class FindReplaceState: ObservableObject {
-    enum MessageKind { case info, success, error }
+    enum MessageKind { case info, success, error, notice }
 
     @Published var mode: FindReplaceMode = .find
     @Published var query = ""
@@ -30,6 +44,20 @@ final class FindReplaceState: ObservableObject {
     @Published var goToLineText = ""
     @Published private(set) var matches: [NSRange]?
     private(set) var matchesDocumentID: UUID?
+    /// «В выделении»: диапазон UTF-16 в координатах файла и ревизия текста на момент включения.
+    struct Scope: Equatable {
+        let documentID: UUID
+        let range: NSRange
+        let revision: UInt
+    }
+    @Published var scope: Scope?
+    /// «Все открытые документы»: поиск и замена идут по всем вкладкам; область «В выделении» при этом снята.
+    @Published var searchesOpenDocuments = false
+    @Published private(set) var openDocumentsSummary: OpenDocumentsSummary?
+
+    var area: FindScope {
+        searchesOpenDocuments ? .openDocuments : (scope != nil ? .selection : .document)
+    }
 
     var searchOptions: TextSearchService.Options {
         .init(caseSensitive: isCaseSensitive, usesRegex: usesRegex, wholeWord: matchesWholeWord)
@@ -38,6 +66,10 @@ final class FindReplaceState: ObservableObject {
     func show(_ text: String?, kind: MessageKind) {
         message = text
         messageKind = kind
+    }
+
+    func setOpenDocumentsSummary(_ value: OpenDocumentsSummary?) {
+        if openDocumentsSummary != value { openDocumentsSummary = value }
     }
 
     func setMatches(_ value: [NSRange]?, documentID: UUID?) {
@@ -53,6 +85,7 @@ enum TextSearchService {
         let caseSensitive: Bool
         var usesRegex = false
         var wholeWord = false
+        var scope: NSRange? = nil
     }
 
     struct Options: Hashable, Sendable {
@@ -155,7 +188,8 @@ enum TextSearchService {
     }
 
     /// Участки текста, по которым идёт поиск: всё, кроме адресов `data:` (заголовка и данных).
-    static func searchableRanges(in text: String) -> [NSRange] {
+    /// При `scope` участки урезаются областью поиска; пустые отбрасываются.
+    static func searchableRanges(in text: String, scope: NSRange? = nil) -> [NSRange] {
         var parts: [NSRange] = []
         var location = 0
         for address in MarkdownMediaTable.addressRanges(in: text) {
@@ -164,7 +198,12 @@ enum TextSearchService {
         }
         let length = (text as NSString).length
         if location < length { parts.append(NSRange(location: location, length: length - location)) }
-        return parts
+        guard let scope else { return parts }
+        let clamped = NSIntersectionRange(scope, NSRange(location: 0, length: length))
+        return parts.compactMap {
+            let part = NSIntersectionRange($0, clamped)
+            return part.length > 0 ? part : nil
+        }
     }
 
     /// Совпадения выражения по участкам `searchableRanges`. Границы участков прозрачны:
@@ -172,10 +211,11 @@ enum TextSearchService {
     static func enumerateMatches(
         of regex: NSRegularExpression,
         in text: String,
+        scope: NSRange? = nil,
         using body: (NSTextCheckingResult?, UnsafeMutablePointer<ObjCBool>) -> Void
     ) {
         var stopped = false
-        for part in searchableRanges(in: text) where !stopped {
+        for part in searchableRanges(in: text, scope: scope) where !stopped {
             // reportProgress вызывает блок и внутри долгого совпадения, поэтому отмена прерывает и его.
             regex.enumerateMatches(
                 in: text,
@@ -192,6 +232,7 @@ enum TextSearchService {
         in text: String,
         query: String,
         caseSensitive: Bool,
+        scope: NSRange? = nil,
         isCancelled: () -> Bool = { false }
     ) -> [NSRange] {
         guard !query.isEmpty else { return [] }
@@ -199,7 +240,7 @@ enum TextSearchService {
         let options = compareOptions(caseSensitive: caseSensitive)
         let queryLength = (query as NSString).length
         var matches: [NSRange] = []
-        for part in searchableRanges(in: text) {
+        for part in searchableRanges(in: text, scope: scope) {
             let end = NSMaxRange(part)
             var location = part.location
             while location <= end - queryLength {
@@ -234,12 +275,13 @@ enum TextSearchService {
         query: String,
         replacement: String,
         caseSensitive: Bool,
+        scope: NSRange? = nil,
         isCancelled: () -> Bool = { false }
     ) -> (text: String, count: Int) {
         guard !query.isEmpty else { return (text, 0) }
         let nsText = text as NSString
         let options = compareOptions(caseSensitive: caseSensitive)
-        let parts = searchableRanges(in: text)
+        let parts = searchableRanges(in: text, scope: scope)
         var count = 0
 
         for part in parts {
@@ -276,16 +318,17 @@ enum TextSearchService {
         in text: String,
         query: String,
         options: Options,
+        scope: NSRange? = nil,
         isCancelled: () -> Bool = { false }
     ) throws -> [NSRange] {
         guard !query.isEmpty else { return [] }
         if options.isPlain {
-            return allRanges(in: text, query: query, caseSensitive: options.caseSensitive, isCancelled: isCancelled)
+            return allRanges(in: text, query: query, caseSensitive: options.caseSensitive, scope: scope, isCancelled: isCancelled)
         }
         let regex = try regularExpression(query: query, options: options)
         var result: [NSRange] = []
         var cancelled = false
-        enumerateMatches(of: regex, in: text) { match, stop in
+        enumerateMatches(of: regex, in: text, scope: scope) { match, stop in
             if isCancelled() { cancelled = true; stop.pointee = true; return }
             guard let range = match?.range, range.length > 0 else { return }
             result.append(range)
@@ -330,6 +373,7 @@ enum TextSearchService {
         replacement: String,
         options: Options,
         interpretsEscapes: Bool,
+        scope: NSRange? = nil,
         isCancelled: () -> Bool = { false }
     ) throws -> (text: String, count: Int) {
         guard !query.isEmpty else { return (text, 0) }
@@ -339,6 +383,7 @@ enum TextSearchService {
                 query: query,
                 replacement: interpreted(replacement, enabled: interpretsEscapes),
                 caseSensitive: options.caseSensitive,
+                scope: scope,
                 isCancelled: isCancelled
             )
         }
@@ -349,7 +394,7 @@ enum TextSearchService {
         var cursor = 0
         var count = 0
         var cancelled = false
-        enumerateMatches(of: regex, in: text) { match, stop in
+        enumerateMatches(of: regex, in: text, scope: scope) { match, stop in
             if isCancelled() { cancelled = true; stop.pointee = true; return }
             // Пустые совпадения пропускаются, как в allRanges: иначе «Заменить все» меняло бы то, что поиск не нашёл.
             guard let match, match.range.length > 0 else { return }
@@ -370,11 +415,12 @@ enum TextSearchService {
         query: String,
         replacement: String,
         options: Options,
-        interpretsEscapes: Bool
+        interpretsEscapes: Bool,
+        scope: NSRange? = nil
     ) throws -> String? {
         let ns = text as NSString
         guard !query.isEmpty, selection.location != NSNotFound, NSMaxRange(selection) <= ns.length,
-              let part = searchableRanges(in: text).first(where: { NSMaxRange(selection) <= NSMaxRange($0) }),
+              let part = searchableRanges(in: text, scope: scope).first(where: { NSMaxRange(selection) <= NSMaxRange($0) }),
               selection.location >= part.location else { return nil }
         if options.isPlain {
             return selectionMatches(in: text, query: query, selection: selection, caseSensitive: options.caseSensitive)

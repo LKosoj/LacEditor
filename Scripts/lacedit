@@ -1,0 +1,94 @@
+#!/bin/zsh
+# lacedit — открывает файлы, папки и текст из терминала в LacEditor.
+# Скрипт лежит внутри LacEditor.app (Contents/Resources/lacedit) и сам находит свою программу,
+# в том числе по символической ссылке из /usr/local/bin.
+set -eu
+
+limit=52428800   # 50 МиБ
+
+die() { print -u2 -- "lacedit: $*"; exit 1; }
+
+usage() {
+    print -- 'Usage:
+  lacedit [file-or-folder ...]
+  lacedit --line N [--column M] file
+  command | lacedit -'
+}
+
+self=${0:A}
+app=${self:h:h:h}
+[[ $app == *.app && -f $app/Contents/Info.plist ]] \
+    || die 'run it from inside LacEditor.app (menu Help > Install lacedit Command)'
+
+# Абсолютный путь без «..»; сам файл (в том числе ссылка) не разыменовывается.
+absolute() {
+    local p=$1 dir
+    [[ $p == /* ]] || p=$PWD/$p
+    dir=$(cd -- "${p:h}" 2>/dev/null && pwd -P) || return 1
+    print -rn -- "${dir%/}/${p:t}"
+}
+
+# Все байты в %XX: так подходит любой путь, в том числе с пробелами и кириллицей.
+encode() { printf %s "$1" | od -An -v -tx1 | tr -d ' \n' | sed 's/../%&/g'; }
+
+line= column= use_stdin=0
+files=()
+while (( $# )); do
+    case $1 in
+        -h|--help) usage; exit 0 ;;
+        --line)
+            [[ ${2:-} =~ '^[1-9][0-9]{0,8}$' ]] || die '--line needs a positive number'
+            line=$2; shift 2 ;;
+        --column)
+            [[ ${2:-} =~ '^[1-9][0-9]{0,8}$' ]] || die '--column needs a positive number'
+            column=$2; shift 2 ;;
+        --) shift; files+=("$@"); break ;;
+        -) use_stdin=1; shift ;;
+        -*) die "unknown option: $1" ;;
+        *) files+=("$1"); shift ;;
+    esac
+done
+
+if (( use_stdin )); then
+    [[ -z $line$column && ${#files} -eq 0 ]] || die '"-" cannot be combined with files or --line'
+    base=$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null) || base=${TMPDIR:-/tmp}
+    dir=${base%/}/lacedit-stdin
+    umask 077
+    mkdir -p -- "$dir"
+    id=$(uuidgen)   # верхний регистр: приложение строит имя файла из UUID так же
+    file=$dir/$id.txt
+    trap 'rm -f -- "$file"' EXIT INT TERM
+    head -c $(( limit + 1 )) > "$file"
+    size=$(stat -f %z "$file")
+    if (( size > limit )); then
+        rm -f -- "$file"
+        die 'input is larger than 50 MiB'
+    fi
+    if ! open -a "$app" "laceditor://stdin?id=$id"; then
+        rm -f -- "$file"
+        die 'could not start LacEditor'
+    fi
+    trap - EXIT INT TERM
+elif [[ -n $line && ${#files} -eq 1 && -d ${files[1]} ]]; then
+    # Для папки строка и столбец не нужны: открываем как обычный путь.
+    path=$(absolute "${files[1]}") || die "no such folder: ${files[1]:h}"
+    open -a "$app" "$path"
+elif [[ -n $line ]]; then
+    (( ${#files} == 1 )) || die '--line needs exactly one file'
+    [[ -f ${files[1]} ]] || die "no such file: ${files[1]}"
+    path=$(absolute "${files[1]}") || die "no such folder: ${files[1]:h}"
+    url="laceditor://open?path=$(encode "$path")&line=$line"
+    [[ -z $column ]] || url+="&column=$column"
+    open -a "$app" "$url"
+elif [[ -n $column ]]; then
+    die '--column needs --line'
+elif (( ${#files} )); then
+    paths=()
+    for f in "${files[@]}"; do
+        p=$(absolute "$f") || die "no such folder: ${f:h}"
+        paths+=("$p")
+    done
+    open -a "$app" "${paths[@]}"
+else
+    open -a "$app"
+fi

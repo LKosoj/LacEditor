@@ -3,6 +3,7 @@ import Foundation
 enum NoteTemplateService {
     static let dailyTemplateName = "daily.md"
     static let defaultDateFormat = "yyyy-MM-dd"
+    static let defaultTimeFormat = "HH:mm"
 
     enum TemplateError: LocalizedError {
         case notUTF8, dailyFolderInvalid, dailyFolderMissing, dailyNoteInvalid
@@ -27,14 +28,25 @@ enum NoteTemplateService {
         let values = [
             "{{title}}": title,
             "{{date}}": formatted(date, format: defaultDateFormat, timeZone: timeZone),
-            "{{time}}": formatted(date, format: "HH:mm", timeZone: timeZone),
+            "{{time}}": formatted(date, format: defaultTimeFormat, timeZone: timeZone),
         ]
+        return substitute(template, values: values).text
+    }
+
+    /// Один проход по unicodeScalars: известные метки заменяются, значения заново не разбираются.
+    /// `cursorToken` не вставляет текст; запоминается UTF-16 смещение его первого вхождения.
+    static func substitute(_ template: String, values: [String: String],
+                           cursorToken: String? = nil) -> (text: String, cursorOffset: Int?) {
         var result = String.UnicodeScalarView()
+        var cursorOffset: Int?
         var rest = template.unicodeScalars[...]
         while let start = rest.firstIndex(where: { $0 == "{" }) {
             result.append(contentsOf: rest[rest.startIndex..<start])
             rest = rest[start...]
-            if let (token, value) = values.first(where: { rest.starts(with: $0.key.unicodeScalars) }) {
+            if let cursorToken, rest.starts(with: cursorToken.unicodeScalars) {
+                if cursorOffset == nil { cursorOffset = String(result).utf16.count }
+                rest = rest.dropFirst(cursorToken.unicodeScalars.count)
+            } else if let (token, value) = values.first(where: { rest.starts(with: $0.key.unicodeScalars) }) {
                 result.append(contentsOf: value.unicodeScalars)
                 rest = rest.dropFirst(token.unicodeScalars.count)
             } else {
@@ -43,7 +55,7 @@ enum NoteTemplateService {
             }
         }
         result.append(contentsOf: rest)
-        return String(result)
+        return (String(result), cursorOffset)
     }
 
     /// Существующий путь заметки дня должен быть обычным файлом; каталог и символическая ссылка отклоняются.
@@ -124,7 +136,7 @@ enum NoteTemplateService {
         return .create(url, contents)
     }
 
-    private static func formatted(_ date: Date, format: String, timeZone: TimeZone) -> String {
+    static func formatted(_ date: Date, format: String, timeZone: TimeZone) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.calendar = Calendar(identifier: .gregorian)

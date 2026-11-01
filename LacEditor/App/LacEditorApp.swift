@@ -295,6 +295,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             forEventClass: AEEventClass(kCoreEventClass),
             andEventID: AEEventID(kAEOpenDocuments)
         )
+        // Адрес laceditor:// от команды lacedit. Обработчик ставим сами по той же причине, что и для открытия файлов выше.
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleGetURL(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL)
+        )
         // SwiftUI installs its command menus during scene construction, which
         // happens after WindowManager is initialized. Translate once again at
         // the AppKit launch boundary and after the scene has had a run-loop
@@ -311,6 +318,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSAppleEventManager.shared().removeEventHandler(
             forEventClass: AEEventClass(kCoreEventClass),
             andEventID: AEEventID(kAEOpenDocuments)
+        )
+        NSAppleEventManager.shared().removeEventHandler(
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL)
         )
         MarkdownTemporaryMedia.removeEverything()
     }
@@ -399,6 +410,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openFilesFromFinder(urls)
     }
 
+    @objc private func handleGetURL(
+        _ event: NSAppleEventDescriptor,
+        withReplyEvent replyEvent: NSAppleEventDescriptor
+    ) {
+        guard let text = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
+              let url = URL(string: text) else { return }
+        Self.sharedManager?.openLaceditURL(url)
+    }
+
     func applicationDidResignActive(_ notification: Notification) {
         guard Self.sharedManager?.startupError == nil else { return }
         Self.sharedManager?.persistRecoverySnapshotsImmediately()
@@ -414,6 +434,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             MenuLocalizationController.localizeMainMenu()
         }
+        Self.sharedManager?.openFileWatcher.checkAll()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

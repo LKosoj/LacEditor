@@ -5,6 +5,15 @@ struct PaletteCommand: Identifiable, Equatable {
     let path: [String]
     let indexPath: [Int]
     let shortcut: String
+    /// Путь стабильных ключей (не зависит от языка интерфейса): по нему сравниваются закреплённые и недавние.
+    let key: [String]
+
+    init(path: [String], indexPath: [Int], shortcut: String, key: [String]? = nil) {
+        self.path = path
+        self.indexPath = indexPath
+        self.shortcut = shortcut
+        self.key = key ?? path
+    }
 
     var id: String { indexPath.map(String.init).joined(separator: ".") }
     var title: String { path.last ?? "" }
@@ -18,11 +27,11 @@ enum CommandPaletteService {
     static func collect(from menu: NSMenu?, excluding: @MainActor (NSMenuItem) -> Bool = { _ in false }) -> [PaletteCommand] {
         guard let menu else { return [] }
         var result: [PaletteCommand] = []
-        walk(menu, path: [], indexPath: [], excluding: excluding, into: &result)
+        walk(menu, path: [], keyPath: [], indexPath: [], excluding: excluding, into: &result)
         return result
     }
 
-    private static func walk(_ menu: NSMenu, path: [String], indexPath: [Int],
+    private static func walk(_ menu: NSMenu, path: [String], keyPath: [String], indexPath: [Int],
                              excluding: @MainActor (NSMenuItem) -> Bool, into result: inout [PaletteCommand]) {
         // SwiftUI и AppKit обновляют доступность пунктов лениво
         menu.update()
@@ -32,12 +41,21 @@ enum CommandPaletteService {
             guard isCandidate(item, title: title), !excluding(item) else { continue }
             if let submenu = item.submenu {
                 if submenu === NSApplication.shared.servicesMenu || submenu === NSApplication.shared.windowsMenu { continue }
-                walk(submenu, path: path + [title], indexPath: indexPath + [index], excluding: excluding, into: &result)
+                walk(submenu, path: path + [title], keyPath: keyPath + [L10n.stableKey(forDisplayed: title) ?? title], indexPath: indexPath + [index], excluding: excluding, into: &result)
             } else if item.action != nil {
                 result.append(PaletteCommand(path: path + [title], indexPath: indexPath + [index],
-                                             shortcut: shortcutText(for: item)))
+                                             shortcut: shortcutText(for: item), key: keyPath + [leafKey(item, title: title)]))
             }
         }
+    }
+
+    /// Ключ листа: ключ каталога; для незнакомого пункта цепочки ответчиков — селектор; иначе показанное название.
+    private static func leafKey(_ item: NSMenuItem, title: String) -> String {
+        if let key = L10n.stableKey(forDisplayed: title) { return key }
+        if let action = item.action, item.target == nil || item.target === NSApplication.shared.delegate {
+            return "sel:" + NSStringFromSelector(action)
+        }
+        return title
     }
 
     private static func isCandidate(_ item: NSMenuItem, title: String) -> Bool {
@@ -79,11 +97,11 @@ enum CommandPaletteService {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty else {
             return ranked(commands, query: query).map {
-                Entry(command: $0, section: nil, isPinned: pinnedSet.contains($0.path), startsSection: false)
+                Entry(command: $0, section: nil, isPinned: pinnedSet.contains($0.key), startsSection: false)
             }
         }
         var byPath: [[String]: PaletteCommand] = [:]
-        for command in commands where byPath[command.path] == nil { byPath[command.path] = command }
+        for command in commands where byPath[command.key] == nil { byPath[command.key] = command }
         var pinnedCommands: [PaletteCommand] = []
         var shown = Set<String>()
         for path in pinned {
@@ -97,7 +115,7 @@ enum CommandPaletteService {
         let hasHeaders = !pinnedCommands.isEmpty || !recentCommands.isEmpty
         func make(_ list: [PaletteCommand], _ section: Section) -> [Entry] {
             list.enumerated().map { index, command in
-                Entry(command: command, section: hasHeaders ? section : nil, isPinned: pinnedSet.contains(command.path),
+                Entry(command: command, section: hasHeaders ? section : nil, isPinned: pinnedSet.contains(command.key),
                       startsSection: hasHeaders && index == 0)
             }
         }
@@ -114,6 +132,23 @@ enum CommandPaletteService {
     static func togglingPin(_ path: [String], pinned: [[String]], recent: [[String]]) -> (pinned: [[String]], recent: [[String]]) {
         if pinned.contains(path) { return (pinned.filter { $0 != path }, recent) }
         return (pinned + [path], recent.filter { $0 != path })
+    }
+
+    /// Записи любого языка → пути ключей; ненайденные уровни остаются как есть; повторы убираются (первое вхождение).
+    static func migrated(_ paths: [[String]]) -> [[String]] {
+        deduplicated(paths.filter { !$0.isEmpty }.map { path in path.map { L10n.stableKey(forDisplayed: $0) ?? $0 } })
+    }
+
+    /// Старая запись, равная показанному пути живой команды, заменяется её ключом (системные пункты нет в каталогах).
+    static func upgrading(_ stored: [[String]], with commands: [PaletteCommand]) -> [[String]] {
+        var keys: [[String]: [String]] = [:]
+        for command in commands where command.key != command.path && keys[command.path] == nil { keys[command.path] = command.key }
+        return deduplicated(stored.map { keys[$0] ?? $0 })
+    }
+
+    private static func deduplicated(_ paths: [[String]]) -> [[String]] {
+        var seen = Set<[String]>()
+        return paths.filter { seen.insert($0).inserted }
     }
 
     /// Порядок символов как в меню macOS: ⌃⌥⇧⌘ и клавиша.
@@ -195,6 +230,13 @@ final class CommandPaletteController: ObservableObject {
                  excluding: @MainActor (NSMenuItem) -> Bool = CommandPaletteService.isPaletteItem) {
         self.preferences = preferences
         commands = CommandPaletteService.collect(from: menu, excluding: excluding)
+        if let preferences {
+            let pinned = CommandPaletteService.upgrading(preferences.commandPalettePinned, with: commands)
+            if pinned != preferences.commandPalettePinned { preferences.commandPalettePinned = pinned }
+            let recent = Array(CommandPaletteService.upgrading(preferences.commandPaletteRecent, with: commands)
+                .prefix(CommandPaletteService.recentLimit))
+            if recent != preferences.commandPaletteRecent { preferences.commandPaletteRecent = recent }
+        }
         query = ""
         pending = nil
         request = UUID()
@@ -218,14 +260,14 @@ final class CommandPaletteController: ObservableObject {
         guard CommandPaletteService.perform(command, menu: menu) else { return false }
         if let preferences {
             preferences.commandPaletteRecent = CommandPaletteService.recording(
-                command.path, recent: preferences.commandPaletteRecent, pinned: preferences.commandPalettePinned)
+                command.key, recent: preferences.commandPaletteRecent, pinned: preferences.commandPalettePinned)
         }
         return true
     }
 
     func togglePin(_ command: PaletteCommand) {
         guard let preferences else { return }
-        let updated = CommandPaletteService.togglingPin(command.path, pinned: preferences.commandPalettePinned,
+        let updated = CommandPaletteService.togglingPin(command.key, pinned: preferences.commandPalettePinned,
                                                         recent: preferences.commandPaletteRecent)
         preferences.commandPalettePinned = updated.pinned
         preferences.commandPaletteRecent = updated.recent

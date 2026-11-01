@@ -30,7 +30,7 @@
 
 | Область | Существующие проверки |
 | --- | --- |
-| Окна, системные вкладки, закрытие и перенос документов | `NativeTabsTests`, `WindowAndSessionTests`; отдельные сценарии `Verification/FinderLaunchVerification.swift`, `UIWindowLifecycleVerification.swift`, `ReleaseCandidateVerification.swift` |
+| Окна, системные вкладки, закрытие и перенос документов | `NativeTabsTests`, `WindowAndSessionTests`, `WindowNavigationTests`, `LaceditURLTests`, `FolderOpeningTests`; отдельные сценарии `Verification/FinderLaunchVerification.swift`, `UIWindowLifecycleVerification.swift`, `ReleaseCandidateVerification.swift` |
 | Восстановление после сбоя и сохранение сессии | `DocumentRecoveryStoreTests`, `WindowAndSessionTests`, соответствующие случаи `StabilityTests` |
 | Редактирование, диапазоны, строки, подсветка и преобразования | `StabilityTests`, `InteractionPolishTests`; `Verification/main.swift`, `EditorInteractionVerification.swift`, `FoldLayoutVerification.swift` |
 | Markdown и жизненный цикл предпросмотра | `MarkdownRendererTests`, `MarkdownPreviewTests` |
@@ -40,8 +40,11 @@
 | Языки | `LocalizationTests`, проверка трёх каталогов и ручная проверка системных меню и диалогов |
 | Режим чтения, статус сохранения, цель письма, фокус на предложении | `ReadingModeTests`, `DocumentSaveStatusTests`, `WritingGoalStoreTests`, `FocusSentenceTests`, `WritingModesTests` |
 | Путь элемента, перенос разделов, CriticMarkup, рукопись, ссылки при переименовании | `MarkdownElementPathTests`, `MarkdownSectionMoveTests`, `CriticMarkupServiceTests`, `ManuscriptServiceTests`, `ManuscriptSourcesTests`, `ManuscriptControllerTests`, `MarkdownRenameLinkTests` |
-| Палитра, строки, версии, окончания строк и кодировка | `CommandPaletteTests`, `LineEditingServiceTests`, `FileVersionServiceTests`, `VersionHistoryControllerTests`, `LineEndingTests`, `FileEncodingCommandTests` |
-| Wiki-ссылки, обратные ссылки, теги, шаблоны, замена в папке | `MarkdownWikiLinkTests`, `MarkdownWikiLinkResolverTests`, `MarkdownWikiLinkRewriterTests`, `WikiLinkCatalogTests`, `MarkdownBacklinksServiceTests`, `MarkdownBacklinksControllerTests`, `MarkdownInlineTagTests`, `MarkdownTagReaderTests`, `FolderTagSearchTests`, `FolderTagListingTests`, `NoteTemplateTests`, `FolderReplaceTests`, `FolderReplaceDiskTests`, `FolderReplaceControllerTests`, `FolderSearchControllerTests` |
+| Палитра, строки, версии, окончания строк, кодировка и сниппеты | `CommandPaletteTests`, `NavigationHistoryTests`, `LineEditingServiceTests`, `FileVersionServiceTests`, `VersionHistoryControllerTests`, `TextCompareControllerTests`, `LineEndingTests`, `FileEncodingCommandTests`, `SnippetTests` |
+| Wiki-ссылки, обратные ссылки, теги, шаблоны, замена в папке | `MarkdownWikiLinkTests`, `MarkdownWikiLinkResolverTests`, `MarkdownWikiLinkRewriterTests`, `WikiLinkCatalogTests`, `MarkdownBacklinksServiceTests`, `MarkdownBacklinksControllerTests`, `MarkdownInlineTagTests`, `MarkdownTagReaderTests`, `FolderTagSearchTests`, `FolderReplaceBackupTests`, `FolderReplaceBackupControllerTests`, `FolderTagListingTests`, `NoteTemplateTests`, `FolderReplaceTests`, `FolderReplaceDiskTests`, `FolderReplaceControllerTests`, `FolderSearchControllerTests` |
+| Оглавление по символам | `SymbolOutlineTests`, `SymbolOutlineControllerTests`, `LocalizationTests` |
+| Построение regex через AI | `AIRegexBuilderTests`, `AIRegexControllerTests`, `AIResponseJSONTests`, `LocalizationTests` |
+| Слежение за файлом на диске | `OpenFileWatcherTests`, `DocumentSaveStatusTests`, `NativeTabsTests`, `StabilityTests`, `LocalizationTests` |
 | Файловый ввод-вывод и большие документы | `Verification/FileServiceVerification.swift`, `LargeFileIOVerification.swift`, `PerformanceVerification.swift` |
 
 - Классы тестов находятся в `LacEditorTests/`; выбирать конкретные случаи по изменению, например `swift test --filter LocalizationTests`. Не считать точечный запуск заменой полной проверки перед выпуском.

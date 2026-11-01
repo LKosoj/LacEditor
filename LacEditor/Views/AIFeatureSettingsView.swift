@@ -24,6 +24,13 @@ struct AIFeatureSettingsView: View {
         })
     }
 
+    private var regexModelBinding: Binding<String> {
+        Binding(get: { preferences.aiFeatureModelIDs[AppPreferences.regexBuilderModelKey] ?? "" }, set: { value in
+            if value.isEmpty { preferences.aiFeatureModelIDs.removeValue(forKey: AppPreferences.regexBuilderModelKey) }
+            else { preferences.aiFeatureModelIDs[AppPreferences.regexBuilderModelKey] = value }
+        })
+    }
+
     private var roleName: String {
         switch selectedFeature.role {
         case .text: L10n.tr("文本模型")
@@ -98,6 +105,14 @@ struct AIFeatureSettingsView: View {
                             .textFieldStyle(.roundedBorder).frame(width: 220)
                             .accessibilityLabel(L10n.tr("功能模型名称（留空使用默认值）"))
                     }
+                }
+                SettingsRowDivider()
+                PreferenceRow(title: L10n.tr("生成正则表达式的模型"),
+                              detail: L10n.tr("使用%@的服务地址：%@", L10n.tr("文本模型"), Self.displayedValue(preferences.aiConfiguration.text.baseURL))
+                              + "\n" + L10n.tr("留空使用默认模型：%@", Self.displayedValue(preferences.aiConfiguration.text.modelID))) {
+                    TextField(L10n.tr("功能模型名称（留空使用默认值）"), text: regexModelBinding)
+                        .textFieldStyle(.roundedBorder).frame(width: 220)
+                        .accessibilityLabel(L10n.tr("功能模型名称（留空使用默认值）"))
                 }
                 SettingsRowDivider()
                 PreferenceRow(title: L10n.tr("选择模型"),
