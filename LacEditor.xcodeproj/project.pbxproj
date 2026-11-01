@@ -7,6 +7,27 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		141E16653097E6E200079103 /* AIImageDescriptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E16643097E6E200079103 /* AIImageDescriptions.swift */; };
+		141E16673097E6E300079103 /* TextDiffRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E16663097E6E300079103 /* TextDiffRows.swift */; };
+		141E16693097E6F100079103 /* MatchExtractionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E16683097E6F100079103 /* MatchExtractionService.swift */; };
+		141E166B3097E6F100079103 /* FolderReplaceBackupStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E166A3097E6F100079103 /* FolderReplaceBackupStore.swift */; };
+		141E166D3097E6FB00079103 /* OpenFileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E166C3097E6FB00079103 /* OpenFileWatcher.swift */; };
+		141E166F3097E70A00079103 /* AIRegexController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E166E3097E70A00079103 /* AIRegexController.swift */; };
+		141E16713097E70A00079103 /* SymbolOutlineController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E16703097E70A00079103 /* SymbolOutlineController.swift */; };
+		141E16733097E70A00079103 /* OpenDocumentsSearchController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E16723097E70A00079103 /* OpenDocumentsSearchController.swift */; };
+		141E16753097E71500079103 /* OpenDocumentsSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E16743097E71500079103 /* OpenDocumentsSearchService.swift */; };
+		141E16773097E72100079103 /* SnippetPickerPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E16763097E72100079103 /* SnippetPickerPanel.swift */; };
+		141E16793097E72E00079103 /* SnippetService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E16783097E72E00079103 /* SnippetService.swift */; };
+		141E167B3097E72E00079103 /* SnippetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E167A3097E72E00079103 /* SnippetStore.swift */; };
+		141E167D3097E73A00079103 /* SymbolOutlineService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E167C3097E73A00079103 /* SymbolOutlineService.swift */; };
+		141E167F3097E74600079103 /* SymbolOutlineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E167E3097E74600079103 /* SymbolOutlineView.swift */; };
+		141E16813097E75700079103 /* AIRegexBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E16803097E75700079103 /* AIRegexBuilder.swift */; };
+		141E16833097E75800079103 /* TextCompareController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E16823097E75800079103 /* TextCompareController.swift */; };
+		141E16853097E75800079103 /* TextCompareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E16843097E75800079103 /* TextCompareView.swift */; };
+		141E16873097E76600079103 /* NavigationHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E16863097E76600079103 /* NavigationHistory.swift */; };
+		141E16893097E77400079103 /* FolderFileFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E16883097E77400079103 /* FolderFileFilter.swift */; };
+		141E168B3097E78100079103 /* SnippetSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E168A3097E78100079103 /* SnippetSettingsView.swift */; };
+		141E168D3097E7A400079103 /* LaceditRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141E168C3097E7A400079103 /* LaceditRequest.swift */; };
 		14E906EC309332F00019953B /* CMarkOpaquePointerCompatibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14E906EB309332F00019953B /* CMarkOpaquePointerCompatibility.swift */; };
 		A00000000000000000000101 /* LacEditorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000001 /* LacEditorApp.swift */; };
 		A00000000000000000000102 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000002 /* AppState.swift */; };
@@ -242,6 +263,27 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		141E16643097E6E200079103 /* AIImageDescriptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIImageDescriptions.swift; sourceTree = "<group>"; };
+		141E16663097E6E300079103 /* TextDiffRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextDiffRows.swift; sourceTree = "<group>"; };
+		141E16683097E6F100079103 /* MatchExtractionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchExtractionService.swift; sourceTree = "<group>"; };
+		141E166A3097E6F100079103 /* FolderReplaceBackupStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderReplaceBackupStore.swift; sourceTree = "<group>"; };
+		141E166C3097E6FB00079103 /* OpenFileWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenFileWatcher.swift; sourceTree = "<group>"; };
+		141E166E3097E70A00079103 /* AIRegexController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIRegexController.swift; sourceTree = "<group>"; };
+		141E16703097E70A00079103 /* SymbolOutlineController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SymbolOutlineController.swift; sourceTree = "<group>"; };
+		141E16723097E70A00079103 /* OpenDocumentsSearchController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenDocumentsSearchController.swift; sourceTree = "<group>"; };
+		141E16743097E71500079103 /* OpenDocumentsSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenDocumentsSearchService.swift; sourceTree = "<group>"; };
+		141E16763097E72100079103 /* SnippetPickerPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetPickerPanel.swift; sourceTree = "<group>"; };
+		141E16783097E72E00079103 /* SnippetService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetService.swift; sourceTree = "<group>"; };
+		141E167A3097E72E00079103 /* SnippetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetStore.swift; sourceTree = "<group>"; };
+		141E167C3097E73A00079103 /* SymbolOutlineService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SymbolOutlineService.swift; sourceTree = "<group>"; };
+		141E167E3097E74600079103 /* SymbolOutlineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SymbolOutlineView.swift; sourceTree = "<group>"; };
+		141E16803097E75700079103 /* AIRegexBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIRegexBuilder.swift; sourceTree = "<group>"; };
+		141E16823097E75800079103 /* TextCompareController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextCompareController.swift; sourceTree = "<group>"; };
+		141E16843097E75800079103 /* TextCompareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextCompareView.swift; sourceTree = "<group>"; };
+		141E16863097E76600079103 /* NavigationHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationHistory.swift; sourceTree = "<group>"; };
+		141E16883097E77400079103 /* FolderFileFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderFileFilter.swift; sourceTree = "<group>"; };
+		141E168A3097E78100079103 /* SnippetSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetSettingsView.swift; sourceTree = "<group>"; };
+		141E168C3097E7A400079103 /* LaceditRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaceditRequest.swift; sourceTree = "<group>"; };
 		14E906EB309332F00019953B /* CMarkOpaquePointerCompatibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CMarkOpaquePointerCompatibility.swift; sourceTree = "<group>"; };
 		A00000000000000000000001 /* LacEditorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LacEditorApp.swift; sourceTree = "<group>"; };
 		A00000000000000000000002 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -652,6 +694,22 @@
 				A0000000000000000000002A /* TextCodecService.swift */,
 				D00400000000000000000002 /* ExperimentSampleLibrary.swift */,
 				D00600000000000000000002 /* FileAssociationService.swift */,
+				141E16643097E6E200079103 /* AIImageDescriptions.swift */,
+				141E16683097E6F100079103 /* MatchExtractionService.swift */,
+				141E166A3097E6F100079103 /* FolderReplaceBackupStore.swift */,
+				141E166C3097E6FB00079103 /* OpenFileWatcher.swift */,
+				141E166E3097E70A00079103 /* AIRegexController.swift */,
+				141E16703097E70A00079103 /* SymbolOutlineController.swift */,
+				141E16723097E70A00079103 /* OpenDocumentsSearchController.swift */,
+				141E16743097E71500079103 /* OpenDocumentsSearchService.swift */,
+				141E16783097E72E00079103 /* SnippetService.swift */,
+				141E167A3097E72E00079103 /* SnippetStore.swift */,
+				141E167C3097E73A00079103 /* SymbolOutlineService.swift */,
+				141E16803097E75700079103 /* AIRegexBuilder.swift */,
+				141E16823097E75800079103 /* TextCompareController.swift */,
+				141E16863097E76600079103 /* NavigationHistory.swift */,
+				141E16883097E77400079103 /* FolderFileFilter.swift */,
+				141E168C3097E7A400079103 /* LaceditRequest.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -724,6 +782,11 @@
 				A0000000000000000000001A /* StableToolTip.swift */,
 				D00500000000000000000002 /* SidebarDragSupport.swift */,
 				D00600000000000000000004 /* FileAssociationSettingsView.swift */,
+				141E16663097E6E300079103 /* TextDiffRows.swift */,
+				141E16763097E72100079103 /* SnippetPickerPanel.swift */,
+				141E167E3097E74600079103 /* SymbolOutlineView.swift */,
+				141E16843097E75800079103 /* TextCompareView.swift */,
+				141E168A3097E78100079103 /* SnippetSettingsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -905,10 +968,14 @@
 				D0120000000000000000005E /* iPicUploader/iPicImage.swift in Sources */,
 				D01200000000000000000060 /* iPicUploader/iPicImageHost.swift in Sources */,
 				D01200000000000000000062 /* iPicUploader/iPicPasteboardHelper.swift in Sources */,
+				141E16713097E70A00079103 /* SymbolOutlineController.swift in Sources */,
 				D01200000000000000000064 /* iPicUploader/iPicUploadHelper.swift in Sources */,
 				D01200000000000000000066 /* iPicUploader/iPicUploadResult.swift in Sources */,
+				141E167F3097E74600079103 /* SymbolOutlineView.swift in Sources */,
 				D01200000000000000000068 /* iPicUploader/iPicUploader.swift in Sources */,
+				141E16813097E75700079103 /* AIRegexBuilder.swift in Sources */,
 				D01200000000000000000056 /* MarkdownColorOverrides.swift in Sources */,
+				141E166F3097E70A00079103 /* AIRegexController.swift in Sources */,
 				D01200000000000000000075 /* MarkdownListStyle.swift in Sources */,
 				D01200000000000000000077 /* MarkdownMedia.swift in Sources */,
 				D01200000000000000000079 /* MarkdownInlineStyle.swift in Sources */,
@@ -929,6 +996,7 @@
 				D01200000000000000000029 /* MarkdownClipboardCopyService.swift in Sources */,
 				D0120000000000000000002B /* MarkdownImageUploadService.swift in Sources */,
 				14E906EC309332F00019953B /* CMarkOpaquePointerCompatibility.swift in Sources */,
+				141E16873097E76600079103 /* NavigationHistory.swift in Sources */,
 				D0120000000000000000002D /* MarkdownTagReader.swift in Sources */,
 				D01800000000000000000001 /* MarkdownRemoteImageDownloader.swift in Sources */,
 				D01311000000000000000002 /* FolderTagsController.swift in Sources */,
@@ -937,6 +1005,7 @@
 				D01200000000000000000035 /* MarkdownImageCopyService.swift in Sources */,
 				D0120000000000000000001D /* EmojiShortcodeResolver.swift in Sources */,
 				D0120000000000000000001B /* MermaidRenderService.swift in Sources */,
+				141E16693097E6F100079103 /* MatchExtractionService.swift in Sources */,
 				D01200000000000000000019 /* ClipboardMarkdownConversionService.swift in Sources */,
 				D01200000000000000000017 /* MarkdownImageEditingService.swift in Sources */,
 				D01200000000000000000015 /* FolderSearchView.swift in Sources */,
@@ -947,6 +1016,7 @@
 				D01301000000000000000003 /* CommandPalettePanel.swift in Sources */,
 				D01200000000000000000011 /* MarkdownTableCellEditor.swift in Sources */,
 				D0120000000000000000000F /* FolderSearchService.swift in Sources */,
+				141E16853097E75800079103 /* TextCompareView.swift in Sources */,
 				D0131200000000000000000F /* NoteTemplateService.swift in Sources */,
 				D01307000000000000000002 /* FolderReplaceService.swift in Sources */,
 				D0120000000000000000000D /* MarkdownAutoPairService.swift in Sources */,
@@ -956,6 +1026,7 @@
 				D00D00000000000000000003 /* AIKeychainStore.swift in Sources */,
 				D00D00000000000000000005 /* AIClient.swift in Sources */,
 				D00D00000000000000000007 /* AISettingsView.swift in Sources */,
+				141E16733097E70A00079103 /* OpenDocumentsSearchController.swift in Sources */,
 				D00E00000000000000000001 /* AIFeature.swift in Sources */,
 				D00E00000000000000000003 /* JinaConfiguration.swift in Sources */,
 				D00E00000000000000000007 /* AIWritingService.swift in Sources */,
@@ -970,15 +1041,20 @@
 				D01000000000000000000003 /* AIContextService.swift in Sources */,
 				D01000000000000000000005 /* AITextComparison.swift in Sources */,
 				D01302000000000000000007 /* VersionHistoryView.swift in Sources */,
+				141E16793097E72E00079103 /* SnippetService.swift in Sources */,
 				D01302000000000000000005 /* VersionHistoryController.swift in Sources */,
+				141E16773097E72100079103 /* SnippetPickerPanel.swift in Sources */,
 				D01302000000000000000001 /* FileVersionService.swift in Sources */,
 				D01408000000000000000001 /* WritingGoalStore.swift in Sources */,
+				141E16753097E71500079103 /* OpenDocumentsSearchService.swift in Sources */,
 				D01410000000000000000001 /* CriticMarkupService.swift in Sources */,
 				D01407000000000000000005 /* ManuscriptView.swift in Sources */,
+				141E167B3097E72E00079103 /* SnippetStore.swift in Sources */,
 				D01407000000000000000003 /* ManuscriptController.swift in Sources */,
 				D01407000000000000000001 /* ManuscriptService.swift in Sources */,
 				D01409000000000000000001 /* MarkdownRenameLinkService.swift in Sources */,
 				D01000000000000000000007 /* AICustomChecksSettingsView.swift in Sources */,
+				141E168B3097E78100079103 /* SnippetSettingsView.swift in Sources */,
 				D01000000000000000000009 /* AIMediaClient.swift in Sources */,
 				D0100000000000000000000B /* AIDocumentToolsController.swift in Sources */,
 				D0100000000000000000000D /* AIDocumentToolsService.swift in Sources */,
@@ -988,11 +1064,13 @@
 				D01600000000000000000001 /* AIAgentTools.swift in Sources */,
 				D01600000000000000000003 /* AIAgentRun.swift in Sources */,
 				D01600000000000000000005 /* AIAgentController.swift in Sources */,
+				141E166D3097E6FB00079103 /* OpenFileWatcher.swift in Sources */,
 				D01600000000000000000007 /* AIAgentView.swift in Sources */,
 				D01600000000000000000009 /* AIAgentEdits.swift in Sources */,
 				D0160000000000000000000B /* AIAgentPreset.swift in Sources */,
 				D01700000000000000000001 /* AIDictationController.swift in Sources */,
 				D01400000000000000000003 /* AIQuestionService.swift in Sources */,
+				141E16653097E6E200079103 /* AIImageDescriptions.swift in Sources */,
 				D01500000000000000000001 /* AIWebSearchService.swift in Sources */,
 				D01400000000000000000005 /* AIQuestionView.swift in Sources */,
 				D01100000000000000000001 /* Models/AITranslationLanguage.swift in Sources */,
@@ -1003,7 +1081,9 @@
 				D00B00000000000000000003 /* MarkdownOutlineView.swift in Sources */,
 				D01310000000000000000005 /* MarkdownBacklinksView.swift in Sources */,
 				D00A00000000000000000001 /* MarkdownPresentation.swift in Sources */,
+				141E166B3097E6F100079103 /* FolderReplaceBackupStore.swift in Sources */,
 				D00A00000000000000000003 /* MarkdownPresentationParser.swift in Sources */,
+				141E167D3097E73A00079103 /* SymbolOutlineService.swift in Sources */,
 				D00A00000000000000000005 /* MarkdownPresentationController.swift in Sources */,
 				D0090000000000000000000C /* PandocImportService.swift in Sources */,
 				D00800000000000000000001 /* PandocExportService.swift in Sources */,
@@ -1015,21 +1095,25 @@
 				D00500000000000000000001 /* SidebarDragSupport.swift in Sources */,
 				D00600000000000000000001 /* FileAssociationService.swift in Sources */,
 				D00600000000000000000003 /* FileAssociationSettingsView.swift in Sources */,
+				141E16833097E75800079103 /* TextCompareController.swift in Sources */,
 				A00000000000000000000104 /* EditorLanguage.swift in Sources */,
 				A00000000000000000000105 /* EditorDocument.swift in Sources */,
 				A00000000000000000000106 /* DocumentEditDelta.swift in Sources */,
 				A0000000000000000000012C /* AppPreferences.swift in Sources */,
 				A0000000000000000000012D /* SidebarLibraryStore.swift in Sources */,
 				A00000000000000000000107 /* FileService.swift in Sources */,
+				141E16893097E77400079103 /* FolderFileFilter.swift in Sources */,
 				A00000000000000000000108 /* RecentFilesStore.swift in Sources */,
 				A00000000000000000000109 /* JSONFormatter.swift in Sources */,
 				A0000000000000000000010A /* LacTextView.swift in Sources */,
+				141E168D3097E7A400079103 /* LaceditRequest.swift in Sources */,
 				A0000000000000000000010B /* LineNumberRulerView.swift in Sources */,
 				A0000000000000000000010C /* FoldService.swift in Sources */,
 				A0000000000000000000099B /* MarkdownMediaProjection.swift in Sources */,
 				A0000000000000000000099D /* MarkdownDataMedia.swift in Sources */,
 				A0000000000000000000010D /* SyntaxHighlighter.swift in Sources */,
 				A0000000000000000000010E /* EditorTextView.swift in Sources */,
+				141E16673097E6E300079103 /* TextDiffRows.swift in Sources */,
 				A0000000000000000000010F /* MarkdownRenderer.swift in Sources */,
 				A00000000000000000000110 /* MarkdownPreview.swift in Sources */,
 				A00000000000000000000111 /* MainWindowView.swift in Sources */,
@@ -1088,6 +1172,7 @@
 		A00000000000000000000600 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
@@ -1131,6 +1216,7 @@
 		A00000000000000000000601 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
@@ -1176,6 +1262,7 @@
 		A00000000000000000000602 /* Experimental */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
@@ -1229,7 +1316,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 80;
+				CURRENT_PROJECT_VERSION = 81;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1248,7 +1335,7 @@
 				LACEDITOR_RELEASE_STAGE = "";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.koslaceditor.development;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_WITH_LAUNCH_SERVICES = NO;
@@ -1276,7 +1363,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 80;
+				CURRENT_PROJECT_VERSION = 81;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1296,7 +1383,7 @@
 				LACEDITOR_RELEASE_STAGE = "";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.koslaceditor.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_WITH_LAUNCH_SERVICES = NO;
@@ -1323,7 +1410,7 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 80;
+				CURRENT_PROJECT_VERSION = 81;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1334,7 +1421,7 @@
 				ENABLE_RESOURCE_ACCESS_LOCATION = YES;
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.koslaceditor.ui-experiment";
 				PRODUCT_NAME = LacEditor;
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;

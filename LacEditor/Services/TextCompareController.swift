@@ -21,15 +21,16 @@ enum TextCompareService {
     /// Источник из открытого документа: снимок на момент загрузки.
     @MainActor
     static func source(of document: EditorDocument) -> TextCompareSource {
-        TextCompareSource(
+        let sourceDocument = document
+        return TextCompareSource(
             id: "doc:\(document.id.uuidString)",
             name: document.displayName,
             isUnsaved: document.isDirty || document.url == nil
-        ) { [weak document] in
-            try await MainActor.run {
-                guard let document else { throw TextCompareError.closed }
-                guard !document.isLargeFileMode else { throw TextCompareError.tooLarge }
-                return document.synchronizedSnapshot().text
+        ) { [weak sourceDocument] in
+            try await MainActor.run { [weak sourceDocument] in
+                guard let sourceDocument else { throw TextCompareError.closed }
+                guard !sourceDocument.isLargeFileMode else { throw TextCompareError.tooLarge }
+                return sourceDocument.synchronizedSnapshot().text
             }
         }
     }

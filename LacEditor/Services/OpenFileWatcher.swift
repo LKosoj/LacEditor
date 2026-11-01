@@ -22,7 +22,7 @@ final class OpenFileWatcher {
     init(documents: @escaping () -> [EditorDocument],
          debounce: TimeInterval = 0.3,
          retry: TimeInterval = 0.5,
-         capture: @escaping Capture = OpenFileWatcher.captureOnDisk,
+         capture: @escaping Capture = { url in OpenFileWatcher.captureOnDisk(url) },
          makeSource: @escaping SourceFactory = { FolderWorkspaceEvents(paths: $0, receive: $1) }) {
         self.documents = documents
         self.debounce = debounce

@@ -84,7 +84,7 @@ final class SymbolOutlineController: ObservableObject {
         let task = Task.detached(priority: .utility) { [weak self, weak document] in
             let result = SymbolOutlineService.symbols(in: snapshot.text, language: language, isCancelled: { Task.isCancelled })
             guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .symbolOutline) else { return }
-            await MainActor.run {
+            await MainActor.run { [weak self, weak document] in
                 guard let self, let document, self.generation == currentGeneration, self.document === document,
                       document.textRevision == snapshot.revision, !document.hasPendingLiveEdits,
                       !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .symbolOutline) else { return }

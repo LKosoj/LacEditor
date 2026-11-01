@@ -1322,14 +1322,19 @@ final class AppState: ObservableObject {
         let candidates: [TextCompareSource] = initial != nil ? [] : manager.documentsForAI
             .filter { $0 !== document && $0.ioState != .opening }
             .map { TextCompareService.source(of: $0) }
-        let chooseFile: (@MainActor () -> TextCompareSource?)? = initial != nil ? nil : { [weak document] in
-            guard let document else { return nil }
-            let panel = NSOpenPanel()
-            panel.canChooseFiles = true
-            panel.canChooseDirectories = false
-            panel.allowsMultipleSelection = false
-            guard panel.runModal() == .OK, let url = panel.url else { return nil }
-            return TextCompareService.source(ofFile: url, fallback: document.fileEncoding, fallbackName: document.encodingName)
+        let chooseFile: (@MainActor () -> TextCompareSource?)?
+        if initial != nil {
+            chooseFile = nil
+        } else {
+            chooseFile = { [weak document] in
+                guard let document else { return nil }
+                let panel = NSOpenPanel()
+                panel.canChooseFiles = true
+                panel.canChooseDirectories = false
+                panel.allowsMultipleSelection = false
+                guard panel.runModal() == .OK, let url = panel.url else { return nil }
+                return TextCompareService.source(ofFile: url, fallback: document.fileEncoding, fallbackName: document.encodingName)
+            }
         }
         let controller = TextCompareController(document: document, candidates: candidates, initial: initial, chooseFile: chooseFile)
         let sheet = NSWindow(contentViewController: NSHostingController(rootView: TextCompareView(
@@ -6490,7 +6495,8 @@ extension AppState {
 @MainActor
 extension AppState {
     /// Панель сниппетов взаимно исключается с палитрой и быстрым открытием; повторный вызов закрывает её.
-    func showSnippetPicker(store: SnippetStore = .shared) {
+    func showSnippetPicker(store: SnippetStore? = nil) {
+        let store = store ?? .shared
         guard let window = hostWindow, let document = selectedDocument,
               document.ioState == .idle, !document.isReadingMode else { return }
         if snippetPicker.isPresented { snippetPicker.dismiss(); return }
@@ -6515,7 +6521,8 @@ extension AppState {
         if !request.wasHandled { document.setStatusError(request.failureMessage ?? L10n.tr("当前文本无法修改")) }
     }
 
-    func createSnippetFromSelection(store: SnippetStore = .shared) {
+    func createSnippetFromSelection(store: SnippetStore? = nil) {
+        let store = store ?? .shared
         guard let document = selectedDocument, document.ioState == .idle else { return }
         let extraction = EditorTextExtractionRequest(documentID: document.id, allowsTokenAtCaret: false)
         NotificationCenter.default.post(name: EditorCommandNotification.extractTextSelection, object: extraction)
