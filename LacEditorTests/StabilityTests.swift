@@ -3,6 +3,18 @@ import XCTest
 @testable import LacEditor
 
 final class StabilityTests: XCTestCase {
+    @MainActor
+    func testBackgroundDelays() {
+        let parse: [(Bool, Bool, Bool, TimeInterval)] = [
+            (false, true, false, 0.4), (true, false, false, 0.6), (false, false, true, 0.2), (false, false, false, 1.0),
+        ]
+        for (enabled, pathOnly, needsFresh, expected) in parse {
+            XCTAssertEqual(MarkdownPresentationController.parseDelay(enabled: enabled, pathOnly: pathOnly, needsFresh: needsFresh), expected)
+        }
+        XCTAssertEqual(EditorTextView.Coordinator.modelSyncDelay(previewVisible: true), 0.35)
+        XCTAssertEqual(EditorTextView.Coordinator.modelSyncDelay(previewVisible: false), 1.0)
+    }
+
     func testLineIndexBulkReadsKeepCRLFAndUTF16PositionsAtBlockBoundaries() {
         let text = String(repeating: "a", count: 8_191) + "\r\n中文😀\u{2028}next\rfinal\u{2029}\n"
         let swiftIndex = LogicalLineIndex(text: text)
@@ -414,8 +426,7 @@ final class StabilityTests: XCTestCase {
             textContainerWidth: 656,
             textLength: 12_000,
             layoutGeneration: 7,
-            foldedRange: nil,
-            automaticMediaFoldedRanges: []
+            foldedRange: nil
         )
         XCTAssertEqual(base, base)
 
@@ -426,8 +437,7 @@ final class StabilityTests: XCTestCase {
             textContainerWidth: 676,
             textLength: base.textLength,
             layoutGeneration: base.layoutGeneration,
-            foldedRange: nil,
-            automaticMediaFoldedRanges: []
+            foldedRange: nil
         )
         XCTAssertNotEqual(base, resized)
 
@@ -438,8 +448,7 @@ final class StabilityTests: XCTestCase {
             textContainerWidth: base.textContainerWidth,
             textLength: base.textLength,
             layoutGeneration: base.layoutGeneration + 1,
-            foldedRange: nil,
-            automaticMediaFoldedRanges: []
+            foldedRange: nil
         )
         XCTAssertNotEqual(base, invalidated)
     }

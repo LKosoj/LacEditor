@@ -123,6 +123,7 @@ final class AIDocumentToolsController: ObservableObject {
         let profile = appState.preferences.aiProfile(for: feature, customCheck: check)
         guard profile.isEnabled else { post(L10n.tr("AI 功能已关闭"), action: .openSettings); return }
         let extraction = EditorTextExtractionRequest(documentID: document.id, allowsTokenAtCaret: false, allowsWholeDocument: feature == .contextReview || feature == .customCheck || feature == .compareVersions, allowsInsertionPoint: feature == .recognizeDocument)
+        extraction.space = .display
         NotificationCenter.default.post(name: EditorCommandNotification.extractTextSelection, object: extraction)
         guard let selection = extraction.result else { post(L10n.tr("请先选择需要处理的文本"), kind: .info); return }
         let selectedInputs: [AIContextInput]
@@ -232,6 +233,7 @@ final class AIDocumentToolsController: ObservableObject {
               AIContextService.isCurrent(sources, appState: appState) else { return false }
         let insertionPoint = feature == .recognizeDocument
         let extraction = EditorTextExtractionRequest(documentID: selection.documentID, allowsTokenAtCaret: false, allowsWholeDocument: !insertionPoint, allowsInsertionPoint: insertionPoint)
+        extraction.space = .display
         NotificationCenter.default.post(name: EditorCommandNotification.extractTextSelection, object: extraction)
         return extraction.result?.editorRevision == selection.editorRevision && extraction.result?.range == selection.range
     }
@@ -242,12 +244,14 @@ final class AIDocumentToolsController: ObservableObject {
         guard selectionIsShown else { post(L10n.tr("切换到此文档后才能接受修改")); return }
         guard isConfigurationCurrent(generation) else { discardStale(generation); return }
         let extraction = EditorTextExtractionRequest(documentID: selection.documentID, allowsTokenAtCaret: false, allowsInsertionPoint: true, requiresEditable: true, includesEditorText: true)
+        extraction.space = .display
         NotificationCenter.default.post(name: EditorCommandNotification.extractTextSelection, object: extraction)
         guard let caret = extraction.result, let document = appState.selectedDocument else { post(L10n.tr("当前文本无法修改")); return }
         let location = NSMaxRange(caret.range)
         let separator = Self.blockSeparator(before: location, in: (extraction.editorText ?? document.synchronizedSnapshot().text) as NSString)
         let replacement = separator + (feature == .mermaid ? "```mermaid\n\(report)\n```" : report)
         let request = EditorRangeReplacementRequest(documentID: selection.documentID, range: NSRange(location: location, length: 0), originalText: "", replacementText: replacement, expectedEditorRevision: caret.editorRevision, actionName: feature.title)
+        request.space = .display
         NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
         if !request.wasHandled { message = request.failureMessage ?? L10n.tr("编辑内容已变化，请重新执行转换") }
     }

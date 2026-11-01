@@ -170,15 +170,19 @@ struct EditorTextView: NSViewRepresentable {
         textView.indentationStyle = indentationStyle
         textView.tabWidth = tabWidth
         textView.configureTabStops()
-        textView.string = document.text
+        // Первая загрузка сразу идёт через проекцию: в Markdown на экране токены, карта готова, настоящий Base64 редактор не видит.
+        let displayedText = context.coordinator.displayedText(for: document.text)
+        textView.string = displayedText
+        if displayedText != document.text { context.coordinator.resetLineIndex(with: displayedText) }
         Self.applyWritingChecks(to: textView, spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled,
                                 containsDataImage: Self.containsDataImage(in: textView))
-        let textLength = (document.text as NSString).length
-        let selectionLocation = min(document.selectionRange.location, textLength)
+        let textLength = (displayedText as NSString).length
+        let displayedSelection = context.coordinator.displayedRange(for: document.selectionRange)
+        let selectionLocation = min(displayedSelection.location, textLength)
         textView.setSelectedRange(NSRange(
             location: selectionLocation,
             length: min(
-                document.selectionRange.length,
+                displayedSelection.length,
                 textLength - selectionLocation
             )
         ))
@@ -212,6 +216,7 @@ struct EditorTextView: NSViewRepresentable {
         context.coordinator.configureWritingChecks(spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
         context.coordinator.configureAIAssistance(preferences: aiPreferences)
         context.coordinator.foldLayoutManager = layoutManager
+        context.coordinator.installMediaLabel()
         context.coordinator.ruler = ruler
         _ = ruler.updateThickness(lineCount: context.coordinator.lineNumber(at: textView.textStorage?.length ?? 0))
         context.coordinator.attachLiveTextProvider()
@@ -469,7 +474,7 @@ struct EditorTextView: NSViewRepresentable {
             let displayedText = context.coordinator.displayedText(for: document.text)
             textView.string = displayedText
             context.coordinator.resetLineIndex(with: displayedText)
-            let displayedSelection = context.coordinator.displayedRange(for: requestedSelection, in: displayedText)
+            let displayedSelection = context.coordinator.displayedRange(for: requestedSelection)
             let textLength = (displayedText as NSString).length
             let selectionLocation = min(displayedSelection.location, textLength)
             let selectionLength = min(

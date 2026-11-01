@@ -2171,3 +2171,106 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         XCTAssertEqual(view.string, beforeRTF + #"literal \pict text"#)
     }
 }
+
+
+/// Буфер обмена и media-токены: в публичный текст токены не попадают, настоящий исходник лежит во внутреннем типе.
+@MainActor
+final class MarkdownMediaClipboardTests: XCTestCase {
+    private let source = "до ![a](data:image/png;base64,iVBORw0KGgo=) после"
+    private var savedBoard: [[(NSPasteboard.PasteboardType, Data)]] = []
+
+    /// Cut и paste работают с общим буфером: содержимое пользователя возвращается после теста.
+    override func setUp() {
+        super.setUp()
+        savedBoard = (NSPasteboard.general.pasteboardItems ?? []).map { item in
+            item.types.compactMap { type in item.data(forType: type).map { (type, $0) } }
+        }
+    }
+
+    override func tearDown() {
+        NSPasteboard.general.clearContents()
+        let items = savedBoard.map { entries -> NSPasteboardItem in
+            let item = NSPasteboardItem()
+            for (type, data) in entries { item.setData(data, forType: type) }
+            return item
+        }
+        if !items.isEmpty { NSPasteboard.general.writeObjects(items) }
+        super.tearDown()
+    }
+
+    private func makeEditor(_ text: String, formatted: Bool = true) -> (EditorDocument, EditorTextView.Coordinator, LacTextView) {
+        _ = NSApplication.shared
+        let document = EditorDocument(text: text, language: .markdown)
+        document.isMarkdownFormatted = formatted
+        let coordinator = EditorTextView.Coordinator(document: document)
+        let storage = NSTextStorage(string: coordinator.displayedText(for: document.text))
+        let layout = FoldLayoutManager()
+        storage.addLayoutManager(layout)
+        let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
+        layout.addTextContainer(container)
+        let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
+        let scroll = NSScrollView(frame: view.frame)
+        scroll.documentView = view
+        coordinator.textView = view
+        coordinator.foldLayoutManager = layout
+        view.delegate = coordinator
+        coordinator.attachLiveTextProvider()
+        coordinator.installObservers(scrollView: scroll)
+        coordinator.updateActivity(true)
+        coordinator.updateMarkdownPresentation()
+        return (document, coordinator, view)
+    }
+
+    func testWriteSelectionHidesTokenAndKeepsSource() {
+        let (_, coordinator, view) = makeEditor(source)
+        defer { coordinator.updateActivity(false) }
+        let shown = view.string as NSString
+        let token = shown.range(of: "#lac-media-")
+        // Выделение обрывается внутри токена: границы расширяются до токена.
+        view.setSelectedRange(NSRange(location: token.location + 3, length: 4))
+        let board = NSPasteboard(name: NSPasteboard.Name("laceditor-test-\(UUID().uuidString)"))
+        XCTAssertTrue(view.writeSelection(to: board, types: [.string]))
+        XCTAssertFalse(board.string(forType: .string)?.contains("#lac-media-") ?? true)
+        XCTAssertFalse(board.string(forType: .string)?.contains("iVBOR") ?? true)
+        XCTAssertEqual(board.string(forType: LacTextView.mediaSourceType), "data:image/png;base64,iVBORw0KGgo=")
+    }
+
+    func testCutRemovesWholeTokenAndUndoReturnsIt() {
+        let (document, coordinator, view) = makeEditor(source)
+        defer { coordinator.updateActivity(false) }
+        let shown = view.string as NSString
+        let token = shown.range(of: "#lac-media-")
+        view.setSelectedRange(NSRange(location: token.location + 3, length: 4))
+        view.allowsUndo = true
+        view.cut(nil)
+        XCTAssertFalse(view.string.contains("#lac-media-"))
+        XCTAssertEqual(document.synchronizedText(), "до ![a]() после")
+        XCTAssertTrue(NSPasteboard.general.string(forType: LacTextView.mediaSourceType)?.contains("iVBORw0KGgo=") == true)
+        XCTAssertFalse(NSPasteboard.general.string(forType: .string)?.contains("#lac-media-") ?? true)
+        XCTAssertEqual(view.undoManager?.canUndo, true)
+        view.undoManager?.undo()
+        XCTAssertEqual(document.synchronizedText(), source)
+    }
+
+    func testPasteInternalTypeBringsTokenBack() {
+        let (document, coordinator, view) = makeEditor("начало")
+        defer { coordinator.updateActivity(false) }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString("![x](data:image/png;base64,iVBORw0KGgo=)", forType: LacTextView.mediaSourceType)
+        NSPasteboard.general.setString("![x]()", forType: .string)
+        view.setSelectedRange(NSRange(location: view.string.utf16.count, length: 0))
+        view.paste(nil)
+        XCTAssertTrue(view.string.contains("#lac-media-"))
+        XCTAssertEqual(document.synchronizedText(), "начало![x](data:image/png;base64,iVBORw0KGgo=)")
+    }
+
+    func testEmptySelectionAndPlainTextGoThroughSuper() {
+        let (_, coordinator, view) = makeEditor("просто текст")
+        defer { coordinator.updateActivity(false) }
+        view.setSelectedRange(NSRange(location: 0, length: 6))
+        let board = NSPasteboard(name: NSPasteboard.Name("laceditor-test-\(UUID().uuidString)"))
+        XCTAssertTrue(view.writeSelection(to: board, types: [.string]))
+        XCTAssertEqual(board.string(forType: .string), "просто")
+        XCTAssertNil(board.string(forType: LacTextView.mediaSourceType))
+    }
+}

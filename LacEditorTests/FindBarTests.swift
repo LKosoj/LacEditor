@@ -163,4 +163,36 @@ final class FindBarTests: XCTestCase {
         XCTAssertNil(document.statusMessage)
         XCTAssertFalse(document.statusMessageIsError)
     }
+
+    /// Поиск и замена не заходят в адреса `data:`: ни в данные, ни в заголовок.
+    func testSearchSkipsDataAddresses() throws {
+        let payload = String(repeating: "cat", count: 50)
+        let text = "cat ![a](data:image/png;base64,\(payload)) cat\n😀 кот cat"
+        XCTAssertEqual(TextSearchService.allRanges(in: text, query: "cat", caseSensitive: true).count, 3)
+        let regex = TextSearchService.Options(caseSensitive: true, usesRegex: true)
+        XCTAssertEqual(try TextSearchService.allRanges(in: text, query: "cat", options: regex).count, 3)
+        XCTAssertTrue(try TextSearchService.allRanges(in: text, query: "png|base64", options: regex).isEmpty)
+        // Широкое выражение находит текст слева и справа от адреса, а не строку целиком вместе с ним.
+        let lines = try TextSearchService.allRanges(in: text, query: ".+", options: regex)
+        XCTAssertFalse(lines.contains { (text as NSString).substring(with: $0).contains(payload) })
+        XCTAssertTrue(try TextSearchService.allRanges(in: text, query: "^\\)", options: regex).isEmpty)
+
+        let plain = TextSearchService.Options(caseSensitive: true)
+        for options in [plain, regex] {
+            let replaced = try TextSearchService.replaceAll(in: text, query: "cat", replacement: "dog", options: options, interpretsEscapes: false)
+            XCTAssertEqual(replaced.count, 3)
+            XCTAssertTrue(replaced.text.contains(payload))
+            XCTAssertTrue(replaced.text.hasSuffix("кот dog"))
+        }
+        let inside = NSRange(location: (text as NSString).range(of: payload).location, length: 3)
+        XCTAssertNil(try TextSearchService.replacement(forSelection: inside, in: text, query: "cat", replacement: "dog", options: plain, interpretsEscapes: false))
+    }
+
+    /// Совпадение жадного выражения кончается у адреса, и «Заменить» находит его там же.
+    func testReplaceCurrentMatchStopsAtDataAddress() throws {
+        let text = "abc data:image/png;base64,QUJD def"
+        let regex = TextSearchService.Options(caseSensitive: true, usesRegex: true)
+        let match = try XCTUnwrap(TextSearchService.allRanges(in: text, query: "abc .*", options: regex).first)
+        XCTAssertEqual(try TextSearchService.replacement(forSelection: match, in: text, query: "abc .*", replacement: "z", options: regex, interpretsEscapes: false), "z")
+    }
 }

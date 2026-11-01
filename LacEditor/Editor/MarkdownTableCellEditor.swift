@@ -6,6 +6,13 @@ final class MarkdownTableCellEditor: NSTextView, NSTextViewDelegate {
     var beginTextChecking: (([NSSpellChecker.OptionKey: Any]) -> [NSSpellChecker.OptionKey: Any])?
     var filterTextCheckingResults: (([NSTextCheckingResult], [NSSpellChecker.OptionKey: Any]) -> [NSTextCheckingResult])?
 
+    /// Каретка и выделение не заходят внутрь токена media.
+    func textView(_ textView: NSTextView, willChangeSelectionFromCharacterRange oldSelectedCharRange: NSRange,
+                  toCharacterRange newSelectedCharRange: NSRange) -> NSRange {
+        guard !hasMarkedText(), let map = mediaMap?() else { return newSelectedCharRange }
+        return map.snappedRange(newSelectedCharRange, from: oldSelectedCharRange)
+    }
+
     func textView(_ view: NSTextView, willCheckTextIn range: NSRange, options: [NSSpellChecker.OptionKey: Any],
                   types checkingTypes: UnsafeMutablePointer<NSTextCheckingTypes>) -> [NSSpellChecker.OptionKey: Any] {
         beginTextChecking?(options) ?? options
@@ -99,10 +106,15 @@ final class MarkdownTableCellEditor: NSTextView, NSTextViewDelegate {
     var undoAction: ((Bool) -> Bool)?
     var rowCommand: ((Bool) -> Bool)?
     var validateChange: ((NSRange, String) -> Bool)?
+    /// Карта media-токенов по текущему тексту ячейки; nil, если токенов нет.
+    var mediaMap: (() -> MarkdownMediaMap?)?
     var imageTransfer: ((NSPasteboard, Bool) -> Bool)?
     var canTransferImage: ((NSPasteboard, Bool) -> Bool)?
     var richPaste: ((NSPasteboard) -> Bool)?
     var richCopy: ((NSPasteboard) -> Bool)?
+    /// Выделение с media-токенами для буфера; nil, если токенов в выделении нет.
+    var mediaClipboard: ((NSRange) -> MediaClipboardPayload?)?
+    var mediaPaste: ((NSPasteboard) -> Bool)?
     var markdownLinkHandler: ((NSPoint) -> Bool)?
     var mathReferenceHandler: ((NSPoint) -> Bool)?
     var emojiCompletionRange: NSRange?
@@ -144,6 +156,15 @@ final class MarkdownTableCellEditor: NSTextView, NSTextViewDelegate {
 
     override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
         if let replacementString, validateChange?(affectedCharRange, replacementString) == false { return false }
+        // Как в основном редакторе: правка, задевающая токен, забирает его целиком, набор строго внутри отклоняется.
+        if replacementString != nil, let map = mediaMap?(), map.cutsToken(affectedCharRange) {
+            guard affectedCharRange.length > 0, !hasMarkedText() else {
+                NSSound.beep()
+                return false
+            }
+            insertText(replacementString ?? "", replacementRange: map.coveringRange(affectedCharRange))
+            return false
+        }
         return super.shouldChangeText(in: affectedCharRange, replacementString: replacementString)
     }
 
@@ -200,6 +221,7 @@ final class MarkdownTableCellEditor: NSTextView, NSTextViewDelegate {
     }
 
     override func paste(_ sender: Any?) {
+        if mediaPaste?(.general) == true { return }
         if richPaste?(.general) == true { return }
         if imageTransfer?(.general, true) == true { return }
         super.paste(sender)
@@ -210,20 +232,71 @@ final class MarkdownTableCellEditor: NSTextView, NSTextViewDelegate {
         super.copy(sender)
     }
 
+    override func writeSelection(to pboard: NSPasteboard, types: [NSPasteboard.PasteboardType]) -> Bool {
+        guard selectedRanges.count == 1, selectedRange().length > 0, let payload = mediaClipboard?(selectedRange()) else {
+            return super.writeSelection(to: pboard, types: types)
+        }
+        // Остальные запрошенные типы не пишутся: в них попал бы токен.
+        pboard.declareTypes([.string, LacTextView.mediaSourceType], owner: nil)
+        let wrotePlain = pboard.setString(payload.plain, forType: .string)
+        let wroteSource = pboard.setString(payload.source, forType: LacTextView.mediaSourceType)
+        return wrotePlain && wroteSource
+    }
+
+    /// Вырезание и перенос забирают токен целиком, как в основном редакторе.
+    private func extendSelectionOverMedia() {
+        if isEditable, !hasMarkedText(), selectedRanges.count == 1, let payload = mediaClipboard?(selectedRange()),
+           payload.displayRange != selectedRange() {
+            setSelectedRange(payload.displayRange)
+        }
+    }
+
+    override func cut(_ sender: Any?) {
+        extendSelectionOverMedia()
+        super.cut(sender)
+    }
+
+    override func dragSelection(with event: NSEvent, offset mouseOffset: NSSize, slideBack: Bool) -> Bool {
+        extendSelectionOverMedia()
+        return super.dragSelection(with: event, offset: mouseOffset, slideBack: slideBack)
+    }
+
+    override var readablePasteboardTypes: [NSPasteboard.PasteboardType] {
+        [LacTextView.mediaSourceType] + super.readablePasteboardTypes
+    }
+
+    override func preferredPasteboardType(
+        from availableTypes: [NSPasteboard.PasteboardType],
+        restrictedToTypesFrom allowedTypes: [NSPasteboard.PasteboardType]?
+    ) -> NSPasteboard.PasteboardType? {
+        if availableTypes.contains(LacTextView.mediaSourceType), allowedTypes?.contains(LacTextView.mediaSourceType) ?? true {
+            return LacTextView.mediaSourceType
+        }
+        return super.preferredPasteboardType(from: availableTypes, restrictedToTypesFrom: allowedTypes)
+    }
+
+    override func readSelection(from pboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
+        guard type == LacTextView.mediaSourceType else { return super.readSelection(from: pboard, type: type) }
+        if mediaPaste?(pboard) == true { return true }
+        return super.readSelection(from: pboard, type: .string)
+    }
+
     override func updateDragTypeRegistration() {
         super.updateDragTypeRegistration()
         if isEditable { registerForDraggedTypes(Array(Set(readablePasteboardTypes + [.fileURL, .URL, .png, .tiff]))) }
     }
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        if isEditable && canTransferImage?(sender.draggingPasteboard, false) == true {
+        if isEditable, sender.draggingPasteboard.types?.contains(LacTextView.mediaSourceType) != true,
+           canTransferImage?(sender.draggingPasteboard, false) == true {
             return hasMarkedText() ? [] : .copy
         }
         return super.draggingEntered(sender)
     }
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
-        guard let imageTransfer, isEditable, canTransferImage?(sender.draggingPasteboard, false) == true else {
+        guard let imageTransfer, isEditable, sender.draggingPasteboard.types?.contains(LacTextView.mediaSourceType) != true,
+              canTransferImage?(sender.draggingPasteboard, false) == true else {
             return super.performDragOperation(sender)
         }
         guard !hasMarkedText() else { return false }

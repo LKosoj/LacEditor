@@ -167,96 +167,219 @@ enum SyntaxHighlighter {
         revision: UInt?,
         isCancelled: () -> Bool
     ) -> [Token] {
-        let nsString = string as NSString
+        guard case let .tokens(tokens) = lexicalResult(
+            text: string,
+            window: TextWindow(string as NSString),
+            language: language,
+            range: highlightRange,
+            context: context,
+            revision: revision,
+            isCancelled: isCancelled
+        ) else { return [] }
+        return tokens
+    }
 
+    /// Part of the text that starts at `origin` (UTF-16); `totalLength` is the
+    /// length of the whole text.
+    struct TextChunk {
+        let text: String
+        let origin: Int
+        let totalLength: Int
+    }
+
+    enum ChunkResult: Equatable {
+        case tokens([Token])
+        /// The part is too short to give the same tokens as a full pass;
+        /// repeat with the whole text. For JSON the saved points may already
+        /// be written before this result (they are correct).
+        case needsMoreText
+    }
+
+    /// Longest part (UTF-16) that is worth passing instead of the whole text.
+    static let maxChunkLength = 256 * 1_024
+    private static let chunkMargin = 4_096
+    private static let lightBackendThreshold = 20 * 1_024 * 1_024
+
+    /// Languages for which `tokens(in: chunk...)` gives the same result as the
+    /// full pass. Code languages and HTML go to Tree-sitter below 20 MiB, so
+    /// only above it (UTF-8 is never shorter than UTF-16) they use the scanner.
+    static func canChunk(language: EditorLanguage, utf16Length: Int) -> Bool {
+        switch language {
+        case .markdown, .json: true
+        case .plainText: false
+        default: utf16Length > lightBackendThreshold
+        }
+    }
+
+    /// Absolute range of text to cut for `tokens(in: chunk...)`, or nil if
+    /// the full pass is needed (language is not supported, the saved point is
+    /// too far or was dropped, the part is longer than `maxChunkLength`).
+    static func chunkPlan(
+        context: IncrementalContext,
+        language: EditorLanguage,
+        revision: UInt,
+        range: NSRange,
+        textLength: Int
+    ) -> NSRange? {
+        guard canChunk(language: language, utf16Length: textLength),
+              range.length > 0, range.location >= 0,
+              NSMaxRange(range) <= textLength else { return nil }
+        let plan: NSRange?
+        switch language {
+        case .markdown, .html:
+            guard let frontier = context.markupContext.frontier(
+                language: language, revision: revision,
+                streams: language == .markdown ? 2 : 1
+            ) else { return nil }
+            let origin = min(range.location, frontier)
+            plan = NSRange(location: origin,
+                           length: min(textLength, NSMaxRange(range) + chunkMargin) - origin)
+        default:
+            plan = CodeLexicalScanner.chunkPlan(
+                context: context.codeLexicalContext, language: language,
+                revision: revision, range: range, textLength: textLength,
+                margin: chunkMargin
+            )
+        }
+        guard let plan, plan.length <= maxChunkLength else { return nil }
+        return plan
+    }
+
+    /// Same tokens as `lexicalTokens` over the whole text, clipped to `range`
+    /// (absolute). `context` is required: the saved points are what lets the
+    /// scan start inside the chunk.
+    static func tokens(
+        in chunk: TextChunk,
+        language: EditorLanguage,
+        range: NSRange,
+        context: IncrementalContext,
+        revision: UInt,
+        isCancelled: () -> Bool
+    ) -> ChunkResult {
+        let window = TextWindow(chunk.text as NSString, origin: chunk.origin, totalLength: chunk.totalLength)
+        guard canChunk(language: language, utf16Length: chunk.totalLength),
+              range.location >= window.origin, NSMaxRange(range) <= window.length else {
+            return .needsMoreText
+        }
+        guard range.length > 0 else { return .tokens([]) }
+        return lexicalResult(
+            text: chunk.text, window: window, language: language, range: range,
+            context: context, revision: revision, isCancelled: isCancelled
+        )
+    }
+
+    private static func lexicalResult(
+        text: String,
+        window: TextWindow,
+        language: EditorLanguage,
+        range highlightRange: NSRange,
+        context: IncrementalContext?,
+        revision: UInt?,
+        isCancelled: () -> Bool
+    ) -> ChunkResult {
         switch language {
         case .plainText:
-            return []
+            return .tokens([])
         case .markdown:
-            return markdownTokens(in: nsString, range: highlightRange, context: context?.markupContext, revision: revision, isCancelled: isCancelled)
+            return markdownTokens(text: text, window: window, range: highlightRange, context: context?.markupContext, revision: revision, isCancelled: isCancelled)
         case .json:
             return jsonTokens(
-                in: string,
+                text: text,
+                window: window,
                 range: highlightRange,
                 context: context?.codeLexicalContext,
                 revision: revision,
                 isCancelled: isCancelled
             )
         case .html:
-            return cachedHTMLTokens(in: nsString, range: highlightRange, context: context?.markupContext, revision: revision, isCancelled: isCancelled)
+            return cachedHTMLTokens(text: text, window: window, range: highlightRange, context: context?.markupContext, revision: revision, isCancelled: isCancelled)
         default:
             var result = semanticTokens(
-                in: string,
+                in: text,
                 language: language,
-                range: highlightRange
+                range: highlightRange,
+                origin: window.origin
             )
-            result.append(contentsOf: CodeLexicalScanner.tokens(
-                in: string,
+            guard let scanned = CodeLexicalScanner.tokens(
+                in: text,
+                origin: window.origin,
+                totalLength: window.totalLength,
                 language: language,
                 range: highlightRange,
                 context: context?.codeLexicalContext,
                 revision: revision,
                 isCancelled: isCancelled
-            ).map(syntaxToken))
-            return result
+            ) else { return .needsMoreText }
+            result.append(contentsOf: scanned.map(syntaxToken))
+            return .tokens(result)
         }
     }
 
     private static func markdownTokens(
-        in string: NSString,
+        text: String,
+        window string: TextWindow,
         range: NSRange,
         context: MarkupContext?,
         revision: UInt?,
         isCancelled: () -> Bool
-    ) -> [Token] {
-        guard !isCancelled() else { return [] }
+    ) -> ChunkResult {
+        guard !isCancelled() else { return .tokens([]) }
         var result = semanticTokens(
-            in: string as String,
+            in: text,
             language: .markdown,
-            range: range
+            range: range,
+            origin: string.origin
         )
         if context == nil || revision == nil {
             let full = NSRange(location: 0, length: string.length)
-            let fenced = matches(expression: markdownFenceExpression, in: string as String,
+            let fenced = matches(expression: markdownFenceExpression, in: text,
                                  range: full, kind: .string)
-            guard !isCancelled() else { return [] }
-            let inline = matches(expression: markdownInlineCodeExpression, in: string as String,
+            guard !isCancelled() else { return .tokens([]) }
+            let inline = matches(expression: markdownInlineCodeExpression, in: text,
                                  range: full, kind: .string).filter { token in
                 !fenced.contains { NSIntersectionRange($0.range, token.range).length > 0 }
             }
-            guard !isCancelled() else { return [] }
+            guard !isCancelled() else { return .tokens([]) }
             result.append(contentsOf: (fenced + inline).filter {
                 NSIntersectionRange($0.range, range).length > 0
             })
-            return result
+            return .tokens(result)
         }
-        guard let cached = markupTokens(in: string, language: .markdown, range: range,
-                                        context: context, revision: revision, isCancelled: isCancelled) else { return [] }
-        result.append(contentsOf: cached)
-        return result
+        switch markupTokens(in: string, text: text, language: .markdown, range: range,
+                            context: context, revision: revision, isCancelled: isCancelled) {
+        case .stop: return .tokens([])
+        case .needsMoreText: return .needsMoreText
+        case let .tokens(cached):
+            result.append(contentsOf: cached)
+            return .tokens(result)
+        }
     }
 
     private static func jsonTokens(
-        in source: String,
+        text source: String,
+        window string: TextWindow,
         range: NSRange,
         context: CodeLexicalScanner.IncrementalContext?,
         revision: UInt?,
         isCancelled: () -> Bool
-    ) -> [Token] {
-        let string = source as NSString
+    ) -> ChunkResult {
         var result = semanticTokens(
             in: source,
             language: .json,
-            range: range
+            range: range,
+            origin: string.origin
         )
-        let strings = CodeLexicalScanner.tokens(
+        guard let scanned = CodeLexicalScanner.tokens(
             in: source,
+            origin: string.origin,
+            totalLength: string.totalLength,
             language: .json,
             range: range,
             context: context,
             revision: revision,
             isCancelled: isCancelled
-        ).map(syntaxToken)
+        ) else { return .needsMoreText }
+        let strings = scanned.map(syntaxToken)
         result.append(contentsOf: strings)
 
         for token in strings where token.kind == .string {
@@ -265,11 +388,13 @@ enum SyntaxHighlighter {
                   isWhitespace(string.character(at: location)) {
                 location += 1
             }
+            // The part ended before the next non-space character is known.
+            if location >= string.length, !string.isTail { return .needsMoreText }
             if location < string.length, string.character(at: location) == 0x3A {
                 result.append(Token(range: token.range, kind: .property))
             }
         }
-        return result
+        return .tokens(result)
     }
 
     private static func syntaxToken(
@@ -282,12 +407,12 @@ enum SyntaxHighlighter {
     }
 
     private static func htmlTokens(
-        in string: NSString,
+        in string: TextWindow,
         source: String? = nil,
         range: NSRange,
         isCancelled: () -> Bool
     ) -> [Token] {
-        let source = source ?? (string as String)
+        let source = source ?? (string.string as String)
         let scanRange = range
         let end = NSMaxRange(scanRange)
         var location = scanRange.location
@@ -355,12 +480,14 @@ enum SyntaxHighlighter {
                 ))
             }
 
-            result.append(contentsOf: CodeLexicalScanner.tokens(
+            result.append(contentsOf: (CodeLexicalScanner.tokens(
                 in: source,
+                origin: string.origin,
+                totalLength: string.totalLength,
                 language: .html,
                 range: tagRange,
                 isCancelled: isCancelled
-            ).map(syntaxToken))
+            ) ?? []).map(syntaxToken))
             location = tagEnd
         }
         guard !isCancelled() else { return [] }
@@ -439,6 +566,24 @@ enum SyntaxHighlighter {
             return cursors[0].position
         }
 
+        /// Position the next scan of `revision` would start from (smallest over
+        /// the first `streams` cursors), 0 if it would start from scratch, nil if
+        /// the request is stale. Does not change the state.
+        fileprivate func frontier(language newLanguage: EditorLanguage, revision newRevision: UInt,
+                                  streams: Int) -> Int? {
+            lock.lock()
+            defer { lock.unlock() }
+            if language == newLanguage, let currentRevision = revision,
+               (newRevision < currentRevision || (acceptsRevisionChange && newRevision == currentRevision)) {
+                return nil
+            }
+            if language != newLanguage || (revision != newRevision &&
+                !(acceptsRevisionChange && revision.map { $0 &+ 1 == newRevision } == true)) {
+                return 0
+            }
+            return cursors[0..<streams].map(\.position).min() ?? 0
+        }
+
         fileprivate func prepare(language newLanguage: EditorLanguage, revision newRevision: UInt)
             -> (cursors: [MarkupCursor], counts: [Int], generation: UInt)? {
             lock.lock()
@@ -503,27 +648,39 @@ enum SyntaxHighlighter {
         return result
     }
 
-    private static func cachedHTMLTokens(in string: NSString, range: NSRange,
-                                         context: MarkupContext?, revision: UInt?,
-                                         isCancelled: () -> Bool) -> [Token] {
-        if context == nil || revision == nil {
-            return htmlTokens(in: string, range: NSRange(location: 0, length: string.length),
-                              isCancelled: isCancelled).filter {
-                NSIntersectionRange($0.range, range).length > 0
-            }
-        }
-        return markupTokens(in: string, language: .html, range: range, context: context,
-                            revision: revision, isCancelled: isCancelled) ?? []
+    private enum MarkupOutcome {
+        case tokens([Token])
+        /// Cancelled or stale request.
+        case stop
+        case needsMoreText
     }
 
-    private static func markupTokens(in string: NSString, language: EditorLanguage, range: NSRange,
+    private static func cachedHTMLTokens(text: String, window string: TextWindow, range: NSRange,
+                                         context: MarkupContext?, revision: UInt?,
+                                         isCancelled: () -> Bool) -> ChunkResult {
+        if context == nil || revision == nil {
+            return .tokens(htmlTokens(in: string, source: text,
+                                      range: NSRange(location: 0, length: string.length),
+                                      isCancelled: isCancelled).filter {
+                NSIntersectionRange($0.range, range).length > 0
+            })
+        }
+        switch markupTokens(in: string, text: text, language: .html, range: range, context: context,
+                            revision: revision, isCancelled: isCancelled) {
+        case .stop: return .tokens([])
+        case .needsMoreText: return .needsMoreText
+        case let .tokens(tokens): return .tokens(tokens)
+        }
+    }
+
+    private static func markupTokens(in string: TextWindow, text: String, language: EditorLanguage, range: NSRange,
                                      context: MarkupContext?, revision: UInt?,
-                                     isCancelled: () -> Bool) -> [Token]? {
+                                     isCancelled: () -> Bool) -> MarkupOutcome {
         let cache = revision == nil ? MarkupContext() : (context ?? MarkupContext())
-        guard let prepared = cache.prepare(language: language, revision: revision ?? 0) else { return nil }
+        guard let prepared = cache.prepare(language: language, revision: revision ?? 0) else { return .stop }
         let savedCursors = prepared.cursors
         var cursors = savedCursors
-        let htmlSource: String? = language == .html ? (string as String) : nil
+        let htmlSource: String? = language == .html ? text : nil
         do {
             var additions: [[MarkupGroup]] = [[], []]
             let target = NSMaxRange(range)
@@ -539,7 +696,7 @@ enum SyntaxHighlighter {
                                generation: prepared.generation)
                     + intersectingGroups(additions[index], range: requested)
             }
-            guard !isCancelled() else { return nil }
+            guard !isCancelled() else { return .stop }
             for stream in streams {
                 if language == .markdown && stream == 1 {
                     skipInline = relevant(0, range).contains {
@@ -554,7 +711,11 @@ enum SyntaxHighlighter {
                     ? max(target, relevant(1, range).map { NSMaxRange($0.range) }.max() ?? target)
                     : target
                 while cursor.position < streamTarget && cursor.position < string.length {
-                    if cancelled() { return nil }
+                    if cancelled() { return .stop }
+                    // The part must hold the scan start and the longest look-ahead
+                    // (four characters); otherwise the result may differ.
+                    if cursor.position < string.origin ||
+                        (!string.isTail && cursor.position + 4 > string.length) { return .needsMoreText }
                     let start = cursor.position
                     if let open = cursor.openStart {
                         let closing = language == .markdown ? "```" : "-->"
@@ -574,7 +735,7 @@ enum SyntaxHighlighter {
                     } else if language == .markdown && stream == 1 && string.character(at: start) == 0x60 {
                         var end = start + 1
                         while end < string.length && string.character(at: end) != 0x60 && string.character(at: end) != 0x0A {
-                            if cancelled() { return nil }
+                            if cancelled() { return .stop }
                             end += 1
                         }
                         if end > start + 1 && end < string.length && string.character(at: end) == 0x60 {
@@ -582,6 +743,7 @@ enum SyntaxHighlighter {
                             let token = Token(range: NSRange(location: start, length: cursor.position - start), kind: .string)
                             additions[stream].append(MarkupGroup(range: token.range, tokens: [token]))
                         } else if end == string.length {
+                            if !string.isTail { return .needsMoreText }
                             cursor.unresolvedStart = start
                             cursor.position = end
                         } else if string.character(at: end) == 0x0A {
@@ -598,7 +760,7 @@ enum SyntaxHighlighter {
                         var quote: unichar?
                         var foundEnd = false
                         while end < string.length {
-                            if cancelled() { return nil }
+                            if cancelled() { return .stop }
                             let character = string.character(at: end)
                             if let active = quote {
                                 if character == active { quote = nil }
@@ -611,9 +773,10 @@ enum SyntaxHighlighter {
                             cursor.position = end
                             let tagRange = NSRange(location: start, length: end - start)
                             let tokens = htmlTokens(in: string, source: htmlSource, range: tagRange, isCancelled: isCancelled)
-                            guard !isCancelled() else { return nil }
+                            guard !isCancelled() else { return .stop }
                             additions[stream].append(MarkupGroup(range: tagRange, tokens: tokens))
                         } else {
+                            if !string.isTail { return .needsMoreText }
                             // Do not repeatedly rescan nested starts in an unfinished tag.
                             cursor.unresolvedStart = start
                             cursor.position = string.length
@@ -624,7 +787,7 @@ enum SyntaxHighlighter {
                 }
                 cursors[stream] = cursor
             }
-            guard !isCancelled() else { return nil }
+            guard !isCancelled() else { return .stop }
             var primary = relevant(0, range)
             if let open = cursors[0].openStart {
                 let token = Token(range: NSRange(location: open, length: cursors[0].position - open),
@@ -645,15 +808,16 @@ enum SyntaxHighlighter {
             }
             guard !isCancelled(), cache.commit(cursors: savedCursors, newCursors: cursors,
                     additions: additions, language: language, revision: revision ?? 0,
-                    generation: prepared.generation) else { return nil }
-            return tokens
+                    generation: prepared.generation) else { return .stop }
+            return .tokens(tokens)
         }
     }
 
     private static func semanticTokens(
         in string: String,
         language: EditorLanguage,
-        range: NSRange
+        range: NSRange,
+        origin: Int = 0
     ) -> [Token] {
         guard let rules = compiledRules[language] else { return [] }
         var result: [Token] = []
@@ -663,7 +827,8 @@ enum SyntaxHighlighter {
                 in: string,
                 range: range,
                 kind: rule.kind,
-                group: rule.group
+                group: rule.group,
+                origin: origin
             ))
         }
         return result
@@ -679,18 +844,23 @@ enum SyntaxHighlighter {
         in string: String,
         range: NSRange,
         kind: TokenKind,
-        group: Int = 0
+        group: Int = 0,
+        origin: Int = 0
     ) -> [Token] {
-        expression.matches(in: string, range: range).compactMap { match in
+        // `string` starts at `origin` of the whole text, `range` and the result are absolute.
+        expression.matches(
+            in: string,
+            range: NSRange(location: range.location - origin, length: range.length)
+        ).compactMap { match in
             let matchRange = match.range(at: group)
             guard matchRange.location != NSNotFound else { return nil }
-            return Token(range: matchRange, kind: kind)
+            return Token(range: NSRange(location: matchRange.location + origin, length: matchRange.length), kind: kind)
         }
     }
 
     private static func hasPrefix(
         _ prefix: String,
-        in string: NSString,
+        in string: TextWindow,
         at location: Int,
         limit: Int
     ) -> Bool {
@@ -698,28 +868,21 @@ enum SyntaxHighlighter {
         guard location >= 0, location + length <= limit else { return false }
         return string.compare(
             prefix,
-            options: [],
             range: NSRange(location: location, length: length)
         ) == .orderedSame
     }
 
     private static func rangeOf(
         _ value: String,
-        in string: NSString,
+        in string: TextWindow,
         from location: Int,
         limit: Int
     ) -> NSRange? {
-        guard location < limit else { return nil }
-        let range = string.range(
-            of: value,
-            options: [],
-            range: NSRange(location: location, length: limit - location)
-        )
-        return range.location == NSNotFound ? nil : range
+        string.range(of: value, from: location, limit: limit)
     }
 
     private static func isCommentBoundary(
-        in string: NSString,
+        in string: TextWindow,
         at location: Int
     ) -> Bool {
         guard location > 0 else { return true }
@@ -732,7 +895,7 @@ enum SyntaxHighlighter {
     }
 
     private static func isHTMLTagStart(
-        in string: NSString,
+        in string: TextWindow,
         at location: Int,
         limit: Int
     ) -> Bool {
@@ -749,7 +912,7 @@ enum SyntaxHighlighter {
     }
 
     private static func htmlTagEnd(
-        in string: NSString,
+        in string: TextWindow,
         from start: Int,
         limit: Int,
         isCancelled: () -> Bool

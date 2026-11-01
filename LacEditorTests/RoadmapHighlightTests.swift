@@ -216,6 +216,66 @@ final class RoadmapHighlightTests: XCTestCase {
         XCTAssertEqual(clipped(partial), clipped(full))
     }
 
+    func testChunkTokensMatchFullHighlightAfterEdit() {
+        let lines = (0..<4_000).map { "# заголовок \($0) 😀\n`код` и \"строка\": **жирный**\n" }
+        for language in [EditorLanguage.markdown, .json] {
+            let source = lines.joined()
+            let edit = NSRange(location: 40_000, length: 0)
+            let updated = (source as NSString).replacingCharacters(in: edit, with: "```\n")
+            let length = (updated as NSString).length
+            let range = NSRange(location: 41_000, length: 1_500)
+            let full = SyntaxHighlighter.IncrementalContext()
+            let part = SyntaxHighlighter.IncrementalContext()
+            for context in [full, part] {
+                _ = SyntaxHighlighter.lexicalTokens(in: source, language: language,
+                    range: NSRange(location: 39_000, length: 2_000), context: context, revision: 1, isCancelled: { false })
+                context.invalidate(after: edit.location)
+            }
+            let expected = SyntaxHighlighter.lexicalTokens(in: updated, language: language,
+                range: range, context: full, revision: 2, isCancelled: { false })
+            guard let plan = SyntaxHighlighter.chunkPlan(context: part, language: language,
+                revision: 2, range: range, textLength: length) else {
+                return XCTFail("chunkPlan")
+            }
+            XCTAssertLessThan(plan.length, length / 2)
+            let chunk = SyntaxHighlighter.TextChunk(text: (updated as NSString).substring(with: plan),
+                origin: plan.location, totalLength: length)
+            let result = SyntaxHighlighter.tokens(in: chunk, language: language, range: range,
+                context: part, revision: 2, isCancelled: { false })
+            func clipped(_ tokens: [SyntaxHighlighter.Token]) -> [SyntaxHighlighter.Token] {
+                tokens.compactMap { token in
+                    let intersection = NSIntersectionRange(token.range, range)
+                    return intersection.length > 0 ? .init(range: intersection, kind: token.kind) : nil
+                }.sorted { ($0.range.location, $0.range.length, $0.kind.rawValue) < ($1.range.location, $1.range.length, $1.kind.rawValue) }
+            }
+            guard case let .tokens(tokens) = result else { return XCTFail("needsMoreText") }
+            XCTAssertEqual(clipped(tokens), clipped(expected))
+        }
+    }
+
+    func testChunkAskForMoreTextAtUnfinishedLineAndKeepsContext() {
+        let text = "x\n`" + String(repeating: "a", count: 6_000) + "`\n"
+        let length = (text as NSString).length
+        let context = SyntaxHighlighter.IncrementalContext()
+        let cut = (text as NSString).substring(with: NSRange(location: 0, length: 3_000))
+        let chunk = SyntaxHighlighter.TextChunk(text: cut, origin: 0, totalLength: length)
+        XCTAssertEqual(SyntaxHighlighter.tokens(in: chunk, language: .markdown,
+            range: NSRange(location: 0, length: 2_900), context: context, revision: 1, isCancelled: { false }),
+            .needsMoreText)
+        XCTAssertEqual(context.preparedThrough, 0)
+        XCTAssertTrue(SyntaxHighlighter.lexicalTokens(in: text, language: .markdown,
+            range: NSRange(location: 0, length: length), context: context, revision: 1, isCancelled: { false })
+            .contains { $0.kind == .string && $0.range.length == 6_002 })
+    }
+
+    func testChunkAvailability() {
+        XCTAssertTrue(SyntaxHighlighter.canChunk(language: .markdown, utf16Length: 100))
+        XCTAssertTrue(SyntaxHighlighter.canChunk(language: .json, utf16Length: 100))
+        XCTAssertFalse(SyntaxHighlighter.canChunk(language: .javascript, utf16Length: 1_000_000))
+        XCTAssertTrue(SyntaxHighlighter.canChunk(language: .javascript, utf16Length: 21 * 1_024 * 1_024))
+        XCTAssertFalse(SyntaxHighlighter.canChunk(language: .plainText, utf16Length: 21 * 1_024 * 1_024))
+    }
+
     func testLargeCodeUsesLexicalFallback() {
         let text = "// 中文😀\n" + String(repeating: " ", count: 20 * 1_024 * 1_024)
         let tokens = SyntaxHighlighter.tokens(in: text, language: .javascript,

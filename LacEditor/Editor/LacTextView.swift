@@ -127,7 +127,15 @@ extension NSColor {
 
 enum EditSource { case unknown, typed, pasted }
 
+/// Выделение с media для буфера обмена: текст без токенов, настоящий исходник и расширенный до токенов диапазон.
+struct MediaClipboardPayload {
+    let plain: String
+    let source: String
+    let displayRange: NSRange
+}
+
 final class LacTextView: NSTextView {
+    static let mediaSourceType = NSPasteboard.PasteboardType("com.laceditor.markdown-source")
     func placeMarkdownSubview(_ child: NSView, in rect: NSRect) {
         guard layoutOrientation == .vertical, child.superview === self, let clip = enclosingScrollView?.contentView else {
             child.frameRotation = 0
@@ -354,6 +362,9 @@ final class LacTextView: NSTextView {
     var remoteImageTransferEnabled = false
     var richPasteHandler: ((NSPasteboard) -> Bool)?
     var richCopyHandler: ((NSPasteboard) -> Bool)?
+    /// Для выделения с media-токенами отдаёт обычный текст без токенов и настоящий исходник.
+    var mediaClipboardProvider: ((NSRange) -> MediaClipboardPayload?)?
+    var mediaPasteHandler: ((NSPasteboard) -> Bool)?
     var listIndentationHandler: ((Bool) -> Bool)?
     var listNewlineHandler: (() -> Bool)?
     var codeFenceNewlineHandler: (() -> Bool)?
@@ -376,6 +387,8 @@ final class LacTextView: NSTextView {
     var completionText: String? { didSet { needsDisplay = true } }
     var acceptAICompletion: (() -> Bool)?
     var dismissAICompletion: (() -> Void)?
+    /// Набранный текст совпал с началом подсказки: вернуть true, и подсказка не сбрасывается (её укоротит `textDidChange`).
+    var keepAICompletion: ((Any, NSRange) -> Bool)?
     var emojiCompletionRange: NSRange?
     var emojiCompletionSpelling = ""
     var emojiCompletionValues: [String] = []
@@ -511,6 +524,7 @@ final class LacTextView: NSTextView {
 
     override func paste(_ sender: Any?) {
         dismissAICompletion?()
+        if mediaPasteHandler?(.general) == true { return }
         if richPasteHandler?(.general) == true { return }
         if isEditable, !hasMarkedText(), let transfer = imageTransfer(from: .general, preferText: true), imageTransferHandler?(transfer) == true { return }
         let previous = editSource
@@ -529,6 +543,58 @@ final class LacTextView: NSTextView {
     override func copy(_ sender: Any?) {
         if richCopyHandler?(.general) == true { return }
         super.copy(sender)
+    }
+
+    /// Вырезание и перенос забирают токен целиком: граница выделения сдвигается до границ токена до записи в буфер.
+    private func extendSelectionOverMedia() {
+        if isEditable, !hasMarkedText(), selectedRanges.count == 1, let payload = mediaClipboardProvider?(selectedRange()),
+           payload.displayRange != selectedRange() {
+            setSelectedRange(payload.displayRange)
+        }
+    }
+
+    override func cut(_ sender: Any?) {
+        extendSelectionOverMedia()
+        super.cut(sender)
+    }
+
+    override func dragSelection(with event: NSEvent, offset mouseOffset: NSSize, slideBack: Bool) -> Bool {
+        extendSelectionOverMedia()
+        return super.dragSelection(with: event, offset: mouseOffset, slideBack: slideBack)
+    }
+
+    /// Общая точка для cut, перетаскивания и Services: в буфер уходит текст без токенов и настоящий исходник.
+    override func writeSelection(to pboard: NSPasteboard, types: [NSPasteboard.PasteboardType]) -> Bool {
+        guard selectedRanges.count == 1, selectedRange().length > 0,
+              let payload = mediaClipboardProvider?(selectedRange()) else {
+            return super.writeSelection(to: pboard, types: types)
+        }
+        // Остальные запрошенные типы не пишутся: в них попал бы токен.
+        pboard.declareTypes([.string, Self.mediaSourceType], owner: nil)
+        let wrotePlain = pboard.setString(payload.plain, forType: .string)
+        let wroteSource = pboard.setString(payload.source, forType: Self.mediaSourceType)
+        return wrotePlain && wroteSource
+    }
+
+    /// Вставку при перетаскивании читает AppKit: он же удаляет источник при переносе и сдвигает позиции.
+    override var readablePasteboardTypes: [NSPasteboard.PasteboardType] {
+        [Self.mediaSourceType] + super.readablePasteboardTypes
+    }
+
+    override func preferredPasteboardType(
+        from availableTypes: [NSPasteboard.PasteboardType],
+        restrictedToTypesFrom allowedTypes: [NSPasteboard.PasteboardType]?
+    ) -> NSPasteboard.PasteboardType? {
+        if availableTypes.contains(Self.mediaSourceType), allowedTypes?.contains(Self.mediaSourceType) ?? true {
+            return Self.mediaSourceType
+        }
+        return super.preferredPasteboardType(from: availableTypes, restrictedToTypesFrom: allowedTypes)
+    }
+
+    override func readSelection(from pboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
+        guard type == Self.mediaSourceType else { return super.readSelection(from: pboard, type: type) }
+        if mediaPasteHandler?(pboard) == true { return true }
+        return super.readSelection(from: pboard, type: .string)
     }
 
     /// NSTextView normally reports the fallback font used by the first glyph.
@@ -717,6 +783,7 @@ final class LacTextView: NSTextView {
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         guard isEditable, !hasMarkedText() else { return super.performDragOperation(sender) }
+        if sender.draggingPasteboard.types?.contains(Self.mediaSourceType) == true { return super.performDragOperation(sender) }
         let transfer = imageTransfer(from: sender.draggingPasteboard)
         let video: URL?
         if case nil = transfer { video = videoTransfer(from: sender.draggingPasteboard) } else { video = nil }
@@ -1014,7 +1081,7 @@ final class LacTextView: NSTextView {
     }
 
     override func insertText(_ insertString: Any, replacementRange: NSRange) {
-        dismissAICompletion?()
+        if editSource != .unknown || keepAICompletion?(insertString, replacementRange) != true { dismissAICompletion?() }
         let wasMarked = hasMarkedText()
         let previous = editSource
         if editSource == .unknown { editSource = .typed }

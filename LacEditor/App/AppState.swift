@@ -133,10 +133,15 @@ struct MarkdownLinkNavigationRequest {
     let isCurrent: () -> Bool
 }
 
+/// Координаты запроса к редактору: `.source` - текст файла и модели, `.display` - текст в редакторе
+/// (media-адреса `data:` в нём заменены токенами).
+enum EditorTextSpace { case source, display }
+
 struct EditorSelectionRequest {
     let documentID: UUID
     let range: NSRange
     var focusesEditor = true
+    var space: EditorTextSpace = .source
 }
 
 /// Пустой список снимает подсветку совпадений поиска.
@@ -227,8 +232,9 @@ final class EditorTextExtractionRequest {
     let allowsInsertionPoint: Bool
     let requiresEditable: Bool
     let includesEditorText: Bool
+    var space: EditorTextSpace = .source
     var result: EditorTextSelectionSnapshot?
-    /// Текст редактора целиком: в его координатах заданы `result.range` и замены. Может отличаться от текста документа (свёрнутые data URI).
+    /// Текст редактора целиком: в его координатах заданы `result.range` и замены. Может отличаться от текста документа (токены вместо data URI).
     var editorText: String?
 
     init(documentID: UUID, allowsTokenAtCaret: Bool, allowsWholeDocument: Bool = false, allowsInsertionPoint: Bool = false, requiresEditable: Bool = false, includesEditorText: Bool = false) {
@@ -248,6 +254,7 @@ final class EditorRangeReplacementRequest {
     let replacementText: String
     let expectedEditorRevision: UInt
     let actionName: String
+    var space: EditorTextSpace = .source
     var wasHandled = false
     var failureMessage: String?
     var resultingSelection: NSRange?
@@ -1083,6 +1090,7 @@ final class AppState: ObservableObject {
                     encoding: choice.encoding,
                     encodingName: choice.name,
                     byteCount: byteCount,
+                    url: url,
                     fileRevisionSnapshot: fileRevisionSnapshot
                 )
             }
@@ -1156,8 +1164,8 @@ final class AppState: ObservableObject {
                 existing.ioState = .idle
                 openingPlaceholderIDs.remove(existing.id)
                 existing.updatePerformanceProfile(
-                    byteCount: decoded.byteCount,
-                    lineCount: decoded.lineCount
+                    byteCount: decoded.profileByteCount ?? decoded.byteCount,
+                    lineCount: decoded.profileLineCount ?? decoded.lineCount
                 )
                 existing.markSaved()
                 selectedDocumentID = existing.id
@@ -1173,8 +1181,8 @@ final class AppState: ObservableObject {
             language: EditorLanguage.infer(from: url),
             fileEncoding: decoded.encoding,
             fileRevisionSnapshot: decoded.fileRevisionSnapshot,
-            byteCount: decoded.byteCount,
-            lineCount: decoded.lineCount
+            byteCount: decoded.profileByteCount ?? decoded.byteCount,
+            lineCount: decoded.profileLineCount ?? decoded.lineCount
         )
         if documents.count == 1,
            let first = documents.first,
@@ -1271,6 +1279,11 @@ final class AppState: ObservableObject {
             completion?(false)
             return false
         }
+        // До диалога выбора файла.
+        if rejectUnknownMediaTokens(document, title: L10n.tr("无法保存文件")) {
+            completion?(false)
+            return false
+        }
         guard let url = fileService.chooseSaveURL(
             suggestedName: suggestedFilename(for: document)
         ) else {
@@ -1336,6 +1349,8 @@ final class AppState: ObservableObject {
                 manager?.endMarkdownExport(documentID: document.id)
             }
         }
+        // До диалога выбора файла; ранний выход снимает блокировку экспорта через defer.
+        if rejectUnknownMediaTokens(document, title: L10n.tr("无法导出")) { return }
         let baseName = document.url?.deletingPathExtension().lastPathComponent ?? L10n.tr("未命名")
         let destination: URL
         if let fixedDestination { destination = fixedDestination }
@@ -1358,6 +1373,8 @@ final class AppState: ObservableObject {
             presentError(title: L10n.tr("无法导出"), error: PandocExportError.openDocument)
             return
         }
+        // Повтор после диалога: пока он был открыт, текст мог измениться.
+        if rejectUnknownMediaTokens(document, title: L10n.tr("无法导出")) { return }
         let snapshot = document.synchronizedSnapshot()
         if format == .htmlPlain {
             guard hostWindow != nil else { return }
@@ -1531,6 +1548,8 @@ final class AppState: ObservableObject {
                 manager?.endMarkdownExport(documentID: document.id)
             }
         }
+        // До диалога выбора файла; ранний выход снимает блокировку экспорта через defer.
+        if rejectUnknownMediaTokens(document, title: L10n.tr("无法导出")) { return }
         let baseName = document.url?.deletingPathExtension().lastPathComponent ?? L10n.tr("未命名")
         let destination: URL
         if let fixedDestination { destination = fixedDestination }
@@ -1553,6 +1572,8 @@ final class AppState: ObservableObject {
         guard (!existed || revision != nil), expectedRevision == nil || expectedRevision == revision else {
             presentError(title: L10n.tr("无法导出"), error: CocoaError(.fileWriteFileExists)); return
         }
+        // Повтор после диалога: пока он был открыт, текст мог измениться.
+        if rejectUnknownMediaTokens(document, title: L10n.tr("无法导出")) { return }
         let snapshot = document.synchronizedSnapshot()
         let operation = BlockOperation()
         customExportOperations[document.id] = operation
@@ -1685,6 +1706,8 @@ final class AppState: ObservableObject {
                 manager?.endMarkdownExport(documentID: document.id)
             }
         }
+        // До диалога выбора файла; ранний выход снимает блокировку экспорта через defer.
+        if rejectUnknownMediaTokens(document, title: L10n.tr("无法导出")) { return }
         let mode = profile.kind == "pdf-engine" ? "file" : (profile.commandDestination ?? "file")
         let destination: CustomMarkdownExportService.Destination
         let chosenURL: URL?
@@ -1736,6 +1759,8 @@ final class AppState: ObservableObject {
                 presentError(title: L10n.tr("无法导出"), error: CocoaError(.fileWriteFileExists)); return
             }
         }
+        // Повтор после диалога: пока он был открыт, текст мог измениться.
+        if rejectUnknownMediaTokens(document, title: L10n.tr("无法导出")) { return }
         let snapshot = document.synchronizedSnapshot()
         let expectedExists = existed, initialRevision = revision
         let syntax = preferences.markdownSyntax
@@ -1880,6 +1905,8 @@ final class AppState: ObservableObject {
                 manager?.endMarkdownExport(documentID: document.id)
             }
         }
+        // До диалога выбора файла; ранний выход снимает блокировку экспорта через defer.
+        if rejectUnknownMediaTokens(document, title: L10n.tr("无法导出")) { return }
         let destination: URL
         if let fixedDestination { destination = fixedDestination }
         else {
@@ -1899,6 +1926,8 @@ final class AppState: ObservableObject {
             presentError(title: L10n.tr("无法导出"), error: PandocExportError.openDocument)
             return
         }
+        // Повтор после диалога: пока он был открыт, текст мог измениться.
+        if rejectUnknownMediaTokens(document, title: L10n.tr("无法导出")) { return }
         let snapshot = document.synchronizedSnapshot()
         started = true
         let options = nativeOptions ?? preferences.markdownNativeExportOptions
@@ -1909,6 +1938,7 @@ final class AppState: ObservableObject {
         guard let document = selectedDocument, document.language == .markdown,
               document.ioState == .idle, !exportingDocumentIDs.contains(document.id),
               !openingPlaceholderIDs.contains(document.id), let window = hostWindow else { return }
+        if rejectUnknownMediaTokens(document, title: L10n.tr("无法打印")) { return }
         let manager = windowManager
         guard manager?.beginMarkdownExport(documentID: document.id) ?? true else { return }
         exportingDocumentIDs.insert(document.id)
@@ -1931,7 +1961,8 @@ final class AppState: ObservableObject {
             }
             guard result == .printed, self.hostWindow === window, self.selectedDocument === document,
                   document.language == .markdown, document.ioState == .idle,
-                  document.synchronizedSnapshot().revision == initial.revision else { return }
+                  document.synchronizedSnapshot().revision == initial.revision,
+                  !self.rejectUnknownMediaTokens(document, title: L10n.tr("无法打印")) else { return }
             let destination: URL?
             if info.jobDisposition == .spool { destination = nil }
             else if info.jobDisposition == .save,
@@ -2129,6 +2160,7 @@ final class AppState: ObservableObject {
     func togglePreview() {
         guard let document = selectedDocument, document.language == .markdown else { return }
         document.synchronizeLiveText()
+        document.noteManualPreviewChange()
         if document.isLargeFileMode {
             document.featureOverrides.preview = !document.isPreviewEffectivelyEnabled
         } else {
@@ -2182,6 +2214,7 @@ final class AppState: ObservableObject {
         } else if language != .markdown {
             document.isPreviewVisible = false
         }
+        document.refreshProfileAfterLanguageChange()
     }
 
     func formatJSON(pretty: Bool = true) {
@@ -2545,13 +2578,16 @@ final class AppState: ObservableObject {
             return false
         }
         let column = parts.count == 2 ? (Int(parts[1]) ?? 1) : 1
-        let text = document.synchronizedSnapshot().text as NSString
-        let index = LogicalLineIndex(text: text as String)
+        // Строки и столбцы считаются по тексту в редакторе: в Markdown адреса `data:` там короткие токены.
+        var shown = document.synchronizedSnapshot().text
+        if document.language == .markdown { shown = document.mediaTable.project(shown).text }
+        let text = shown as NSString
+        let index = LogicalLineIndex(text: shown)
         guard let location = index.location(line: line, column: column, in: text) else {
             findReplace.show(L10n.tr("行号超出范围（1–%@）", String(index.lineCount)), kind: .error)
             return false
         }
-        reveal(NSRange(location: location, length: 0), in: document)
+        reveal(NSRange(location: location, length: 0), in: document, space: document.language == .markdown ? .display : .source)
         findReplace.show(nil, kind: .info)
         dismissFindReplace()
         return true
@@ -3534,9 +3570,13 @@ final class AppState: ObservableObject {
     private func applyMarkdownImageFileUndo(_ state: MarkdownImageFileUndoState, document: EditorDocument,
                                             manager: UndoManager, view: LacTextView, undo: Bool) {
         let expected = undo ? state.after : state.before
+        // В Markdown на экране токены, а состояния хранят файловый текст.
+        let shown = document.language == .markdown
+            ? document.mediaTable.restore(view.string).text
+            : view.string
         guard documents.contains(where: { $0 === document }), selectedDocument === document,
               document.url == state.documentURL, document.ioState == .idle, view.isEditable, !view.hasMarkedText(),
-              view.string.utf16.elementsEqual(expected.utf16) else {
+              shown.utf16.elementsEqual(expected.utf16) else {
             document.statusMessage = L10n.tr("图片操作无法撤销：文档或文件已变化")
             return
         }
@@ -4649,7 +4689,9 @@ final class AppState: ObservableObject {
         markdownLinkTask?.task.cancel()
         markdownLinkTask = nil
         do {
-            switch try MarkdownLinkNavigationService.destination(for: request.link.url, documentURL: document.url) {
+            // Ссылка из оформленного текста может быть токеном: настоящий адрес лежит в таблице документа.
+            let address = document.mediaTable.source(forToken: request.link.url) ?? request.link.url
+            switch try MarkdownLinkNavigationService.destination(for: address, documentURL: document.url) {
             case let .fragment(fragment):
                 let location: Int
                 if fragment.isEmpty { location = 0 }
@@ -4659,6 +4701,18 @@ final class AppState: ObservableObject {
                 reveal(NSRange(location: location, length: 0), in: document)
             case let .external(url):
                 if !NSWorkspace.shared.open(url) { document.statusMessage = L10n.tr("无法打开链接") }
+            case let .data(address):
+                // Только PDF, аудио и видео из белого списка; запись и открытие идут через временный файл документа.
+                let media = document.temporaryMedia
+                let token = UUID()
+                let task = Task { @MainActor [weak self, weak document] in
+                    defer { if self?.markdownLinkTask?.id == token { self?.markdownLinkTask = nil } }
+                    let file = await Task.detached(priority: .userInitiated) { try? media.fileURL(forAddress: address) }.value
+                    guard !Task.isCancelled, let self, self.isCurrentMarkdownLink(request) else { return }
+                    if let file, NSWorkspace.shared.open(file) { return }
+                    document?.statusMessage = L10n.tr("无法打开链接")
+                }
+                markdownLinkTask = (token, document.id, task)
             case let .file(url, fragment):
                 let target = MarkdownLinkNavigationService.fileTarget(url)
                 let targetURL = target.url
@@ -4739,11 +4793,12 @@ final class AppState: ObservableObject {
         reveal(range, in: document)
     }
 
-    private func reveal(_ range: NSRange, in document: EditorDocument, focusEditor: Bool = true) {
-        document.selectionRange = range
+    private func reveal(_ range: NSRange, in document: EditorDocument, focusEditor: Bool = true, space: EditorTextSpace = .source) {
+        // Модель хранит выделение в координатах файла; экранный диапазон редактор переведёт и запишет сам.
+        if space == .source { document.selectionRange = range }
         NotificationCenter.default.post(
             name: EditorCommandNotification.revealSelection,
-            object: EditorSelectionRequest(documentID: document.id, range: range, focusesEditor: focusEditor)
+            object: EditorSelectionRequest(documentID: document.id, range: range, focusesEditor: focusEditor, space: space)
         )
     }
 
@@ -4801,6 +4856,11 @@ final class AppState: ObservableObject {
         }
         guard document.ioState != .saving else {
             document.statusMessage = L10n.tr("已有保存任务正在进行")
+            completion?(false)
+            return false
+        }
+        // До диалога конфликта: незачем спрашивать про запись, которую всё равно отклонят.
+        if rejectUnknownMediaTokens(document, title: L10n.tr("无法保存文件")) {
             completion?(false)
             return false
         }
@@ -5305,6 +5365,11 @@ final class AppState: ObservableObject {
         _ document: EditorDocument,
         completion: @escaping (Bool) -> Void
     ) {
+        // До диалога выбора файла; при отказе write не вызывается, сообщение показывается один раз.
+        if rejectUnknownMediaTokens(document, title: L10n.tr("无法保存文件")) {
+            completion(false)
+            return
+        }
         let targetURL: URL
         if let url = document.url {
             targetURL = url
@@ -5385,6 +5450,7 @@ final class AppState: ObservableObject {
         openingPlaceholderIDs.remove(document.id)
         stopObserving(document)
         recoveryStore?.discard(documentID: document.id)
+        document.temporaryMedia.removeAll()
         documents.remove(at: index)
         if documents.isEmpty {
             resetClosedWindow()
@@ -5397,6 +5463,17 @@ final class AppState: ObservableObject {
         let alert = NSAlert(error: error)
         alert.messageText = title
         alert.runModal()
+    }
+
+    /// Запись, печать и экспорт с токеном media без записи в таблице испортили бы файл. Возвращает true, если операцию надо прервать.
+    private func rejectUnknownMediaTokens(_ document: EditorDocument, title: String) -> Bool {
+        _ = document.synchronizedText()
+        guard document.hasUnknownMediaTokens else { return false }
+        presentError(title: title, error: NSError(
+            domain: "LacEditor.MediaTokens", code: 1,
+            userInfo: [NSLocalizedDescriptionKey: L10n.tr("文档含无法识别的媒体标记，请撤销最近的修改")]
+        ))
+        return true
     }
 }
 

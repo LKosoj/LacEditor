@@ -240,6 +240,8 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     /// Путь элементов Markdown под курсором для строки состояния; временный, в сессию не пишется.
     @Published private(set) var markdownElementPath: MarkdownElementPath?
     @Published var isPreviewVisible: Bool
+    /// Предпросмотр выключил профиль, а не пользователь: при возврате к обычному профилю он включается снова.
+    private var isPreviewHiddenByProfile = false
     @Published var isMarkdownFormatted = false
     /// Временное разрешение качать удалённые картинки этого документа. В сессию не пишется.
     @Published var allowsRemoteImages = false
@@ -267,6 +269,12 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     var aiMetadata: String?
     @Published var pendingAIContextSelection: (range: NSRange, revision: UInt)? = nil
     private var savedText: String?
+    /// Токены media для оформленного режима. Живёт до закрытия вкладки; в сессию не пишется, мутирует только главный поток.
+    var mediaTable = MarkdownMediaTable()
+    /// Временные файлы аудио, видео и PDF из `data:`; каталог удаляется при закрытии вкладки.
+    private(set) lazy var temporaryMedia = MarkdownTemporaryMedia(documentID: id)
+    /// В показанном тексте есть токен без записи в таблице. Ставит только поставщик живого текста и `displayedText`.
+    private(set) var hasUnknownMediaTokens = false
     private var liveTextProviderID: UUID?
     private var liveTextProvider: (() -> String?)?
     private var liveTextAcknowledgement: ((UInt) -> Void)?
@@ -308,12 +316,12 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         self.fileIdentity = url.map(DocumentFileIdentity.resolve)
         self.fileRevisionSnapshot = fileRevisionSnapshot
         self.isDirty = isDirty
-        let resolvedProfile = performanceProfile ?? .resolve(
-            byteCount: byteCount ?? text.utf8.count,
-            lineCount: lineCount ?? Self.countLines(in: text)
+        let resolvedProfile = performanceProfile ?? Self.profile(
+            of: text, language: language, byteCount: byteCount, lineCount: lineCount
         )
         self.performanceProfile = resolvedProfile
         self.isPreviewVisible = language == .markdown && resolvedProfile == .standard
+        self.isPreviewHiddenByProfile = language == .markdown && resolvedProfile != .standard
         self.savedText = requiresExplicitSave ? nil : text
         self.statistics = language != .markdown && resolvedProfile == .standard && text.utf16.count < 100_000
             ? DocumentStatistics.calculate(text)
@@ -329,6 +337,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     }
 
     deinit {
+        temporaryMedia.removeAll()
         taskCoordinator.cancelAll()
         metricsDebounceWorkItem?.cancel()
         lineEndingWorkItem?.cancel()
@@ -413,26 +422,62 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     }
 
     func updatePerformanceProfile(byteCount: Int? = nil, lineCount: Int? = nil) {
-        let next = DocumentPerformanceProfile.resolve(
-            byteCount: byteCount ?? text.utf8.count,
-            lineCount: lineCount ?? self.lineCount
-        )
+        let next = Self.profile(of: text, language: language, byteCount: byteCount, lineCount: lineCount)
         guard next != performanceProfile else { return }
         performanceProfile = next
-        if next != .standard { isPreviewVisible = false }
+        if next != .standard {
+            if isPreviewVisible { isPreviewHiddenByProfile = true }
+            isPreviewVisible = false
+        } else if isPreviewHiddenByProfile {
+            isPreviewHiddenByProfile = false
+            if language == .markdown { isPreviewVisible = true }
+        }
         scheduleMetricsRefresh()
+    }
+
+    /// Пользователь сам переключил предпросмотр: возвращать его при смене профиля больше не нужно.
+    func noteManualPreviewChange() {
+        isPreviewHiddenByProfile = false
+    }
+
+    /// После смены языка (в том числе переименования .txt в .md) профиль пересчитывается по тем же правилам, с учётом media.
+    /// Вызывать после выставления `isPreviewVisible`: большой профиль предпросмотр не включает. Проход по тексту допустим: операция редкая.
+    func refreshProfileAfterLanguageChange() {
+        synchronizeLiveText()
+        updatePerformanceProfile()
+        if language == .markdown, performanceProfile != .standard, isPreviewVisible {
+            isPreviewHiddenByProfile = true
+            isPreviewVisible = false
+        }
     }
 
     func setOverride(_ enabled: Bool, for feature: DocumentManagedFeature) {
         switch feature {
         case .wordWrap: featureOverrides.wordWrap = enabled
-        case .preview: featureOverrides.preview = enabled
+        case .preview:
+            noteManualPreviewChange()
+            synchronizeLiveText()
+            featureOverrides.preview = enabled
         case .syntaxHighlighting: featureOverrides.syntaxHighlighting = enabled
         case .folding: featureOverrides.folding = enabled
         case .wordCount:
             featureOverrides.wordCount = enabled
             scheduleMetricsRefresh()
         }
+    }
+
+    /// Профиль по размеру и строкам. Без явных чисел у Markdown адреса `data:` не считаются: в редакторе они токены.
+    private static func profile(
+        of text: String, language: EditorLanguage, byteCount: Int?, lineCount: Int?
+    ) -> DocumentPerformanceProfile {
+        var bytes = byteCount ?? text.utf8.count
+        var lines = lineCount ?? countLines(in: text)
+        if language == .markdown, byteCount == nil || lineCount == nil {
+            let media = MarkdownMediaTable.measureMedia(in: text)
+            if byteCount == nil { bytes -= media.bytes }
+            if lineCount == nil { lines -= media.breaks }
+        }
+        return .resolve(byteCount: bytes, lineCount: lines)
     }
 
     static func countLines(in text: String) -> Int {
@@ -452,10 +497,29 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         return count
     }
 
+    /// Сравнение побайтно (UTF-8): Swift считает канонически равные строки равными, но файл при этом изменился бы.
+    static func textsDiffer(_ a: String, _ b: String) -> Bool {
+        a.utf8.count != b.utf8.count || !bytesEqual(a, b)
+    }
+
+    /// Строки одной длины в байтах: `memcmp` по непрерывным буферам, запасной путь — побайтно.
+    private static func bytesEqual(_ a: String, _ b: String) -> Bool {
+        let fast = a.utf8.withContiguousStorageIfAvailable { left in
+            b.utf8.withContiguousStorageIfAvailable { right -> Bool in
+                guard let l = left.baseAddress, let r = right.baseAddress else { return left.count == right.count }
+                return memcmp(l, r, left.count) == 0
+            }
+        }
+        if let fast, let result = fast { return result }
+        return a.utf8.elementsEqual(b.utf8)
+    }
+
     func refreshDirtyState() {
         synchronizeLiveText()
         let currentText = text
-        let shouldBeDirty = (savedText.map { currentText != $0 } ?? true) || fileEncoding != savedEncoding
+        // Разная длина в байтах значит, что файл изменится, даже если строки канонически равны.
+        let textDiffers = savedText.map { Self.textsDiffer($0, currentText) } ?? true
+        let shouldBeDirty = textDiffers || fileEncoding != savedEncoding
         updateDirtyState(shouldBeDirty)
     }
 
@@ -472,7 +536,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         savedEncoding = fileEncoding
         let shouldBeDirty = textRevision != revision
             || hasPendingLiveEdits
-            || text != snapshot
+            || Self.textsDiffer(text, snapshot)
         updateDirtyState(shouldBeDirty)
     }
 
@@ -486,6 +550,10 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         liveTextAcknowledgement = acknowledgement
     }
 
+    func setHasUnknownMediaTokens(_ value: Bool) {
+        hasUnknownMediaTokens = value
+    }
+
     func detachLiveTextProvider(id: UUID) {
         guard liveTextProviderID == id else { return }
         synchronizeLiveText()
@@ -494,7 +562,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         liveTextAcknowledgement = nil
         hasPendingLiveEdits = false
         pendingLiveTextIsEmpty = nil
-        let shouldBeDirty = (savedText.map { text != $0 } ?? true) || fileEncoding != savedEncoding
+        let shouldBeDirty = (savedText.map { Self.textsDiffer(text, $0) } ?? true) || fileEncoding != savedEncoding
         updateDirtyState(shouldBeDirty)
     }
 
@@ -618,6 +686,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         } else if newLanguage != .markdown {
             isPreviewVisible = false
         }
+        refreshProfileAfterLanguageChange()
 
         // @Published announces before assignment. Emit once after this compound
         // update so parent views read the new title, language, and preview state.
@@ -634,11 +703,15 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         !hasPendingLiveEdits && markdownReadableText?.revision == textRevision
     }
 
+    var canInstallMarkdownReadableText: Bool {
+        language == .markdown && isWordCountEnabled && !metricsSuspended && !hasPendingLiveEdits
+    }
+
     /// При незаписанных правках модель не запрашивается: разбор вернёт результат сразу после
     /// отложенной записи через `update` контроллера, а не полной копией между клавишами.
     @discardableResult
     func installMarkdownReadableText(_ value: MarkdownReadableText, source: String) -> Bool {
-        guard language == .markdown, isWordCountEnabled, !metricsSuspended, !hasPendingLiveEdits else { return false }
+        guard canInstallMarkdownReadableText else { return false }
         isTakingMetricsSnapshot = true
         let snapshot = synchronizedSnapshot()
         isTakingMetricsSnapshot = false

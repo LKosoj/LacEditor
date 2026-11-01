@@ -170,6 +170,7 @@ final class AIWritingControllerTests: XCTestCase {
         try await Task.sleep(nanoseconds: 50_000_000)
         controller.revealReference(reference)
         XCTAssertEqual(revealed?.range, NSRange(location: 9, length: 1))
+        XCTAssertEqual(revealed?.space, .display)
         controller.run(.summary)
         try await Task.sleep(nanoseconds: 50_000_000)
         controller.insertSummary()
@@ -487,7 +488,7 @@ final class AIWritingControllerTests: XCTestCase {
         defer { fixture.tearDown() }
         var received: Data?
         let controller = AIWritingController(appState: fixture.state, loadKey: { _, _ in nil }, describe: { data, _, _ in received = data; return "alt" })
-        let request = AIImageEditRequest(documentID: fixture.document.id, revision: fixture.document.synchronizedSnapshot().revision,
+        let request = AIImageEditRequest(documentID: fixture.document.id, documentRevision: fixture.document.synchronizedSnapshot().revision, editorRevision: 0,
                                          range: NSRange(location: 0, length: (markdown as NSString).length), originalMarkdown: markdown,
                                          address: address, documentURL: nil)
         controller.prepareImageDescription(request)
@@ -504,7 +505,7 @@ final class AIWritingControllerTests: XCTestCase {
         defer { fixture.tearDown() }
         var called = false
         let controller = AIWritingController(appState: fixture.state, loadKey: { _, _ in nil }, describe: { _, _, _ in called = true; return "alt" })
-        let request = AIImageEditRequest(documentID: fixture.document.id, revision: fixture.document.synchronizedSnapshot().revision,
+        let request = AIImageEditRequest(documentID: fixture.document.id, documentRevision: fixture.document.synchronizedSnapshot().revision, editorRevision: 0,
                                          range: NSRange(location: 0, length: 3), originalMarkdown: "![]", address: "data:image/png;base64,AA==", documentURL: nil)
         controller.prepareImageDescription(request)
         for _ in 0..<20 { await Task.yield() }
@@ -525,7 +526,7 @@ final class AIWritingControllerTests: XCTestCase {
             await MainActor.run { fixture.document.text += " x" }
             return "alt"
         })
-        let request = AIImageEditRequest(documentID: fixture.document.id, revision: fixture.document.synchronizedSnapshot().revision,
+        let request = AIImageEditRequest(documentID: fixture.document.id, documentRevision: fixture.document.synchronizedSnapshot().revision, editorRevision: 0,
                                          range: NSRange(location: 0, length: (markdown as NSString).length), originalMarkdown: markdown,
                                          address: address, documentURL: nil)
         controller.prepareImageDescription(request)
@@ -633,6 +634,23 @@ final class AIWritingControllerTests: XCTestCase {
         XCTAssertEqual(live.editor.requests[1].range, NSRange(location: 8, length: 2))
         XCTAssertEqual(live.document.text, "xxxx bb y")
         XCTAssertTrue(live.controller.suggestions.isEmpty)
+    }
+
+    @MainActor
+    func testAcceptShiftsOthersByInsertedTextNotByModelReply() async throws {
+        let real = "![](data:image/png;base64,\(String(repeating: "QUJD", count: 30)))"
+        let first = AIWritingSuggestion(id: UUID(), range: NSRange(location: 0, length: 2), original: "aa", replacement: real, explanation: "")
+        let second = AIWritingSuggestion(id: UUID(), range: NSRange(location: 6, length: 2), original: "cc", replacement: "y", explanation: "")
+        let live = try makeLive(text: "aa bb cc") { _, _, _, _, _, _, _, _, _ in AIWritingResult(suggestions: [first, second], report: "", image: nil) }
+        defer { live.cleanup() }
+        live.document.language = .markdown
+        live.controller.run(.clarity)
+        await settle(live.controller)
+        live.controller.accept(first)
+        var table = MarkdownMediaTable()
+        let insertedLength = (table.incoming(real).text as NSString).length
+        XCTAssertLessThan(insertedLength, (real as NSString).length)
+        XCTAssertEqual(live.controller.suggestions.first?.range, NSRange(location: 6 + insertedLength - 2, length: 2))
     }
 
     @MainActor

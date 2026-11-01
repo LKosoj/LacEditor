@@ -90,7 +90,6 @@ struct AIWritingService {
         case .rewrite: task = (rewriteMode ?? .rephrase).task
         case .translation: task = "Translate all readable prose into the target language specified in the additional user preference. Preserve Markdown structure, link URLs, code, formulas, numbers, names and identifiers. Do not summarize, add or omit content. Return {\"replacement\":\"...\",\"report\":\"\"}."
         case .table: task = "Convert the input to a Markdown table without inventing or losing information. Return {\"replacement\":\"...\",\"report\":\"\"}."
-        case .completion: task = "Continue the input briefly. Return only the continuation in {\"replacement\":\"...\",\"report\":\"\"}."
         case .consistency:
             task = "Identify potential inconsistent terms and contradictions. Return {\"findings\":[{\"kind\":\"terminology|contradiction\",\"first\":\"exact input quote\",\"second\":\"exact input quote\",\"explanation\":\"...\"}]}. Use kind \"terminology\" when the same concept is named differently, and \"contradiction\" when two statements cannot both be true. Each finding must have two distinct exact quotes, each occurring only once in the input. Return an empty array if none."
         case .readerReview:
@@ -173,10 +172,10 @@ struct AIWritingService {
             let references = (terms + contradictions).flatMap { [$0.0, $0.1] }
             return AIWritingResult(suggestions: [], report: report, image: nil, references: references, skipped: skipped)
         }
-        if feature.isReplacement || feature == .completion {
+        if feature.isReplacement {
             guard let replacement = object["replacement"] as? String, !replacement.isEmpty else { throw AIError.invalidResponse }
-            let range = feature == .completion ? NSRange(location: nsInput.length, length: 0) : NSRange(location: 0, length: nsInput.length)
-            let suggestion = AIWritingSuggestion(id: UUID(), range: range, original: feature == .completion ? "" : input,
+            let range = NSRange(location: 0, length: nsInput.length)
+            let suggestion = AIWritingSuggestion(id: UUID(), range: range, original: input,
                                                  replacement: replacement, explanation: "")
             return AIWritingResult(suggestions: [suggestion], report: object["report"] as? String ?? "", image: nil)
         }

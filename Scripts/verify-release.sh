@@ -49,6 +49,8 @@ swiftc \
     LacEditor/Models/DocumentStatistics.swift \
     LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Models/EditorDocument.swift \
+    LacEditor/Models/MarkdownDataMedia.swift \
+    LacEditor/Editor/MarkdownMediaProjection.swift \
     LacEditor/Services/LineEndingService.swift \
     LacEditor/Services/FileService.swift \
     LacEditor/Services/JSONFormatter.swift \
@@ -77,6 +79,7 @@ swiftc \
 swiftc \
     LacEditor/App/L10n.swift \
     LacEditor/Models/MarkdownReadableText.swift \
+    LacEditor/Editor/MarkdownMediaProjection.swift \
     LacEditor/Models/MarkdownPresentation.swift \
     LacEditor/Models/MarkdownColorOverrides.swift \
     LacEditor/Models/MarkdownListStyle.swift \
@@ -98,6 +101,7 @@ swiftc \
     LacEditor/Editor/ListContinuationService.swift \
     LacEditor/Services/TextCodecService.swift \
     LacEditor/Models/MarkdownReadableText.swift \
+    LacEditor/Editor/MarkdownMediaProjection.swift \
     LacEditor/Models/MarkdownPresentation.swift \
     LacEditor/Models/MarkdownColorOverrides.swift \
     LacEditor/Models/MarkdownListStyle.swift \
@@ -110,6 +114,13 @@ swiftc \
     Verification/EditorInteractionVerification.swift \
     -o .build/editor-interaction-verification
 .build/editor-interaction-verification
+
+swiftc \
+    -parse-as-library \
+    LacEditor/Editor/MarkdownMediaProjection.swift \
+    Verification/MediaProjectionVerification.swift \
+    -o .build/media-projection-verification
+.build/media-projection-verification
 
 xcodebuild \
     -quiet \

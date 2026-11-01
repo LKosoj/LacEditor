@@ -43,6 +43,7 @@ print "[3/7] 文件读写与格式集成验证"
 swiftc \
     LacEditor/App/L10n.swift \
     LacEditor/Models/EditorLanguage.swift \
+    LacEditor/Editor/MarkdownMediaProjection.swift \
     LacEditor/Services/FileService.swift \
     Verification/FileServiceVerification.swift \
     -o .build/file-service-verification
@@ -56,6 +57,8 @@ swiftc -O -parse-as-library \
     LacEditor/Models/DocumentStatistics.swift \
     LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Models/EditorDocument.swift \
+    LacEditor/Models/MarkdownDataMedia.swift \
+    LacEditor/Editor/MarkdownMediaProjection.swift \
     LacEditor/Services/LineEndingService.swift \
     LacEditor/Services/FileService.swift \
     LacEditor/Services/TextSearchService.swift \
@@ -92,6 +95,8 @@ swiftc -O -parse-as-library \
     LacEditor/Models/DocumentStatistics.swift \
     LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Models/EditorDocument.swift \
+    LacEditor/Models/MarkdownDataMedia.swift \
+    LacEditor/Editor/MarkdownMediaProjection.swift \
     LacEditor/Models/MarkdownPresentation.swift \
     LacEditor/Models/MarkdownColorOverrides.swift \
     LacEditor/Models/MarkdownListStyle.swift \

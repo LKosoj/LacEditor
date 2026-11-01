@@ -312,9 +312,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             forEventClass: AEEventClass(kCoreEventClass),
             andEventID: AEEventID(kAEOpenDocuments)
         )
+        MarkdownTemporaryMedia.removeEverything()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        MarkdownTemporaryMedia.removeStale()
         if let error = Self.sharedManager?.startupError {
             let alert = NSAlert()
             alert.alertStyle = .critical

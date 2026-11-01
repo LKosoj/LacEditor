@@ -22,14 +22,11 @@ final class AIWritingServiceTests: XCTestCase {
         XCTAssertEqual(second.skipped, 1)
     }
 
-    func testMarkdownReplacementAndCompletion() throws {
+    func testMarkdownReplacement() throws {
         let input = "[链接](https://example.com) 😀\n```\nx\n```"
         let result = try AIWritingService.parse(response: #"{"replacement":"new","report":""}"#, input: input, feature: .translation)
         XCTAssertEqual(result.suggestions[0].original, input)
         XCTAssertEqual(result.suggestions[0].range, NSRange(location: 0, length: (input as NSString).length))
-        let completion = try AIWritingService.parse(response: #"{"replacement":" more"}"#, input: input, feature: .completion)
-        XCTAssertEqual(completion.suggestions[0].range, NSRange(location: (input as NSString).length, length: 0))
-        XCTAssertEqual(completion.suggestions[0].original, "")
     }
 
     func testFindingsRequireActualQuotes() throws {

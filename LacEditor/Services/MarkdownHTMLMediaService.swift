@@ -537,9 +537,12 @@ enum MarkdownHTMLMediaService {
             switch element.tagName().lowercased() {
             case "audio": kind = .audio
             case "video": kind = .video
+            case "embed", "object", "iframe": kind = .pdf
             default: return nil
             }
-            let allowed: Set<String> = kind == .video ? ["src", "controls", "width", "height"] : ["src", "controls"]
+            let tag = element.tagName().lowercased()
+            let allowed: Set<String> = kind == .pdf ? Set([tag == "object" ? "data" : "src", "width", "height"] + (tag == "iframe" ? [] : ["type"]))
+                : kind == .video ? ["src", "controls", "width", "height"] : ["src", "controls"]
             guard (element.getAttributes()?.asList() ?? []).allSatisfy({ allowed.contains($0.getKey().lowercased()) }) else { return nil }
             func dimension(_ name: String) throws -> String? {
                 guard element.hasAttr(name) else { return nil }
@@ -551,6 +554,16 @@ enum MarkdownHTMLMediaService {
                 return number + suffix
             }
             var sources: [String] = []
+            if kind == .pdf {
+                // Только PDF из `data:`: внешние адреса и прочие типы остаются как были.
+                let address = try element.attr(tag == "object" ? "data" : "src")
+                let type = try element.attr("type").trimmingCharacters(in: .whitespaces).lowercased()
+                guard element.children().isEmpty(), element.ownText().isEmpty,
+                      MarkdownDataMedia.fileExtension(forAddress: address) == "pdf",
+                      !element.hasAttr("type") || type == "application/pdf" else { return nil }
+                return EmbeddedMedia(kind: .pdf, sources: [address], controls: false,
+                                     width: try dimension("width"), height: try dimension("height"))
+            }
             if element.hasAttr("src") {
                 let source = try element.attr("src")
                 guard !source.isEmpty else { return nil }
@@ -1279,7 +1292,8 @@ enum MarkdownHTMLMediaService {
                                          mediaMarkers: [marker: expected], imageOnly: true, resolveMedia: resolveMedia),
               !exported.omitted, !isCancelled() else { return nil }
         do {
-            guard case .media(let media) = expected else { return nil }
+            // PDF в HTML буфера не вставить: блок копируется обычным путём.
+            guard case .media(let media) = expected, media.kind != .pdf else { return nil }
             var safeHTML = exported.html
             if !media.controls {
                 let tag = media.kind == .audio ? "audio" : "video"
@@ -1338,6 +1352,8 @@ enum MarkdownHTMLMediaService {
                 same(actual.scrolling, expected.scrolling) && same(actual.frameBorder, expected.frameBorder) &&
                 same(actual.allowTransparency, expected.allowTransparency)
         case .media(let expected):
+            // Адрес и атрибуты PDF проверяет тот же разбор, что и у отдельного блока.
+            if expected.kind == .pdf { return try embeddedMedia(in: element.outerHtml()) == expected }
             guard element.tagName() == (expected.kind == .audio ? "audio" : "video") else { return false }
             let allowed: Set<String> = expected.kind == .video ? ["src", "controls", "width", "height"] : ["src", "controls"]
             guard (element.getAttributes()?.asList() ?? []).allSatisfy({ allowed.contains($0.getKey().lowercased()) }) else { return false }

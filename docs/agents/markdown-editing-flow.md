@@ -666,3 +666,7 @@ Linux используется для чтения кода, изменения 
 - Проверены условия раннего выхода `reaches`, перенос `backgroundRanges`, пересчёт `spanEnds`/`completedEnds` после фактического снятия элементов и отсутствие изменения ключа диаграмм.
 - `git diff --check` проходит. Linux не имеет Swift-компилятора в текущем окружении; новые XCTest, AppKit-типы, TextKit, IME, поздние callbacks и производительность не запускались.
 - Обязательны macOS-проверки: быстрый набор, вставка/удаление вокруг media, таблицы, сноски, fenced blocks, заголовки, выделение и каретка, IME, поздние результаты изображений/диаграмм и baseline до/после.
+
+## Запись от 01.11.2026
+
+Автосворачивание Base64 (`scheduleAutomaticMediaFolds`, `mediaPayloadScan`) и проекция `MarkdownDataImageProjection`, описанные выше, заменены токенами media в `NSTextStorage`. Старые разделы описывают прежнюю реализацию и не переписаны; текущие правила: `editing.md`, `performance.md`, `text-state-and-background.md`, план `docs/plans/2026-11-01-media-tokens-plan.md`.

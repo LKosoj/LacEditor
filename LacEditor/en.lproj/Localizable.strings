@@ -499,6 +499,8 @@
 "缩短" = "Shorten";
 "扩写" = "Expand";
 "自动续写" = "Completion";
+"自动续写失败" = "Completion failed";
+"自动续写失败：%@" = "Completion failed: %@";
 "调整语气" = "Rewrite tone";
 "结构建议" = "Structure suggestions";
 "文档摘要" = "Summary";
@@ -1527,7 +1529,7 @@
 "需要：选中的文本" = "Needs: selected text";
 "需要：选中的文本，没有选区时使用整篇文档" = "Needs: the selection, or the whole document if nothing is selected";
 "需要：选中的文本；选择「调整语气」时还需填写期望的语气" = "Needs: selected text; for “Adjust tone”, also the tone you want";
-"需要：光标前的文字" = "Needs: the text before the cursor";
+"需要：光标前后的文字、文件类型和当前章节标题" = "Needs: the text around the cursor, the file type and the current section heading";
 "需要：选中的文本或整篇文档；可填写目标读者，留空则按普通读者" = "Needs: the selection or whole document; optionally a target reader (empty means an ordinary reader)";
 "需要：一条简短的网页搜索查询（需启用 Jina 搜索）" = "Needs: a short web search query (Jina search must be enabled)";
 "需要：选中的文本和目标语言" = "Needs: selected text and a target language";
@@ -1801,3 +1803,5 @@
 "进入阅读模式（⌥⌘R）" = "Enter reading mode (⌥⌘R)";
 "退出阅读模式（⌥⌘R）" = "Exit reading mode (⌥⌘R)";
 "退出阅读模式" = "Exit Reading Mode";
+"文档含无法识别的媒体标记，请撤销最近的修改" = "The document contains an unrecognized media marker; undo the latest changes";
+"AI 返回的媒体标记无效，已拒绝插入" = "The AI returned an invalid media marker; insertion was rejected";

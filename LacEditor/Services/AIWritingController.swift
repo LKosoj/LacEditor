@@ -6,7 +6,10 @@ import UniformTypeIdentifiers
 
 struct AIImageEditRequest {
     let documentID: UUID
-    let revision: UInt
+    /// Версия текста модели (`textRevision`): по ней проверяется файловый снимок.
+    let documentRevision: UInt
+    /// Версия текста в редакторе (`contentRevision`): по ней редактор принимает правку.
+    let editorRevision: UInt
     let range: NSRange
     let originalMarkdown: String
     let address: String
@@ -209,7 +212,7 @@ final class AIWritingController: ObservableObject {
                       self.appState?.preferences.aiFeatures.contains(.imageDescription) == true,
                       self.appState?.preferences.aiProfile(for: .imageDescription) == profile,
                       self.keyIsCurrent(key, profile: profile, role: .text, required: true) else { return }
-                self.report = text; self.generatedAt = Date(); self.resultRevision = request.revision
+                self.report = text; self.generatedAt = Date(); self.resultRevision = request.documentRevision
             } catch {
                 guard let self, !Task.isCancelled, self.generation == current else { return }
                 self.fail(error)
@@ -246,7 +249,7 @@ final class AIWritingController: ObservableObject {
                       self.currentImageEditRequest() != nil,
                       self.appState?.preferences.aiProfile(for: .imageEdit) == profile,
                       self.keyIsCurrent(key, profile: profile, role: .image, required: true) else { return }
-                self.image = result; self.generatedAt = Date(); self.resultRevision = request.revision
+                self.image = result; self.generatedAt = Date(); self.resultRevision = request.documentRevision
             } catch {
                 guard let self, !Task.isCancelled, self.generation == current else { return }
                 self.fail(error)
@@ -262,7 +265,7 @@ final class AIWritingController: ObservableObject {
               appState.preferences.aiFeatures.contains(feature),
               let document = appState.selectedDocument, document.ioState == .idle else { return nil }
         let snapshot = document.synchronizedSnapshot(), text = snapshot.text as NSString
-        guard snapshot.revision == request.revision, request.range.location <= text.length,
+        guard snapshot.revision == request.documentRevision, request.range.location <= text.length,
               request.range.length <= text.length - request.range.location,
               text.substring(with: request.range) == request.originalMarkdown else { return nil }
         return request
@@ -301,7 +304,7 @@ final class AIWritingController: ObservableObject {
             let replacement = (request.originalMarkdown as NSString).replacingCharacters(in: edit.range, with: edit.replacement)
             let apply = EditorRangeReplacementRequest(documentID: request.documentID, range: request.range,
                 originalText: request.originalMarkdown, replacementText: replacement,
-                expectedEditorRevision: request.revision, actionName: AIFeature.imageEdit.title)
+                expectedEditorRevision: request.editorRevision, actionName: AIFeature.imageEdit.title)
             NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: apply)
             if apply.wasHandled { imageEditRequest = nil; imageEditSource = nil; image = nil }
             else { post(apply.failureMessage ?? L10n.tr("编辑内容已变化，请重新执行转换")) }
@@ -344,6 +347,8 @@ final class AIWritingController: ObservableObject {
         let needsKey = feature != .sources || jina?.readerEnabled == true
         guard !needsKey || profile.isEnabled else { post(L10n.tr("AI 功能已关闭"), action: .openSettings); return }
         let extraction = EditorTextExtractionRequest(documentID: document.id, allowsTokenAtCaret: false, allowsWholeDocument: !feature.isReplacement && feature != .illustration)
+        // Модель видит текст редактора: вместо адресов `data:` в нём токены, замены вернутся с ними же.
+        extraction.space = .display
         NotificationCenter.default.post(name: EditorCommandNotification.extractTextSelection, object: extraction)
         guard let snapshot = extraction.result else {
             post(L10n.tr("请先选择需要处理的文本"), kind: .info)
@@ -401,6 +406,12 @@ final class AIWritingController: ObservableObject {
                       document.taskCoordinator.isCurrent(taskGeneration, for: .aiWriting),
                       AIJinaCredentials.isCurrent(jina, searchKey: searchKey, readerKey: readerKey, preferences: self.appState?.preferences),
                       self.keyIsCurrent(key, profile: profile, role: feature.role, required: needsKey) else { return }
+                // Выдуманный токен отклоняется до показа замены; редактор повторяет проверку при вставке.
+                var table = document.mediaTable
+                if document.language == .markdown, result.suggestions.contains(where: { !table.incoming($0.replacement).invalid.isEmpty }) {
+                    self.post(L10n.tr("AI 返回的媒体标记无效，已拒绝插入"))
+                    return
+                }
                 self.suggestions.append(contentsOf: result.suggestions)
                 self.references.append(contentsOf: result.references)
                 if !result.report.isEmpty { self.report = result.report }
@@ -445,6 +456,7 @@ final class AIWritingController: ObservableObject {
         guard let appState, appState.selectedDocumentID == snapshot.documentID,
               let document = appState.selectedDocument, document.ioState == .idle else { return nil }
         let extraction = EditorTextExtractionRequest(documentID: snapshot.documentID, allowsTokenAtCaret: false, allowsInsertionPoint: true, requiresEditable: requiresEditable, includesEditorText: true)
+        extraction.space = .display
         NotificationCenter.default.post(name: EditorCommandNotification.extractTextSelection, object: extraction)
         // nil: вкладка неактивна, идёт ввод marked text или текст только для чтения
         guard let current = extraction.result else {
@@ -471,10 +483,14 @@ final class AIWritingController: ObservableObject {
             return
         }
         let request = EditorRangeReplacementRequest(documentID: snapshot.documentID, range: range, originalText: suggestion.original, replacementText: suggestion.replacement, expectedEditorRevision: live.selection.editorRevision, actionName: feature.title)
+        request.space = .display
         NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
         guard request.wasHandled else { message = request.failureMessage ?? L10n.tr("编辑内容已变化，请重新执行转换"); return }
         // Остальные правки сдвигаются на разницу длин (UTF-16), считая в хранимых координатах принятой правки
-        let delta = (suggestion.replacement as NSString).length - range.length
+        // В редактор попал текст после подмены `data:` токенами: сдвиг считается по нему, а не по ответу модели.
+        var inserted = suggestion.replacement
+        if let document = appState.selectedDocument, document.language == .markdown { inserted = document.mediaTable.incoming(inserted).text }
+        let delta = (inserted as NSString).length - range.length
         let end = NSMaxRange(suggestion.range)
         suggestions = suggestions.filter { $0.id != suggestion.id }.map { $0.range.location >= end ? $0.shifted(by: delta) : $0 }
     }
@@ -509,6 +525,7 @@ final class AIWritingController: ObservableObject {
         let span = NSRange(location: first.range.location, length: cursor - first.range.location)
         let request = EditorRangeReplacementRequest(documentID: snapshot.documentID, range: span, originalText: live.text.substring(with: span), replacementText: composed, expectedEditorRevision: live.selection.editorRevision, actionName: feature.title)
         request.groupsUndo = true
+        request.space = .display
         NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
         guard request.wasHandled else { message = request.failureMessage ?? L10n.tr("编辑内容已变化，请重新执行转换"); return }
         suggestions = suggestions.filter { missing.contains($0.id) }
@@ -525,7 +542,7 @@ final class AIWritingController: ObservableObject {
             unavailableIDs.insert(suggestion.id)
             return
         }
-        NotificationCenter.default.post(name: EditorCommandNotification.revealSelection, object: EditorSelectionRequest(documentID: snapshot.documentID, range: range))
+        NotificationCenter.default.post(name: EditorCommandNotification.revealSelection, object: EditorSelectionRequest(documentID: snapshot.documentID, range: range, space: .display))
     }
 
     func revealReference(_ reference: AIWritingReference) {
@@ -537,7 +554,7 @@ final class AIWritingController: ObservableObject {
         let range = NSRange(location: snapshot.range.location + reference.range.location, length: reference.range.length)
         // Цитата сверяется с живым текстом: устаревшая цитата не открывается
         guard NSMaxRange(range) <= text.length, text.substring(with: range) == reference.quote else { return }
-        NotificationCenter.default.post(name: EditorCommandNotification.revealSelection, object: EditorSelectionRequest(documentID: snapshot.documentID, range: range))
+        NotificationCenter.default.post(name: EditorCommandNotification.revealSelection, object: EditorSelectionRequest(documentID: snapshot.documentID, range: range, space: .display))
     }
 
     var canInsertSummary: Bool { feature == .summary && !report.isEmpty }
@@ -566,6 +583,7 @@ final class AIWritingController: ObservableObject {
         guard location <= live.text.length else { return }
         let replacement = AIDocumentToolsController.blockSeparator(before: location, in: live.text) + block
         let request = EditorRangeReplacementRequest(documentID: snapshot.documentID, range: NSRange(location: location, length: 0), originalText: "", replacementText: replacement, expectedEditorRevision: live.selection.editorRevision, actionName: feature.title)
+        request.space = .display
         NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
         if !request.wasHandled { message = request.failureMessage ?? L10n.tr("编辑内容已变化，请重新执行转换") }
     }

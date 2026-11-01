@@ -211,4 +211,22 @@ final class DocumentMetricsTaskTests: XCTestCase {
         XCTAssertTrue(document.installMarkdownReadableText(projection, source: current))
     }
 
+    func testReadableProjectionOfDisplayTextInstallsInSourceCoordinates() {
+        var table = MarkdownMediaTable()
+        let projected = table.project("![a](data:image/png;base64,iVBORw0KGgo=) after")
+        let file = table.restore(projected.text).text
+        let display = projected.text as NSString
+        let map = MarkdownMediaMap(spans: projected.spans)
+        let document = EditorDocument(text: file, language: .markdown)
+        document.mediaTable = table
+        let projection = MarkdownReadableText(sourceLength: display.length, fragments: [
+            .init(sourceRange: display.range(of: "after"), text: "after", matchesSource: true)
+        ], unsupportedRanges: [])
+        // Экранные координаты и длина не подходят файловому тексту.
+        XCTAssertFalse(document.installMarkdownReadableText(projection, source: file))
+        let converted = projection.inSource(map, sourceLength: (file as NSString).length)
+        XCTAssertTrue(document.installMarkdownReadableText(converted, source: file))
+        XCTAssertEqual(converted.fragments[0].sourceRange, (file as NSString).range(of: "after"))
+    }
+
 }

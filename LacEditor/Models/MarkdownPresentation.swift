@@ -89,6 +89,22 @@ struct MarkdownHeading: Identifiable, Equatable, Sendable {
         self.isTopLevel = isTopLevel
     }
 
+    /// Заголовок в координатах файла; `emoji` считается от начала заголовка и не переводится.
+    func inSource(_ map: MarkdownMediaMap) -> MarkdownHeading {
+        let runs = uppercaseRuns?.map { run in
+            UppercaseRun(
+                pieces: run.pieces.map {
+                    MarkdownReadableText.Piece(sourceRange: map.sourceRange(forDisplay: $0.sourceRange), text: $0.text,
+                                               matchesSource: $0.matchesSource && !map.intersectsToken($0.sourceRange))
+                },
+                styles: run.styles, emoji: run.emoji, attachment: run.attachment)
+        }
+        return MarkdownHeading(level: level, title: title, range: map.sourceRange(forDisplay: range), emoji: emoji,
+                               displayTitle: displayTitle, number: number,
+                               plainTextRange: plainTextRange.map { map.sourceRange(forDisplay: $0) },
+                               uppercaseRuns: runs, isTopLevel: isTopLevel)
+    }
+
     func sameSource(as other: MarkdownHeading) -> Bool {
         level == other.level && title == other.title && range == other.range
     }
@@ -1813,5 +1829,26 @@ struct MarkdownElementIndex: Equatable, Sendable {
             }
         }
         return merged
+    }
+}
+
+extension MarkdownReadableText {
+    /// Разбор экранного текста в координатах файла. Участок, пересекающий токен, больше не совпадает с текстом файла
+    /// по смещениям, поэтому его `matchesSource` сбрасывается (частичный выбор даст «нет данных»).
+    func inSource(_ map: MarkdownMediaMap, sourceLength: Int) -> MarkdownReadableText {
+        func converted(_ range: NSRange) -> (range: NSRange, same: Bool) {
+            (map.sourceRange(forDisplay: range), !map.intersectsToken(range))
+        }
+        func piece(_ value: Piece) -> Piece {
+            let mapped = converted(value.sourceRange)
+            return Piece(sourceRange: mapped.range, text: value.text, matchesSource: value.matchesSource && mapped.same)
+        }
+        let mappedFragments = fragments.map { fragment -> Fragment in
+            let mapped = converted(fragment.sourceRange)
+            return Fragment(sourceRange: mapped.range, text: fragment.text, matchesSource: fragment.matchesSource && mapped.same,
+                            pieces: fragment.pieces?.map(piece))
+        }
+        return MarkdownReadableText(sourceLength: sourceLength, fragments: mappedFragments,
+                                    unsupportedRanges: unsupportedRanges.map { map.sourceRange(forDisplay: $0) })
     }
 }

@@ -197,6 +197,7 @@ final class AIDictationController: ObservableObject {
         guard let appState, appState.selectedDocumentID == documentID, let document = appState.selectedDocument,
               document.ioState == .idle, !document.isReadingMode else { return false }
         let extraction = EditorTextExtractionRequest(documentID: documentID, allowsTokenAtCaret: false, allowsInsertionPoint: true, requiresEditable: true, includesEditorText: true)
+        extraction.space = .display
         NotificationCenter.default.post(name: EditorCommandNotification.extractTextSelection, object: extraction)
         guard let selection = extraction.result else { return false }
         let location = NSMaxRange(selection.range)
@@ -205,6 +206,7 @@ final class AIDictationController: ObservableObject {
         let request = EditorRangeReplacementRequest(documentID: documentID, range: NSRange(location: location, length: 0),
             originalText: "", replacementText: replacement, expectedEditorRevision: selection.editorRevision,
             actionName: AIFeature.voiceDraft.title)
+        request.space = .display
         NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
         return request.wasHandled
     }

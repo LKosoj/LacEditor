@@ -4,6 +4,8 @@ import XCTest
 @testable import LacEditor
 
 final class AICompletionTests: XCTestCase {
+    private static let context = AICompletionContext(before: "text", after: "", fileType: "Markdown", heading: nil, isProse: true)
+
     @MainActor
     func testStaleCompletionIsNotShown() async {
         let controller = AICompletionController { _, _, _ in "continuation" }
@@ -13,7 +15,7 @@ final class AICompletionTests: XCTestCase {
         var current = true
         var profile = AIModelProfile.default(for: .text)
         profile.isEnabled = true
-        controller.schedule(inputProvider: { "text" }, keyProvider: { nil }, coordinator: coordinator, profile: profile,
+        controller.schedule(delay: 0, inputProvider: { Self.context }, keyProvider: { nil }, coordinator: coordinator, profile: profile,
                             isCurrent: { current }, show: { _, _ in shown.fulfill() })
         current = false
         await fulfillment(of: [shown], timeout: 1)
@@ -27,25 +29,71 @@ final class AICompletionTests: XCTestCase {
         shown.isInverted = true
         var profile = AIModelProfile.default(for: .text)
         profile.isEnabled = true
-        controller.schedule(inputProvider: { "text" }, keyProvider: { nil }, coordinator: coordinator, profile: profile,
+        controller.schedule(delay: 0, inputProvider: { Self.context }, keyProvider: { nil }, coordinator: coordinator, profile: profile,
                             isCurrent: { true }, show: { _, _ in shown.fulfill() })
         controller.cancel()
         await fulfillment(of: [shown], timeout: 1)
     }
 
     @MainActor
-    func testCompletionOverThresholdIsSkipped() async {
+    func testNoContextSkipsRequest() async {
         var calls = 0
         let controller = AICompletionController { _, _, _ in calls += 1; return "continuation" }
         let coordinator = DocumentTaskCoordinator()
-        let shown = expectation(description: "large completion")
+        let shown = expectation(description: "no context")
         shown.isInverted = true
         var profile = AIModelProfile.default(for: .text)
         profile.isEnabled = true
-        controller.schedule(inputProvider: { String(repeating: "a", count: AIRequestSize.threshold + 1) }, keyProvider: { nil }, coordinator: coordinator, profile: profile,
+        controller.schedule(delay: 0, inputProvider: { nil }, keyProvider: { nil }, coordinator: coordinator, profile: profile,
                             isCurrent: { true }, show: { _, _ in shown.fulfill() })
-        await fulfillment(of: [shown], timeout: 1.5)
+        await fulfillment(of: [shown], timeout: 0.5)
         XCTAssertEqual(calls, 0)
+    }
+
+    @MainActor
+    func testRepeatedRequestComesFromCache() async {
+        var calls = 0
+        let controller = AICompletionController { _, _, _ in calls += 1; return " more" }
+        let coordinator = DocumentTaskCoordinator()
+        var profile = AIModelProfile.default(for: .text)
+        profile.isEnabled = true
+        for _ in 0..<2 {
+            let shown = expectation(description: "completion")
+            controller.schedule(delay: 0, inputProvider: { Self.context }, keyProvider: { nil }, coordinator: coordinator, profile: profile,
+                                isCurrent: { true }, show: { text, _ in XCTAssertEqual(text, " more"); shown.fulfill() })
+            await fulfillment(of: [shown], timeout: 2)
+        }
+        XCTAssertEqual(calls, 1)
+    }
+
+    @MainActor
+    func testFailureIsReportedWithoutServerDetail() async {
+        let controller = AICompletionController { _, _, _ in throw AIError.http(404, "secret detail") }
+        let coordinator = DocumentTaskCoordinator()
+        var profile = AIModelProfile.default(for: .text)
+        profile.isEnabled = true
+        let failed = expectation(description: "failure")
+        controller.schedule(delay: 0, inputProvider: { Self.context }, keyProvider: { nil }, coordinator: coordinator, profile: profile,
+                            isCurrent: { true }, show: { _, _ in XCTFail("Failure displayed a completion") },
+                            fail: { message in
+                                XCTAssertEqual(message, L10n.tr("自动续写失败：%@", L10n.tr("AI 服务返回错误（HTTP %d）", 404)))
+                                XCTAssertFalse(message.contains("secret"))
+                                failed.fulfill()
+                            })
+        await fulfillment(of: [failed], timeout: 2)
+    }
+
+    @MainActor
+    func testCancelledRequestIsNotReportedAsFailure() async {
+        let controller = AICompletionController { _, _, _ in throw CancellationError() }
+        let coordinator = DocumentTaskCoordinator()
+        var profile = AIModelProfile.default(for: .text)
+        profile.isEnabled = true
+        let failed = expectation(description: "cancellation")
+        failed.isInverted = true
+        controller.schedule(delay: 0, inputProvider: { Self.context }, keyProvider: { nil }, coordinator: coordinator, profile: profile,
+                            isCurrent: { true }, show: { _, _ in }, fail: { _ in failed.fulfill() })
+        await fulfillment(of: [failed], timeout: 0.5)
     }
 
     @MainActor
@@ -55,7 +103,7 @@ final class AICompletionTests: XCTestCase {
         let shown = expectation(description: "completion")
         var profile = AIModelProfile.default(for: .text)
         profile.isEnabled = true
-        controller.schedule(inputProvider: { "text" }, keyProvider: { nil }, coordinator: coordinator, profile: profile,
+        controller.schedule(delay: 0, inputProvider: { Self.context }, keyProvider: { nil }, coordinator: coordinator, profile: profile,
                             isCurrent: { true }, show: { text, _ in
                                 XCTAssertEqual(text, " continuation")
                                 shown.fulfill()
@@ -70,7 +118,7 @@ final class AICompletionTests: XCTestCase {
         var keyReads = 0
         var profile = AIModelProfile.default(for: .text)
         profile.isEnabled = true
-        controller.schedule(inputProvider: { inputReads += 1; return "text" },
+        controller.schedule(delay: 700_000_000, inputProvider: { inputReads += 1; return Self.context },
                             keyProvider: { keyReads += 1; return nil },
                             coordinator: coordinator, profile: profile,
                             isCurrent: { true }, show: { _, _ in XCTFail("Cancelled request displayed") })
@@ -91,7 +139,7 @@ final class AICompletionTests: XCTestCase {
         shown.isInverted = true
         var profile = AIModelProfile.default(for: .text)
         profile.isEnabled = true
-        controller.schedule(inputProvider: { "text" }, keyProvider: { key }, coordinator: coordinator,
+        controller.schedule(delay: 0, inputProvider: { Self.context }, keyProvider: { key }, coordinator: coordinator,
                             profile: profile, isCurrent: { true }, show: { _, _ in shown.fulfill() })
         await fulfillment(of: [shown], timeout: 1)
     }

@@ -156,6 +156,27 @@ final class AIAgentEditsTests: XCTestCase {
         XCTAssertTrue(draft.edits.isEmpty)
     }
 
+    func testProposeRefusesOldTextCuttingMediaToken() throws {
+        var table = MarkdownMediaTable()
+        let token = table.incoming("![a](data:image/png;base64,iVBORw0KGgo=)").text
+        let text = "before " + token + " after"
+        var document = openDocument(text)
+        document.mediaTable = table
+        let draft = AIAgentEditDraft()
+        // Оканчивается внутри токена и совпадает один раз.
+        let cutEnd = String(token.dropLast(5))
+        guard case let .failed(code, message) = propose(draft, document, "before " + cutEnd, "x") else { return XCTFail("expected refusal") }
+        XCTAssertEqual(code, .badArguments)
+        XCTAssertTrue(message.contains("cuts through a media token"), message)
+        // Начинается внутри токена.
+        let cutStart = String(token.dropFirst(8))
+        guard case let .failed(startCode, _) = propose(draft, document, cutStart + " after", "x") else { return XCTFail("expected refusal") }
+        XCTAssertEqual(startCode, .badArguments)
+        XCTAssertTrue(draft.edits.isEmpty)
+        // Токен целиком и текст рядом принимаются.
+        _ = try added(propose(draft, document, "before " + token, "x"))
+    }
+
     func testEmptyOldTextAndNoChange() async throws {
         let tools = tools(open: [openDocument("text")])
         let empty = try await proposeCall(tools, "note.md", "", "x")
@@ -235,6 +256,19 @@ final class AIAgentEditsTests: XCTestCase {
         let blocked = AIAgentEditEngine.plan(edits: [dependent], on: "A1 B2", earlierPending: [first.id])
         XCTAssertEqual(blocked.failed.map { $0.problem }, [.needsEarlier])
         XCTAssertTrue(blocked.applied.isEmpty)
+    }
+
+    func testPlanSkipsEditCuttingMediaToken() {
+        var table = MarkdownMediaTable()
+        let token = table.incoming("![a](data:image/png;base64,iVBORw0KGgo=)").text
+        let text = "before " + token + " after"
+        let cutting = edit("image/png", "x", number: 1)
+        // Без таблицы правка применяется как обычный текст, с таблицей - нет, текст не меняется.
+        XCTAssertEqual(AIAgentEditEngine.plan(edits: [cutting], on: text, earlierPending: []).applied, [cutting.id])
+        let guarded = AIAgentEditEngine.plan(edits: [cutting], on: text, earlierPending: [], table: table)
+        XCTAssertEqual(guarded.text, text)
+        XCTAssertTrue(guarded.applied.isEmpty)
+        XCTAssertEqual(guarded.failed.map { $0.problem }, [.notFound])
     }
 
     func testRejectMakesDependentUnavailable() throws {

@@ -123,8 +123,10 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     }
 
     private(set) var foldedRange: NSRange?
-    private(set) var automaticMediaFoldedRanges: [NSRange] = []
-    var showMarkdownImagesWhenMediaFolded = false
+    /// Первый токен media, пересекающий символы `first...last`, и размер его адреса в файле.
+    /// Токен рисуется подписью `… 3,2 МБ`; данные берутся из карты токенов, здесь они не хранятся.
+    var mediaLabel: ((_ first: Int, _ last: Int) -> (range: NSRange, sourceBytes: Int)?)?
+    private var mediaLabelTexts: [Int: String] = [:]
     private struct MarkdownMarker {
         var range: NSRange
         var owner: NSRange
@@ -1127,8 +1129,6 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     private func imageIsVisible(_ range: NSRange) -> Bool {
         guard textContainers.first?.textView?.hasMarkedText() != true else { return false }
         if let foldedRange, NSIntersectionRange(foldedRange, range).length > 0 { return false }
-        if !showMarkdownImagesWhenMediaFolded,
-           automaticMediaFoldedRanges.contains(where: { NSIntersectionRange($0, range).length > 0 }) { return false }
         guard let revealed = markdownRevealedRange, touches(range, revealed) else { return true }
 
         // Only source-backed blocks are revealable.  In particular, an image
@@ -1524,6 +1524,15 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             guard glyphs.length > 0 else { continue }
             let rect = boundingRect(forGlyphRange: glyphs, in: container).offsetBy(dx: origin.x, dy: origin.y)
             (replacement.text as NSString).draw(in: rect, withAttributes: textReplacementAttributes(at: replacement.range.location, in: container))
+        }
+        var tokenFrom = visible.location
+        while tokenFrom < NSMaxRange(visible), let token = mediaLabel?(tokenFrom, NSMaxRange(visible) - 1) {
+            tokenFrom = NSMaxRange(token.range)
+            guard let label = shownMediaLabel(at: token.range.location) else { continue }
+            let glyphs = glyphRange(forCharacterRange: token.range, actualCharacterRange: nil)
+            guard glyphs.length > 0 else { continue }
+            let rect = boundingRect(forGlyphRange: glyphs, in: container).offsetBy(dx: origin.x, dy: origin.y)
+            (label as NSString).draw(in: rect, withAttributes: textReplacementAttributes(at: token.range.location, in: container))
         }
         var headingIndex = upperBound(visible.location, count: markdownNumberedHeadingsBySource.count) { markdownNumberedHeadingsBySource[$0].range.location }
         if headingIndex > 0 { headingIndex -= 1 }
@@ -2038,6 +2047,34 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         return NSIntersectionRange(lhs, rhs).length > 0
     }
 
+    private func mediaLabelText(_ bytes: Int) -> String {
+        if let text = mediaLabelTexts[bytes] { return text }
+        let text = "… " + ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+        mediaLabelTexts[bytes] = text
+        return text
+    }
+
+    /// Токен под символом, если его надо показать подписью. Скрытие изображением проверяет вызывающий.
+    private func mediaLabelToken(at location: Int, hasMarkedText: Bool) -> (range: NSRange, text: String)? {
+        guard !hasMarkedText, let token = mediaLabel?(location, location),
+              !isCharacterFolded(location), !isMarkdownMarkerHidden(at: location, hasMarkedText: hasMarkedText),
+              tableLineIndex(at: location) == nil else { return nil }
+        return (token.range, mediaLabelText(token.sourceBytes))
+    }
+
+    private func imageCovers(_ location: Int) -> Bool {
+        markdownImages.contains { NSLocationInRange(location, $0.range) && imageIsVisible($0.range) }
+            || markdownMedia.contains { NSLocationInRange(location, $0.range) && imageIsVisible($0.range) }
+            || markdownBlockImages.contains { NSLocationInRange(location, $0.range) && imageIsVisible($0.range) }
+    }
+
+    /// Подпись токена с первым символом `location`.
+    private func shownMediaLabel(at location: Int) -> String? {
+        guard let token = mediaLabelToken(at: location, hasMarkedText: textContainers.first?.textView?.hasMarkedText() == true),
+              token.range.location == location, !imageCovers(location) else { return nil }
+        return token.text
+    }
+
     private func textReplacement(at location: Int) -> MarkdownTextReplacement? {
         textReplacement(at: location, hasMarkedText: textContainers.first?.textView?.hasMarkedText() == true)
     }
@@ -2200,73 +2237,20 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         }
     }
 
-    /// Возвращает, изменился ли список: без изменений раскладку обновлять не нужно.
-    @discardableResult
-    func setAutomaticMediaFoldedRanges(_ ranges: [NSRange]) -> Bool {
-        let safeRanges = ranges.compactMap(clampedRange).sorted { $0.location < $1.location }
-        guard automaticMediaFoldedRanges != safeRanges else { return false }
-        let previous = automaticMediaFoldedRanges
-        automaticMediaFoldedRanges = safeRanges
-        for range in previous { invalidateFoldGlyphs(in: range) }
-        for range in safeRanges { invalidateFoldGlyphs(in: range) }
-        return true
-    }
-
-    /// Вызывается до правки. Чистый сдвиг глифы не трогает: TextKit сам переносит уже созданные;
-    /// без него следующая установка увидела бы другой список и перестроила всю раскладку.
-    func shiftAutomaticMediaFolds(range: NSRange, replacementLength: Int) {
-        guard !automaticMediaFoldedRanges.isEmpty else { return }
-        let end = NSMaxRange(range)
-        let delta = replacementLength - range.length
-        var kept: [NSRange] = []
-        for folded in automaticMediaFoldedRanges {
-            if NSMaxRange(folded) <= range.location {
-                kept.append(folded)
-            } else if folded.location >= end {
-                kept.append(NSRange(location: folded.location + delta, length: folded.length))
-            } else {
-                invalidateFoldGlyphs(in: folded)
-            }
-        }
-        automaticMediaFoldedRanges = kept
-    }
-
-    func removeAutomaticMediaFold(containing location: Int) -> Bool {
-        guard let index = automaticMediaFoldedRanges.firstIndex(where: {
-            location >= $0.location && location <= NSMaxRange($0)
-        }) else { return false }
-        let range = automaticMediaFoldedRanges.remove(at: index)
-        invalidateFoldGlyphs(in: range)
-        return true
-    }
-
-    func toggleAutomaticMediaFold(_ range: NSRange) {
-        if let index = automaticMediaFoldedRanges.firstIndex(of: range) {
-            let previous = automaticMediaFoldedRanges.remove(at: index)
-            invalidateFoldGlyphs(in: previous)
-        } else if let safe = clampedRange(range) {
-            automaticMediaFoldedRanges.append(safe)
-            automaticMediaFoldedRanges.sort { $0.location < $1.location }
-            invalidateFoldGlyphs(in: safe)
-        }
-    }
-
     func intersectsFoldedRange(_ range: NSRange) -> Bool {
         if let foldedRange, NSIntersectionRange(foldedRange, range).length > 0 { return true }
-        return automaticMediaFoldedRanges.contains { NSIntersectionRange($0, range).length > 0 }
+        return false
     }
 
     func isCharacterFolded(_ characterIndex: Int) -> Bool {
         if let foldedRange, NSLocationInRange(characterIndex, foldedRange) { return true }
-        return automaticMediaFoldedRanges.contains { NSLocationInRange(characterIndex, $0) }
+        return false
     }
 
     func isCharacterRangeFullyFolded(_ characterRange: NSRange) -> Bool {
         guard characterRange.length > 0 else { return false }
         if let foldedRange, NSIntersectionRange(foldedRange, characterRange).length == characterRange.length { return true }
-        return automaticMediaFoldedRanges.contains {
-            NSIntersectionRange($0, characterRange).length == characterRange.length
-        }
+        return false
     }
 
     /// Есть ли в пакете символов то, что могут скрыть или заменить проверки `shouldGenerateGlyphs`. Списки упорядочены и читаются двоичным поиском, как и в посимвольных проверках.
@@ -2276,7 +2260,8 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             let index = upperBound(last, count: count, location: location)
             return index > 0 && end(index - 1) > first
         }
-        return reaches(markdownMarkers.count, location: { markdownMarkers[$0].range.location }, end: { markdownMarkerEnds[$0] })
+        return mediaLabel?(first, last) != nil
+            || reaches(markdownMarkers.count, location: { markdownMarkers[$0].range.location }, end: { markdownMarkerEnds[$0] })
             || reaches(markdownTextReplacements.count, location: { markdownTextReplacements[$0].range.location }, end: { NSMaxRange(markdownTextReplacements[$0].range) })
             || reaches(markdownListMarkers.count, location: { markdownListMarkers[$0].range.location }, end: { NSMaxRange(markdownListMarkers[$0].range) })
             || reaches(markdownInlineImages.count, location: { markdownInlineImages[$0].range.location }, end: { NSMaxRange(markdownInlineImages[$0].range) })
@@ -2293,7 +2278,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         font: NSFont,
         forGlyphRange glyphRange: NSRange
     ) -> Int {
-        guard foldedRange != nil || !automaticMediaFoldedRanges.isEmpty || !markdownMarkers.isEmpty || !markdownTextReplacements.isEmpty || !markdownListMarkers.isEmpty || !markdownImages.isEmpty || !markdownBlockImages.isEmpty || !markdownInlineImages.isEmpty || !markdownMedia.isEmpty || !markdownTOCRanges.isEmpty || !markdownPageBreaks.isEmpty || !tableLines.isEmpty else { return 0 }
+        guard foldedRange != nil || mediaLabel?(0, Int.max) != nil || !markdownMarkers.isEmpty || !markdownTextReplacements.isEmpty || !markdownListMarkers.isEmpty || !markdownImages.isEmpty || !markdownBlockImages.isEmpty || !markdownInlineImages.isEmpty || !markdownMedia.isEmpty || !markdownTOCRanges.isEmpty || !markdownPageBreaks.isEmpty || !tableLines.isEmpty else { return 0 }
 
         // A data-URI image can occupy many glyph-generation batches. Once a
         // batch is wholly inside an installed block image, every glyph is
@@ -2326,6 +2311,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
 
         let hasMarkedText = textContainers.first?.textView?.hasMarkedText() == true
         var visibleImageRanges: [NSRange] = []
+        var batchHasMediaToken = false
         if glyphRange.length > 0 {
             var firstBatchCharacter = characterIndexes[0]
             var lastBatchCharacter = firstBatchCharacter
@@ -2345,6 +2331,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
                 && NSMaxRange(entry.range) > firstBatchCharacter && imageIsVisible(entry.range) {
                 visibleImageRanges.append(entry.range)
             }
+            batchHasMediaToken = mediaLabel?(firstBatchCharacter, lastBatchCharacter) != nil
             // В пакете обычного текста нет ни одного элемента: посимвольные проверки ниже ничего не изменят.
             if visibleImageRanges.isEmpty, !batchTouchesHiddenElements(from: firstBatchCharacter, through: lastBatchCharacter) { return 0 }
         }
@@ -2366,6 +2353,12 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             let character = characterIndexes[offset]
             if let replacement = textReplacement(at: character, hasMarkedText: hasMarkedText) {
                 adjustedProperties[offset] = character == replacement.range.location ? .controlCharacter : .null
+                didFoldGlyph = true
+                continue
+            }
+            if batchHasMediaToken, let token = mediaLabelToken(at: character, hasMarkedText: hasMarkedText),
+               !visibleImageRanges.contains(where: { NSLocationInRange(character, $0) }) {
+                adjustedProperties[offset] = character == token.range.location ? .controlCharacter : .null
                 didFoldGlyph = true
                 continue
             }
@@ -2396,7 +2389,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
 
     func layoutManager(_ layoutManager: NSLayoutManager, shouldUse action: NSLayoutManager.ControlCharacterAction,
                        forControlCharacterAt charIndex: Int) -> NSLayoutManager.ControlCharacterAction {
-        (textReplacement(at: charIndex)?.range.location == charIndex || inlineImage(at: charIndex)?.range.location == charIndex || listMarker(at: charIndex)?.range.location == charIndex) ? .whitespace : action
+        (textReplacement(at: charIndex)?.range.location == charIndex || inlineImage(at: charIndex)?.range.location == charIndex || listMarker(at: charIndex)?.range.location == charIndex || shownMediaLabel(at: charIndex) != nil) ? .whitespace : action
     }
 
     func layoutManager(_ layoutManager: NSLayoutManager, boundingBoxForControlGlyphAt glyphIndex: Int,
@@ -2404,6 +2397,10 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
                        glyphPosition: NSPoint, characterIndex: Int) -> NSRect {
         if let replacement = textReplacement(at: characterIndex), replacement.range.location == characterIndex {
             let size = (replacement.text as NSString).size(withAttributes: textReplacementAttributes(at: characterIndex, in: textContainer))
+            return NSRect(origin: .zero, size: size)
+        }
+        if let label = shownMediaLabel(at: characterIndex) {
+            let size = (label as NSString).size(withAttributes: textReplacementAttributes(at: characterIndex, in: textContainer))
             return NSRect(origin: .zero, size: size)
         }
         if let marker = listMarker(at: characterIndex), marker.range.location == characterIndex {

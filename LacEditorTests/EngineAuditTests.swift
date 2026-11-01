@@ -8,7 +8,8 @@ final class EngineAuditTests: XCTestCase {
         let text = "😀 data:image/png;base64,\(payload)\u{301}x\nстрока data:image/png;base64,\(payload) конец"
         let raw = text as NSString
         let index = LogicalLineIndex(text: text)
-        let runs = FoldService.mediaPayloadRanges(in: text)
+        let first = raw.range(of: payload, options: .literal)
+        let runs = [first, raw.range(of: payload, options: .literal, range: NSRange(location: NSMaxRange(first), length: raw.length - NSMaxRange(first)))]
         XCTAssertEqual(runs.count, 2)
         for location in 0...raw.length {
             let plain = index.position(at: location, in: raw)
@@ -78,7 +79,7 @@ final class EngineAuditTests: XCTestCase {
         let backend = TreeSitterJavaScriptBackend()
         let id = UUID()
         let source = "const value = 1; // 中文"
-        let oldRange = (source as NSString).range(of: "value")
+        let oldRange = (source as NSString).range(of: "value", options: .literal)
         let updated = (source as NSString).replacingCharacters(in: oldRange, with: "longerName")
         let edit = DocumentEditDelta(documentID: id, revision: 2, editedRange: oldRange,
             replacementLength: 10, changeInLength: 5, changedLineRange: nil)

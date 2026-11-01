@@ -209,8 +209,11 @@ final class AIAgentController: ObservableObject {
         let root = appState.folderWorkspace.rootURL?.standardizedFileURL
         let documents = AIContextService.availableDocuments(in: appState).map { document -> AIAgentOpenDocument in
             let snapshot = document.synchronizedSnapshot()
+            // Модель видит и правит текст с токенами media; в файловый текст он переводится один раз, в `accept`.
+            let isMarkdown = document.language == .markdown
             return AIAgentOpenDocument(id: document.id, name: document.displayName, relativePath: relativePath(of: document.url, root: root),
-                                       text: snapshot.text, revision: snapshot.revision)
+                                       text: isMarkdown ? document.mediaTable.project(snapshot.text).text : snapshot.text,
+                                       revision: snapshot.revision, mediaTable: isMarkdown ? document.mediaTable : nil)
         }
         return AIAgentScope(root: root, openDocuments: documents)
     }
@@ -614,13 +617,18 @@ final class AIAgentController: ObservableObject {
         guard !document.isReadingMode else { post(L10n.tr("阅读模式下无法修改")); return }
         // Актуальный текст из документа, а не из снимка запуска
         let actual = document.synchronizedSnapshot().text
+        // Черновик правок в токенном тексте (как у модели), документ и запрос к редактору в файловом.
+        let isMarkdown = document.language == .markdown
+        let tokens = isMarkdown ? document.mediaTable.project(actual).text : actual
         let all = editDraft.pending(documentID: documentID)
         let selected = all.filter { ids.contains($0.id) && $0.problem == nil }
         guard let lastNumber = selected.map(\.number).max() else { return }
         let earlier = Set(all.filter { $0.problem == nil && !ids.contains($0.id) && $0.number < lastNumber }.map(\.id))
-        let plan = AIAgentEditEngine.plan(edits: selected, on: actual, earlierPending: earlier)
-        guard !plan.applied.isEmpty, let change = AIAgentEditEngine.enclosingChange(from: actual, to: plan.text) else {
-            editDraft.settle(documentID: documentID, applied: [], newBase: actual)
+        let plan = AIAgentEditEngine.plan(edits: selected, on: tokens, earlierPending: earlier,
+                                           table: isMarkdown ? document.mediaTable : nil)
+        let file = isMarkdown ? document.mediaTable.restore(plan.text).text : plan.text
+        guard !plan.applied.isEmpty, let change = AIAgentEditEngine.enclosingChange(from: actual, to: file) else {
+            editDraft.settle(documentID: documentID, applied: [], newBase: tokens, table: isMarkdown ? document.mediaTable : nil)
             refreshEdits()
             post(plan.failed.count == 1 ? Self.reason(for: plan.failed[0].problem) : L10n.tr("没有可应用的修改"))
             return
@@ -638,7 +646,8 @@ final class AIAgentController: ObservableObject {
         request.resultingSelection = NSRange(location: change.range.location, length: 0)
         NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
         guard request.wasHandled else { post(request.failureMessage ?? L10n.tr("当前文本无法修改")); return }
-        editDraft.settle(documentID: documentID, applied: Set(plan.applied), newBase: plan.text)
+        editDraft.settle(documentID: documentID, applied: Set(plan.applied), newBase: isMarkdown ? document.mediaTable.project(file).text : plan.text,
+                         table: isMarkdown ? document.mediaTable : nil)
         refreshEdits()
         post(plan.failed.isEmpty ? L10n.tr("已接受 %lld 处修改", plan.applied.count)
                                  : L10n.tr("已接受 %lld 处修改，%lld 处无法应用", plan.applied.count, plan.failed.count), kind: .info)

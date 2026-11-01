@@ -12,6 +12,8 @@ struct AIAgentOpenDocument: Sendable {
     var isDraft = false
     /// Файл не открыт в редакторе: документ создан из черновика правок и в open_documents не попадает.
     var isClosedFile = false
+    /// Markdown открытого документа: `text` содержит токены media вместо адресов `data:`, таблица нужна для проверки ответов модели.
+    var mediaTable: MarkdownMediaTable?
 }
 
 /// Неизменяемый снимок с главного потока (текст через `synchronizedSnapshot()`); дальше инструменты его не обновляют.
@@ -776,6 +778,11 @@ final class AIAgentTools: @unchecked Sendable {
             if hasUTF8BOM(url) { throw ToolFailure(code: .notOpen, message: closedNotEditable) }
             document = AIAgentOpenDocument(id: UUID(), name: read.name, relativePath: relative, text: read.text, revision: 0, isDraft: false, isClosedFile: true)
             closed = AIAgentClosedFile(url: url, relativePath: relative, snapshot: snapshot)
+        }
+        // Токен принимается только свой: известный открытому документу. Закрытый файл токенов не содержит.
+        var knownTokens = document.isClosedFile ? MarkdownMediaTable() : document.mediaTable
+        if knownTokens?.incoming(newText).invalid.isEmpty == false {
+            throw ToolFailure(code: .badArguments, message: "new_text contains a media token (#lac-media-...) that is not in this document. Copy tokens from the document text unchanged, or leave the media out.")
         }
         let number: Int, pending: Int
         switch draft.propose(callKey: callKey, document: document, path: path, oldText: oldText, newText: newText, explanation: explanation, epoch: epoch, closed: closed) {

@@ -11,6 +11,55 @@ final class DocumentSaveStatusTests: XCTestCase {
         return document
     }
 
+    func testDirtyComparesLengthThenContent() {
+        let document = EditorDocument(text: "abc", url: URL(fileURLWithPath: "/tmp/dirty-length.md"))
+        document.text = "abd"
+        document.refreshDirtyState()
+        XCTAssertTrue(document.isDirty)
+        document.text = "abcd"
+        document.refreshDirtyState()
+        XCTAssertTrue(document.isDirty)
+        document.text = "abc"
+        document.refreshDirtyState()
+        XCTAssertFalse(document.isDirty)
+    }
+
+    func testCanonicallyEqualTextWithDifferentBytesIsDifferent() {
+        let precomposed = "\u{0439}", decomposed = "\u{0438}\u{0306}"
+        XCTAssertEqual(precomposed, decomposed)
+        XCTAssertTrue(EditorDocument.textsDiffer(precomposed, decomposed))
+        XCTAssertFalse(EditorDocument.textsDiffer(precomposed, precomposed))
+        // Два диакритика в разном порядке: длина та же, строки канонически равны, байты разные.
+        let orderA = "a\u{0323}\u{0301}", orderB = "a\u{0301}\u{0323}"
+        XCTAssertEqual(orderA, orderB)
+        XCTAssertEqual(orderA.utf8.count, orderB.utf8.count)
+        XCTAssertTrue(EditorDocument.textsDiffer(orderA, orderB))
+        let document = EditorDocument(text: precomposed, url: URL(fileURLWithPath: "/tmp/canonical.md"))
+        document.markSaved(snapshot: decomposed, revision: document.textRevision)
+        XCTAssertTrue(document.isDirty, "markSaved(snapshot:)")
+        document.markSaved()
+        XCTAssertFalse(document.isDirty)
+        document.text = decomposed
+        document.refreshDirtyState()
+        XCTAssertTrue(document.isDirty, "refreshDirtyState")
+        let id = UUID()
+        document.markSaved()
+        document.attachLiveTextProvider(id: id, provider: { nil }, acknowledgement: { _ in })
+        document.text = precomposed
+        document.detachLiveTextProvider(id: id)
+        XCTAssertTrue(document.isDirty, "detachLiveTextProvider")
+    }
+
+    func testRenameToMarkdownRecomputesProfileWithoutMediaBytes() {
+        let payload = String(repeating: "A", count: 21 * 1_048_576)
+        let text = "![a](data:image/png;base64,\(payload))\n"
+        let document = EditorDocument(text: text, url: URL(fileURLWithPath: "/tmp/media-rename.txt"))
+        XCTAssertEqual(document.performanceProfile, .large)
+        document.updateLocation(to: URL(fileURLWithPath: "/tmp/media-rename.md"))
+        XCTAssertEqual(document.language, .markdown)
+        XCTAssertEqual(document.performanceProfile, .standard)
+    }
+
     func testCleanDocumentStatuses() {
         XCTAssertEqual(EditorDocument(text: "a", url: URL(fileURLWithPath: "/tmp/a.md")).saveStatus, .saved)
         XCTAssertEqual(EditorDocument(text: "").saveStatus, .newDocument)

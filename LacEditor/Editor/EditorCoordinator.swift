@@ -3,106 +3,6 @@ import os
 import SwiftUI
 import UniformTypeIdentifiers
 
-private struct MarkdownDataImageProjection {
-    struct Entry {
-        let token: String
-        let source: String
-    }
-
-    private(set) var entries: [Entry] = []
-
-    mutating func project(_ source: String) -> String {
-        entries.removeAll(keepingCapacity: true)
-        let pattern = #"data:image/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=]{16384,}"#
-        guard let expression = try? NSRegularExpression(pattern: pattern) else { return source }
-        let raw = source as NSString
-        let matches = expression.matches(in: source, range: NSRange(location: 0, length: raw.length))
-        guard !matches.isEmpty else { return source }
-        let projected = NSMutableString(string: source)
-        for (index, match) in matches.enumerated().reversed() {
-            let original = raw.substring(with: match.range)
-            guard let comma = original.firstIndex(of: ",") else { continue }
-            let mediaType = String(original[..<comma])
-            let token = "\(mediaType),AA==#lac-image-\(index)-\(UUID().uuidString)"
-            entries.append(Entry(token: token, source: original))
-            projected.replaceCharacters(in: match.range, with: token)
-        }
-        entries.reverse()
-        return projected as String
-    }
-
-    func restore(_ display: String) -> String {
-        guard !entries.isEmpty else { return display }
-        let source = NSMutableString(string: display)
-        for entry in entries {
-            source.replaceOccurrences(of: entry.token, with: entry.source,
-                                      range: NSRange(location: 0, length: source.length))
-        }
-        return source as String
-    }
-
-    func source(for address: String) -> String? {
-        entries.first(where: { $0.token == address })?.source
-    }
-
-    func sourceRange(for displayRange: NSRange, in raw: NSString) -> NSRange {
-        func map(_ position: Int, trailing: Bool) -> Int {
-            var delta = 0
-            for entry in entries {
-                let range = raw.range(of: entry.token)
-                guard range.location != NSNotFound else { continue }
-                if position <= range.location { return position + delta }
-                let sourceLength = (entry.source as NSString).length
-                if position < NSMaxRange(range) {
-                    return range.location + delta + (trailing ? sourceLength : 0)
-                }
-                delta += sourceLength - range.length
-            }
-            return position + delta
-        }
-        let start = map(displayRange.location, trailing: false)
-        let end = map(NSMaxRange(displayRange), trailing: true)
-        return NSRange(location: start, length: max(0, end - start))
-    }
-
-    func displayRange(for sourceRange: NSRange, in display: String) -> NSRange {
-        let raw = display as NSString
-        func map(_ position: Int, trailing: Bool) -> Int {
-            var delta = 0
-            for entry in entries {
-                let range = raw.range(of: entry.token)
-                guard range.location != NSNotFound else { continue }
-                let sourceLength = (entry.source as NSString).length
-                let sourceStart = range.location + delta
-                if position <= sourceStart { return position - delta }
-                if position < sourceStart + sourceLength {
-                    return trailing ? NSMaxRange(range) : range.location
-                }
-                delta += sourceLength - range.length
-            }
-            return position - delta
-        }
-        let start = map(sourceRange.location, trailing: false)
-        let end = map(NSMaxRange(sourceRange), trailing: true)
-        return NSRange(location: max(0, start), length: max(0, end - start))
-    }
-
-    func intersectsToken(_ range: NSRange, in raw: NSString) -> Bool {
-        intersectsToken([range], in: raw)
-    }
-
-    func intersectsToken(_ ranges: [NSRange], in raw: NSString) -> Bool {
-        entries.contains { entry in
-            let token = raw.range(of: entry.token)
-            return token.location != NSNotFound && ranges.contains { range in
-                NSIntersectionRange(token, range).length > 0 ||
-                    (range.length == 0 && range.location > token.location && range.location < NSMaxRange(token))
-            }
-        }
-    }
-}
-
-
 extension EditorTextView {
     @preconcurrency @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -184,12 +84,12 @@ extension EditorTextView {
         private var highlightGeneration: UInt = 0
         var isMarkdownOutlineVisible = false
         private var markdownPresentation: MarkdownPresentationController?
-        private var markdownImageProjection = MarkdownDataImageProjection()
-        private var markdownImageProjectionEnabled = false
-        private var needsSourceMediaFolds = false
-        // Режим проекции меняется редко; не повторять полную замену NSTextStorage
-        // при обычных SwiftUI-обновлениях EditorTextView.
-        private var lastMarkdownImageProjectionMode: Bool?
+        // Токены media в экранном тексте оформленного режима; таблица токенов лежит в документе.
+        private var mediaMap = MarkdownMediaMap()
+        private var mediaMapEnabled = false
+        // Ожидаемая длина хранилища: расхождение значит, что правка прошла мимо shouldChangeText.
+        private var mediaMapLength = 0
+        private var mediaMapStale = false
         private var mathOptions = MathJaxRenderService.Options()
         private var contentRevision: UInt
         private(set) var markdownLinkTask: Task<Void, Never>?
@@ -237,11 +137,12 @@ extension EditorTextView {
         private var aiCompletionCaret: Int?
         private var aiCompletionProfile: AIModelProfile?
         private var aiCompletionKey: String?
+        private var aiCompletionKeep: (token: UInt, remaining: String, typed: String, caret: Int, previousLength: Int)?
+        private var aiCompletionKeepToken: UInt = 0
+        private var aiCompletionErrorMessage: String?
         private var writingSpellingEnabled = false
         private var writingGrammarEnabled = false
         private var pendingFoldSelection: NSRange?
-        private var automaticMediaFoldTask: Task<Void, Never>?
-        private var mediaPayloadScan: (document: EditorDocument, revision: UInt, textLength: Int, ranges: [NSRange])?
         private var dataImagePresence: (revision: UInt, textLength: Int, contains: Bool)?
         private var highlightedRevision: UInt?
         private var appliedTreeChangeRevision: UInt?
@@ -322,7 +223,7 @@ extension EditorTextView {
             let revision = contentRevision
             guard document.textRevision == pending.revision, !document.hasPendingLiveEdits,
                   pending.range.location != NSNotFound,
-                  NSMaxRange(pending.range) <= (textView.textStorage?.length ?? 0) else { return }
+                  NSMaxRange(liveMediaMap.displayRange(forSource: pending.range)) <= (textView.textStorage?.length ?? 0) else { return }
             DispatchQueue.main.async { [weak self, weak textView] in
                 guard let self, let textView, self.isActive, !textView.hasMarkedText(),
                       self.document.id == documentID, self.contentRevision == revision,
@@ -361,6 +262,7 @@ extension EditorTextView {
             let features = preferences?.aiFeatures ?? []
             if aiSettings != settings || aiCompletionSettings != completionSettings || aiFeatures != features {
                 cancelAICompletion()
+                aiCompletionErrorMessage = nil
             }
             aiPreferences = preferences
             aiSettings = settings
@@ -369,6 +271,7 @@ extension EditorTextView {
             if let textView {
                 textView.acceptAICompletion = { [weak self] in self?.acceptCompletion() ?? false }
                 textView.dismissAICompletion = { [weak self] in self?.cancelAICompletion() }
+                textView.keepAICompletion = { [weak self] value, range in self?.keepAICompletion(inserting: value, replacementRange: range) ?? false }
             }
         }
 
@@ -378,7 +281,45 @@ extension EditorTextView {
             aiCompletionCaret = nil
             aiCompletionProfile = nil
             aiCompletionKey = nil
+            aiCompletionKeep = nil
             textView?.completionText = nil
+        }
+
+        /// Пользователь набирает начало показанной подсказки (один символ у каретки, без marked text и undo): подсказка не сбрасывается.
+        private func keepAICompletion(inserting value: Any, replacementRange: NSRange) -> Bool {
+            guard isActive, let textView, let completion = textView.completionText, let revision = aiCompletionRevision,
+                  let caret = aiCompletionCaret, revision == contentRevision, textView.isEditable, !textView.hasMarkedText(),
+                  textView.selectedRanges.count == 1, textView.selectedRange() == NSRange(location: caret, length: 0),
+                  replacementRange.location == NSNotFound || replacementRange == NSRange(location: caret, length: 0),
+                  textView.undoManager?.isUndoing != true, textView.undoManager?.isRedoing != true,
+                  let typed = (value as? String) ?? (value as? NSAttributedString)?.string,
+                  let remaining = AICompletionContext.remainder(of: completion, afterTyping: typed),
+                  let length = textView.textStorage?.length else { return false }
+            aiCompletionKeepToken &+= 1
+            let token = aiCompletionKeepToken
+            aiCompletionKeep = (token, remaining, typed, caret + (typed as NSString).length, length)
+            // Правка могла не дойти до textDidChange: тогда подсказка сбрасывается к концу этого прохода цикла.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.aiCompletionKeep?.token == token else { return }
+                self.cancelAICompletion()
+            }
+            return true
+        }
+
+        /// После вставки: подсказка укорачивается без нового запроса, если текст изменился ровно набранным.
+        private func shortenAICompletionAfterTyping() -> Bool {
+            guard let keep = aiCompletionKeep else { return false }
+            aiCompletionKeep = nil
+            let typedLength = (keep.typed as NSString).length
+            guard let textView, textView.completionText != nil, !textView.hasMarkedText(),
+                  textView.selectedRange() == NSRange(location: keep.caret, length: 0),
+                  let storage = textView.textStorage, storage.length == keep.previousLength + typedLength,
+                  keep.caret >= typedLength,
+                  storage.mutableString.substring(with: NSRange(location: keep.caret - typedLength, length: typedLength)) == keep.typed else { return false }
+            aiCompletionRevision = contentRevision
+            aiCompletionCaret = keep.caret
+            textView.completionText = keep.remaining
+            return true
         }
 
         private func scheduleAICompletion() {
@@ -392,12 +333,12 @@ extension EditorTextView {
             guard profile.isEnabled, profile.supports(.text) else { return }
             let revision = contentRevision
             let documentID = document.id
-            aiCompletion.schedule(inputProvider: { [weak textView] in
-                    guard let text = textView?.textStorage?.mutableString,
+            let lastCharacter = selection.location > 0
+                ? text.substring(with: text.rangeOfComposedCharacterSequence(at: selection.location - 1)).last : nil
+            aiCompletion.schedule(delay: AICompletionContext.delayNanoseconds(lastBeforeCaret: lastCharacter), inputProvider: { [weak self, weak textView] in
+                    guard let self, let text = textView?.textStorage?.mutableString,
                           selection.location <= text.length else { return nil }
-                    let line = text.lineRange(for: selection)
-                    let range = NSRange(location: line.location, length: selection.location - line.location)
-                    return range.length > 0 ? text.substring(with: range) : nil
+                    return self.aiCompletionContext(in: text, caret: selection.location)
                 }, keyProvider: {
                     try AIKeychainStore().load(for: .text, baseURL: profile.baseURL)
                 }, coordinator: document.taskCoordinator, profile: profile,
@@ -410,12 +351,69 @@ extension EditorTextView {
                     return true
                 }, show: { [weak self, weak textView] completion, key in
                     guard let self, let textView else { return }
+                    self.aiCompletionErrorMessage = nil
                     self.aiCompletionRevision = revision
                     self.aiCompletionCaret = selection.location
                     self.aiCompletionProfile = profile
                     self.aiCompletionKey = key
                     textView.completionText = completion
+                }, fail: { [weak self] message in
+                    // Одно сообщение один раз: до следующего успеха или смены настроек.
+                    guard let self, self.aiCompletionErrorMessage != message else { return }
+                    self.aiCompletionErrorMessage = message
+                    self.document.setStatusError(message)
                 })
+        }
+
+        /// Окно текста вокруг каретки, тип файла и заголовок раздела. nil — запускать не нужно.
+        private func aiCompletionContext(in text: NSString, caret: Int) -> AICompletionContext? {
+            let tokens = mediaMapEnabled
+                ? liveMediaMap.spans.filter { $0.displayEnd > caret - AICompletionContext.beforeCeiling - 400 && $0.displayStart < caret + AICompletionContext.afterCeiling + 400 }
+                    .map { NSRange(location: $0.displayStart, length: $0.displayLength) }
+                : []
+            let line = AICompletionContext.line(in: text, caret: caret)
+            let rest = text.substring(with: NSRange(location: caret, length: NSMaxRange(line) - caret))
+            let mediaOnly = AICompletionContext.isMediaOnlyLine(in: text, line: line, tokens: tokens)
+            guard rest.allSatisfy({ $0.isWhitespace }), !mediaOnly else { return nil }
+            let window = AICompletionContext.window(in: text, caret: caret, tokens: tokens)
+            let before = plainCompletionText(window.before, in: text, tokens: tokens, startEdge: true)
+            guard AICompletionContext.shouldStart(before: before, restOfLine: rest, isMediaOnlyLine: mediaOnly) else { return nil }
+            var heading: String?
+            if document.language == .markdown, document.isMarkdownOutlineCurrent, !document.hasPendingLiveEdits {
+                let source = mediaMapEnabled ? liveMediaMap.sourcePosition(forDisplay: caret) : caret
+                heading = document.markdownHeadings.filter { $0.isTopLevel && $0.range.location <= source }
+                    .max { $0.range.location < $1.range.location }.map { String(plainHeadingTitle($0.title).prefix(AICompletionContext.maximumHeadingLength)) }
+            }
+            return AICompletionContext(before: before, after: plainCompletionText(window.after, in: text, tokens: tokens, endEdge: true),
+                                       fileType: document.language.rawValue, heading: heading,
+                                       isProse: document.language == .markdown || document.language == .plainText)
+        }
+
+        /// Заголовок может содержать настоящий `data:` или токен: оба убираются, как в тексте контекста. Таблица документа не меняется:
+        /// настоящие адреса проходят через пустую локальную таблицу.
+        private func plainHeadingTitle(_ title: String) -> String {
+            guard title.range(of: "data:", options: .caseInsensitive) != nil else { return title }
+            var local = MarkdownMediaTable()
+            let projected = Array(local.project(title).text.utf16)
+            let withoutLocal = Array(local.clipboardText(projected, range: NSRange(location: 0, length: projected.count)).utf16)
+            return document.mediaTable.clipboardText(withoutLocal, range: NSRange(location: 0, length: withoutLocal.count))
+        }
+
+        /// Текст диапазона без токенов media (как при копировании) и без закодированных данных: адрес картинки и Base64 в запрос не уходят.
+        private func plainCompletionText(_ range: NSRange, in text: NSString, tokens: [NSRange],
+                                         startEdge: Bool = false, endEdge: Bool = false) -> String {
+            guard range.length > 0 else { return "" }
+            let startsInData = startEdge && range.location > 0
+                && AICompletionContext.isEncodedDataUnit(text.character(at: range.location - 1))
+            let endsInData = endEdge && NSMaxRange(range) < text.length
+                && AICompletionContext.isEncodedDataUnit(text.character(at: NSMaxRange(range)))
+            guard tokens.contains(where: { NSIntersectionRange($0, range).length > 0 }) else {
+                return AICompletionContext.withoutEncodedData(text.substring(with: range), startsInData: startsInData, endsInData: endsInData)
+            }
+            var units = [unichar](repeating: 0, count: range.length)
+            text.getCharacters(&units, range: range)
+            return AICompletionContext.withoutEncodedData(document.mediaTable.clipboardText(units, range: NSRange(location: 0, length: units.count)),
+                                                          startsInData: startsInData, endsInData: endsInData)
         }
 
         private func acceptCompletion() -> Bool {
@@ -438,6 +436,7 @@ extension EditorTextView {
             let request = EditorRangeReplacementRequest(documentID: document.id,
                 range: NSRange(location: caret, length: 0), originalText: "", replacementText: completion,
                 expectedEditorRevision: revision, actionName: AIFeature.completion.title)
+            request.space = .display
             cancelAICompletion()
             apply(request, to: textView)
             if request.wasHandled {
@@ -608,7 +607,6 @@ extension EditorTextView {
             delimiterMatchQueue.cancelAllOperations()
             document.taskCoordinator.cancel(.delimiterMatch)
             document.taskCoordinator.cancel(.folding)
-            automaticMediaFoldTask?.cancel()
             document.taskCoordinator.cancel(.aiCompletion)
             rulerRefreshWorkItem?.cancel()
             liveResizeLayoutWorkItem?.cancel()
@@ -661,19 +659,28 @@ extension EditorTextView {
             markdownLinkSelection = textView.selectedRanges
             let snapshot = document.synchronizedSnapshot()
             guard self.document === document, contentRevision == revision, !textView.hasMarkedText() else { return false }
-            func follow(_ parsed: MarkdownPresentation) -> Bool {
-                if let wiki = parsed.wikiLinks.first(where: { link in expectedRange.map { $0 == link.range } ?? NSLocationInRange(position, link.range) }) {
-                    followWikiLink(wiki, parsed: parsed, snapshot: snapshot, document: document, revision: revision, token: token)
+            // Клик и разбор из оформления идут по экранному тексту, запасной разбор снимка - по тексту файла.
+            // Ссылка ищется в координатах своего разбора, а цели переходов уходят в координатах файла.
+            let map = mediaMapEnabled ? liveMediaMap : MarkdownMediaMap()
+            func follow(_ parsed: MarkdownPresentation, isDisplay: Bool) -> Bool {
+                let location = isDisplay ? position : map.sourceRange(forDisplay: NSRange(location: position, length: 0)).location
+                let expected = expectedRange.map { isDisplay ? $0 : map.sourceRange(forDisplay: $0) }
+                let headings = isDisplay ? parsed.headings.map { $0.inSource(map) } : parsed.headings
+                let anchors = isDisplay
+                    ? parsed.namedAnchors.map { MarkdownNamedAnchor(name: $0.name, range: map.sourceRange(forDisplay: $0.range)) }
+                    : parsed.namedAnchors
+                if let wiki = parsed.wikiLinks.first(where: { link in expected.map { $0 == link.range } ?? NSLocationInRange(location, link.range) }) {
+                    followWikiLink(wiki, headings: headings, namedAnchors: anchors, snapshot: snapshot, document: document, revision: revision, token: token)
                     return true
                 }
-                guard let link = parsed.links.first(where: { link in expectedRange.map { $0 == link.range } ?? NSLocationInRange(position, link.range) }) else { return false }
-                postMarkdownLink(link, headings: parsed.headings, namedAnchors: parsed.namedAnchors, snapshot: snapshot, document: document, revision: revision, token: token)
+                guard let link = parsed.links.first(where: { link in expected.map { $0 == link.range } ?? NSLocationInRange(location, link.range) }) else { return false }
+                postMarkdownLink(link, headings: headings, namedAnchors: anchors, snapshot: snapshot, document: document, revision: revision, token: token)
                 return true
             }
             if let cachedMarkdownNavigation, cachedMarkdownNavigation.0 == document.id, cachedMarkdownNavigation.1 == revision {
-                return follow(cachedMarkdownNavigation.2)
+                return follow(cachedMarkdownNavigation.2, isDisplay: false)
             }
-            if let parsed = markdownPresentation?.navigationPresentation(document: document, revision: revision), follow(parsed) { return true }
+            if let parsed = markdownPresentation?.navigationPresentation(document: document, revision: revision), follow(parsed, isDisplay: true) { return true }
             let parse = markdownLinkParse, syntax = syntaxOptions
             markdownLinkTask = Task { @MainActor [weak self, weak document] in
                 let parsed = await Task.detached(priority: .userInitiated) { parse?(snapshot.text) ?? MarkdownPresentationParser.parse(snapshot.text, includeWikiLinks: true, syntax: syntax) }.value
@@ -682,22 +689,17 @@ extension EditorTextView {
                       self.textView?.hasMarkedText() == false, self.tableCellEditor == nil else { return }
                 self.markdownLinkTask = nil
                 self.cachedMarkdownNavigation = (document.id, revision, parsed)
-                if let wiki = parsed.wikiLinks.first(where: { link in expectedRange.map { $0 == link.range } ?? NSLocationInRange(position, link.range) }) {
-                    self.followWikiLink(wiki, parsed: parsed, snapshot: snapshot, document: document, revision: revision, token: token)
-                    return
-                }
-                guard let link = parsed.links.first(where: { link in expectedRange.map { $0 == link.range } ?? NSLocationInRange(position, link.range) }) else { return }
-                self.postMarkdownLink(link, headings: parsed.headings, namedAnchors: parsed.namedAnchors, snapshot: snapshot, document: document, revision: revision, token: token)
+                _ = follow(parsed, isDisplay: false)
             }
             return true
         }
 
         /// Каталог ещё не загружен (например, Cmd-клик сразу после открытия): читаем его в фоне и переходим, если ничего не изменилось.
-        private func followWikiLink(_ wiki: MarkdownWikiLink, parsed: MarkdownPresentation, snapshot: DocumentTextSnapshot,
+        private func followWikiLink(_ wiki: MarkdownWikiLink, headings: [MarkdownHeading], namedAnchors: [MarkdownNamedAnchor], snapshot: DocumentTextSnapshot,
                                     document: EditorDocument, revision: UInt, token: UUID) {
             func post(_ resolver: MarkdownWikiLinkResolver) {
                 guard let link = wikiNavigationLink(wiki, resolver: resolver, document: document) else { return }
-                postMarkdownLink(link, headings: parsed.headings, namedAnchors: parsed.namedAnchors, snapshot: snapshot, document: document, revision: revision, token: token)
+                postMarkdownLink(link, headings: headings, namedAnchors: namedAnchors, snapshot: snapshot, document: document, revision: revision, token: token)
             }
             if let wikiResolver { post(wikiResolver); return }
             guard let source = wikiSource?() else { post(MarkdownWikiLinkResolver(base: nil, paths: [])); return }
@@ -790,7 +792,7 @@ extension EditorTextView {
             guard contentRevision == revision,
                   markdownPresentation?.mathReference(atSourceOffset: offset, document: document, revision: revision) == target else { return true }
             NotificationCenter.default.post(name: EditorCommandNotification.revealSelection,
-                                            object: EditorSelectionRequest(documentID: document.id, range: NSRange(location: target.location, length: 0)))
+                                            object: EditorSelectionRequest(documentID: document.id, range: NSRange(location: target.location, length: 0), space: .display))
             return true
         }
 
@@ -803,6 +805,8 @@ extension EditorTextView {
             }
             textView?.richPasteHandler = { [weak self] board in self?.pasteRichText(board, child: nil) ?? false }
             textView?.richCopyHandler = { [weak self] board in self?.copyRichText(board, child: nil) ?? false }
+            textView?.mediaClipboardProvider = { [weak self] range in self?.mediaClipboardPayload(for: range) }
+            textView?.mediaPasteHandler = { [weak self] board in self?.pasteMediaSource(board) ?? false }
             observerTokens.append(NotificationCenter.default.addObserver(forName: NSTextView.didChangeSelectionNotification, object: nil, queue: .main) { [weak self] note in
                 guard let self, let child = self.tableCellEditor, note.object as AnyObject? === child else { return }
                 self.clipboardPasteTask?.cancel()
@@ -923,7 +927,7 @@ extension EditorTextView {
                       textView?.hasMarkedText() == false, tableCellEditor?.hasMarkedText() != true,
                       markdownPresentation?.isCurrentPageBreak(range, document: document, revision: contentRevision) == true else { return false }
                 NotificationCenter.default.post(name: EditorCommandNotification.revealSelection,
-                    object: EditorSelectionRequest(documentID: document.id, range: NSRange(location: range.location, length: 0)))
+                    object: EditorSelectionRequest(documentID: document.id, range: NSRange(location: range.location, length: 0), space: .display))
                 return true
             }
             textView?.tableOfContentsHandler = { [weak self] range, heading in
@@ -932,7 +936,7 @@ extension EditorTextView {
                       markdownPresentation?.isCurrentTOC(range, heading: heading, document: document, revision: contentRevision) == true else { return false }
                 let target = heading?.range.location ?? range.location
                 NotificationCenter.default.post(name: EditorCommandNotification.revealSelection,
-                                                object: EditorSelectionRequest(documentID: document.id, range: NSRange(location: target, length: 0)))
+                                                object: EditorSelectionRequest(documentID: document.id, range: NSRange(location: target, length: 0), space: .display))
                 return true
             }
             textView?.autoPairAllowed = { [weak self] in
@@ -952,7 +956,7 @@ extension EditorTextView {
                       document.isMarkdownFormatted, document.ioState == .idle,
                       let target = markdownPresentation?.footnoteTarget(at: point, document: document, revision: contentRevision) else { return false }
                 NotificationCenter.default.post(name: EditorCommandNotification.revealSelection,
-                                                object: EditorSelectionRequest(documentID: document.id, range: target))
+                                                object: EditorSelectionRequest(documentID: document.id, range: target, space: .display))
                 return true
             }
             textView?.blockMathReferenceHandler = { [weak self] point in
@@ -968,7 +972,7 @@ extension EditorTextView {
                 }
                 guard let target = markdownPresentation?.mathReference(at: local, document: document, revision: contentRevision) else { return false }
                 NotificationCenter.default.post(name: EditorCommandNotification.revealSelection,
-                                                object: EditorSelectionRequest(documentID: document.id, range: NSRange(location: target.location, length: 0)))
+                                                object: EditorSelectionRequest(documentID: document.id, range: NSRange(location: target.location, length: 0), space: .display))
                 return true
             }
             textView?.taskCheckboxHandler = { [weak self] checkbox in
@@ -1140,8 +1144,9 @@ extension EditorTextView {
                       request.documentID == document.id,
                       let textView else { return }
                 let length = textView.textStorage?.length ?? 0
-                let location = min(request.range.location, length)
-                let range = NSRange(location: location, length: min(request.range.length, length - location))
+                let requested = request.space == .source ? liveMediaMap.displayRange(forSource: request.range) : request.range
+                let location = min(requested.location, length)
+                let range = NSRange(location: location, length: min(requested.length, length - location))
                 clearFoldIfNeeded(toReveal: range)
                 textView.setSelectedRange(range)
                 textView.scrollRangeToVisible(range)
@@ -1225,7 +1230,9 @@ extension EditorTextView {
                       let request = notification.object as? EditorTextExtractionRequest,
                       request.documentID == document.id else { return }
                 extractSelection(for: request)
-                if request.includesEditorText, request.result != nil { request.editorText = textView?.string }
+                if request.includesEditorText, request.result != nil, let shown = textView?.string {
+                    request.editorText = request.space == .source ? document.mediaTable.restore(shown).text : shown
+                }
             })
             observerTokens.append(NotificationCenter.default.addObserver(
                 forName: EditorCommandNotification.formatMarkdown,
@@ -1309,17 +1316,15 @@ extension EditorTextView {
         private func aiImageRequest(_ sender: NSMenuItem) -> AIImageEditRequest? {
             guard let resource = sender.representedObject as? MarkdownPresentationController.ImageResource,
                   markdownPresentation?.isCurrentImageResource(resource) == true,
-                  let textView, let storage = textView.textStorage else { return nil }
+                  textView != nil else { return nil }
             let displayRange = resource.image.range
-            let sourceRange = markdownImageProjectionEnabled
-                ? markdownImageProjection.sourceRange(for: displayRange, in: storage.mutableString)
-                : displayRange
+            let sourceRange = liveMediaMap.sourceRange(forDisplay: displayRange)
             let snapshot = document.synchronizedSnapshot()
             let source = snapshot.text as NSString
-            guard snapshot.revision == resource.revision, sourceRange.location <= source.length,
+            guard sourceRange.location <= source.length,
                   sourceRange.length <= source.length - sourceRange.location else { return nil }
-            let address = markdownImageProjection.source(for: resource.image.url) ?? resource.image.url
-            return AIImageEditRequest(documentID: document.id, revision: snapshot.revision,
+            let address = document.mediaTable.source(forToken: resource.image.url) ?? resource.image.url
+            return AIImageEditRequest(documentID: document.id, documentRevision: snapshot.revision, editorRevision: contentRevision,
                                       range: sourceRange, originalMarkdown: source.substring(with: sourceRange),
                                       address: address, documentURL: document.url)
         }
@@ -1515,7 +1520,7 @@ extension EditorTextView {
                 replacements = [(edit.range, edit.replacement)]
                 finalSelection = edit.selectionRange
             }
-            if markdownImageProjectionEnabled, markdownImageProjection.intersectsToken(replacements.map(\.range), in: storage.mutableString) {
+            if replacements.contains(where: { liveMediaMap.intersectsToken($0.range) }) {
                 document.setStatusError(L10n.tr("修订含大图片，请在源码视图中处理"))
                 return
             }
@@ -1589,6 +1594,11 @@ extension EditorTextView {
             }
             child.isRichText = false
             child.allowsUndo = false
+            child.mediaMap = { [weak self, weak child] in
+                guard let self, self.mediaMapEnabled, let child, child.string.contains("#lac-media-") else { return nil }
+                let spans = self.document.mediaTable.spans(in: child.string as NSString)
+                return spans.isEmpty ? nil : MarkdownMediaMap(spans: spans)
+            }
             child.font = textView.font
             let raw = storage.mutableString.substring(with: range)
             child.string = MarkdownTableCellEditor.projection(raw).text
@@ -1701,6 +1711,14 @@ extension EditorTextView {
                 guard let self, let child else { return false }
                 return self.copyRichText(board, child: child)
             }
+            child.mediaClipboard = { [weak self, weak child] range in
+                guard let self, let child else { return nil }
+                return self.tableCellMediaPayload(child, for: range)
+            }
+            child.mediaPaste = { [weak self, weak child] board in
+                guard let self, let child else { return false }
+                return self.pasteTableCellMediaSource(board, child: child)
+            }
             child.canTransferImage = { [weak textView] pasteboard, preferText in
                 textView?.imageTransfer(from: pasteboard, preferText: preferText) != nil
             }
@@ -1728,7 +1746,7 @@ extension EditorTextView {
             return storage.mutableString.replacingCharacters(in: range, with: prefix + value)
         }
 
-        private func tableCellChanged() {
+        private func tableCellChanged(closing: Bool = false) {
             guard !applyingTableCell, let child = tableCellEditor, let textView,
                   let storage = textView.textStorage, let range = tableCellRange,
                   tableCellRevision == contentRevision, range.location <= storage.length,
@@ -1750,7 +1768,13 @@ extension EditorTextView {
                     finishPendingMagnification()
                 }
             }
-            guard let replacement = MarkdownTableCellEditor.sourceText(raw: tableCellOriginal, display: child.string) else { return }
+            guard var replacement = MarkdownTableCellEditor.sourceText(raw: tableCellOriginal, display: child.string) else { return }
+            // Вставленный в ячейку `data:` в хранилище попадает токеном, как при вставке в текст.
+            var substitutedMedia = false
+            if mediaMapEnabled, replacement.range(of: "data:", options: .caseInsensitive) != nil {
+                let incoming = document.mediaTable.incoming(replacement)
+                if incoming.text != replacement { replacement = incoming.text; substitutedMedia = true }
+            }
             guard replacement != tableCellOriginal else {
                 if tableCellHadComposition {
                     tableCellHadComposition = false
@@ -1785,6 +1809,15 @@ extension EditorTextView {
                 tableCellTableRange = NSRange(location: tableRange.location, length: tableRange.length + (inserted as NSString).length - range.length)
             }
             tableCellOriginal = replacement
+            // Закрывающаяся ячейка исчезает сразу: ей текст не обновляют. Открытой возвращаем каретку.
+            if substitutedMedia, !closing {
+                let caret = child.selectedRange()
+                let oldLength = (child.string as NSString).length
+                child.string = MarkdownTableCellEditor.projection(replacement).text
+                let length = (child.string as NSString).length
+                // Подмена укоротила текст: каретка сдвигается на разницу длин и остаётся сразу за токеном.
+                child.setSelectedRange(NSRange(location: min(max(0, caret.location + length - oldLength), length), length: 0))
+            }
             tableCellRevision = contentRevision
             tableCellUndoCount += 1
             tableCellRedoCount = 0
@@ -2100,7 +2133,7 @@ extension EditorTextView {
             if emojiCompletionRequested { endEmojiCompletion() }
             if wikiCompletionRequested { endWikiCompletion() }
             if child.hasMarkedText() { child.unmarkText() }
-            tableCellChanged()
+            tableCellChanged(closing: true)
             child.contentDidChange = nil
             child.removeFromSuperview()
             tableCellEditor = nil
@@ -2214,11 +2247,15 @@ extension EditorTextView {
             let atBottom = visible.maxY >= textView.bounds.maxY - 1
             let rect = visible.offsetBy(dx: -textView.textContainerOrigin.x, dy: -textView.textContainerOrigin.y)
             if let mediaLocation = foldLayoutManager?.markdownMediaSourceAnchor(in: rect, container: container) {
-                return .init(line: lineIndex.lineNumber(at: min(mediaLocation, storage.length)), atBottom: atBottom)
+                let location = min(mediaLocation, storage.length)
+                return .init(line: liveMediaMap.sourceLine(forDisplayLine: lineIndex.lineNumber(at: location), atDisplayLocation: location),
+                             atBottom: atBottom)
             }
             let glyphs = layoutManager.glyphRange(forBoundingRect: rect, in: container)
             let characters = layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
-            return .init(line: lineIndex.lineNumber(at: min(characters.location, storage.length)), atBottom: atBottom)
+            let location = min(characters.location, storage.length)
+            return .init(line: liveMediaMap.sourceLine(forDisplayLine: lineIndex.lineNumber(at: location), atDisplayLocation: location),
+                         atBottom: atBottom)
         }
 
         func attachLiveTextProvider() {
@@ -2227,12 +2264,22 @@ extension EditorTextView {
                 id: liveTextProviderID,
                 provider: { [weak self] in
                     guard let self else { return nil }
-                    if self.tableCellEditor?.hasMarkedText() == true { return self.tableCellSource() }
-                    guard let textView = self.textView else { return nil }
-                    let text = self.currentLiveTextSnapshot(in: textView)?.text ?? textView.string
-                    return self.markdownImageProjectionEnabled
-                        ? self.markdownImageProjection.restore(text)
-                        : text
+                    let text: String
+                    if self.tableCellEditor?.hasMarkedText() == true {
+                        guard let source = self.tableCellSource() else { return nil }
+                        text = source
+                    } else {
+                        guard let textView = self.textView else { return nil }
+                        text = self.currentLiveTextSnapshot(in: textView)?.text ?? textView.string
+                    }
+                    // В модель уходит файловый текст: токены заменяются настоящими адресами.
+                    guard self.mediaMapEnabled else {
+                        self.document.setHasUnknownMediaTokens(false)
+                        return text
+                    }
+                    let restored = self.document.mediaTable.restore(text)
+                    self.document.setHasUnknownMediaTokens(!restored.unknownTokens.isEmpty)
+                    return restored.text
                 },
                 acknowledgement: { [weak self] revision in
                     self?.lastSynchronizedRevision = revision
@@ -2241,57 +2288,108 @@ extension EditorTextView {
         }
 
         func displayedText(for source: String) -> String {
-            guard document.language == .markdown, document.isMarkdownFormatted else {
-                markdownImageProjectionEnabled = false
-                lastMarkdownImageProjectionMode = false
-                markdownImageProjection = MarkdownDataImageProjection()
+            guard document.language == .markdown else {
+                mediaMapEnabled = false
+                mediaMap = MarkdownMediaMap()
+                mediaMapLength = 0
+                mediaMapStale = false
+                document.setHasUnknownMediaTokens(false)
                 return source
             }
-            markdownImageProjectionEnabled = true
-            lastMarkdownImageProjectionMode = true
-            return markdownImageProjection.project(source)
+            mediaMapEnabled = true
+            let projection = document.mediaTable.project(source)
+            mediaMap = MarkdownMediaMap(spans: projection.spans)
+            mediaMapLength = projection.text.utf16.count
+            mediaMapStale = false
+            document.setHasUnknownMediaTokens(false)
+            return projection.text
         }
 
-        func displayedRange(for sourceRange: NSRange, in display: String) -> NSRange {
-            guard markdownImageProjectionEnabled else { return sourceRange }
-            return markdownImageProjection.displayRange(for: sourceRange, in: display)
+        /// Подпись токенов для `FoldLayoutManager`: пустая карта отвечает сразу, без просмотра текста.
+        func installMediaLabel() {
+            foldLayoutManager?.mediaLabel = { [weak self] first, last in
+                guard let self, self.mediaMapEnabled, !self.mediaMap.isEmpty || self.mediaMapStale else { return nil }
+                let map = self.liveMediaMap
+                guard let span = map.firstSpan(from: first, through: last) else { return nil }
+                return (NSRange(location: span.displayStart, length: span.displayLength),
+                        self.document.mediaTable.entries[span.entry].bytes.count)
+            }
         }
 
-        private func synchronizeMarkdownImageProjection() {
+        func displayedRange(for sourceRange: NSRange) -> NSRange {
+            mediaMap.displayRange(forSource: sourceRange)
+        }
+
+        /// Карта токенов, сверенная с хранилищем. Устаревшая карта пересобирается здесь, а не на клавише.
+        private var liveMediaMap: MarkdownMediaMap {
+            if mediaMapStale { rebuildMediaMap() }
+            return mediaMap
+        }
+
+        private func rebuildMediaMap() {
+            guard mediaMapEnabled, let storage = textView?.textStorage else {
+                mediaMapStale = false
+                return
+            }
+            // Пустая таблица: токенов нет, текст не просматривается.
+            mediaMap = document.mediaTable.isEmpty
+                ? MarkdownMediaMap()
+                : MarkdownMediaMap(spans: document.mediaTable.spans(in: storage.mutableString))
+            mediaMapLength = storage.length
+            mediaMapStale = false
+        }
+
+        /// Единственное место сдвига карты: после того, как shouldChangeText разрешил правку.
+        private func applyMediaEdit(range: NSRange, replacement: String) {
+            guard mediaMapEnabled else { return }
+            let replacementLength = (replacement as NSString).length
+            mediaMapLength += replacementLength - range.length
+            guard !mediaMapStale else { return }
+            var inserted: [MarkdownMediaSpan] = []
+            // Токены в тексте правки бывают при вставке и отмене удаления; на обычной клавише прохода по тексту нет.
+            if replacementLength >= 30, replacement.contains("#lac-media-") {
+                inserted = document.mediaTable.spans(in: replacement as NSString).map {
+                    var span = $0
+                    span.displayStart += range.location
+                    return span
+                }
+            }
+            if !mediaMap.applyEdit(replacing: range, withLength: replacementLength, inserting: inserted) {
+                mediaMapStale = true
+            }
+        }
+
+        /// Токены нужны в любом Markdown, независимо от режима оформления; хранилище меняется только при смене языка.
+        private func synchronizeMediaProjection() {
             guard let textView, !textView.hasMarkedText() else { return }
-            let shouldProject = document.language == .markdown && document.isMarkdownFormatted
-            guard shouldProject != lastMarkdownImageProjectionMode else { return }
-            lastMarkdownImageProjectionMode = shouldProject
-            guard shouldProject != markdownImageProjectionEnabled else { return }
+            let shouldProject = document.language == .markdown
+            guard shouldProject != mediaMapEnabled else { return }
             let oldDisplay = textView.string
-            let previousMediaFolds = foldLayoutManager?.automaticMediaFoldedRanges ?? []
-            let source = markdownImageProjectionEnabled ? markdownImageProjection.restore(oldDisplay) : oldDisplay
-            let sourceSelection = markdownImageProjectionEnabled
-                ? markdownImageProjection.sourceRange(for: textView.selectedRange(), in: oldDisplay as NSString)
-                : textView.selectedRange()
+            let restored = mediaMapEnabled ? document.mediaTable.restore(oldDisplay) : nil
+            let source = restored?.text ?? oldDisplay
+            let sourceSelection = liveMediaMap.sourceRange(forDisplay: textView.selectedRange())
             let next = shouldProject ? displayedText(for: source) : source
             if !shouldProject {
-                markdownImageProjectionEnabled = false
-                markdownImageProjection = MarkdownDataImageProjection()
-                needsSourceMediaFolds = true
+                mediaMapEnabled = false
+                mediaMap = MarkdownMediaMap()
+                mediaMapLength = 0
+                mediaMapStale = false
+                // Токен-подобное место без записи остаётся в тексте: предупреждение о нём не снимаем.
+                document.setHasUnknownMediaTokens(restored?.unknownTokens.isEmpty == false)
             }
             isApplyingExternalUpdate = true
             textView.textStorage?.replaceCharacters(in: NSRange(location: 0, length: (oldDisplay as NSString).length), with: next)
+            // Диапазоны в записях отмены относятся к тексту другого вида.
+            textView.undoManager?.removeAllActions()
             // Замена идёт без смены версии: всё, что привязано к версии, относится к старому показу.
             liveTextSnapshot = nil
             dataImagePresence = nil
-            mediaPayloadScan = nil
             let selection = shouldProject
-                ? markdownImageProjection.displayRange(for: sourceSelection, in: next)
+                ? displayedRange(for: sourceSelection)
                 : sourceSelection
             textView.setSelectedRange(NSIntersectionRange(selection, NSRange(location: 0, length: (next as NSString).length)))
             resetLineIndex(with: next)
             isApplyingExternalUpdate = false
-            if shouldProject, !previousMediaFolds.isEmpty {
-                foldLayoutManager?.setAutomaticMediaFoldedRanges(previousMediaFolds.map {
-                    markdownImageProjection.displayRange(for: $0, in: next)
-                })
-            }
             markdownPresentation?.projectionChanged(revision: contentRevision)
         }
 
@@ -2303,22 +2401,83 @@ extension EditorTextView {
                 location: 0,
                 length: textView.textStorage?.length ?? 0
             )
+            // Текст запроса файловый: адреса data: в нём заменяются токенами.
+            let shown = mediaMapEnabled ? document.mediaTable.project(request.text).text : request.text
             isApplyingAutomatedEdit = true
             defer { isApplyingAutomatedEdit = false }
             guard textView.shouldChangeText(
                 in: fullRange,
-                replacementString: request.text
+                replacementString: shown
             ) else { return }
 
             request.wasHandled = true
             textView.textStorage?.replaceCharacters(
                 in: fullRange,
-                with: request.text
+                with: shown
             )
             textView.didChangeText()
-            textView.setSelectedRange(request.selectionRange)
-            textView.scrollRangeToVisible(request.selectionRange)
+            let selection = mediaMapEnabled ? liveMediaMap.displayRange(forSource: request.selectionRange) : request.selectionRange
+            textView.setSelectedRange(selection)
+            textView.scrollRangeToVisible(selection)
             textView.undoManager?.setActionName(request.actionName)
+        }
+
+        /// Выделение с токенами для буфера: обычный текст без токенов и настоящий исходник.
+        /// Условие стоит на непустой карте, а не на режиме. Текст берётся целиком: окно вокруг выделения
+        /// не гарантирует, что найдётся начало конструкции (например, `<audio>` на нескольких строках).
+        private func mediaClipboardPayload(for selection: NSRange) -> MediaClipboardPayload? {
+            guard mediaMapEnabled, selection.length > 0, let storage = textView?.textStorage,
+                  selection.location >= 0, NSMaxRange(selection) <= storage.length else { return nil }
+            let map = liveMediaMap
+            guard !map.isEmpty, map.intersectsToken(selection) else { return nil }
+            let extended = map.displayRange(forSource: map.sourceRange(forDisplay: selection))
+            guard extended.location >= 0, NSMaxRange(extended) <= storage.length else { return nil }
+            let display = storage.string
+            let plain = document.mediaTable.clipboardText(Array(display.utf16), range: extended)
+            let source = document.mediaTable.restore((display as NSString).substring(with: extended)).text
+            return MediaClipboardPayload(plain: plain, source: source, displayRange: extended)
+        }
+
+        /// Выделение с токенами в ячейке таблицы. Исходник — текст ячейки, как она показана: без экранирования таблицы.
+        private func tableCellMediaPayload(_ child: MarkdownTableCellEditor, for selection: NSRange) -> MediaClipboardPayload? {
+            guard mediaMapEnabled, !liveMediaMap.isEmpty, selection.length > 0 else { return nil }
+            let text = child.string as NSString
+            guard NSMaxRange(selection) <= text.length else { return nil }
+            let map = MarkdownMediaMap(spans: document.mediaTable.spans(in: text))
+            guard map.intersectsToken(selection) else { return nil }
+            let extended = map.displayRange(forSource: map.sourceRange(forDisplay: selection))
+            let plain = document.mediaTable.clipboardText(Array((text as String).utf16), range: extended)
+            let source = document.mediaTable.restore(text.substring(with: extended)).text
+            return MediaClipboardPayload(plain: plain, source: source, displayRange: extended)
+        }
+
+        /// Вставка нашего исходника в ячейку таблицы: как и в тексте окна, в ячейке снова токены.
+        private func pasteTableCellMediaSource(_ board: NSPasteboard, child: MarkdownTableCellEditor) -> Bool {
+            guard mediaMapEnabled, isActive, document.ioState == .idle, child === tableCellEditor, child.isEditable,
+                  !child.hasMarkedText(), child.selectedRanges.count == 1,
+                  let source = board.string(forType: LacTextView.mediaSourceType) else { return false }
+            child.insertText(document.mediaTable.project(source).text, replacementRange: child.selectedRange())
+            return true
+        }
+
+        /// Вставка нашего исходника (с настоящим Base64): в тексте окна снова токены.
+        private func pasteMediaSource(_ board: NSPasteboard) -> Bool {
+            // Токены и настоящий Base64 нужны только в Markdown: в код и прочий текст идёт обычный вариант.
+            let isMarkdown = document.language == .markdown
+            guard board.types?.contains(LacTextView.mediaSourceType) == true,
+                  let source = board.string(forType: isMarkdown ? LacTextView.mediaSourceType : .string),
+                  isActive, document.ioState == .idle,
+                  let view = textView, view.isEditable, !view.hasMarkedText(), view.selectedRanges.count == 1,
+                  !(mediaMapEnabled && liveMediaMap.cutsToken(view.selectedRange())) else { return false }
+            // Перетаскивание из открытой ячейки в текст окна: ячейка закрывается до правки хранилища.
+            finishTableCell()
+            let display = mediaMapEnabled ? document.mediaTable.project(source).text : source
+            let previous = view.editSource
+            view.editSource = .pasted
+            defer { view.editSource = previous }
+            view.breakUndoCoalescing()
+            view.insertText(display, replacementRange: view.selectedRange())
+            return true
         }
 
         private func performCodeBlockCommand(changeLanguage: Bool) {
@@ -2330,6 +2489,7 @@ extension EditorTextView {
                   (!changeLanguage || view.isEditable), let storage = view.textStorage else { return }
             let selection = view.selectedRange(), revision = contentRevision, documentRevision = document.textRevision
             let text = storage.string, documentID = document.id, commandID = clipboardCopyID
+            let codeTable = mediaMapEnabled && !liveMediaMap.isEmpty ? document.mediaTable : nil
             let board = NSPasteboard.general, changeCount = board.changeCount
             guard selection.location != NSNotFound, selection.location >= 0, selection.length >= 0,
                   selection.location <= storage.length, selection.length <= storage.length - selection.location else { return }
@@ -2355,7 +2515,8 @@ extension EditorTextView {
                     if !changeLanguage {
                         guard board.changeCount == changeCount else { return }
                         board.clearContents()
-                        board.setString(block.literal, forType: .string)
+                        // Код копируют ради данных: токены возвращаются в настоящий текст.
+                        board.setString(codeTable?.restore(block.literal).text ?? block.literal, forType: .string)
                         return
                     }
                     let original = storage.mutableString.substring(with: block.infoRange)
@@ -2424,12 +2585,23 @@ extension EditorTextView {
                 sourceSelection = NSRange(location: range.location + start, length: end - start)
             } else { sourceSelection = selected }
             guard sourceSelection.location <= storage.length, sourceSelection.length <= storage.length - sourceSelection.location else { return true }
-            let markdown = storage.string, revision = contentRevision, documentRevision = document.textRevision, documentURL = document.url
+            // С токенами выделение и текст в координатах экрана: исходник восстанавливается в фоне.
+            let liveMap = liveMediaMap
+            let restoring = mediaMapEnabled && !liveMap.isEmpty
+            let mediaTable = document.mediaTable
+            let hasMediaSelection = restoring && child == nil && liveMap.intersectsToken(selected)
+            let cellMediaSource = child.flatMap { tableCellMediaPayload($0, for: selected) }?.source
+            let fileSelection = restoring ? liveMap.sourceRange(forDisplay: sourceSelection) : sourceSelection
+            let displayText = storage.string, revision = contentRevision, documentRevision = document.textRevision, documentURL = document.url
             let wasFormatted = document.isMarkdownFormatted
             let contextID = tableCellContextID, copyID = clipboardCopyID, changeCount = board.changeCount
             let wasChild = child != nil
             let syntax = aiPreferences?.markdownSyntax ?? .init()
             let detailsOpenOverrides = markdownPresentation?.detailsOpenOverrides ?? [:]
+            // Копирование идёт по файловому тексту, а ключи состояния <details> хранятся по экранным диапазонам.
+            let copyDetailsOverrides = restoring
+                ? Dictionary(detailsOpenOverrides.map { (liveMap.sourceRange(forDisplay: $0.key), $0.value) }, uniquingKeysWith: { first, _ in first })
+                : detailsOpenOverrides
             let copyMathPhysics = mathOptions.physics
             let copyMathNumbering = mathOptions.numbering
             let copyMathWidth = max(1, view.enclosingScrollView?.contentView.bounds.width ?? view.bounds.width)
@@ -2439,9 +2611,14 @@ extension EditorTextView {
             let session = clipboardCopySession
             let remoteImagesAllowed = document.allowsRemoteImages
             clipboardCopyTask = Task.detached(priority: .userInitiated) { [weak self, weak child, weak document] in
-                var fragment = mode == .markdown
-                    ? MarkdownClipboardCopyService.Fragment(text: (markdown as NSString).substring(with: sourceSelection), html: "", runs: [])
-                    : project(markdown, sourceSelection, documentURL, true, syntax, detailsOpenOverrides)
+                let restored = restoring ? mediaTable.restore(displayText) : nil
+                let markdown = restored?.text ?? displayText
+                // Неизвестный токен или выход за границы: настоящий текст не получить, копирование отменяется.
+                let valid = restored?.unknownTokens.isEmpty != false && NSMaxRange(fileSelection) <= markdown.utf16.count
+                let mediaSource = !valid ? nil : cellMediaSource ?? (hasMediaSelection ? (markdown as NSString).substring(with: fileSelection) : nil)
+                var fragment: MarkdownClipboardCopyService.Fragment? = !valid ? nil : mode == .markdown
+                    ? MarkdownClipboardCopyService.Fragment(text: (markdown as NSString).substring(with: fileSelection), html: "", runs: [])
+                    : project(markdown, fileSelection, documentURL, true, syntax, copyDetailsOverrides)
                 if mode == .rich, remoteImagesAllowed, let projected = fragment, !projected.remoteImages.isEmpty {
                     fragment = try? await MarkdownClipboardCopyService.resolveRemoteImages(projected, session: session)
                 }
@@ -2460,7 +2637,7 @@ extension EditorTextView {
                 else { structuralRTF = nil }
                 guard !Task.isCancelled else { return }
                 let capturedSelf = self, capturedDocument = document, capturedChild = child, capturedFragment = fragment
-                await MainActor.run { [weak self = capturedSelf, weak document = capturedDocument, weak child = capturedChild, fragment = capturedFragment] in
+                await MainActor.run { [weak self = capturedSelf, weak document = capturedDocument, weak child = capturedChild, fragment = capturedFragment, mediaSource] in
                     guard !Task.isCancelled, let self, let document, self.document === document,
                           self.clipboardCopyID == copyID, self.isActive, self.contentRevision == revision,
                           document.textRevision == documentRevision, document.url == documentURL, document.allowsRemoteImages == remoteImagesAllowed, document.language == .markdown, self.currentLanguage == .markdown,
@@ -2481,6 +2658,9 @@ extension EditorTextView {
                     var copiedWithoutRTF = false
                     let plain = mode == .html ? fragment.html : fragment.text
                     guard item.setString(plain, forType: .string) else {
+                        document.statusMessage = L10n.tr("无法复制格式化内容"); return
+                    }
+                    if let mediaSource, !item.setString(mediaSource, forType: LacTextView.mediaSourceType) {
                         document.statusMessage = L10n.tr("无法复制格式化内容"); return
                     }
                     if mode == .rich {
@@ -2840,9 +3020,12 @@ extension EditorTextView {
                             return self.contentRevision != revision
                         }
                         else {
+                            // Вставка из буфера: токен-подобное место не из таблицы здесь данные, а не ошибка ИИ.
+                            let shown = self.mediaMapEnabled ? self.document.mediaTable.incoming(markdown).text : markdown
                             let request = EditorRangeReplacementRequest(documentID: documentID, range: selection, originalText: original,
-                                replacementText: markdown, expectedEditorRevision: revision, actionName: L10n.tr("粘贴文本"))
+                                replacementText: shown, expectedEditorRevision: revision, actionName: L10n.tr("粘贴文本"))
                             request.groupsUndo = true
+                            request.space = .display
                             self.apply(request, to: view)
                             return request.wasHandled
                         }
@@ -2879,10 +3062,12 @@ extension EditorTextView {
                         let markdown = output.markdown.hasSuffix("\n") ? String(output.markdown.dropLast()) : output.markdown
                         if wasChild, let child { child.insertText(markdown, replacementRange: selection) }
                         else {
+                            let shown = self.mediaMapEnabled ? self.document.mediaTable.incoming(markdown).text : markdown
                             let request = EditorRangeReplacementRequest(documentID: documentID, range: selection,
-                                originalText: original, replacementText: markdown,
+                                originalText: original, replacementText: shown,
                                 expectedEditorRevision: revision, actionName: L10n.tr("粘贴文本"))
                             request.groupsUndo = true
+                            request.space = .display
                             self.apply(request, to: view)
                         }
                     case .failure:
@@ -2903,12 +3088,32 @@ extension EditorTextView {
                                             column: tableCellColumn, separators: tableCellVirtualSeparators, range: range)
         }
 
+        /// Снимок выделения в координатах запроса: для `.source` экранный диапазон и текст переводятся в файловые.
+        private func selectionSnapshot(for request: EditorTextExtractionRequest, range: NSRange, text: String,
+                                       wasExplicitSelection: Bool) -> EditorTextSelectionSnapshot {
+            let map = liveMediaMap
+            let source = request.space == .source && !map.isEmpty
+            return EditorTextSelectionSnapshot(documentID: document.id,
+                range: source ? map.sourceRange(forDisplay: range) : range,
+                text: source ? document.mediaTable.restore(text).text : text,
+                editorRevision: contentRevision, wasExplicitSelection: wasExplicitSelection)
+        }
+
+        /// Цель вставки в пустую ячейку: в файловых координатах для `.source`.
+        private func virtualTarget(_ target: EditorVirtualTableTarget, in space: EditorTextSpace) -> EditorVirtualTableTarget {
+            let map = liveMediaMap
+            guard space == .source, !map.isEmpty else { return target }
+            return EditorVirtualTableTarget(contextID: target.contextID, rowStart: target.rowStart, column: target.column,
+                                            separators: target.separators, range: map.sourceRange(forDisplay: target.range))
+        }
+
         private func extractSelection(for request: EditorTextExtractionRequest) {
             if request.allowsInsertionPoint, let target = virtualTableTarget(), isActive,
                let textView, !textView.hasMarkedText(), (!request.requiresEditable || textView.isEditable) {
-                var result = EditorTextSelectionSnapshot(documentID: document.id, range: target.range, text: "",
+                let shown = virtualTarget(target, in: request.space)
+                var result = EditorTextSelectionSnapshot(documentID: document.id, range: shown.range, text: "",
                     editorRevision: contentRevision, wasExplicitSelection: false)
-                result.virtualTableTarget = target
+                result.virtualTableTarget = shown
                 request.result = result
                 return
             }
@@ -2916,15 +3121,13 @@ extension EditorTextView {
                   moveTableSelectionToParent(),
                   let text = textView.textStorage?.mutableString else { return }
             if request.allowsInsertionPoint && textView.selectedRange().length == 0 {
-                request.result = EditorTextSelectionSnapshot(documentID: document.id,
-                    range: textView.selectedRange(), text: "", editorRevision: contentRevision,
-                    wasExplicitSelection: false)
+                request.result = selectionSnapshot(for: request, range: textView.selectedRange(), text: "",
+                                                   wasExplicitSelection: false)
                 return
             }
             if request.allowsWholeDocument && textView.selectedRange().length == 0 {
-                request.result = EditorTextSelectionSnapshot(documentID: document.id,
-                    range: NSRange(location: 0, length: text.length), text: text as String,
-                    editorRevision: contentRevision, wasExplicitSelection: false)
+                request.result = selectionSnapshot(for: request, range: NSRange(location: 0, length: text.length),
+                                                   text: text as String, wasExplicitSelection: false)
                 return
             }
             guard let candidate = TextCodecService.candidate(
@@ -2935,13 +3138,8 @@ extension EditorTextView {
                           ? TextCodecService.automaticDetectionLimit
                           : nil
                   ) else { return }
-            request.result = EditorTextSelectionSnapshot(
-                documentID: document.id,
-                range: candidate.range,
-                text: candidate.text,
-                editorRevision: contentRevision,
-                wasExplicitSelection: textView.selectedRange().length > 0
-            )
+            request.result = selectionSnapshot(for: request, range: candidate.range, text: candidate.text,
+                                               wasExplicitSelection: textView.selectedRange().length > 0)
         }
 
         private func apply(
@@ -2950,13 +3148,15 @@ extension EditorTextView {
         ) {
             if let target = request.virtualTableTarget {
                 guard isActive, textView.isEditable, !textView.hasMarkedText(),
-                      target == virtualTableTarget(), request.expectedEditorRevision == contentRevision,
+                      let current = virtualTableTarget(), target == virtualTarget(current, in: request.space),
+                      request.expectedEditorRevision == contentRevision,
                       request.range == target.range, request.originalText.isEmpty,
                       !request.replacementText.isEmpty,
                       moveTableSelectionToParent(allowVirtual: true) else { return }
                 let forwarded = EditorRangeReplacementRequest(documentID: request.documentID, range: request.range,
                     originalText: request.originalText, replacementText: request.replacementText,
                     expectedEditorRevision: request.expectedEditorRevision, actionName: request.actionName)
+                forwarded.space = request.space
                 forwarded.groupsUndo = request.groupsUndo
                 forwarded.suppressUndoRegistration = request.suppressUndoRegistration
                 forwarded.registerImageFileUndo = request.registerImageFileUndo
@@ -2976,12 +3176,39 @@ extension EditorTextView {
                 request.failureMessage = L10n.tr("编辑内容已变化，请重新执行转换")
                 return
             }
+            // `.display` (ответы ИИ): выдуманный или испорченный токен отклоняется до правки, настоящий `data:` подменяется.
+            // `.source`: текст файловый, любой адрес в нём настоящий.
+            var replacementText = request.replacementText
+            if mediaMapEnabled, replacementText.range(of: "data:", options: .caseInsensitive) != nil {
+                if request.space == .display {
+                    let incoming = document.mediaTable.incoming(replacementText)
+                    guard incoming.invalid.isEmpty else {
+                        request.failureMessage = L10n.tr("AI 返回的媒体标记无效，已拒绝插入")
+                        return
+                    }
+                    replacementText = incoming.text
+                } else {
+                    replacementText = document.mediaTable.project(replacementText).text
+                }
+            }
+            // `.source`: диапазон файловый, на экране он закрывает токены целиком, а исходный текст сверяется после restore.
+            let range = request.space == .source ? liveMediaMap.displayRange(forSource: request.range) : request.range
             guard let storage = textView.textStorage,
                   request.range.location != NSNotFound,
-                  NSMaxRange(request.range) <= storage.length,
-                  (request.suppressUndoRegistration
-                    ? storage.mutableString.substring(with: request.range).utf16.elementsEqual(request.originalText.utf16)
-                    : storage.mutableString.substring(with: request.range) == request.originalText) else {
+                  NSMaxRange(range) <= storage.length else {
+                request.failureMessage = L10n.tr("原文位置已变化，请重新执行转换")
+                return
+            }
+            // Диапазон ответа ИИ, задевающий токен лишь частью, не применяется: иначе редактор забрал бы токен целиком при отказе.
+            if mediaMapEnabled, liveMediaMap.cutsToken(range) {
+                request.failureMessage = L10n.tr("原文位置已变化，请重新执行转换")
+                return
+            }
+            var current = storage.mutableString.substring(with: range)
+            if request.space == .source, !liveMediaMap.isEmpty { current = document.mediaTable.restore(current).text }
+            guard request.suppressUndoRegistration
+                    ? current.utf16.elementsEqual(request.originalText.utf16)
+                    : current == request.originalText else {
                 request.failureMessage = L10n.tr("原文位置已变化，请重新执行转换")
                 return
             }
@@ -3003,23 +3230,26 @@ extension EditorTextView {
             isApplyingAutomatedEdit = true
             defer { isApplyingAutomatedEdit = false }
             guard textView.shouldChangeText(
-                in: request.range,
-                replacementString: request.replacementText
+                in: range,
+                replacementString: replacementText
             ) else {
                 request.failureMessage = L10n.tr("当前文本无法修改")
                 return
             }
             request.wasHandled = true
             storage.replaceCharacters(
-                in: request.range,
-                with: request.replacementText
+                in: range,
+                with: replacementText
             )
             textView.didChangeText()
             let replacementRange = NSRange(
-                location: request.range.location,
-                length: (request.replacementText as NSString).length
+                location: range.location,
+                length: (replacementText as NSString).length
             )
-            let selected = request.resultingSelection ?? replacementRange
+            // Карту к этому моменту уже сдвинул shouldChangeText.
+            let selected = request.resultingSelection.map {
+                request.space == .source ? liveMediaMap.displayRange(forSource: $0) : $0
+            } ?? replacementRange
             textView.setSelectedRange(selected)
             textView.scrollRangeToVisible(selected)
             if request.suppressUndoRegistration, let manager = textView.undoManager, let register = request.registerImageFileUndo {
@@ -3405,11 +3635,12 @@ extension EditorTextView {
         /// `textPending`: `updateNSView` ещё заменит строку редактора и вызовет метод повторно.
         func updateMarkdownPresentation(textPending: Bool = false) {
             guard let textView, let foldLayoutManager else { return }
-            synchronizeMarkdownImageProjection()
+            // Текст ещё старый: displayedText при загрузке сам выставит проекцию, повторный вызов после загрузки досинхронизирует.
+            if !textPending { synchronizeMediaProjection() }
             if markdownPresentation == nil {
                 markdownPresentation = MarkdownPresentationController(textView: textView, layout: foldLayoutManager)
                 markdownPresentation?.projectedImageSource = { [weak self] address in
-                    self?.markdownImageProjection.source(for: address)
+                    self?.document.mediaTable.source(forToken: address)
                 }
                 markdownPresentation?.setMathPairContextEnabled(mathPairContextEnabled)
                 markdownPresentation?.setStrikeCompletedTasks(strikeCompletedTasks)
@@ -3434,8 +3665,11 @@ extension EditorTextView {
                     let snapshot = document.synchronizedSnapshot()
                     guard self.document === document, self.contentRevision == revision,
                           let parsed = self.markdownPresentation?.navigationPresentation(document: document, revision: revision) else { return }
-                    self.postMarkdownLink(MarkdownLink(range: range, url: address), headings: parsed.headings,
-                                          namedAnchors: parsed.namedAnchors, snapshot: snapshot, document: document, revision: revision, token: token)
+                    // Разбор оформления и диапазон блока - экранные, цели переходов уходят в координатах файла (как в `follow`).
+                    let map = self.mediaMapEnabled ? self.liveMediaMap : MarkdownMediaMap()
+                    let anchors = parsed.namedAnchors.map { MarkdownNamedAnchor(name: $0.name, range: map.sourceRange(forDisplay: $0.range)) }
+                    self.postMarkdownLink(MarkdownLink(range: map.sourceRange(forDisplay: range), url: address), headings: parsed.headings.map { $0.inSource(map) },
+                                          namedAnchors: anchors, snapshot: snapshot, document: document, revision: revision, token: token)
                 }
                 textView.acceptEmojiCompletion = { [weak self] word, range in self?.acceptEmojiCompletion(word, range: range) ?? false }
                 textView.dismissEmojiCompletion = { [weak self] in self?.endEmojiCompletion() }
@@ -3489,20 +3723,22 @@ extension EditorTextView {
             }
             updateSyntaxOptions()
             markdownPresentation?.setElementPathEnabled(document.language == .markdown && document.isMarkdownFormatted && !document.isLargeFileMode)
-            foldLayoutManager.showMarkdownImagesWhenMediaFolded = document.language == .markdown && document.isMarkdownFormatted
             if document.language != .markdown || document.isLargeFileMode { clearCriticHighlights() }
+            markdownPresentation?.sourceMap = { [weak self] in self?.liveMediaMap ?? MarkdownMediaMap() }
             markdownPresentation?.update(
                 document: document,
                 enabled: document.language == .markdown && document.isMarkdownFormatted,
                 outlineVisible: document.language == .markdown && isMarkdownOutlineVisible,
                 isActive: isActive,
                 revision: contentRevision,
-                currentRevision: { [weak self] in self?.contentRevision ?? 0 }
+                currentRevision: { [weak self] in self?.contentRevision ?? 0 },
+                textProvider: { [weak self] in
+                    guard let self, let textView = self.textView else { return nil }
+                    return self.makeLiveTextSnapshot(in: textView)
+                }
             )
             updateTableCellWritingDirection()
             updateTableCellTaskStrike()
-            if !textPending { applySourceMediaFolds() }
-            scheduleAutomaticMediaFolds()
         }
 
         private func updateSyntaxOptions() {
@@ -3877,7 +4113,6 @@ extension EditorTextView {
                 }
                 cancelPendingHighlight()
                 cancelFoldTask()
-                automaticMediaFoldTask?.cancel()
                 return
             }
             textView?.requestsFirstResponderWhenAttached = true
@@ -3886,7 +4121,6 @@ extension EditorTextView {
             scheduleHighlight(delay: 0)
             scheduleDelimiterMatch(delay: 0)
             scheduleTextCodecSuggestion(delay: 0.18)
-            scheduleAutomaticMediaFolds()
             DispatchQueue.main.async { [weak self] in
                 guard let self, isActive, let textView, let window = textView.window else {
                     return
@@ -3903,13 +4137,27 @@ extension EditorTextView {
             clearFindHighlights()
             cancelMarkdownLinkNavigation()
             cachedMarkdownNavigation = nil
-            guard !isApplyingExternalUpdate, let textView else { return }
-            cancelAICompletion()
-            if aiFeatures.contains(.completion) {
-                let revision = contentRevision
+            // Страховка: правка мимо shouldChangeText (insertBacktab, возможно undo и IME) меняет длину без сдвига карты.
+            // Отмена и повтор могут заменить токен токеном той же длины: длина не меняется, карту пересобираем всегда.
+            let undoing = textView?.undoManager?.isUndoing == true || textView?.undoManager?.isRedoing == true
+            if mediaMapEnabled, let length = textView?.textStorage?.length,
+               length != mediaMapLength || undoing {
+                mediaMapStale = true
+                mediaMapLength = length
                 DispatchQueue.main.async { [weak self] in
-                    guard let self, self.contentRevision == revision else { return }
-                    self.scheduleAICompletion()
+                    guard let self, mediaMapStale, textView?.hasMarkedText() != true else { return }
+                    rebuildMediaMap()
+                }
+            }
+            guard !isApplyingExternalUpdate, let textView else { return }
+            if !shortenAICompletionAfterTyping() {
+                cancelAICompletion()
+                if aiFeatures.contains(.completion) {
+                    let revision = contentRevision
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.contentRevision == revision else { return }
+                        self.scheduleAICompletion()
+                    }
                 }
             }
             if let text = textView.textStorage?.mutableString,
@@ -3928,8 +4176,6 @@ extension EditorTextView {
             )
             if document.statusMessage != nil { document.statusMessage = nil }
             clearFold()
-            carryMediaPayloadScan(in: textView)
-            scheduleAutomaticMediaFolds()
             // TextKit уже инвалидировал затронутую строку. Не требуем полной
             // видимой раскладки ради линейки на каждом символе; отложенная
             // перерисовка линейки использует актуальную геометрию.
@@ -3946,6 +4192,11 @@ extension EditorTextView {
             }
         }
 
+        /// Пока открыт предпросмотр, он читает модель, поэтому запись быстрее; без него хватает паузы в секунду.
+        static func modelSyncDelay(previewVisible: Bool) -> TimeInterval {
+            previewVisible ? 0.35 : 1.0
+        }
+
         private func scheduleModelSync() {
             modelSyncWorkItem?.cancel()
             let workItem = DispatchWorkItem { [weak self] in
@@ -3955,7 +4206,7 @@ extension EditorTextView {
             }
             modelSyncWorkItem = workItem
             DispatchQueue.main.asyncAfter(
-                deadline: .now() + 0.35,
+                deadline: .now() + Self.modelSyncDelay(previewVisible: document.isPreviewEffectivelyEnabled),
                 execute: workItem
             )
         }
@@ -4157,6 +4408,35 @@ extension EditorTextView {
             shouldChangeTextIn affectedCharRange: NSRange,
             replacementString: String?
         ) -> Bool {
+            // Карту сдвигает только эта обёртка: ядро иногда возвращает false после вложенной правки, которая уже сдвинула её сама.
+            guard shouldChangeTextCore(textView, shouldChangeTextIn: affectedCharRange, replacementString: replacementString) else { return false }
+            // Без строки меняются только атрибуты: текст и карта токенов те же.
+            guard let replacementString else { return true }
+            let length = textView.textStorage?.length ?? 0
+            let location = min(affectedCharRange.location, length)
+            applyMediaEdit(
+                range: NSRange(location: location, length: min(affectedCharRange.length, length - location)),
+                replacement: replacementString
+            )
+            return true
+        }
+
+        /// Каретка и выделение не заходят внутрь токена media: точка уходит к краю, диапазон расширяется до краёв.
+        func textView(
+            _ textView: NSTextView,
+            willChangeSelectionFromCharacterRange oldSelectedCharRange: NSRange,
+            toCharacterRange newSelectedCharRange: NSRange
+        ) -> NSRange {
+            guard mediaMapEnabled, !mediaMap.isEmpty || mediaMapStale, textView === self.textView,
+                  !isApplyingExternalUpdate, !textView.hasMarkedText() else { return newSelectedCharRange }
+            return liveMediaMap.snappedRange(newSelectedCharRange, from: oldSelectedCharRange)
+        }
+
+        private func shouldChangeTextCore(
+            _ textView: NSTextView,
+            shouldChangeTextIn affectedCharRange: NSRange,
+            replacementString: String?
+        ) -> Bool {
             let shouldChangeSignpostID = OSSignpostID(log: editorPerformanceLog)
             os_signpost(.begin, log: editorPerformanceLog, name: "EditorShouldChangeText", signpostID: shouldChangeSignpostID)
             defer { os_signpost(.end, log: editorPerformanceLog, name: "EditorShouldChangeText", signpostID: shouldChangeSignpostID) }
@@ -4194,14 +4474,33 @@ extension EditorTextView {
                     nsText.length - safeLocation
                 )
             )
-            if markdownImageProjectionEnabled, !markdownImageProjection.entries.isEmpty,
-               markdownImageProjection.intersectsToken(safeRange, in: nsText) {
-                NSSound.beep()
+            // Запрещена только правка, режущая токен; правка, накрывающая токен целиком, разрешена.
+            // Правка только атрибутов (replacementString == nil) текст не меняет и токен не режет.
+            if mediaMapEnabled, replacementString != nil, liveMediaMap.cutsToken(safeRange) {
+                // Удаление или замена с захватом части токена забирает токен целиком одной правкой (одна запись отмены).
+                // Набор строго внутри токена и работа с marked text по-прежнему отклоняются.
+                guard safeRange.length > 0, !textView.hasMarkedText() else {
+                    NSSound.beep()
+                    return false
+                }
+                // Автоправка (ответ ИИ, замена) вложенную правку не запускает: текст не меняется, вызывающий покажет свою ошибку.
+                if isApplyingAutomatedEdit { return false }
+                // У ручной правки флаг не ставится: вложенная идёт тем же путём, что обычная печать или удаление.
+                textView.insertText(replacement, replacementRange: liveMediaMap.coveringRange(safeRange))
                 return false
+            }
+            // Вставка с настоящим `data:` одной правкой заменяется текстом с токенами. Известные токены сохраняются,
+            // поэтому вложенная правка снова сюда попадёт без изменений и подмена не повторится.
+            if mediaMapEnabled, (textView as? LacTextView)?.editSource == .pasted, replacement.range(of: "data:", options: .caseInsensitive) != nil {
+                let incoming = document.mediaTable.incoming(replacement)
+                if incoming.text != replacement {
+                    textView.insertText(incoming.text, replacementRange: safeRange)
+                    return false
+                }
             }
             if !isApplyingAutomatedEdit, (textView as? LacTextView)?.editSource == .typed { deferSelectionUpdateForTypedEdit() }
             let replacementLength = (replacement as NSString).length
-            cancelAICompletion()
+            if aiCompletionKeep == nil { cancelAICompletion() }
             contentRevision &+= 1
             markdownPresentation?.noteFenceContextEdit(range: safeRange, replacement: replacement, in: nsText, revision: contentRevision)
             let editDelta = DocumentEditDelta(
@@ -4240,7 +4539,6 @@ extension EditorTextView {
 
             if isApplyingAutomatedEdit {
                 markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength)
-                foldLayoutManager?.shiftAutomaticMediaFolds(range: safeRange, replacementLength: replacementLength)
                 lineIndex.applyEdit(
                     range: safeRange,
                     replacement: replacement,
@@ -4250,7 +4548,6 @@ extension EditorTextView {
             }
             guard document.language == .markdown else {
                 markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength)
-                foldLayoutManager?.shiftAutomaticMediaFolds(range: safeRange, replacementLength: replacementLength)
                 lineIndex.applyEdit(
                     range: safeRange,
                     replacement: replacement,
@@ -4270,7 +4567,6 @@ extension EditorTextView {
                     replacement: replacement
                   ) else {
                 markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength, replacement: replacement)
-                foldLayoutManager?.shiftAutomaticMediaFolds(range: safeRange, replacementLength: replacementLength)
                 lineIndex.applyEdit(
                     range: safeRange,
                     replacement: replacement,
@@ -4287,7 +4583,6 @@ extension EditorTextView {
             ) {
                 pendingListNormalizationLocation = intendedCaretLocation
                 markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength, replacement: replacement)
-                foldLayoutManager?.shiftAutomaticMediaFolds(range: safeRange, replacementLength: replacementLength)
                 lineIndex.applyEdit(
                     range: safeRange,
                     replacement: replacement,
@@ -4306,7 +4601,6 @@ extension EditorTextView {
                 to: normalization.text
             ) else {
                 markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength, replacement: replacement)
-                foldLayoutManager?.shiftAutomaticMediaFolds(range: safeRange, replacementLength: replacementLength)
                 lineIndex.applyEdit(
                     range: safeRange,
                     replacement: replacement,
@@ -4411,7 +4705,7 @@ extension EditorTextView {
                     typewriterWorkItem = nil
                 }
             }
-            cancelAICompletion()
+            if aiCompletionKeep == nil { cancelAICompletion() }
             cancelFoldIfSelectionChanged()
             guard !isApplyingExternalUpdate,
                   !isRestoringOffscreenEdit else { return }
@@ -4448,7 +4742,7 @@ extension EditorTextView {
                 typewriterWorkItem?.cancel()
                 typewriterWorkItem = nil
             }
-            cancelAICompletion()
+            if aiCompletionKeep == nil { cancelAICompletion() }
             cancelFoldIfSelectionChanged()
             guard !isRestoringOffscreenEdit else { return }
             guard textView?.hasMarkedText() != true else {
@@ -4662,14 +4956,16 @@ extension EditorTextView {
             clearAppliedFindHighlights(in: layoutManager)
             findMatchesChanged = false
             guard !findHighlightMatches.isEmpty, !textView.hasMarkedText(),
-                  !markdownImageProjectionEnabled,   // координаты проекции отличаются от исходника
                   !document.hasPendingLiveEdits,
                   let visible = currentVisible else { return }
             let length = textView.textStorage?.length ?? 0
-            var index = TextSearchService.firstIndex(in: findHighlightMatches, endingAfter: visible.location)
+            // Совпадения файловые: видимый участок переводится в файл, а каждое совпадение обратно на экран.
+            let map = liveMediaMap
+            let fileVisible = map.sourceRange(forDisplay: visible)
+            var index = TextSearchService.firstIndex(in: findHighlightMatches, endingAfter: fileVisible.location)
             var applied: [NSRange] = []
-            while index < findHighlightMatches.count, findHighlightMatches[index].location < NSMaxRange(visible) {
-                let range = findHighlightMatches[index]
+            while index < findHighlightMatches.count, findHighlightMatches[index].location < NSMaxRange(fileVisible) {
+                let range = map.displayRange(forSource: findHighlightMatches[index])
                 if NSMaxRange(range) <= length {
                     layoutManager.addTemporaryAttribute(
                         .backgroundColor, value: NSColor.lacFindMatchBackground, forCharacterRange: range
@@ -4745,7 +5041,7 @@ extension EditorTextView {
             }
         }
 
-        private func beginHighlight(generation: UInt) {
+        private func beginHighlight(generation: UInt, allowChunk: Bool = true) {
             guard isActive,
                   generation == highlightGeneration,
                   let textView,
@@ -4780,11 +5076,38 @@ extension EditorTextView {
                 return
             }
 
+            // Кусок берётся из хранилища (экранный текст), весь текст не копируется. Не хватило куска: один раз повторяем полным проходом.
+            let context = syntaxHighlightContext
+            let chunk: SyntaxHighlighter.TextChunk?
+            if allowChunk,
+               SyntaxHighlighter.canChunk(language: language, utf16Length: storage.length),
+               let plan = SyntaxHighlighter.chunkPlan(
+                   context: context,
+                   language: language,
+                   revision: revision,
+                   range: targetRange,
+                   textLength: storage.length
+               ) {
+                chunk = SyntaxHighlighter.TextChunk(
+                    text: storage.mutableString.substring(with: plan),
+                    origin: plan.location,
+                    totalLength: storage.length
+                )
+            } else {
+                chunk = nil
+            }
             // Модель годится только без ожидающих правок: при той же длине она могла отстать от показанного текста.
-            let snapshot = !document.hasPendingLiveEdits && lastSynchronizedRevision == document.textRevision
-                && markdownImageProjection.entries.isEmpty && (document.text as NSString).length == storage.length
-                ? document.text
-                : makeLiveTextSnapshot(in: textView)
+            // Подсветка идёт по экранному тексту: при токенах `document.text` (файловый) не годится, как и при устаревшей карте.
+            let snapshot: String?
+            if chunk != nil {
+                snapshot = nil
+            } else if !document.hasPendingLiveEdits && lastSynchronizedRevision == document.textRevision
+                        && (!mediaMapEnabled || (mediaMap.isEmpty && !mediaMapStale))
+                        && (document.text as NSString).length == storage.length {
+                snapshot = document.text
+            } else {
+                snapshot = makeLiveTextSnapshot(in: textView)
+            }
             let edit = lastSyntaxEdit
             let documentID = document.id
             highlightOperation?.cancel()
@@ -4798,16 +5121,30 @@ extension EditorTextView {
                     name: "SyntaxTokenize",
                     signpostID: tokenizeSignpostID
                 )
-                let tokens = SyntaxHighlighter.tokens(
-                    in: snapshot,
-                    language: language,
-                    range: targetRange,
-                    context: self?.syntaxHighlightContext,
-                    revision: revision,
-                    documentID: documentID,
-                    edit: edit,
-                    isCancelled: { operation.isCancelled }
-                )
+                var tokens: [SyntaxHighlighter.Token]?
+                if let chunk {
+                    if case let .tokens(chunkTokens) = SyntaxHighlighter.tokens(
+                        in: chunk,
+                        language: language,
+                        range: targetRange,
+                        context: context,
+                        revision: revision,
+                        isCancelled: { operation.isCancelled }
+                    ) {
+                        tokens = chunkTokens
+                    }
+                } else if let snapshot {
+                    tokens = SyntaxHighlighter.tokens(
+                        in: snapshot,
+                        language: language,
+                        range: targetRange,
+                        context: context,
+                        revision: revision,
+                        documentID: documentID,
+                        edit: edit,
+                        isCancelled: { operation.isCancelled }
+                    )
+                }
                 os_signpost(
                     .end,
                     log: editorPerformanceLog,
@@ -4815,6 +5152,13 @@ extension EditorTextView {
                     signpostID: tokenizeSignpostID
                 )
                 guard !operation.isCancelled else { return }
+                guard let tokens else {
+                    DispatchQueue.main.async { [weak self, weak operation] in
+                        guard let operation, !operation.isCancelled else { return }
+                        self?.beginHighlight(generation: generation, allowChunk: false)
+                    }
+                    return
+                }
                 let changedRanges = SyntaxParserRegistry.changedRanges(
                     documentID: documentID, revision: revision, language: language
                 )
@@ -4984,21 +5328,15 @@ extension EditorTextView {
             guard let textView,
                   let text = textView.textStorage?.mutableString else { return }
             let selection = textView.selectedRange()
-            let sourceSelection = markdownImageProjectionEnabled && !markdownImageProjection.entries.isEmpty
-                ? markdownImageProjection.sourceRange(for: selection, in: text)
-                : selection
+            let sourceSelection = liveMediaMap.isEmpty ? selection : mediaMap.sourceRange(forDisplay: selection)
             if document.selectionRange != sourceSelection {
                 document.selectionRange = sourceSelection
             }
             let location = min(selection.location, text.length)
-            // Поиск данных верен только для текущей версии; иначе столбец считается обычным проходом.
-            let currentScan = mediaPayloadScan.flatMap {
-                $0.document === document && $0.revision == contentRevision && $0.textLength == text.length ? $0 : nil
-            }
             let position = lineIndex.position(
                 at: location,
                 in: text,
-                asciiRuns: currentScan?.ranges ?? []
+                asciiRuns: []
             )
             if document.cursorLine != position.line { document.cursorLine = position.line }
             if document.cursorColumn != position.column { document.cursorColumn = position.column }
@@ -5209,11 +5547,6 @@ extension EditorTextView {
                   let foldLayoutManager else { return }
             cancelFoldTask()
             let selection = textView.selectedRange()
-            if let media = FoldService.mediaPayloadRange(in: textView.string, at: selection.location) {
-                foldLayoutManager.toggleAutomaticMediaFold(media)
-                refreshFoldLayout()
-                return
-            }
             if foldLayoutManager.foldedRange != nil {
                 clearFold()
                 return
@@ -5269,10 +5602,6 @@ extension EditorTextView {
         }
 
         private func clearFoldIfNeeded(toReveal range: NSRange) {
-            if let layout = foldLayoutManager,
-               layout.removeAutomaticMediaFold(containing: range.location) {
-                refreshFoldLayout()
-            }
             guard let foldedRange = foldLayoutManager?.foldedRange,
                   NSIntersectionRange(foldedRange, range).length > 0 ||
                     (range.length == 0 && NSLocationInRange(range.location, foldedRange)) else { return }
@@ -5296,99 +5625,6 @@ extension EditorTextView {
             markdownPresentation?.foldGeometryChanged()
             ruler?.invalidateHashMarks()
             ruler?.needsDisplay = true
-        }
-
-        private var allowsAutomaticMediaFolds: Bool {
-            isActive && document.isFoldingEnabled && currentLanguage == .markdown
-                && !document.isMarkdownFormatted && textView != nil
-        }
-
-        /// Выход из оформленного режима сразу показывает весь Base64: диапазоны ставятся до первой отрисовки.
-        /// Полный поиск на главном потоке идёт один раз на переход; при наборе он остаётся в отложенной задаче.
-        private func applySourceMediaFolds() {
-            guard needsSourceMediaFolds else { return }
-            needsSourceMediaFolds = false
-            let foldsSignpostID = OSSignpostID(log: editorPerformanceLog)
-            os_signpost(.begin, log: editorPerformanceLog, name: "EditorSourceMediaFolds", signpostID: foldsSignpostID)
-            defer { os_signpost(.end, log: editorPerformanceLog, name: "EditorSourceMediaFolds", signpostID: foldsSignpostID) }
-            guard allowsAutomaticMediaFolds, let text = textView?.string else { return }
-            let ranges = FoldService.mediaPayloadRanges(in: text)
-            mediaPayloadScan = (document, contentRevision, (text as NSString).length, ranges)
-            applyAutomaticMediaFolds(ranges)
-        }
-
-        private func applyAutomaticMediaFolds(_ ranges: [NSRange]) {
-            let selection = textView?.selectedRange()
-            let visibleRanges = ranges.filter { range in
-                guard let selection else { return true }
-                return !(selection.location >= range.location && selection.location <= NSMaxRange(range))
-            }
-            let previous = foldLayoutManager?.automaticMediaFoldedRanges ?? []
-            guard foldLayoutManager?.setAutomaticMediaFoldedRanges(visibleRanges) == true else { return }
-            // Те же сворачивания на новых местах (набор выше) общую геометрию не меняют: полная раскладка нужна только при другом их наборе.
-            let current = foldLayoutManager?.automaticMediaFoldedRanges ?? []
-            refreshFoldLayout(fullLayout: previous != current)
-        }
-
-        /// Переносит прошлый поиск через одну правку. При любом сомнении поиск сбрасывается,
-        /// и отложенная задача просмотрит весь документ заново.
-        private func carryMediaPayloadScan(in textView: NSTextView) {
-            guard let scan = mediaPayloadScan else { return }
-            mediaPayloadScan = nil
-            guard allowsAutomaticMediaFolds, scan.document === document, scan.revision &+ 1 == contentRevision,
-                  let edit = lastSyntaxEdit, edit.revision == contentRevision,
-                  let text = textView.textStorage?.mutableString, text.length == scan.textLength + edit.changeInLength,
-                  let ranges = FoldService.shiftedMediaPayloadRanges(scan.ranges, editedRange: edit.editedRange,
-                                                                     replacementLength: edit.replacementLength, in: text)
-            else { return }
-            mediaPayloadScan = (document, contentRevision, text.length, ranges)
-        }
-
-        private func scheduleAutomaticMediaFolds() {
-            automaticMediaFoldTask?.cancel()
-            guard allowsAutomaticMediaFolds else {
-                // В оформленном редакторе automatic media-fold не применяются:
-                // исходный payload заменён коротким токеном, а изображение
-                // должно остаться видимым.
-                if !document.isMarkdownFormatted,
-                   foldLayoutManager?.automaticMediaFoldedRanges.isEmpty == false {
-                    foldLayoutManager?.setAutomaticMediaFoldedRanges([])
-                }
-                return
-            }
-            let revision = contentRevision
-            automaticMediaFoldTask = Task { [weak self] in
-                try? await Task.sleep(for: .milliseconds(80))
-                guard !Task.isCancelled, let self, self.contentRevision == revision else { return }
-                let ranges: [NSRange]
-                let textLength: Int
-                // Текст не менялся или поиск перенесён через правку: повторно весь документ не просматриваем.
-                if let scan = self.mediaPayloadScan, scan.document === self.document, scan.revision == revision,
-                   scan.textLength == self.textView?.textStorage?.length {
-                    ranges = scan.ranges
-                    textLength = scan.textLength
-                } else {
-                    // Копия всего текста делается после паузы: отменённая следующей клавишей задача её не платит.
-                    let snapshotSignpostID = OSSignpostID(log: editorPerformanceLog)
-                    os_signpost(.begin, log: editorPerformanceLog, name: "EditorMediaFoldSnapshot", signpostID: snapshotSignpostID)
-                    let liveText = self.textView?.string
-                    os_signpost(.end, log: editorPerformanceLog, name: "EditorMediaFoldSnapshot", signpostID: snapshotSignpostID)
-                    guard let snapshot = liveText else { return }
-                    textLength = self.textView?.textStorage?.length ?? 0
-                    ranges = await Task.detached(priority: .utility) {
-                        let scanSignpostID = OSSignpostID(log: editorPerformanceLog)
-                        os_signpost(.begin, log: editorPerformanceLog, name: "EditorMediaFoldScan", signpostID: scanSignpostID)
-                        let found = FoldService.mediaPayloadRanges(in: snapshot, isCancelled: { Task.isCancelled })
-                        os_signpost(.end, log: editorPerformanceLog, name: "EditorMediaFoldScan", signpostID: scanSignpostID)
-                        return found
-                    }.value
-                }
-                guard !Task.isCancelled, self.isActive,
-                      self.contentRevision == revision, self.currentLanguage == .markdown,
-                      !self.document.isMarkdownFormatted, self.document.isFoldingEnabled else { return }
-                self.mediaPayloadScan = (self.document, revision, textLength, ranges)
-                self.applyAutomaticMediaFolds(ranges)
-            }
         }
     }
 }

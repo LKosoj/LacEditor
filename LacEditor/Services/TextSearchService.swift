@@ -154,6 +154,40 @@ enum TextSearchService {
         return matches.last(where: { NSMaxRange($0) <= location }) ?? matches[matches.count - 1]
     }
 
+    /// Участки текста, по которым идёт поиск: всё, кроме адресов `data:` (заголовка и данных).
+    static func searchableRanges(in text: String) -> [NSRange] {
+        var parts: [NSRange] = []
+        var location = 0
+        for address in MarkdownMediaTable.addressRanges(in: text) {
+            if address.location > location { parts.append(NSRange(location: location, length: address.location - location)) }
+            location = NSMaxRange(address)
+        }
+        let length = (text as NSString).length
+        if location < length { parts.append(NSRange(location: location, length: length - location)) }
+        return parts
+    }
+
+    /// Совпадения выражения по участкам `searchableRanges`. Границы участков прозрачны:
+    /// `^`, `$` и проверки соседних символов видят настоящий текст, а не край участка.
+    static func enumerateMatches(
+        of regex: NSRegularExpression,
+        in text: String,
+        using body: (NSTextCheckingResult?, UnsafeMutablePointer<ObjCBool>) -> Void
+    ) {
+        var stopped = false
+        for part in searchableRanges(in: text) where !stopped {
+            // reportProgress вызывает блок и внутри долгого совпадения, поэтому отмена прерывает и его.
+            regex.enumerateMatches(
+                in: text,
+                options: [.reportProgress, .withTransparentBounds, .withoutAnchoringBounds],
+                range: part
+            ) { match, _, stop in
+                body(match, stop)
+                if stop.pointee.boolValue { stopped = true }
+            }
+        }
+    }
+
     static func allRanges(
         in text: String,
         query: String,
@@ -165,14 +199,17 @@ enum TextSearchService {
         let options = compareOptions(caseSensitive: caseSensitive)
         let queryLength = (query as NSString).length
         var matches: [NSRange] = []
-        var location = 0
-        while location <= nsText.length - queryLength {
-            if matches.count.isMultiple(of: 512), isCancelled() { return [] }
-            let range = NSRange(location: location, length: nsText.length - location)
-            let match = nsText.range(of: query, options: options, range: range)
-            guard match.location != NSNotFound else { break }
-            matches.append(match)
-            location = max(match.location + max(match.length, 1), location + 1)
+        for part in searchableRanges(in: text) {
+            let end = NSMaxRange(part)
+            var location = part.location
+            while location <= end - queryLength {
+                if matches.count.isMultiple(of: 512), isCancelled() { return [] }
+                let range = NSRange(location: location, length: end - location)
+                let match = nsText.range(of: query, options: options, range: range)
+                guard match.location != NSNotFound else { break }
+                matches.append(match)
+                location = max(match.location + max(match.length, 1), location + 1)
+            }
         }
         return matches
     }
@@ -202,25 +239,27 @@ enum TextSearchService {
         guard !query.isEmpty else { return (text, 0) }
         let nsText = text as NSString
         let options = compareOptions(caseSensitive: caseSensitive)
+        let parts = searchableRanges(in: text)
         var count = 0
-        var location = 0
 
-        while location <= nsText.length {
-            if count.isMultiple(of: 512), isCancelled() { return (text, 0) }
-            let range = NSRange(location: location, length: nsText.length - location)
-            let match = nsText.range(of: query, options: options, range: range)
-            guard match.location != NSNotFound else { break }
-            count += 1
-            location = NSMaxRange(match)
+        for part in parts {
+            var location = part.location
+            while location <= NSMaxRange(part) {
+                if count.isMultiple(of: 512), isCancelled() { return (text, 0) }
+                let range = NSRange(location: location, length: NSMaxRange(part) - location)
+                let match = nsText.range(of: query, options: options, range: range)
+                guard match.location != NSNotFound else { break }
+                count += 1
+                location = NSMaxRange(match)
+            }
         }
 
-        let output = nsText.replacingOccurrences(
-            of: query,
-            with: replacement,
-            options: options,
-            range: NSRange(location: 0, length: nsText.length)
-        )
-        return (output, count)
+        let output = NSMutableString(string: text)
+        // С конца: замена не сдвигает ещё не обработанные участки.
+        for part in parts.reversed() {
+            _ = output.replaceOccurrences(of: query, with: replacement, options: options, range: part)
+        }
+        return (output as String, count)
     }
 
     /// Целое слово задаётся lookaround, а не \b: у запроса вроде "@foo" или "C++" края не словесные.
@@ -246,12 +285,7 @@ enum TextSearchService {
         let regex = try regularExpression(query: query, options: options)
         var result: [NSRange] = []
         var cancelled = false
-        // reportProgress вызывает блок и внутри долгого совпадения, поэтому отмена прерывает и тяжёлый откат.
-        regex.enumerateMatches(
-            in: text,
-            options: [.reportProgress],
-            range: NSRange(location: 0, length: (text as NSString).length)
-        ) { match, _, stop in
+        enumerateMatches(of: regex, in: text) { match, stop in
             if isCancelled() { cancelled = true; stop.pointee = true; return }
             guard let range = match?.range, range.length > 0 else { return }
             result.append(range)
@@ -315,11 +349,7 @@ enum TextSearchService {
         var cursor = 0
         var count = 0
         var cancelled = false
-        regex.enumerateMatches(
-            in: text,
-            options: [.reportProgress],
-            range: NSRange(location: 0, length: ns.length)
-        ) { match, _, stop in
+        enumerateMatches(of: regex, in: text) { match, stop in
             if isCancelled() { cancelled = true; stop.pointee = true; return }
             // Пустые совпадения пропускаются, как в allRanges: иначе «Заменить все» меняло бы то, что поиск не нашёл.
             guard let match, match.range.length > 0 else { return }
@@ -343,14 +373,16 @@ enum TextSearchService {
         interpretsEscapes: Bool
     ) throws -> String? {
         let ns = text as NSString
-        guard !query.isEmpty, selection.location != NSNotFound, NSMaxRange(selection) <= ns.length else { return nil }
+        guard !query.isEmpty, selection.location != NSNotFound, NSMaxRange(selection) <= ns.length,
+              let part = searchableRanges(in: text).first(where: { NSMaxRange(selection) <= NSMaxRange($0) }),
+              selection.location >= part.location else { return nil }
         if options.isPlain {
             return selectionMatches(in: text, query: query, selection: selection, caseSensitive: options.caseSensitive)
                 ? interpreted(replacement, enabled: interpretsEscapes) : nil
         }
         let regex = try regularExpression(query: query, options: options)
         // Ищем до конца текста, а не только в выделении: жадные шаблоны оцениваются так же, как при поиске.
-        let tail = NSRange(location: selection.location, length: ns.length - selection.location)
+        let tail = NSRange(location: selection.location, length: NSMaxRange(part) - selection.location)
         guard let match = regex.firstMatch(
             in: text,
             options: [.anchored, .withTransparentBounds, .withoutAnchoringBounds],

@@ -1387,13 +1387,18 @@ enum MarkdownPresentationParser {
                 if isCancelled() { return }
                 guard supportedParent, let start = type == "html_block" ? offsets?[tag.location] : 0,
                       let last = type == "html_block" ? offsets?[NSMaxRange(tag) - 1] : tag.length - 1 else { pending.removeAll(); continue }
-                if !closing {
-                    pending.append((name, node, parent, tag, start))
+                let opening = (name: name, node: node, parent: parent, tag: tag, offset: start)
+                if !closing && name != "embed" {
+                    pending.append(opening)
                     continue
                 }
-                guard let pending = self.pending.last, pending.name == name, pending.parent == parent,
-                      (type != "html_block" || pending.node == node), pending.tag.location <= tag.location else { self.pending.removeAll(); continue }
-                self.pending.removeLast()
+                // `<embed>` не имеет закрывающего тега: он сам себе пара.
+                guard let pending = closing ? self.pending.last : opening else { self.pending.removeAll(); continue }
+                if closing {
+                    guard pending.name == name, pending.parent == parent, (type != "html_block" || pending.node == node),
+                          pending.tag.location <= tag.location else { self.pending.removeAll(); continue }
+                    self.pending.removeLast()
+                }
                 if !self.pending.isEmpty { continue }
                 let whole = NSRange(location: pending.tag.location, length: NSMaxRange(tag) - pending.tag.location)
                 let html: String
@@ -2183,7 +2188,7 @@ enum MarkdownPresentationParser {
                         let outside = htmlContext.consume(source: (htmlContextText as NSString?) ?? sourceText, range: range, isCancelled: isCancelled,
                             confirmedTag: { tag, name, closing in
                                 if name == "img", !closing, htmlTemplateDepth == 0 { imageTags.append(tag) }
-                                if ["audio", "video", "iframe"].contains(name), htmlTemplateDepth == 0 { mediaTags.append((tag, name, closing)) }
+                                if ["audio", "video", "iframe", "embed"].contains(name), htmlTemplateDepth == 0 { mediaTags.append((tag, name, closing)) }
                                 if name == "ruby", type == "html_inline", htmlTemplateDepth == 0,
                                    let parent = cmark_node_parent(node) { rubyTags.append((parent, tag, closing)) }
                                 if name == "template" { mediaCollector.cancelPending(); htmlTemplateDepth = closing ? max(0, htmlTemplateDepth - 1) : htmlTemplateDepth + 1 }

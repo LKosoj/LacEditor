@@ -570,4 +570,170 @@ final class AIClientTests: XCTestCase {
             XCTFail("Expected disabled")
         } catch AIError.disabled {} catch { XCTFail("Unexpected error") }
     }
+
+    private func completionProfile(_ api: AIAPIProtocol, host: String = "example.com") -> AIModelProfile {
+        var profile = self.profile(api)
+        profile.baseURL = "https://\(host)/completion-\(UUID().uuidString)/v1/"
+        return profile
+    }
+
+    func testCompletionSendsLimitedParameters() async throws {
+        let client = makeClient()
+        AIURLProtocol.handler = { request in
+            let body = try self.body(request)
+            XCTAssertEqual(body["temperature"] as? Double, 0.2)
+            XCTAssertEqual(body["max_output_tokens"] as? Int, 60)
+            XCTAssertNil(body["stop"])
+            return (200, Data(#"{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":" more"}]}]}"#.utf8))
+        }
+        let responses = try await client.generateCompletion(input: "x", instructions: "i", profile: completionProfile(.responses), key: nil)
+        XCTAssertEqual(responses, " more")
+        for (host, limit) in [("example.com", "max_tokens"), ("api.openai.com", "max_completion_tokens")] {
+            AIURLProtocol.handler = { request in
+                let body = try self.body(request)
+                XCTAssertEqual(body["temperature"] as? Double, 0.2)
+                XCTAssertEqual(body[limit] as? Int, 60)
+                XCTAssertEqual(body["stop"] as? [String], ["\n"])
+                XCTAssertEqual(Set(body.keys).intersection(["max_tokens", "max_completion_tokens"]), [limit])
+                return (200, Data(#"{"choices":[{"finish_reason":"stop","message":{"content":" more"}}]}"#.utf8))
+            }
+            let chat = try await client.generateCompletion(input: "x", instructions: "i", profile: completionProfile(.chatCompletions, host: host), key: nil)
+            XCTAssertEqual(chat, " more")
+        }
+    }
+
+    func testCompletionAcceptsTruncatedAnswer() async throws {
+        let client = makeClient()
+        AIURLProtocol.handler = { _ in (200, Data(#"{"choices":[{"finish_reason":"length","message":{"content":" cut"}}]}"#.utf8)) }
+        let chat = try await client.generateCompletion(input: "x", instructions: "i", profile: completionProfile(.chatCompletions), key: nil)
+        XCTAssertEqual(chat, " cut")
+        AIURLProtocol.handler = { _ in (200, Data(#"{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[{"type":"message","content":[{"type":"output_text","text":" cut"}]}]}"#.utf8)) }
+        let responses = try await client.generateCompletion(input: "x", instructions: "i", profile: completionProfile(.responses), key: nil)
+        XCTAssertEqual(responses, " cut")
+        AIURLProtocol.handler = { _ in (200, Data(#"{"choices":[{"finish_reason":"length","message":{"content":""}}]}"#.utf8)) }
+        do {
+            _ = try await client.generateText(input: "x", instructions: "i", profile: completionProfile(.chatCompletions), key: nil)
+            XCTFail("generateText must still treat a truncated answer as an error")
+        } catch AIError.truncated {}
+    }
+
+    func testCompletionRetriesWithoutParametersAndRemembersPair() async throws {
+        let client = makeClient()
+        let profile = completionProfile(.chatCompletions)
+        var requests: [[String: Any]] = []
+        AIURLProtocol.handler = { request in
+            let body = try self.body(request)
+            requests.append(body)
+            if body["temperature"] != nil { return (400, Data(#"{"error":{"message":"unsupported parameter"}}"#.utf8)) }
+            return (200, Data(#"{"choices":[{"finish_reason":"stop","message":{"content":" fine"}}]}"#.utf8))
+        }
+        let first = try await client.generateCompletion(input: "x", instructions: "i", profile: profile, key: nil)
+        XCTAssertEqual(first, " fine")
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertNil(requests[1]["temperature"])
+        XCTAssertNil(requests[1]["stop"])
+        XCTAssertNil(requests[1]["max_tokens"])
+        let second = try await client.generateCompletion(input: "y", instructions: "i", profile: profile, key: nil)
+        XCTAssertEqual(second, " fine")
+        XCTAssertEqual(requests.count, 3)
+        XCTAssertNil(requests[2]["temperature"])
+        var other = profile
+        other.modelID = "another-model"
+        _ = try await client.generateCompletion(input: "y", instructions: "i", profile: other, key: nil)
+        XCTAssertEqual(requests.count, 5, "another model is not remembered")
+    }
+
+    func testCompletionRemembersPairOnlyAfterTruncatedEmptyAnswer() async throws {
+        let client = makeClient()
+        // Пустой ответ без обрезки: повтор есть, пара не запоминается.
+        let plain = completionProfile(.chatCompletions)
+        var count = 0
+        AIURLProtocol.handler = { request in
+            count += 1
+            if try self.body(request)["temperature"] != nil { return (200, Data(#"{"choices":[{"finish_reason":"stop","message":{"content":""}}]}"#.utf8)) }
+            return (200, Data(#"{"choices":[{"finish_reason":"stop","message":{"content":" ok"}}]}"#.utf8))
+        }
+        _ = try await client.generateCompletion(input: "x", instructions: "i", profile: plain, key: nil)
+        XCTAssertEqual(count, 2)
+        _ = try await client.generateCompletion(input: "y", instructions: "i", profile: plain, key: nil)
+        XCTAssertEqual(count, 4, "пустой ответ без обрезки не запоминается")
+        // Пустой ответ, обрезанный по лимиту: пара запоминается.
+        let cut = completionProfile(.chatCompletions)
+        count = 0
+        AIURLProtocol.handler = { request in
+            count += 1
+            if try self.body(request)["temperature"] != nil { return (200, Data(#"{"choices":[{"finish_reason":"length","message":{"content":""}}]}"#.utf8)) }
+            return (200, Data(#"{"choices":[{"finish_reason":"stop","message":{"content":" ok"}}]}"#.utf8))
+        }
+        _ = try await client.generateCompletion(input: "x", instructions: "i", profile: cut, key: nil)
+        XCTAssertEqual(count, 2)
+        _ = try await client.generateCompletion(input: "y", instructions: "i", profile: cut, key: nil)
+        XCTAssertEqual(count, 3, "обрезанный пустой ответ запоминается")
+    }
+
+    func testCompletionRetriesEmptyAnswerAndStatus422ButNotServerError() async throws {
+        let client = makeClient()
+        var count = 0
+        AIURLProtocol.handler = { request in
+            count += 1
+            if try self.body(request)["temperature"] != nil { return (200, Data(#"{"choices":[{"finish_reason":"stop","message":{"content":""}}]}"#.utf8)) }
+            return (200, Data(#"{"choices":[{"finish_reason":"stop","message":{"content":" later"}}]}"#.utf8))
+        }
+        let empty = try await client.generateCompletion(input: "x", instructions: "i", profile: completionProfile(.chatCompletions), key: nil)
+        XCTAssertEqual(empty, " later")
+        XCTAssertEqual(count, 2)
+        count = 0
+        AIURLProtocol.handler = { request in
+            count += 1
+            if try self.body(request)["temperature"] != nil { return (422, Data("{}".utf8)) }
+            return (200, Data(#"{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":" ok"}]}]}"#.utf8))
+        }
+        let unprocessable = try await client.generateCompletion(input: "x", instructions: "i", profile: completionProfile(.responses), key: nil)
+        XCTAssertEqual(unprocessable, " ok")
+        XCTAssertEqual(count, 2)
+        count = 0
+        AIURLProtocol.handler = { _ in count += 1; return (500, Data("{}".utf8)) }
+        do {
+            _ = try await client.generateCompletion(input: "x", instructions: "i", profile: completionProfile(.chatCompletions), key: nil)
+            XCTFail("Expected HTTP failure")
+        } catch AIError.http(let status, _) { XCTAssertEqual(status, 500) }
+        XCTAssertEqual(count, 1, "server errors are not retried")
+    }
+
+    func testCompletionTreatsNullOrMissingContentAsEmptyAndRetries() async throws {
+        for message in [#"{"content":null}"#, #"{}"#] {
+            let client = makeClient()
+            var count = 0
+            AIURLProtocol.handler = { request in
+                count += 1
+                if try self.body(request)["temperature"] != nil { return (200, Data(#"{"choices":[{"finish_reason":"stop","message":\#(message)}]}"#.utf8)) }
+                return (200, Data(#"{"choices":[{"finish_reason":"stop","message":{"content":" later"}}]}"#.utf8))
+            }
+            let text = try await client.generateCompletion(input: "x", instructions: "i", profile: completionProfile(.chatCompletions), key: nil)
+            XCTAssertEqual(text, " later")
+            XCTAssertEqual(count, 2)
+        }
+    }
+
+    func testCompletionFailsWhenRetryDoesNotHelp() async throws {
+        let client = makeClient()
+        let profile = completionProfile(.chatCompletions)
+        var count = 0
+        AIURLProtocol.handler = { _ in count += 1; return (400, Data(#"{"error":{"message":"bad"}}"#.utf8)) }
+        do {
+            _ = try await client.generateCompletion(input: "x", instructions: "i", profile: profile, key: nil)
+            XCTFail("Expected HTTP failure")
+        } catch AIError.http(let status, _) { XCTAssertEqual(status, 400) }
+        XCTAssertEqual(count, 2)
+        AIURLProtocol.handler = { _ in count += 1; return (200, Data(#"{"choices":[{"finish_reason":"stop","message":{"content":" "}}]}"#.utf8)) }
+        count = 0
+        do {
+            _ = try await client.generateCompletion(input: "x", instructions: "i", profile: profile, key: nil)
+            XCTFail("Expected invalid response")
+        } catch AIError.invalidResponse {}
+        XCTAssertEqual(count, 2)
+        count = 0
+        _ = try? await client.generateCompletion(input: "x", instructions: "i", profile: profile, key: nil)
+        XCTAssertEqual(count, 2, "an unsuccessful retry is not remembered")
+    }
 }

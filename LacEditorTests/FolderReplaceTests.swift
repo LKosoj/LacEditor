@@ -359,4 +359,10 @@ final class FolderReplaceControllerTests: XCTestCase {
         XCTAssertEqual(outcome, .skipped(.changed))
         XCTAssertEqual(document.synchronizedText(), "needle")
     }
+
+    func testRegexReplaceSkipsDataAddress() throws {
+        let text = "cat ![a](data:image/png;base64,Y2F0Y2F0) cat"
+        XCTAssertEqual(try FolderReplaceService.edits(in: text, request: request("c(a)t", "$1", TextSearchService.Options(usesRegex: true))).count, 2)
+        XCTAssertEqual(try FolderReplaceService.edits(in: text, request: request("Y2F0", "x")).count, 0)
+    }
 }

@@ -110,7 +110,7 @@ extension AIFeature {
         case .table: L10n.tr("需要：选中的文本")
         case .clarity, .structure, .summary, .metadata, .consistency, .tasksAndDecisions: L10n.tr("需要：选中的文本，没有选区时使用整篇文档")
         case .rewrite: L10n.tr("需要：选中的文本；选择「调整语气」时还需填写期望的语气")
-        case .completion: L10n.tr("需要：光标前的文字")
+        case .completion: L10n.tr("需要：光标前后的文字、文件类型和当前章节标题")
         case .readerReview: L10n.tr("需要：选中的文本或整篇文档；可填写目标读者，留空则按普通读者")
         case .sources: L10n.tr("需要：一条简短的网页搜索查询（需启用 Jina 搜索）")
         case .translation: L10n.tr("需要：选中的文本和目标语言")

@@ -2,6 +2,7 @@ import AppKit
 import AVKit
 import ImageIO
 import os
+import PDFKit
 import WebKit
 
 private let markdownEditorPerformanceLog = OSLog(subsystem: "com.laceditor.LacEditor", category: "MarkdownEditorPerformance")
@@ -142,7 +143,7 @@ private func markdownPresentationImageData(_ address: String, baseURL: URL?, pat
         guard let comma = address.firstIndex(of: ",") else { return nil }
         let metadata = address[address.index(address.startIndex, offsetBy: 5)..<comma]
         let value = String(address[address.index(after: comma)...])
-        if metadata.lowercased().hasSuffix(";base64") { return Data(base64Encoded: value) }
+        if metadata.lowercased().hasSuffix(";base64") { return Data(base64Encoded: value, options: .ignoreUnknownCharacters) }
         let bytes = Array(value.utf8)
         var decoded = Data()
         var index = 0
@@ -342,8 +343,10 @@ final class MarkdownPresentationController {
     private var expandedDetails: [NSRange: Bool] = [:]
     var detailsOpenOverrides: [NSRange: Bool] { expandedDetails }
     private var audioJobs: [NSRange: (UUID, Task<Void, Never>)] = [:]
-    private var audioViews: [NSRange: AVPlayerView] = [:]
+    private var audioViews: [NSRange: NSView] = [:]
     private var audioCompleted: Set<NSRange> = []
+    /// Страница и точка PDF на момент ухода с экрана: вью освобождается, при возврате создаётся заново.
+    private var pdfPositions: [NSRange: (page: Int, point: NSPoint)] = [:]
     private var diagramGeometry: (CGFloat, Bool)?
     private var footnoteTooltips: [(tag: NSView.ToolTipTag, rect: NSRect, owner: NSString)] = []
     var footnoteTooltipRects: [NSRect] { footnoteTooltips.map(\.rect) }
@@ -437,6 +440,9 @@ final class MarkdownPresentationController {
     private var appliedReadingMode = false
     private var revision: UInt = 0
     private var currentRevision: (() -> UInt)?
+    /// Карта токенов media: разбор идёт по экранному тексту, а оглавление документа хранит координаты файла.
+    var sourceMap: (() -> MarkdownMediaMap)?
+    private var textProvider: (() -> String?)?
     private var readableEnabled: Bool { document?.language == .markdown && document?.isWordCountEnabled == true }
     private var emojiCompletionEnabled: Bool { document?.language == .markdown && (emojiCompletionRequested || wikiCompletionRequested) }
     private var mathPairEnabled: Bool { document?.language == .markdown && mathPairRequested }
@@ -510,13 +516,18 @@ final class MarkdownPresentationController {
         cancel()
         needsRefresh = true
         if isActive, let document, let currentRevision {
-            update(document: document, enabled: enabled, outlineVisible: outlineVisible, isActive: isActive, revision: revision, currentRevision: currentRevision)
+            update(document: document, enabled: enabled, outlineVisible: outlineVisible, isActive: isActive, revision: revision, currentRevision: currentRevision, textProvider: textProvider)
         }
     }
 
-    func update(document: EditorDocument, enabled: Bool, outlineVisible: Bool = false, isActive: Bool, revision: UInt, currentRevision: @escaping () -> UInt) {
+    func update(document: EditorDocument, enabled: Bool, outlineVisible: Bool = false, isActive: Bool, revision: UInt, currentRevision: @escaping () -> UInt, textProvider: (() -> String?)? = nil) {
         let documentChanged = self.document !== document
         if documentChanged || self.revision != revision { expandedDetails.removeAll() }
+        if documentChanged {
+            // Виды прежнего документа снимаются сейчас: при снятии позже их позиция попала бы к новому документу.
+            clearAudio()
+            pdfPositions.removeAll()
+        }
         let imageBaseChanged = imageBaseURL != document.url
         let remoteImagesChanged = remoteImagesConsentSnapshot != document.allowsRemoteImages
         remoteImagesConsentSnapshot = document.allowsRemoteImages
@@ -559,6 +570,7 @@ final class MarkdownPresentationController {
         self.outlineVisible = outlineVisible
         self.isActive = isActive
         self.currentRevision = currentRevision
+        self.textProvider = textProvider
         self.revision = revision
         if documentChanged { clearElementPath() }
         if elementPathEnabled, parsedResult != nil, parsedRevision != revision {
@@ -590,7 +602,7 @@ final class MarkdownPresentationController {
         }
         if activated && enabled && presentation != nil { applyVisible() }
         if let parsedResult {
-            if outlineVisible && (!document.isMarkdownOutlineCurrent || document.markdownHeadings != parsedResult.headings) {
+            if outlineVisible && (!document.isMarkdownOutlineCurrent || document.markdownHeadings != sourceHeadings(parsedResult.headings)) {
                 publishOutline(parsedResult, revision: revision)
             }
             publishReadableTextIfNeeded()
@@ -606,15 +618,21 @@ final class MarkdownPresentationController {
         }
     }
 
+    private func sourceHeadings(_ headings: [MarkdownHeading]) -> [MarkdownHeading] {
+        guard let map = sourceMap?(), !map.isEmpty else { return headings }
+        return headings.map { $0.inSource(map) }
+    }
+
     private func publishOutline(_ result: MarkdownPresentation, revision: UInt) {
         guard let document else { return }
         let generation = self.generation
         DispatchQueue.main.async { [weak self, weak document] in
             guard let self, let document, self.document === document, self.isActive,
                   self.outlineVisible, self.generation == generation, self.currentRevision?() == revision,
-                  self.parsedResult != nil,
-                  !document.isMarkdownOutlineCurrent || document.markdownHeadings != result.headings else { return }
-            document.markdownHeadings = result.headings
+                  self.parsedResult != nil else { return }
+            let headings = self.sourceHeadings(result.headings)
+            guard !document.isMarkdownOutlineCurrent || document.markdownHeadings != headings else { return }
+            document.markdownHeadings = headings
             document.isMarkdownOutlineCurrent = true
         }
     }
@@ -624,7 +642,19 @@ final class MarkdownPresentationController {
               let document, !document.hasCurrentMarkdownReadableText, let parsedResult,
               (parsedResult.emojiCandidates.isEmpty || emojiValues != nil),
               let readable = parsedResult.readableText, let source = parsedSource else { return }
-        document.installMarkdownReadableText(readable, source: source)
+        installReadableText(readable, source: source, in: document)
+    }
+
+    /// Разбор сделан по экранному тексту; документ ждёт файловый текст и файловые диапазоны (после паузы разбора, на клавише не вызывается).
+    private func installReadableText(_ readable: MarkdownReadableText, source: String, in document: EditorDocument) {
+        // Полный restore на главном потоке не нужен, пока установка всё равно откажет.
+        guard document.canInstallMarkdownReadableText else { return }
+        guard let map = sourceMap?(), !map.isEmpty else {
+            document.installMarkdownReadableText(readable, source: source)
+            return
+        }
+        let file = document.mediaTable.restore(source).text
+        document.installMarkdownReadableText(readable.inSource(map, sourceLength: (file as NSString).length), source: file)
     }
 
     private func fenceLineBlocked(_ location: Int, in context: FenceContext) -> Bool {
@@ -1593,6 +1623,11 @@ final class MarkdownPresentationController {
         if !hasMarkedText { layout?.clearMarkdownImages() }
     }
 
+    /// Пауза перед разбором: без оформления, оглавления и автодополнений разбор нужен только ради слов, поэтому не чаще секунды.
+    static func parseDelay(enabled: Bool, pathOnly: Bool, needsFresh: Bool) -> TimeInterval {
+        pathOnly ? 0.4 : (enabled ? 0.6 : (needsFresh ? 0.2 : 1.0))
+    }
+
     private func schedule(revision: UInt) {
         let generation = self.generation
         let item = DispatchWorkItem { [weak self] in
@@ -1600,7 +1635,7 @@ final class MarkdownPresentationController {
                   let document = self.document, let textView = self.textView,
                   !self.hasMarkedText, self.currentRevision?() == revision else { return }
             self.work = nil
-            let text = textView.string
+            let text = self.textProvider?() ?? textView.string
             let sourceURL = document.url
             let includeReadableText = self.readableEnabled
             let includeMathPair = self.mathPairEnabled
@@ -1704,7 +1739,7 @@ final class MarkdownPresentationController {
                         ? FenceContext(openings: openings, blocked: result.fenceBlockedRanges, blockedEOF: result.fenceBlockedEOF,
                                        sourceLength: sourceLength, revision: revision) : nil
                     if self.readableEnabled, result.emojiCandidates.isEmpty, let readableText = result.readableText {
-                        document.installMarkdownReadableText(readableText, source: text)
+                        self.installReadableText(readableText, source: text, in: document)
                     }
                     if (self.readableEnabled && !includeReadableText) || (self.enabled && !includeEmojiCandidates) || (self.mathPairEnabled && !includeMathPair) {
                         self.schedule(revision: revision)
@@ -1728,7 +1763,8 @@ final class MarkdownPresentationController {
         let pathOnly = !enabled && !outlineVisible && !readableEnabled && !emojiCompletionEnabled && !mathPairEnabled
         // Полный разбор форматированного документа не должен запускаться на каждой клавише:
         // при непрерывном вводе ждём короткую паузу, оставляя уже установленное оформление.
-        let delay = pathOnly ? 0.4 : (enabled ? 0.6 : 0.2)
+        let needsFresh = outlineVisible || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled
+        let delay = Self.parseDelay(enabled: enabled, pathOnly: pathOnly, needsFresh: needsFresh)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }
 
@@ -2457,7 +2493,8 @@ final class MarkdownPresentationController {
                     if view.superview !== textView { textView.addSubview(view) }
                     textView.placeMarkdownSubview(view, in: rect.offsetBy(dx: textView.textContainerOrigin.x, dy: textView.textContainerOrigin.y))
                 } else {
-                    view.player?.pause()
+                    // Вид остаётся в словаре, поэтому плеер и документ не снимаются: иначе при возврате блок был бы пустым.
+                    (view as? AVPlayerView)?.player?.pause()
                     view.removeFromSuperview()
                 }
             }
@@ -2487,14 +2524,25 @@ final class MarkdownPresentationController {
         for job in audioJobs.values { job.1.cancel() }
         audioJobs.removeAll()
         for (range, view) in audioViews {
-            view.player?.pause()
-            view.player = nil
+            rememberPDFPosition(of: view, range: range)
+            releaseMediaView(view)
             view.removeFromSuperview()
             if !hasMarkedText, let layout { clearMediaGeometry(range, layout: layout) }
         }
         audioViews.removeAll()
         audioCompleted.removeAll()
         if !hasMarkedText { layout?.clearMarkdownMedia() }
+    }
+
+    private func rememberPDFPosition(of view: NSView, range: NSRange) {
+        guard let pdf = view as? PDFView, let destination = pdf.currentDestination, let page = destination.page,
+              let index = pdf.document?.index(for: page) else { return }
+        pdfPositions[range] = (index, destination.point)
+    }
+
+    private func releaseMediaView(_ view: NSView) {
+        if let player = view as? AVPlayerView { player.player?.pause(); player.player = nil }
+        else if let pdf = view as? PDFView { pdf.document = nil }
     }
 
     private func clearRuby() {
@@ -2800,15 +2848,15 @@ final class MarkdownPresentationController {
             available = min(available, max(1, visible - 2 * container.lineFragmentPadding))
         }
         let width = max(1, available - (layout?.markdownMediaIndent(for: block.range) ?? 0))
-        guard block.media.kind == .video else { return width }
+        guard block.media.kind != .audio else { return width }
         guard let requested = iframeDimension(block.media.width, available: width, fallback: min(560, width)) else { return nil }
         return block.isInline ? min(requested, width) : requested
     }
 
     private func mediaHeight(_ block: MarkdownAudioBlock, textView: NSTextView) -> CGFloat? {
-        guard block.media.kind == .video else { return 64 }
+        guard block.media.kind != .audio else { return 64 }
         let available = textView.enclosingScrollView?.contentView.bounds.height ?? textView.visibleRect.height
-        return iframeDimension(block.media.height, available: available, fallback: 315)
+        return iframeDimension(block.media.height, available: available, fallback: block.media.kind == .pdf ? max(1, min(480, 0.6 * available)) : 315)
     }
 
     private func updateIframes(in visible: NSRange) {
@@ -2901,10 +2949,11 @@ final class MarkdownPresentationController {
         }
         let ranges = Set(blocks.map(\.range))
         for range in Array(audioViews.keys) where !ranges.contains(range) {
-            let view = audioViews.removeValue(forKey: range)
-            view?.player?.pause()
-            view?.player = nil
-            view?.removeFromSuperview()
+            if let view = audioViews.removeValue(forKey: range) {
+                rememberPDFPosition(of: view, range: range)
+                releaseMediaView(view)
+                view.removeFromSuperview()
+            }
             clearMediaGeometry(range, layout: layout)
         }
         for range in Array(audioJobs.keys) where !ranges.contains(range) {
@@ -2924,11 +2973,27 @@ final class MarkdownPresentationController {
             let paths = resourcePaths, rootInvalid = resourceRootInvalid
             let generation = self.generation, revision = self.revision, token = UUID()
             let isPlayable = audioAssetIsPlayable
+            let temporaryMedia = document.temporaryMedia
             let task = Task { @MainActor [weak self, weak document] in
                 defer { self?.audioJobDidFinish?(block.range) }
                 var selected: AVURLAsset?
+                var selectedPDF: PDFDocument?
                 for source in block.media.sources {
                     guard !Task.isCancelled else { return }
+                    // Токен даёт настоящий адрес из таблицы документа; адрес без токена идёт тем же путём.
+                    let address = document?.mediaTable.source(forToken: source) ?? source
+                    if MarkdownDataMedia.fileExtension(forAddress: address) != nil {
+                        let file = await Task.detached(priority: .utility) { try? temporaryMedia.fileURL(forAddress: address) }.value
+                        guard !Task.isCancelled, let file else { continue }
+                        if block.media.kind == .pdf {
+                            if let pdf = PDFDocument(url: file), pdf.pageCount > 0 { selectedPDF = pdf; break }
+                        } else {
+                            let asset = AVURLAsset(url: file)
+                            if await isPlayable(asset) { selected = asset; break }
+                        }
+                        continue
+                    }
+                    guard block.media.kind != .pdf else { continue }
                     let base = source.hasPrefix("/") ? URL(fileURLWithPath: "/", isDirectory: true) : baseURL?.deletingLastPathComponent()
                     guard !(MarkdownResourcePaths.requiresRoot(source) && rootInvalid),
                           let url = paths?.resolve(source) ?? URL(string: source, relativeTo: base)?.absoluteURL,
@@ -2946,12 +3011,24 @@ final class MarkdownPresentationController {
                       let layout = self.layout, layout.canDisplayMarkdownMedia(block.range),
                       let textView = self.textView, let container = textView.textContainer else { return }
                 self.audioCompleted.insert(block.range)
-                guard let asset = selected else { self.audioLoadDidComplete?(block.range, false); return }
+                guard selected != nil || selectedPDF != nil else { self.audioLoadDidComplete?(block.range, false); return }
                 guard let width = self.mediaWidth(block, container: container),
                       let height = self.mediaHeight(block, textView: textView) else { return }
-                let view = AVPlayerView(frame: NSRect(x: 0, y: 0, width: width, height: height))
-                view.controlsStyle = block.media.controls ? .inline : .none
-                view.player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
+                let view: NSView
+                let frame = NSRect(x: 0, y: 0, width: width, height: height)
+                if let pdf = selectedPDF {
+                    let pdfView = PDFView(frame: frame)
+                    pdfView.displayMode = .singlePageContinuous
+                    pdfView.autoScales = true
+                    pdfView.displaysPageBreaks = true
+                    pdfView.document = pdf
+                    view = pdfView
+                } else if let asset = selected {
+                    let player = AVPlayerView(frame: frame)
+                    player.controlsStyle = block.media.controls ? .inline : .none
+                    player.player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
+                    view = player
+                } else { return }
                 // Плеер переживает правки выше него: позицию ищем по самому вью, запомненные блок и поколение устарели бы после первого сдвига.
                 view.setAccessibilityCustomActions([NSAccessibilityCustomAction(name: L10n.tr("编辑源代码")) { [weak self, weak document, weak view] in
                     guard let self, let document, let view, self.document === document,
@@ -2968,6 +3045,11 @@ final class MarkdownPresentationController {
                 if let rect = self.mediaRect(for: block.range, size: NSSize(width: width, height: height), inline: block.isInline, layout: layout, container: container) {
                     textView.addSubview(view)
                     textView.placeMarkdownSubview(view, in: rect.offsetBy(dx: textView.textContainerOrigin.x, dy: textView.textContainerOrigin.y))
+                }
+                if let pdfView = view as? PDFView, let position = self.pdfPositions[block.range],
+                   let page = pdfView.document?.page(at: position.page) {
+                    pdfView.layoutDocumentView()
+                    pdfView.go(to: PDFDestination(page: page, at: position.point))
                 }
                 self.notifyGeometryChanged()
                 self.audioLoadDidComplete?(block.range, true)
@@ -3117,6 +3199,7 @@ final class MarkdownPresentationController {
         // Левее правки ключи не меняются: словари и наборы, целиком лежащие там, не пересоздаются.
         if audioViews.keys.contains(where: edit.reaches) { audioViews = moved(audioViews) }
         if audioCompleted.contains(where: edit.reaches) { audioCompleted = Set(audioCompleted.compactMap(edit.away)) }
+        if pdfPositions.keys.contains(where: edit.reaches) { pdfPositions = moved(pdfPositions) }
         if detailsViews.keys.contains(where: edit.reaches) { detailsViews = moved(detailsViews) }
         if expandedDetails.keys.contains(where: edit.reaches) { expandedDetails = moved(expandedDetails) }
         if iframeViews.keys.contains(where: edit.reaches) {
@@ -3337,6 +3420,8 @@ final class MarkdownPresentationController {
             }
             let token = UUID(), generation = self.generation, revision = self.revision
             let identity = DiagramJobIdentity(kind: diagram.kind.rawValue, source: diagram.source)
+            // Рисовальщик получает настоящие данные, а не токены; ключ кэша и identity остаются по токенному тексту (токен однозначно задаёт содержимое).
+            let renderSource = diagram.source.contains("#lac-media-") ? document.mediaTable.restore(diagram.source).text : diagram.source
             let receive: (Result<NSImage, Error>) -> Void = { [weak self, weak document] result in
                 guard let self, let current = self.currentDiagramPlacement(for: token), current.entry.identity == identity else { return }
                 let currentRange = current.range
@@ -3360,10 +3445,10 @@ final class MarkdownPresentationController {
             let job: DiagramJob
             switch diagram.kind {
             case .mermaid:
-                job = .mermaid(MermaidRenderService(code: diagram.source, width: width, dark: dark, completion: receive))
+                job = .mermaid(MermaidRenderService(code: renderSource, width: width, dark: dark, completion: receive))
             case .flow, .sequence:
                 let kind: LegacyDiagramRenderService.Kind = diagram.kind == .flow ? .flow : .sequence
-                job = .legacy(LegacyDiagramRenderService(code: diagram.source, kind: kind, dark: dark, width: width, completion: receive))
+                job = .legacy(LegacyDiagramRenderService(code: renderSource, kind: kind, dark: dark, width: width, completion: receive))
             }
             diagramJobs[diagram.range] = DiagramJobEntry(token: token, identity: identity, revision: revision, job: job)
             job.start()

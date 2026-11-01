@@ -5,6 +5,7 @@ enum MarkdownLinkNavigationService {
         case fragment(String)
         case file(URL, fragment: String?)
         case external(URL)
+        case data(String)
     }
 
     enum NavigationError: Error { case invalidAddress, unsupportedScheme, missingDocumentURL }
@@ -20,6 +21,7 @@ enum MarkdownLinkNavigationService {
     }
 
     static func destination(for address: String, documentURL: URL?) throws -> Destination {
+        if MarkdownDataMedia.fileExtension(forAddress: address) != nil { return .data(address) }
         guard !address.isEmpty, let parts = URLComponents(string: address) else { throw NavigationError.invalidAddress }
         if address.hasPrefix("#"), let fragment = parts.fragment { return .fragment(fragment) }
         if let scheme = parts.scheme?.lowercased(), scheme != "file" {

@@ -20,6 +20,8 @@
 		A0000000000000000000010A /* LacTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000A /* LacTextView.swift */; };
 		A0000000000000000000010B /* LineNumberRulerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000B /* LineNumberRulerView.swift */; };
 		A0000000000000000000010C /* FoldService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000C /* FoldService.swift */; };
+		A0000000000000000000099B /* MarkdownMediaProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000099A /* MarkdownMediaProjection.swift */; };
+		A0000000000000000000099D /* MarkdownDataMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000099C /* MarkdownDataMedia.swift */; };
 		A0000000000000000000010D /* SyntaxHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000D /* SyntaxHighlighter.swift */; };
 		A0000000000000000000010E /* EditorTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000E /* EditorTextView.swift */; };
 		A0000000000000000000010F /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000F /* MarkdownRenderer.swift */; };
@@ -97,6 +99,7 @@
 		D00E00000000000000000003 /* JinaConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00E00000000000000000004 /* JinaConfiguration.swift */; };
 		D00E00000000000000000007 /* AIWritingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00E00000000000000000008 /* AIWritingService.swift */; };
 		D00E00000000000000000009 /* AIWritingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00E0000000000000000000A /* AIWritingController.swift */; };
+		D00E0000000000000000A001 /* AICompletionContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00E0000000000000000A002 /* AICompletionContext.swift */; };
 		D00E0000000000000000000B /* AICompletionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00E0000000000000000000C /* AICompletionController.swift */; };
 		D00E0000000000000000000D /* JinaClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00E0000000000000000000E /* JinaClient.swift */; };
 		D00E0000000000000000000F /* AIWritingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00E00000000000000000010 /* AIWritingView.swift */; };
@@ -256,6 +259,8 @@
 		A0000000000000000000000A /* LacTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LacTextView.swift; sourceTree = "<group>"; };
 		A0000000000000000000000B /* LineNumberRulerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LineNumberRulerView.swift; sourceTree = "<group>"; };
 		A0000000000000000000000C /* FoldService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoldService.swift; sourceTree = "<group>"; };
+		A0000000000000000000099A /* MarkdownMediaProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownMediaProjection.swift; sourceTree = "<group>"; };
+		A0000000000000000000099C /* MarkdownDataMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownDataMedia.swift; sourceTree = "<group>"; };
 		A0000000000000000000000D /* SyntaxHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxHighlighter.swift; sourceTree = "<group>"; };
 		A0000000000000000000000E /* EditorTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorTextView.swift; sourceTree = "<group>"; };
 		A0000000000000000000000F /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
@@ -323,6 +328,7 @@
 		D00E00000000000000000004 /* JinaConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JinaConfiguration.swift; path = Models/JinaConfiguration.swift; sourceTree = "<group>"; };
 		D00E00000000000000000008 /* AIWritingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIWritingService.swift; path = Services/AIWritingService.swift; sourceTree = "<group>"; };
 		D00E0000000000000000000A /* AIWritingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIWritingController.swift; path = Services/AIWritingController.swift; sourceTree = "<group>"; };
+		D00E0000000000000000A002 /* AICompletionContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AICompletionContext.swift; path = Services/AICompletionContext.swift; sourceTree = "<group>"; };
 		D00E0000000000000000000C /* AICompletionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AICompletionController.swift; path = Services/AICompletionController.swift; sourceTree = "<group>"; };
 		D00E0000000000000000000E /* JinaClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JinaClient.swift; path = Services/JinaClient.swift; sourceTree = "<group>"; };
 		D00E00000000000000000010 /* AIWritingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIWritingView.swift; path = Views/AIWritingView.swift; sourceTree = "<group>"; };
@@ -508,6 +514,7 @@
 				D00E00000000000000000004 /* JinaConfiguration.swift */,
 				D00E00000000000000000008 /* AIWritingService.swift */,
 				D00E0000000000000000000A /* AIWritingController.swift */,
+				D00E0000000000000000A002 /* AICompletionContext.swift */,
 				D00E0000000000000000000C /* AICompletionController.swift */,
 				D00E0000000000000000000E /* JinaClient.swift */,
 				D00E00000000000000000010 /* AIWritingView.swift */,
@@ -584,6 +591,7 @@
 			children = (
 				D01200000000000000000080 /* MarkdownInlineStyle.swift */,
 				D01200000000000000000078 /* MarkdownMedia.swift */,
+				A0000000000000000000099C /* MarkdownDataMedia.swift */,
 				D01200000000000000000076 /* MarkdownListStyle.swift */,
 				D01200000000000000000057 /* MarkdownColorOverrides.swift */,
 				D0120000000000000000003A /* MarkdownReadableText.swift */,
@@ -668,6 +676,7 @@
 				A0000000000000000000000A /* LacTextView.swift */,
 				A0000000000000000000000B /* LineNumberRulerView.swift */,
 				A0000000000000000000000C /* FoldService.swift */,
+				A0000000000000000000099A /* MarkdownMediaProjection.swift */,
 				A00000000000000000000026 /* FoldLayoutManager.swift */,
 				A00000000000000000000028 /* CodeLexicalScanner.swift */,
 				A00000000000000000000029 /* DelimiterMatchingService.swift */,
@@ -959,6 +968,7 @@
 				D00E00000000000000000003 /* JinaConfiguration.swift in Sources */,
 				D00E00000000000000000007 /* AIWritingService.swift in Sources */,
 				D00E00000000000000000009 /* AIWritingController.swift in Sources */,
+				D00E0000000000000000A001 /* AICompletionContext.swift in Sources */,
 				D00E0000000000000000000B /* AICompletionController.swift in Sources */,
 				D00E0000000000000000000D /* JinaClient.swift in Sources */,
 				D00E0000000000000000000F /* AIWritingView.swift in Sources */,
@@ -1024,6 +1034,8 @@
 				A0000000000000000000010A /* LacTextView.swift in Sources */,
 				A0000000000000000000010B /* LineNumberRulerView.swift in Sources */,
 				A0000000000000000000010C /* FoldService.swift in Sources */,
+				A0000000000000000000099B /* MarkdownMediaProjection.swift in Sources */,
+				A0000000000000000000099D /* MarkdownDataMedia.swift in Sources */,
 				A0000000000000000000010D /* SyntaxHighlighter.swift in Sources */,
 				A0000000000000000000010E /* EditorTextView.swift in Sources */,
 				A0000000000000000000010F /* MarkdownRenderer.swift in Sources */,

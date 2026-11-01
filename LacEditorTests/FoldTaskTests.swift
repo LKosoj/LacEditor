@@ -22,32 +22,11 @@ final class FoldTaskTests: XCTestCase {
         }
     }
 
-    func testLongEmbeddedMediaPayloadCanBeFoldedWithoutHidingMarkdown() {
+    func testMediaPayloadIsNotFoldedAutomatically() {
         let payload = String(repeating: "QUJD", count: 100)
-        let source = "before ![image](data:image/png;base64,\(payload)) after\n<audio src=\"data:audio/mpeg;base64,\(payload)\"></audio>"
-        let text = source as NSString
-        let first = text.range(of: payload)
-        let second = text.range(of: payload, range: NSRange(location: NSMaxRange(first), length: text.length - NSMaxRange(first)))
-        let expected = [first, second]
-        XCTAssertEqual(FoldService.mediaPayloadRanges(in: source), expected)
-        XCTAssertEqual(FoldService.foldableRange(in: source, at: 0, language: .markdown), expected[0])
-        XCTAssertEqual(FoldService.foldableRange(in: source, at: expected[1].location + 20, language: .markdown), expected[1])
-
-        let short = "![image](data:image/png;base64,QUJD)"
-        XCTAssertNil(FoldService.foldableRange(in: short, at: 0, language: .markdown))
-        let unrelated = "[file](data:text/plain;base64,\(payload))"
-        XCTAssertNil(FoldService.foldableRange(in: unrelated, at: 0, language: .markdown))
-
-        let storage = NSTextStorage(string: source)
-        let layout = FoldLayoutManager()
-        storage.addLayoutManager(layout)
-        layout.setAutomaticMediaFoldedRanges(expected)
-        XCTAssertTrue(layout.isCharacterFolded(first.location + 1))
-        XCTAssertTrue(layout.isCharacterFolded(second.location + 1))
-        XCTAssertFalse(layout.isCharacterFolded(first.location - 1))
-        XCTAssertTrue(layout.removeAutomaticMediaFold(containing: first.location + 1))
-        XCTAssertFalse(layout.isCharacterFolded(first.location + 1))
-        XCTAssertTrue(layout.isCharacterFolded(second.location + 1))
+        let source = "before ![image](data:image/png;base64,\(payload)) after"
+        XCTAssertNil(FoldService.foldableRange(in: source, at: 0, language: .markdown))
+        XCTAssertNil(FoldService.foldableRange(in: source, at: 20, language: .markdown))
     }
 
     func testSelectionAndEditBeforeResultPreventFolding() async {
@@ -107,131 +86,22 @@ final class FoldTaskTests: XCTestCase {
         window.close()
     }
 
-    func testLeavingFormattedModeFoldsMediaBeforeDeferredTask() async throws {
-        for length in [300, 20_000] {
-            let payload = String(repeating: "A", count: length)
-            let source = "before\n![image](data:image/png;base64,\(payload))\nafter"
-            let document = EditorDocument(text: source, language: .markdown)
-            let editor = makeEditor(document, formatted: true)
-            defer { editor.close() }
-            let selection = NSRange(location: 2, length: 3)
-            editor.view.setSelectedRange(selection)
-            let revision = document.textRevision
-            document.isMarkdownFormatted = false
-            editor.coordinator.updateMarkdownPresentation()
-            let expected = [(source as NSString).range(of: payload)]
-            XCTAssertEqual(editor.layout.automaticMediaFoldedRanges, expected)
-            XCTAssertEqual(editor.view.string, source)
-            XCTAssertEqual(editor.view.selectedRange(), selection)
-            XCTAssertEqual(document.textRevision, revision)
-            XCTAssertFalse(document.isDirty)
-            try await Task.sleep(for: .milliseconds(250))
-            XCTAssertEqual(editor.layout.automaticMediaFoldedRanges, expected)
-        }
-    }
-
-    func testLeavingFormattedModeKeepsPayloadUnderCaretOpen() async throws {
+    func testSourceModeKeepsMediaTokensAndUndo() {
         let payload = String(repeating: "A", count: 300)
-        let other = String(repeating: "B", count: 300)
-        let source = "![a](data:image/png;base64,\(payload))\n![b](data:image/png;base64,\(other))"
-        let document = EditorDocument(text: source, language: .markdown)
-        let editor = makeEditor(document, formatted: true)
-        defer { editor.close() }
-        let caret = NSRange(location: (source as NSString).range(of: payload).location + 5, length: 0)
-        editor.view.setSelectedRange(caret)
-        document.isMarkdownFormatted = false
-        editor.coordinator.updateMarkdownPresentation()
-        let expected = [(source as NSString).range(of: other)]
-        XCTAssertEqual(editor.layout.automaticMediaFoldedRanges, expected)
-        XCTAssertEqual(editor.view.selectedRange(), caret)
-        try await Task.sleep(for: .milliseconds(250))
-        XCTAssertEqual(editor.layout.automaticMediaFoldedRanges, expected)
-    }
-
-    func testLeavingFormattedModeRespectsDisabledFolding() async throws {
-        let source = "![image](data:image/png;base64,\(String(repeating: "A", count: 300)))"
-        let overridden = EditorDocument(text: source, language: .markdown)
-        overridden.setOverride(false, for: .folding)
-        let large = EditorDocument(text: source, language: .markdown, performanceProfile: .large)
-        for document in [overridden, large] {
-            let editor = makeEditor(document, formatted: true)
-            defer { editor.close() }
-            document.isMarkdownFormatted = false
-            editor.coordinator.updateMarkdownPresentation()
-            XCTAssertTrue(editor.layout.automaticMediaFoldedRanges.isEmpty)
-            try await Task.sleep(for: .milliseconds(250))
-            XCTAssertTrue(editor.layout.automaticMediaFoldedRanges.isEmpty)
-        }
-    }
-
-    func testLeavingFormattedModeWaitsForMarkedTextToFinish() {
-        let payload = String(repeating: "A", count: 300)
-        let source = "![image](data:image/png;base64,\(payload))"
-        let document = EditorDocument(text: source, language: .markdown)
-        let editor = makeEditor(document, formatted: true)
-        defer { editor.close() }
-        editor.view.setMarkedText("中", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: 0, length: 0))
-        document.isMarkdownFormatted = false
-        editor.coordinator.updateMarkdownPresentation()
-        XCTAssertTrue(editor.view.hasMarkedText())
-        XCTAssertTrue(editor.layout.automaticMediaFoldedRanges.isEmpty)
-        editor.view.unmarkText()
-        editor.coordinator.updateMarkdownPresentation()
-        XCTAssertEqual(editor.layout.automaticMediaFoldedRanges, [(editor.view.string as NSString).range(of: payload)])
-    }
-
-    func testSourceModeUpdateKeepsDeferredMediaFolds() async throws {
-        let payload = String(repeating: "A", count: 300)
-        let source = "![image](data:image/png;base64,\(payload))"
+        let source = "before\n![image](data:image/png;base64,\(payload))\nafter"
         let document = EditorDocument(text: source, language: .markdown)
         let editor = makeEditor(document, formatted: false)
         defer { editor.close() }
-        XCTAssertTrue(editor.layout.automaticMediaFoldedRanges.isEmpty)
-        let deadline = Date().addingTimeInterval(5)
-        while editor.layout.automaticMediaFoldedRanges.isEmpty && Date() < deadline {
-            try await Task.sleep(for: .milliseconds(20))
-        }
-        XCTAssertEqual(editor.layout.automaticMediaFoldedRanges, [(source as NSString).range(of: payload)])
-    }
-
-    func testMediaPayloadRangesFollowEditsWithoutFullScan() {
-        let payload = String(repeating: "QUJD", count: 100)
-        let source = "text ![a](data:image/png;base64,\(payload)) middle ![b](data:image/png;base64,\(payload)) end"
-        func edited(_ range: NSRange, _ replacement: String) -> (text: String, ranges: [NSRange]?) {
-            let text = (source as NSString).replacingCharacters(in: range, with: replacement)
-            return (text, FoldService.shiftedMediaPayloadRanges(
-                FoldService.mediaPayloadRanges(in: source), editedRange: range,
-                replacementLength: (replacement as NSString).length, in: text as NSString))
-        }
-        let raw = source as NSString
-        for (range, replacement) in [
-            (NSRange(location: 0, length: 0), "абв"),
-            (raw.range(of: "middle"), "x"),
-            (raw.range(of: "end"), ""),
-            (raw.range(of: "image/png"), "image/jpeg"),
-            (raw.range(of: "image/png"), "text/plain"),
-            (raw.range(of: ";base64"), "")
-        ] {
-            let result = edited(range, replacement)
-            XCTAssertEqual(result.ranges, FoldService.mediaPayloadRanges(in: result.text))
-        }
-        // Правка внутри данных и большая вставка оставляют ответ полному поиску.
-        XCTAssertNil(edited(NSRange(location: raw.range(of: payload).location + 10, length: 0), "A").ranges)
-        XCTAssertNil(edited(NSRange(location: 0, length: 0), String(repeating: "a", count: 5000)).ranges)
-    }
-
-    func testPlainEditKeepsAutomaticFoldListWithoutLayoutChange() async throws {
-        let payload = String(repeating: "QUJD", count: 100)
-        let source = "head\n![a](data:image/png;base64,\(payload))\ntail"
-        let document = EditorDocument(text: source, language: .markdown)
-        let editor = makeEditor(document, formatted: false)
-        defer { editor.close() }
-        for _ in 0..<100 where editor.layout.automaticMediaFoldedRanges.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
-        let folded = try XCTUnwrap(editor.layout.automaticMediaFoldedRanges.first)
-        editor.view.setSelectedRange(NSRange(location: 0, length: 0))
-        editor.view.insertText("абв", replacementRange: NSRange(location: 0, length: 0))
-        // Сдвиг виден сразу, без ожидания отложенной задачи.
-        XCTAssertEqual(editor.layout.automaticMediaFoldedRanges, [NSRange(location: folded.location + 3, length: folded.length)])
+        XCTAssertTrue(editor.view.string.contains("#lac-media-"))
+        XCTAssertFalse(editor.view.string.contains(payload))
+        editor.view.allowsUndo = true
+        let shown = editor.view.string
+        editor.view.insertText("x", replacementRange: NSRange(location: 0, length: 0))
+        document.isMarkdownFormatted = true
+        editor.coordinator.updateMarkdownPresentation()
+        XCTAssertEqual(editor.view.string, "x" + shown)
+        XCTAssertEqual(editor.view.undoManager?.canUndo, true)
+        XCTAssertEqual(document.mediaTable.restore(editor.view.string).text, "x" + source)
     }
 
     private struct Editor {

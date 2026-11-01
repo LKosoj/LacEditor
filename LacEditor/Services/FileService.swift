@@ -11,6 +11,9 @@ struct DecodedFile {
     let encodingName: String
     let byteCount: Int
     let lineCount: Int
+    /// Размер и число строк для выбора профиля: у Markdown без адресов `data:` (в редакторе они токены).
+    var profileByteCount: Int? = nil
+    var profileLineCount: Int? = nil
     var fileRevisionSnapshot: FileRevisionSnapshot? = nil
 }
 
@@ -136,12 +139,16 @@ final class FileService {
     func read(_ url: URL) throws -> DecodedFile {
         let data = try Data(contentsOf: url)
         if let text = String(data: data, encoding: .utf8) {
+            let lineCount = Self.countLines(in: text)
+            let profile = Self.profileCounts(text, byteCount: data.count, lineCount: lineCount, url: url)
             return DecodedFile(
                 text: text,
                 encoding: .utf8,
                 encodingName: "UTF-8",
                 byteCount: data.count,
-                lineCount: Self.countLines(in: text)
+                lineCount: lineCount,
+                profileByteCount: profile?.bytes,
+                profileLineCount: profile?.lines
             )
         }
 
@@ -160,12 +167,16 @@ final class FileService {
         let data = try readData(url, options)
         let prepared: PreparedFileRead
         if let text = String(data: data, encoding: .utf8) {
+            let lineCount = countLines(in: text)
+            let profile = profileCounts(text, byteCount: byteCount, lineCount: lineCount, url: url)
             prepared = .decoded(DecodedFile(
                 text: text,
                 encoding: .utf8,
                 encodingName: "UTF-8",
                 byteCount: byteCount,
-                lineCount: countLines(in: text),
+                lineCount: lineCount,
+                profileByteCount: profile?.bytes,
+                profileLineCount: profile?.lines,
                 fileRevisionSnapshot: before
             ))
         } else {
@@ -195,7 +206,8 @@ final class FileService {
             data,
             encoding: selected.encoding,
             encodingName: selected.name,
-            byteCount: byteCount
+            byteCount: byteCount,
+            url: url
         )
     }
 
@@ -249,17 +261,22 @@ final class FileService {
         encoding: String.Encoding,
         encodingName: String,
         byteCount: Int? = nil,
+        url: URL? = nil,
         fileRevisionSnapshot: FileRevisionSnapshot? = nil
     ) throws -> DecodedFile {
         guard let text = String(data: data, encoding: encoding) else {
             throw FileServiceError.unsupportedEncoding
         }
+        let lineCount = countLines(in: text)
+        let profile = profileCounts(text, byteCount: byteCount ?? data.count, lineCount: lineCount, url: url)
         return DecodedFile(
             text: text,
             encoding: encoding,
             encodingName: encodingName,
             byteCount: byteCount ?? data.count,
-            lineCount: countLines(in: text),
+            lineCount: lineCount,
+            profileByteCount: profile?.bytes,
+            profileLineCount: profile?.lines,
             fileRevisionSnapshot: fileRevisionSnapshot
         )
     }
@@ -311,6 +328,13 @@ final class FileService {
     /// UTF-8 нет в `selectableEncodings` (его выбирают автоматически при открытии), но для явного выбора он нужен.
     nonisolated static var encodingChoices: [FileEncodingChoice] {
         [FileEncodingChoice(name: "UTF-8", encoding: .utf8)] + selectableEncodings
+    }
+
+    /// Для Markdown: размер и строки без адресов `data:`; для остальных файлов `nil`.
+    nonisolated private static func profileCounts(_ text: String, byteCount: Int, lineCount: Int, url: URL?) -> (bytes: Int, lines: Int)? {
+        guard let url, EditorLanguage.infer(from: url) == .markdown else { return nil }
+        let media = MarkdownMediaTable.measureMedia(in: text)
+        return (byteCount - media.bytes, lineCount - media.breaks)
     }
 
     nonisolated private static func countLines(in text: String) -> Int {

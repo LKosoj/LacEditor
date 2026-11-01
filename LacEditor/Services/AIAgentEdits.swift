@@ -132,10 +132,28 @@ enum AIAgentEditEngine {
         return nil
     }
 
-    static func apply(_ edit: AIAgentEdit, to text: String) -> Result<String, AIAgentEdit.Problem> {
+    /// Насколько далеко от участка ищется media-токен: заголовок токена до 256 символов, плюс имя и хэш, поэтому токен длиннее 256 единиц.
+    static let mediaTokenReach = 512
+
+    /// Режет ли участок media-токен (начало или конец строго внутри токена). Токены короткие, поэтому смотрим только окрестность участка.
+    static func cutsMediaToken(_ range: NSRange, in text: String, table: MarkdownMediaTable) -> Bool {
+        let string = text as NSString
+        let low = max(0, range.location - mediaTokenReach), high = min(string.length, NSMaxRange(range) + mediaTokenReach)
+        let neighbourhood = string.substring(with: NSRange(location: low, length: high - low)) as NSString
+        let end = NSMaxRange(range)
+        return table.spans(in: neighbourhood).contains { span in
+            let start = low + span.displayStart, stop = low + span.displayEnd
+            return (start < range.location && range.location < stop) || (start < end && end < stop)
+        }
+    }
+
+    /// table - таблица токенов Markdown-документа; для не Markdown и закрытых файлов nil, проверки разреза нет.
+    /// Правка, которая теперь режет токен, не применяется (notFound): текст мог измениться после предложения.
+    static func apply(_ edit: AIAgentEdit, to text: String, table: MarkdownMediaTable? = nil) -> Result<String, AIAgentEdit.Problem> {
         let found = matches(of: edit.oldText, in: text, limit: 2)
         guard let range = found.first else { return .failure(.notFound) }
         guard found.count == 1 else { return .failure(.ambiguous) }
+        if let table, cutsMediaToken(range, in: text, table: table) { return .failure(.notFound) }
         let string = text as NSString
         var replacement = edit.newText
         if hasCarriageReturn(text) {
@@ -146,12 +164,12 @@ enum AIAgentEditEngine {
     }
 
     /// Выбранные правки применяются по порядку к text. Не нашлось, а ранее есть непринятая — значит, нужна она (needsEarlier).
-    static func plan(edits: [AIAgentEdit], on text: String, earlierPending: Set<UUID>) -> AIAgentEditPlan {
+    static func plan(edits: [AIAgentEdit], on text: String, earlierPending: Set<UUID>, table: MarkdownMediaTable? = nil) -> AIAgentEditPlan {
         var current = text
         var applied: [UUID] = []
         var failed: [(id: UUID, problem: AIAgentEdit.Problem)] = []
         for edit in edits {
-            switch apply(edit, to: current) {
+            switch apply(edit, to: current, table: table) {
             case let .success(changed):
                 current = changed
                 applied.append(edit.id)
@@ -209,6 +227,8 @@ final class AIAgentEditDraft: @unchecked Sendable {
         var text: String
         /// Не nil у записи закрытого файла; ключ записи - случайный UUID, файл узнаётся по идентичности.
         var closed: AIAgentClosedFile?
+        /// Таблица токенов открытого Markdown-документа для проверки разреза токена при пересборке; у закрытых файлов nil.
+        var table: MarkdownMediaTable?
     }
 
     private static let noMatchMessage = "old_text was not found in the document (proposed edits already count as applied). Re-read the lines and copy the text exactly."
@@ -231,7 +251,7 @@ final class AIAgentEditDraft: @unchecked Sendable {
         var text = entry.base
         for index in entry.edits.indices {
             if entry.edits[index].problem == .fileChanged { continue }
-            switch AIAgentEditEngine.apply(entry.edits[index], to: text) {
+            switch AIAgentEditEngine.apply(entry.edits[index], to: text, table: entry.table) {
             case let .success(changed):
                 text = changed
                 entry.edits[index].problem = nil
@@ -289,6 +309,12 @@ final class AIAgentEditDraft: @unchecked Sendable {
             if found.count > 1 {
                 return .failed(.ambiguousMatch, "old_text matches \(found.count) places (20 or more if N is 20). Include more surrounding text so it matches exactly once.")
             }
+            // Найденный участок не должен резать media-токен: короткий хвост токена выглядит как обычный `data:` и порча ушла бы в файл.
+            // У закрытых файлов и не Markdown таблицы нет.
+            entry.table = entry.closed == nil ? document.mediaTable : nil
+            if let table = entry.table, AIAgentEditEngine.cutsMediaToken(found[0], in: entry.text, table: table) {
+                return .failed(.badArguments, "old_text cuts through a media token (a name like ...#lac-media-0123456789abcdef); include the whole token or none of it.")
+            }
             if entries.values.reduce(0, { $0 + $1.edits.count }) >= AIAgentEditLimits.maxPendingEdits {
                 return .failed(.limitReached, "Too many proposed edits are waiting for review (\(AIAgentEditLimits.maxPendingEdits)). Stop proposing and summarize.")
             }
@@ -315,7 +341,8 @@ final class AIAgentEditDraft: @unchecked Sendable {
             var documents = scope.openDocuments.map { document -> AIAgentOpenDocument in
                 guard let entry = entries[document.id] else { return document }
                 return AIAgentOpenDocument(id: document.id, name: document.name, relativePath: document.relativePath, text: entry.text,
-                                           revision: document.revision, isDraft: entry.edits.contains { $0.problem == nil })
+                                           revision: document.revision, isDraft: entry.edits.contains { $0.problem == nil },
+                                           mediaTable: document.mediaTable)
             }
             // Закрытые файлы с правками выглядят как документы с черновиком; изменённый на диске файл читается с диска
             let openPaths = Set(scope.openDocuments.compactMap { $0.relativePath.map(Self.normalizedPath) })
@@ -358,6 +385,7 @@ final class AIAgentEditDraft: @unchecked Sendable {
                     entries[id] = nil
                     if entries[document.id] != nil { dropped += entry.edits.count; continue }
                     entry.closed = nil
+                    entry.table = document.mediaTable
                     entry.base = document.text
                     entry.edits = entry.edits.map { $0.moved(to: document) }
                     Self.rebuild(&entry)
@@ -365,6 +393,7 @@ final class AIAgentEditDraft: @unchecked Sendable {
                     moved.append(document.id)
                 } else if let document = scope.openDocuments.first(where: { $0.id == id }) {
                     entry.base = document.text
+                    entry.table = document.mediaTable
                     Self.rebuild(&entry)
                     entries[id] = entry
                 } else {
@@ -423,11 +452,13 @@ final class AIAgentEditDraft: @unchecked Sendable {
     }
 
     /// Принятые правки удаляются, база становится реальным текстом после принятия, остальные пересобираются.
-    func settle(documentID: UUID, applied: Set<UUID>, newBase: String) {
+    func settle(documentID: UUID, applied: Set<UUID>, newBase: String, table: MarkdownMediaTable? = nil) {
         lock.withLock {
             guard var entry = entries[documentID] else { return }
             entry.edits.removeAll { applied.contains($0.id) }
             entry.base = newBase
+            // Принятая правка могла добавить токены: пересборка проверяет разрез по живой таблице.
+            if entry.closed == nil, let table { entry.table = table }
             Self.rebuild(&entry)
             entries[documentID] = entry
         }

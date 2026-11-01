@@ -1556,7 +1556,15 @@ final class WindowManager: ObservableObject {
             restorationQueue.async { [weak self] in
                 let result = Result {
                     let snapshot = try readRestoration(reference)
-                    return (snapshot, snapshot.text.utf8.count, EditorDocument.countLines(in: snapshot.text))
+                    var byteCount = snapshot.text.utf8.count
+                    var lineCount = EditorDocument.countLines(in: snapshot.text)
+                    // Markdown: адреса `data:` в редакторе токены, в размер профиля не входят.
+                    if snapshot.language == .markdown {
+                        let media = MarkdownMediaTable.measureMedia(in: snapshot.text)
+                        byteCount -= media.bytes
+                        lineCount -= media.breaks
+                    }
+                    return (snapshot, byteCount, lineCount)
                 }
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }

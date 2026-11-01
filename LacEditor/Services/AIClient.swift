@@ -147,7 +147,7 @@ enum AIRequestMediaSanitizer {
         while let marker = text.range(of: "data:", options: .caseInsensitive, range: cursor..<text.endIndex) {
             result += text[cursor..<marker.lowerBound]
             guard let comma = text[marker.upperBound...].firstIndex(of: ","),
-                  text.distance(from: marker.upperBound, to: comma) <= 128 else {
+                  text.distance(from: marker.upperBound, to: comma) <= 256 else {
                 result += text[marker]
                 cursor = marker.upperBound
                 continue
@@ -157,6 +157,12 @@ enum AIRequestMediaSanitizer {
                     || header.hasPrefix("video/") || header.hasPrefix("application/pdf") else {
                 result += text[marker]
                 cursor = marker.upperBound
+                continue
+            }
+            // Токен редактора (`...,AA==#lac-media-<16 hex>`) модели отдаётся целиком: так она может вернуть его на место.
+            if let tokenEnd = editorTokenEnd(in: text, after: comma) {
+                result += text[marker.lowerBound..<tokenEnd]
+                cursor = tokenEnd
                 continue
             }
             let isBase64 = header.split(separator: ";").dropFirst().contains("base64")
@@ -170,6 +176,25 @@ enum AIRequestMediaSanitizer {
         }
         result += text[cursor...]
         return result
+    }
+
+    private static func editorTokenEnd(in text: String, after comma: String.Index) -> String.Index? {
+        let prefix = ",AA==#lac-media-"
+        guard text[comma...].hasPrefix(prefix) else { return nil }
+        var end = text.index(comma, offsetBy: prefix.count)
+        for _ in 0..<16 {
+            guard end < text.endIndex, let value = text[end].asciiValue,
+                  (48...57).contains(value) || (97...102).contains(value) else { return nil }
+            end = text.index(after: end)
+        }
+        if end < text.endIndex, text[end] == "-" {
+            let digits = text.index(after: end)
+            if digits < text.endIndex, text[digits].isASCII, text[digits].isNumber {
+                end = digits
+                while end < text.endIndex, text[end].isASCII, text[end].isNumber { end = text.index(after: end) }
+            }
+        }
+        return end
     }
 
     static func sanitize(_ value: Any) -> Any {
@@ -240,6 +265,17 @@ enum AIRequestSize {
     static func skippedMessage(_ count: Int, allDropped: Bool) -> String {
         allDropped ? L10n.tr("模型返回的 %lld 个条目均无法核对，已全部跳过。", count) : L10n.tr("已跳过 %lld 个无法核对的条目。", count)
     }
+}
+
+/// Пары сервер+модель, которым автодополнение шлёт запросы без температуры, лимита и остановки. Только в памяти, до выхода из приложения.
+final class AICompletionParameterMemory: @unchecked Sendable {
+    static let shared = AICompletionParameterMemory()
+    private let lock = NSLock()
+    private var pairs: Set<String> = []
+
+    func contains(_ pair: String) -> Bool { lock.lock(); defer { lock.unlock() }; return pairs.contains(pair) }
+    func insert(_ pair: String) { lock.lock(); defer { lock.unlock() }; pairs.insert(pair) }
+    func removeAll() { lock.lock(); defer { lock.unlock() }; pairs.removeAll() }
 }
 
 struct AIClient {
@@ -359,6 +395,62 @@ struct AIClient {
         return try responseText(result, api: profile.api)
     }
 
+    /// Автодополнение: температура 0.2, лимит 60 токенов, в Chat Completions ещё остановка на переводе строки.
+    /// Ошибка 400 или 422 либо пустой ответ — один немедленный повтор без этих параметров (исключение из правила «нет автоповторов»);
+    /// удавшийся повтор после 400/422 или после пустого ответа, обрезанного лимитом, запоминает пару сервер+модель до конца работы приложения, и дальше запросы идут сразу без параметров.
+    /// Обрезка по лимиту не ошибка. Отмена прерывает и повтор.
+    func generateCompletion(input: String, instructions: String, profile: AIModelProfile, key: String?) async throws -> String {
+        guard profile.isEnabled else { throw AIError.disabled }
+        let model = try model(profile)
+        let pair = try AIModelProfile.normalizedBaseURL(profile.baseURL).absoluteString + "\u{0}" + model
+        if !AICompletionParameterMemory.shared.contains(pair) {
+            // Пару запоминаем, только если параметры мешают: ответ 400/422 или пустой ответ, обрезанный по лимиту.
+            var remember = false
+            do {
+                let first = try await completionResponse(input: input, instructions: instructions, profile: profile, key: key, model: model, limited: true)
+                if !first.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return first.text }
+                remember = first.truncated
+            } catch AIError.http(let status, _) where status == 400 || status == 422 {
+                remember = true
+            }
+            try Task.checkCancellation()
+            let text = try await completionResponse(input: input, instructions: instructions, profile: profile, key: key, model: model, limited: false).text
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AIError.invalidResponse }
+            if remember { AICompletionParameterMemory.shared.insert(pair) }
+            return text
+        }
+        let text = try await completionResponse(input: input, instructions: instructions, profile: profile, key: key, model: model, limited: false).text
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AIError.invalidResponse }
+        return text
+    }
+
+    private func completionResponse(input: String, instructions: String, profile: AIModelProfile, key: String?, model: String, limited: Bool) async throws -> (text: String, truncated: Bool) {
+        let path: String
+        var body: [String: Any]
+        switch profile.api {
+        case .responses:
+            path = "responses"
+            body = ["model": model, "input": input, "instructions": instructions, "store": false]
+            if limited { body["temperature"] = 0.2; body["max_output_tokens"] = 60 }
+        case .chatCompletions:
+            path = "chat/completions"
+            body = ["model": model, "messages": [["role": "system", "content": instructions], ["role": "user", "content": input]]]
+            if limited {
+                let host = try endpoint(profile, path: path).host
+                body["temperature"] = 0.2
+                body[host == "api.openai.com" ? "max_completion_tokens" : "max_tokens"] = 60
+                body["stop"] = ["\n"]
+            }
+        default: throw AIError.invalidConfiguration
+        }
+        let result = try object(await fetch(request(profile, path: path, key: key, body: body)))
+        let text = try responseText(result, api: profile.api, forCompletion: true)
+        let truncated = profile.api == .responses
+            ? result["status"] as? String == "incomplete"
+            : (result["choices"] as? [[String: Any]])?.first?["finish_reason"] as? String == "length"
+        return (text, truncated)
+    }
+
     /// Один шаг разговора: единственное место, где вопрос к документу обращается к модели (вариант без инструментов).
     func generateConversation(messages: [AIConversationMessage], instructions: String, profile: AIModelProfile, key: String?) async throws -> String {
         guard profile.isEnabled else { throw AIError.disabled }
@@ -467,19 +559,21 @@ struct AIClient {
     }
 
     /// Output items ответа Responses: сначала обрезка по длине, затем общая проверка статуса.
-    private func responsesOutput(_ result: [String: Any]) throws -> [[String: Any]] {
+    private func responsesOutput(_ result: [String: Any], allowsTruncation: Bool = false) throws -> [[String: Any]] {
         let status = result["status"] as? String
         if status == "incomplete", (result["incomplete_details"] as? [String: Any])?["reason"] as? String == "max_output_tokens" {
+            if allowsTruncation { return result["output"] as? [[String: Any]] ?? [] }
             throw AIError.truncated
         }
         guard status == "completed", let output = result["output"] as? [[String: Any]] else { throw AIError.invalidResponse }
         return output
     }
 
-    private func responseText(_ result: [String: Any], api: AIAPIProtocol) throws -> String {
+    /// `forCompletion`: ответ автодополнения, обрезанный лимитом длины, не ошибка, а пустой текст возвращается как есть.
+    private func responseText(_ result: [String: Any], api: AIAPIProtocol, forCompletion: Bool = false) throws -> String {
         let text: String
         if api == .responses {
-            let output = try responsesOutput(result)
+            let output = try responsesOutput(result, allowsTruncation: forCompletion)
             var parts: [String] = []
             for item in output where item["type"] as? String == "message" {
                 guard let content = item["content"] as? [[String: Any]] else { throw AIError.invalidResponse }
@@ -496,11 +590,21 @@ struct AIClient {
             guard let choices = result["choices"] as? [[String: Any]], let choice = choices.first,
                   let message = choice["message"] as? [String: Any] else { throw AIError.invalidResponse }
             if message["refusal"] is String { throw AIError.refused }
-            if choice["finish_reason"] as? String == "length" { throw AIError.truncated }
-            guard choice["finish_reason"] as? String == "stop", let content = message["content"] as? String else { throw AIError.invalidResponse }
-            text = content
+            if choice["finish_reason"] as? String == "length" {
+                if !forCompletion { throw AIError.truncated }
+                text = message["content"] as? String ?? ""
+            } else {
+                guard choice["finish_reason"] as? String == "stop" else { throw AIError.invalidResponse }
+                // Для автодополнения пустой content при stop (null или нет поля) — пустой ответ, а не ошибка: вызывающий повторит запрос.
+                if forCompletion, message["content"] == nil || message["content"] is NSNull {
+                    text = ""
+                } else {
+                    guard let content = message["content"] as? String else { throw AIError.invalidResponse }
+                    text = content
+                }
+            }
         }
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AIError.invalidResponse }
+        guard forCompletion || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AIError.invalidResponse }
         return text
     }
 

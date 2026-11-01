@@ -54,8 +54,7 @@ enum FolderReplaceService {
             let template = TextSearchService.template(for: request.replacement, options: request.options,
                                                       interpretsEscapes: request.interpretsEscapes)
             var cancelled = false
-            regex.enumerateMatches(in: text, options: [.reportProgress],
-                                   range: NSRange(location: 0, length: source.length)) { match, _, stop in
+            TextSearchService.enumerateMatches(of: regex, in: text) { match, stop in
                 if isCancelled() { cancelled = true; stop.pointee = true; return }
                 // Пустые совпадения пропускаются, как в поиске.
                 guard let match, match.range.length > 0, only?.contains(match.range) ?? true else { return }

@@ -1,5 +1,45 @@
 import Foundation
 
+/// Part of a larger text. Positions are absolute: `origin` is the UTF-16 offset
+/// of the first character, `totalLength` is the length of the whole text.
+struct TextWindow {
+    let string: NSString
+    let origin: Int
+    let totalLength: Int
+
+    init(_ string: NSString, origin: Int = 0, totalLength: Int? = nil) {
+        self.string = string
+        self.origin = origin
+        self.totalLength = totalLength ?? (origin + string.length)
+    }
+
+    /// Absolute end of the window.
+    var length: Int { origin + string.length }
+    var isTail: Bool { length >= totalLength }
+
+    func character(at location: Int) -> unichar {
+        string.character(at: location - origin)
+    }
+
+    func substring(with range: NSRange) -> String {
+        string.substring(with: NSRange(location: range.location - origin, length: range.length))
+    }
+
+    func compare(_ value: String, range: NSRange) -> ComparisonResult {
+        string.compare(value, options: [], range: NSRange(location: range.location - origin, length: range.length))
+    }
+
+    func range(of value: String, from location: Int, limit: Int) -> NSRange? {
+        guard location < limit else { return nil }
+        let range = string.range(
+            of: value,
+            options: [],
+            range: NSRange(location: location - origin, length: limit - location)
+        )
+        return range.location == NSNotFound ? nil : NSRange(location: range.location + origin, length: range.length)
+    }
+}
+
 enum CodeLexicalScanner {
     enum TokenKind {
         case string
@@ -98,6 +138,23 @@ enum CodeLexicalScanner {
             return (checkpoint, generation)
         }
 
+        /// Earliest text position the scan from the checkpoint before
+        /// `targetLocation` reads. Does not change the state; 0 if the
+        /// scan would start from scratch.
+        fileprivate func chunkOrigin(
+            language newLanguage: EditorLanguage,
+            revision newRevision: UInt,
+            targetLocation: Int
+        ) -> Int {
+            lock.lock()
+            defer { lock.unlock() }
+            if language != newLanguage || (revision != newRevision && !acceptsRevisionChange) {
+                return 0
+            }
+            guard let checkpoint = checkpoints.last(where: { $0.location <= targetLocation }) else { return 0 }
+            return min(checkpoint.lineStart, max(0, checkpoint.location - 1))
+        }
+
         fileprivate func commit(
             _ newCheckpoints: [Checkpoint],
             language expectedLanguage: EditorLanguage,
@@ -154,11 +211,58 @@ enum CodeLexicalScanner {
         revision: UInt? = nil,
         isCancelled: () -> Bool = { false }
     ) -> [Token] {
+        tokens(
+            in: text,
+            origin: 0,
+            totalLength: nil,
+            language: language,
+            range: requestedRange,
+            context: context,
+            revision: revision,
+            isCancelled: isCancelled
+        ) ?? []
+    }
+
+    /// Range of text that `tokens(in:origin:...)` needs for `range`: from the
+    /// earliest position of the saved point to the end of the scan plus `margin`.
+    static func chunkPlan(
+        context: IncrementalContext,
+        language: EditorLanguage,
+        revision: UInt,
+        range: NSRange,
+        textLength: Int,
+        margin: Int
+    ) -> NSRange? {
+        guard configuration(for: language) != nil else { return nil }
+        let origin = min(range.location, context.chunkOrigin(
+            language: language,
+            revision: revision,
+            targetLocation: range.location
+        ))
+        let end = min(textLength, min(textLength, NSMaxRange(range) + checkpointStride) + margin)
+        guard origin <= range.location, end >= NSMaxRange(range) else { return nil }
+        return NSRange(location: origin, length: end - origin)
+    }
+
+    /// `text` is the part of the document that starts at `origin` (UTF-16);
+    /// `range` is absolute. Returns nil if the part is too short for a result
+    /// equal to the full scan: the caller must repeat with more text.
+    /// A cancelled scan returns an empty array, as before.
+    static func tokens(
+        in text: String,
+        origin: Int,
+        totalLength: Int?,
+        language: EditorLanguage,
+        range requestedRange: NSRange,
+        context: IncrementalContext? = nil,
+        revision: UInt? = nil,
+        isCancelled: () -> Bool = { false }
+    ) -> [Token]? {
         guard let configuration = configuration(for: language) else { return [] }
-        let string = text as NSString
+        let string = TextWindow(text as NSString, origin: origin, totalLength: totalLength)
         let range = NSIntersectionRange(
             requestedRange,
-            NSRange(location: 0, length: string.length)
+            NSRange(location: origin, length: string.string.length)
         )
         guard range.length > 0 else { return [] }
 
@@ -178,6 +282,11 @@ enum CodeLexicalScanner {
             revision: revision,
             targetLocation: range.location
         )
+        let stopAfter = min(string.totalLength, NSMaxRange(range) + checkpointStride)
+        // The scan reads back to the line start and one character before the
+        // point, and two characters past its end (CRLF).
+        guard origin <= min(preparation.checkpoint.lineStart, max(0, preparation.checkpoint.location - 1)),
+              string.isTail || string.length >= stopAfter + 2 else { return nil }
         let scan = scan(
             in: string,
             scanRange: NSRange(
@@ -188,7 +297,7 @@ enum CodeLexicalScanner {
             configuration: configuration,
             initialState: preparation.checkpoint.state,
             initialLineStart: preparation.checkpoint.lineStart,
-            stopAfter: min(string.length, NSMaxRange(range) + checkpointStride),
+            stopAfter: stopAfter,
             isCancelled: isCancelled
         )
         context.commit(
@@ -334,7 +443,7 @@ enum CodeLexicalScanner {
     ]
 
     private static func scan(
-        in string: NSString,
+        in string: TextWindow,
         scanRange: NSRange,
         emissionRange: NSRange,
         configuration: Configuration,
@@ -550,7 +659,7 @@ enum CodeLexicalScanner {
 
     private static func hasPrefix(
         _ prefix: String,
-        in string: NSString,
+        in string: TextWindow,
         at location: Int,
         limit: Int
     ) -> Bool {
@@ -582,14 +691,14 @@ enum CodeLexicalScanner {
             || character == 0x2028 || character == 0x2029
     }
 
-    private static func isCommentBoundary(in string: NSString, at location: Int) -> Bool {
+    private static func isCommentBoundary(in string: TextWindow, at location: Int) -> Bool {
         guard location > 0 else { return true }
         let previous = string.character(at: location - 1)
         return isWhitespace(previous)
     }
 
     private static func isJavaScriptRegexStart(
-        in string: NSString,
+        in string: TextWindow,
         at location: Int,
         lowerBound: Int
     ) -> Bool {

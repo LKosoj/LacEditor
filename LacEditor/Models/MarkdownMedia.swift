@@ -74,7 +74,7 @@ struct MarkdownImageSizing: Equatable, Sendable {
 }
 
 struct MarkdownEmbeddedMedia: Equatable, Sendable {
-    enum Kind: Equatable, Sendable { case audio, video }
+    enum Kind: Equatable, Sendable { case audio, video, pdf }
     let kind: Kind
     let sources: [String]
     let controls: Bool
