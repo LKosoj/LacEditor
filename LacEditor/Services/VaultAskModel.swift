@@ -40,7 +40,7 @@ final class VaultAskModel: ObservableObject {
     /// Запросы, ожидание которых отменено: поздние обновления по ним не записываются.
     private var cancelledIDs: Set<String> = []
 
-    init(hub: VaultRequestsHub = .shared) { self.hub = hub }
+    init(hub: VaultRequestsHub? = nil) { self.hub = hub ?? VaultRequestsHub.shared }
 
     var canAsk: Bool {
         !isSubmitting && !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

@@ -325,7 +325,7 @@ extension VaultSyncEngine {
         uploadState.wakeTask = Task {
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             guard !Task.isCancelled else { return }
-            await self.wakeFired()
+            self.wakeFired()
         }
     }
 
@@ -712,7 +712,7 @@ extension VaultSyncEngine {
             }
             // Страховка: моя версия до объединения. Не записалась — объединение всё равно идёт (текст есть в файле и в результате).
             if let url = store.noteURL(for: path) {
-                try? snapshotStore.add(text: mine, name: L10n.tr("合并前：你的版本") + " " + Self.timeLabel(), encodingName: "UTF-8",
+                _ = try? snapshotStore.add(text: mine, name: L10n.tr("合并前：你的版本") + " " + Self.timeLabel(), encodingName: "UTF-8",
                                        location: .file(path: url.standardizedFileURL.path), keepLast: configuration.snapshotKeepLast)
             }
             let mergedData = Data(merged.utf8)

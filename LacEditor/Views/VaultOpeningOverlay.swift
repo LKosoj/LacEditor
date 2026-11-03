@@ -50,7 +50,7 @@ struct VaultOpeningOverlay: View {
             .accessibilityLabel(message)
             .onAppear { AccessibilityNotification.Announcement(message).post() }
             .onChange(of: message) { _, text in
-                if let text { AccessibilityNotification.Announcement(text).post() }
+                AccessibilityNotification.Announcement(text).post()
             }
         }
     }

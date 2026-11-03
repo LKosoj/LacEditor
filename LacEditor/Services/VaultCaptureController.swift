@@ -28,11 +28,11 @@ final class VaultCaptureController: ObservableObject {
     /// Предупреждение, которое строка состояния не удержит (её перебивают фазы запроса): показывается при следующем открытии панели.
     private var deferredNotice: String?
 
-    init(appState: AppState, draftStore: VaultCaptureDraftStore = VaultCaptureDraftStore(), hub: VaultRequestsHub = .shared) {
+    init(appState: AppState, draftStore: VaultCaptureDraftStore = VaultCaptureDraftStore(), hub: VaultRequestsHub? = nil) {
         self.appState = appState
         self.draftStore = draftStore
-        self.hub = hub
-        hub.registerDraftReturner(id: returnerID) { [weak self] returned in
+        self.hub = hub ?? VaultRequestsHub.shared
+        self.hub.registerDraftReturner(id: returnerID) { [weak self] returned in
             guard let self else { return false }
             self.restoreToDraft(returned)
             return true

@@ -30,9 +30,9 @@ final class VaultRequestsHub: ObservableObject {
     private var announced: Set<String> = []
     private var observers: [NSObjectProtocol] = []
 
-    init(connections: VaultConnectionStore = .shared, defaults: UserDefaults = .standard,
+    init(connections: VaultConnectionStore? = nil, defaults: UserDefaults = .standard,
          draftStore: VaultCaptureDraftStore = VaultCaptureDraftStore()) {
-        self.connections = connections
+        self.connections = connections ?? VaultConnectionStore.shared
         self.defaults = defaults
         self.draftStore = draftStore
         let wake = NSWorkspace.shared.notificationCenter.addObserver(

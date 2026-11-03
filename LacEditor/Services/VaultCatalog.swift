@@ -12,7 +12,7 @@ final class VaultCatalog: ObservableObject {
     private(set) var lastFullListingDate: Date?
 
     private static let pageSize = 1000
-    private static let maxAttempts = 3
+    private nonisolated static let maxAttempts = 3
     private static let fullDepth = 8
 
     private let client: VaultClient

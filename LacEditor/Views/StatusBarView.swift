@@ -416,7 +416,7 @@ struct AutosaveStatusItem: View {
                 .accessibilityLabel(text)
                 .accessibilityIdentifier("status.autosave")
                 .onChange(of: needsAttention) { _, attention in
-                    if attention, let text { AccessibilityNotification.Announcement(text).post() }
+                    if attention { AccessibilityNotification.Announcement(text).post() }
                 }
         }
     }

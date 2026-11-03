@@ -54,7 +54,7 @@ private struct VaultQuickOpenPanel: View {
     @FocusState private var queryFocused: Bool
 
     /// Показываем не больше стольких строк: остальное уточняется запросом.
-    private static let limit = 50
+    private nonisolated static let limit = 50
 
     private var normalized: String { VaultSearchSupport.normalizedQuery(query) }
 

@@ -123,8 +123,9 @@ final class VaultSession: ObservableObject {
     }
 
     /// Собирает сессию: токен, туннель (если включён) и клиент. Бросает `VaultClientError` или `VaultTunnelFailure`.
-    static func make(connection: VaultConnection, store: VaultConnectionStore = .shared) async throws -> VaultSession {
-        guard let token = try? store.token(for: connection.id), !token.isEmpty else { throw VaultClientError.unauthorized }
+    static func make(connection: VaultConnection, store: VaultConnectionStore? = nil) async throws -> VaultSession {
+        let connectionStore = store ?? VaultConnectionStore.shared
+        guard let token = try? connectionStore.token(for: connection.id), !token.isEmpty else { throw VaultClientError.unauthorized }
         var tunnel: VaultTunnel?
         let baseURL: URL
         if let settings = connection.tunnel {

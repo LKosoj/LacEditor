@@ -216,7 +216,13 @@ enum MarkdownTableEditingService {
                                   quoteDepth: Int = 0, nestedList: Bool = false) -> MarkdownTable? {
         guard range.location != NSNotFound, range.location >= 0, range.length > 0,
               range.location <= source.length, range.length <= source.length - range.location else { return nil }
-        let lines = sourceLines(source.substring(with: range) as NSString)
+        var lines = sourceLines(source.substring(with: range) as NSString)
+        // cmark's block range may include the table's terminating line break.
+        // `sourceLines` represents that terminator as a synthetic empty line;
+        // it is not a table row and must not invalidate an otherwise valid table.
+        if lines.count > 2, let last = lines.last, last.content.isEmpty, last.ending.isEmpty {
+            lines.removeLast()
+        }
         guard lines.count >= 2, !lines.contains(where: { $0.content.contains("\t") }) else { return nil }
         let rows = lines.enumerated().compactMap { index, line in
             parseTableRow(line, prefix: index == 0 ? 0 : nil, quoteDepth: quoteDepth, nestedList: nestedList)

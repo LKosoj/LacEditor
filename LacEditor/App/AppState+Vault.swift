@@ -294,7 +294,7 @@ extension AppState {
     /// Несохранённый текст перед заменой версией сервера: снимок в истории версий документа (не удаляется при закрытии заметки).
     private func preserveVaultLocalText(_ text: String, of document: EditorDocument) {
         guard let url = document.url else { return }
-        try? DocumentSnapshotStore.shared.add(text: text, name: VaultSyncEngine.preservedSnapshotName, encodingName: "UTF-8",
+        _ = try? DocumentSnapshotStore.shared.add(text: text, name: VaultSyncEngine.preservedSnapshotName, encodingName: "UTF-8",
                                               location: .file(path: url.standardizedFileURL.path), keepLast: 50)
     }
 

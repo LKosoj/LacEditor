@@ -117,7 +117,7 @@ actor VaultRequestsClient {
          api: @escaping @Sendable () async throws -> any VaultRequestsAPI,
          sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) },
          makeRequestID: @escaping @Sendable () -> String = { UUID().uuidString.lowercased() },
-         now: @escaping @Sendable () -> Date = Date.init) {
+         now: @escaping @Sendable () -> Date = { Date() }) {
         self.vaultID = vaultID
         self.store = store
         self.api = api

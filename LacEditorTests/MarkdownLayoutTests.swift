@@ -1027,6 +1027,13 @@ final class MarkdownLayoutTests: XCTestCase {
         XCTAssertEqual(nestedFont.pointSize, 16, accuracy: 0.1)
     }
 
+    func testTableWithTrailingLineBreakIsPresented() throws {
+        let source = "| A | B |\n|---|---|\n| 1 | 2 |\n"
+        let table = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first)
+        XCTAssertEqual(table.rows.count, 2)
+        XCTAssertEqual(table.rows.last?.cells.map { (source as NSString).substring(with: $0.range) }, [" 1 ", " 2 "])
+    }
+
     func testInlineSpanAppliesNestedStyleAndRestoresSource() async throws {
         _ = NSApplication.shared
         let source = "<span style='color:red;font-size:2rem'>**bold <span style='background:yellow'>inner</span>**</span>\n\nend"

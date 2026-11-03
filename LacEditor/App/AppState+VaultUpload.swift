@@ -204,7 +204,7 @@ extension AppState {
         guard let session = vaultSession, let document = vaultDocument else { return .busy }
         let current = document.synchronizedText()
         if !document.isDirty, !document.hasPendingLiveEdits, let url = document.url {
-            try? DocumentSnapshotStore.shared.add(text: current, name: L10n.tr("撤销前：你的版本"), encodingName: "UTF-8",
+            _ = try? DocumentSnapshotStore.shared.add(text: current, name: L10n.tr("撤销前：你的版本"), encodingName: "UTF-8",
                                                   location: .file(path: url.standardizedFileURL.path), keepLast: 50)
         }
         var result = await replaceVaultNoteText(base, path: path, expectedFileText: current, recordsUpdate: false,
@@ -359,7 +359,7 @@ extension AppState {
             if result == .engineMayWrite {
                 guard let current = (try? session.engine.store.readNote(serverPath: path)) ?? nil, current == Data(context.mine.utf8),
                       (try? session.engine.store.writeNote(Data(text.utf8), serverPath: path)) != nil else { return .busy }
-                await target.vaultFileRewritten(path: path)
+                target.vaultFileRewritten(path: path)
                 result = .applied
             }
             if result == .busy { return .busy }

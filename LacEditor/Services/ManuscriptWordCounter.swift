@@ -9,7 +9,7 @@ final class ManuscriptWordCounter: ObservableObject {
     @Published private(set) var bookTotal = 0
     @Published private(set) var isCounting = false
 
-    static let maxFileSize = 5 * 1_024 * 1_024
+    nonisolated static let maxFileSize = 5 * 1_024 * 1_024
 
     private struct CacheKey: Equatable, Sendable {
         let modified: Date

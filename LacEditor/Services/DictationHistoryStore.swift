@@ -34,8 +34,8 @@ struct DictationHistoryEntry: Codable, Equatable, Identifiable {
 @MainActor
 final class DictationHistoryStore: ObservableObject {
     static let shared = DictationHistoryStore()
-    static let defaultLimit = 20
-    static let defaultRetention: TimeInterval = 14 * 24 * 60 * 60
+    nonisolated static let defaultLimit = 20
+    nonisolated static let defaultRetention: TimeInterval = 14 * 24 * 60 * 60
 
     enum Issue: Equatable {
         /// Файл перенесён под этим именем, список пуст, запись разрешена.

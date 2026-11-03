@@ -365,7 +365,7 @@ final class MindMapController: ObservableObject {
             if let target { selection = target.id }
         }
         if selection == nil, newTree.node(newTree.rootID) != nil { selection = newTree.rootID }
-        if let selection, !isVisible(selection, in: newTree) { selection = newTree.rootID }
+        if let currentSelection = selection, !isVisible(currentSelection, in: newTree) { selection = newTree.rootID }
         selectedID = selection
         selectedKey = selection.flatMap { stableKey($0, in: newTree) }
         if pendingRename, let selection, newTree.node(selection)?.kind != .virtualRoot {

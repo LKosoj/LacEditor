@@ -86,10 +86,10 @@ final class AIDictationController: ObservableObject {
          loadKey: @escaping (AIRole, String) throws -> String? = { try AIKeychainStore().load(for: $0, baseURL: $1) },
          askRetry: ((String) async -> Bool)? = nil,
          writePasteboard: @escaping (String) -> Void = { NSPasteboard.general.clearContents(); NSPasteboard.general.setString($0, forType: .string) },
-         history: DictationHistoryStore = .shared) {
+         history: DictationHistoryStore? = nil) {
         self.appState = appState; self.recorder = recorder ?? AIVoiceRecorder(); self.transcribe = transcribe; self.cleanup = cleanup
         self.loadKey = loadKey; self.askRetry = askRetry; self.writePasteboard = writePasteboard
-        self.history = history
+        self.history = history ?? DictationHistoryStore.shared
         // Панель инструментов слушает AppState, поэтому каждая смена состояния пересылается туда.
         stateObserver = $state.dropFirst().sink { [weak appState] _ in appState?.objectWillChange.send() }
         settingsObserver = appState.preferences.objectWillChange.sink { [weak self] in

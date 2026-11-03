@@ -10,7 +10,7 @@ extension AppState {
         // Прежний контроллер отменяет `WindowManager.detachVault`: из геттера (он вызывается из body) состояние не меняем.
         let controller = VaultSearchController(
             search: { [weak self] query in
-                guard let client = await self?.vaultSession?.client else { throw CancellationError() }
+                guard let client = self?.vaultSession?.client else { throw CancellationError() }
                 return try await client.search(query: query)
             },
             namePaths: { [weak self] in self?.vaultSession?.catalog.wikiLinkPaths() ?? [] },

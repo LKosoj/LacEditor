@@ -293,11 +293,39 @@ struct ManuscriptSectionView: View {
         return text
     }
 
+    @ViewBuilder
+    private func titleOrEditor(node: ManuscriptNode, row: ManuscriptTreeRow) -> some View {
+        if model.renaming == node.id {
+            TextField("", text: $model.renameText)
+                .textFieldStyle(.plain)
+                .onSubmit { commitRename(node.id) }
+                .onExitCommand { model.renaming = nil }
+        } else {
+            titleView(node: node, row: row)
+        }
+    }
+
+    private func titleView(node: ManuscriptNode, row: ManuscriptTreeRow) -> some View {
+        let titleColor: Color = node.include && !row.isMissing ? .primary : .secondary
+        return Text(node.title)
+            .italic(!node.include)
+            .foregroundStyle(titleColor)
+            .lineLimit(1)
+            .truncationMode(.tail)
+    }
+
+    private func symbolName(for row: ManuscriptTreeRow, node: ManuscriptNode) -> String {
+        if node.kind == .group { return "folder" }
+        if row.isMissing { return "exclamationmark.triangle" }
+        if !node.include { return "eye.slash" }
+        return "doc.text"
+    }
+
     private func rowView(_ row: ManuscriptTreeRow, project: ManuscriptProject) -> some View {
         let node = row.node
         let status = statusInfo(node, project: project)
         let isSelected = session.selectedNodeID == node.id
-        let symbol = node.kind == .group ? "folder" : row.isMissing ? "exclamationmark.triangle" : !node.include ? "eye.slash" : "doc.text"
+        let symbol = symbolName(for: row, node: node)
         return HStack(spacing: 4) {
             if row.hasChildren {
                 Button { model.toggle(node.id) } label: {
@@ -312,17 +340,7 @@ struct ManuscriptSectionView: View {
             Image(systemName: symbol)
                 .foregroundStyle(row.isMissing ? Color.orange : Color.secondary)
                 .frame(width: 16)
-            if model.renaming == node.id {
-                TextField("", text: $model.renameText)
-                    .textFieldStyle(.plain)
-                    .onSubmit { commitRename(node.id) }
-                    .onExitCommand { model.renaming = nil }
-            } else {
-                Text(node.title)
-                    .italic(!node.include)
-                    .foregroundStyle(node.include && !row.isMissing ? Color.primary : Color.secondary)
-                    .lineLimit(1).truncationMode(.tail)
-            }
+            titleOrEditor(node: node, row: row)
             Spacer(minLength: 4)
             if row.isMissing {
                 Text(L10n.tr("没有文件")).font(.caption2).foregroundStyle(.secondary)

@@ -40,7 +40,7 @@ final class ManuscriptProjectStore: ObservableObject {
         case missing
     }
 
-    static let supportedVersion = 1
+    nonisolated static let supportedVersion = 1
     static let relativeManifestPath = ".laceditor/project.json"
 
     @Published private(set) var project: ManuscriptProject?

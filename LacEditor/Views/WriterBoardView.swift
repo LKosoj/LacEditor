@@ -428,8 +428,7 @@ private struct BoardCardView: View {
                     if !focused, controller.editingSynopsis == card.id { controller.commitEditing() }
                 }
                 .onKeyPress(.escape) { controller.cancelEditing(); return .handled }
-                .onKeyPress(.return) { press in
-                    guard !press.modifiers.contains(.shift) else { return .ignored }
+                .onKeyPress(.return) {
                     controller.commitEditing()
                     return .handled
                 }

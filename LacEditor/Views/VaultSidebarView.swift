@@ -33,12 +33,24 @@ private struct VaultSidebarContent: View {
     @State private var conflictsExpanded = true
     private var unsentPaths: [String] { session.unsentSummary.attentionUnsent().map(\.serverPath) }
     private var conflictPaths: [String] { session.unsentSummary.conflicts.map(\.serverPath) }
+    private var hasRejectedUnsent: Bool {
+        session.unsentSummary.unsent.contains { row in
+            if case .rejected = row.kind { return true }
+            return false
+        }
+    }
     /// Строка раздела «Неотправленное» или «Конфликты» для заметки: слова состояния и допустимые действия.
     private func summaryRow(_ path: String) -> VaultUnsentRow? {
         (session.unsentSummary.unsent + session.unsentSummary.conflicts).first { $0.serverPath == path }
     }
+    private func updateSearchOrder() {
+        searchNavigation.setOrder(search.results.map(VaultSearchRowView.rowID))
+    }
+    private func updateSelection(_ path: String?) {
+        selection = path.map { Self.rowID("tree", $0) }
+    }
 
-    var body: some View {
+    private var mainContent: some View {
         VStack(spacing: 0) {
             header
             statusLine
@@ -47,11 +59,15 @@ private struct VaultSidebarContent: View {
                              focusEditor: { VaultSearchFocus.focusEditor(in: appState.hostWindow) })
             list
         }
-        .onChange(of: appState.vaultNote?.path) { _, path in selection = path.map { Self.rowID("tree", $0) } }
+    }
+
+    var body: some View {
+        mainContent
+        .onChange(of: appState.vaultNote?.path) { _, path in updateSelection(path) }
         .onChange(of: session.isOnline) { _, online in search.connectivityChanged(isOnline: online) }
         .onChange(of: catalog.isFullListingLoaded) { _, _ in search.refreshNames() }
-        .onChange(of: search.results) { _, results in searchNavigation.setOrder(results.map(VaultSearchRowView.rowID)) }
-        .onAppear { selection = appState.vaultNote?.path.map { Self.rowID("tree", $0) } }
+        .onChange(of: search.results) { _, _ in updateSearchOrder() }
+        .onAppear { updateSelection(appState.vaultNote?.path) }
         .onReceive(appState.vaultUpload.$revealRequest.compactMap { $0 }) { request in
             switch request {
             case .unsent: unsentExpanded = true
@@ -59,7 +75,7 @@ private struct VaultSidebarContent: View {
             }
         }
         // Раздел с отказом сервера раскрывается сам: человек должен это увидеть.
-        .onChange(of: session.unsentSummary.unsent.contains { if case .rejected = $0.kind { true } else { false } }) { _, hasRejected in
+        .onChange(of: hasRejectedUnsent) { _, hasRejected in
             if hasRejected { unsentExpanded = true }
         }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in today = Date() }
@@ -298,11 +314,11 @@ private struct VaultNoteRow: View {
     private var stateText: String? {
         if let detail { return detail }
         switch state {
-        case .modified, .uploading: L10n.tr("未上传")
-        case .conflict: L10n.tr("冲突")
-        case .newerOnServer: L10n.tr("服务器上有更新")
-        case .deletedOnServer: L10n.tr("文件已在服务器上删除")
-        default: nil
+        case .modified, .uploading: return L10n.tr("未上传")
+        case .conflict: return L10n.tr("冲突")
+        case .newerOnServer: return L10n.tr("服务器上有更新")
+        case .deletedOnServer: return L10n.tr("文件已在服务器上删除")
+        default: return nil
         }
     }
 

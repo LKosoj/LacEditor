@@ -87,10 +87,10 @@ struct VaultConnectionSheet: View {
     @State private var checkTask: Task<Void, Never>?
     @FocusState private var focus: VaultConnectionField?
 
-    init(request: VaultConnectionSheetRequest, close: @escaping () -> Void, store: VaultConnectionStore = .shared) {
+    init(request: VaultConnectionSheetRequest, close: @escaping () -> Void, store: VaultConnectionStore? = nil) {
         self.request = request
         self.close = close
-        self.store = store
+        self.store = store ?? VaultConnectionStore.shared
     }
 
     private var currentID: UUID { selection ?? newID }

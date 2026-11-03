@@ -30,8 +30,8 @@ extension WindowManager {
             if let old { await old.stop() }
             // Сессия видна приложению ещё до конца запуска: параллельные входы и открытия не создают вторую.
             activeVaultSession = session
-            VaultRequestsHub.shared.activeSessionProvider = { [weak self] in
-                self?.activeVaultSession.map { ($0.connection, $0.client) }
+            VaultRequestsHub.shared.activeSessionProvider = { [self] in
+                self.activeVaultSession.map { ($0.connection, $0.client) }
             }
             for state in moved {
                 state.vaultSearchStorage?.cancel()
