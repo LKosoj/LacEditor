@@ -103,7 +103,7 @@ struct SnapshotsSectionView: View {
     private func row(_ info: DocumentSnapshotInfo) -> some View {
         let relative = relativeDate(info.date)
         return VStack(alignment: .leading, spacing: 2) {
-            Text(info.name).lineLimit(2)
+            Text(VaultPresentation.snapshotDisplayName(info.name)).lineLimit(2)
             Text(relative).font(.caption).foregroundStyle(.secondary)
             HStack(spacing: 12) {
                 Button(L10n.tr("比较")) { appState.presentVersionHistory(mode: .snapshots, selecting: info.id) }
@@ -118,7 +118,7 @@ struct SnapshotsSectionView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(info.name), \(relative)")
+        .accessibilityLabel("\(VaultPresentation.snapshotDisplayName(info.name)), \(relative)")
         .accessibilityIdentifier("writer.snapshots.row.\(info.id.uuidString)")
         .accessibilityAction(named: L10n.tr("比较")) {
             appState.presentVersionHistory(mode: .snapshots, selecting: info.id)

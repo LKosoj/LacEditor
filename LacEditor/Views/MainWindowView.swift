@@ -55,6 +55,8 @@ struct MainWindowView: View {
                 .overlay {
                     if !appState.isDistractionFree && !selectedDocument.isPreviewEffectivelyEnabled { EditorStartHints(document: selectedDocument) }
                 }
+                // Только над текстом: строка состояния ниже остаётся видна (там связь и ход открытия).
+                .overlay { VaultOpeningOverlay(appState: appState) }
                 if appState.isAIWritingVisible && !appState.isDistractionFree {
                     InspectorPanelView(appState: appState, openSettings: { SettingsWindowController.shared.present(windowManager: windowManager) })
                         .frame(minWidth: 280, idealWidth: 340, maxWidth: 520)
@@ -81,6 +83,8 @@ struct MainWindowView: View {
         .overlay(alignment: .top) { QuickOpenOverlay(controller: appState.folderSearch) }
         .overlay(alignment: .top) { CommandPaletteOverlay(controller: appState.commandPalette, folderSearch: appState.folderSearch) }
         .overlay(alignment: .top) { SnippetPickerOverlay(controller: appState.snippetPicker, folderSearch: appState.folderSearch) }
+        .overlay(alignment: .top) { VaultCaptureOverlay(controller: appState.vaultCapture) }
+        .overlay(alignment: .top) { VaultQuickOpenOverlay(controller: appState.vaultSearch) }
         .background(
             // Cmd-= — привычный псевдоним Cmd-+ (на US-раскладке плюс — это Shift-=); пункт меню остаётся один.
             Button("") { appState.increaseFontSize() }
@@ -308,6 +312,24 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         )
         writerProjectAccessory.isHidden = appState.writerProjectIssue == nil
         contentItem.addTopAlignedAccessoryViewController(writerProjectAccessory)
+        let vaultPageAccessory = FindBarAccessoryController(
+            rootView: AnyView(
+                VaultPageBannerHost()
+                    .environmentObject(appState)
+                    .environmentObject(windowManager)
+            )
+        )
+        vaultPageAccessory.isHidden = true
+        contentItem.addTopAlignedAccessoryViewController(vaultPageAccessory)
+        let vaultNewerAccessory = FindBarAccessoryController(
+            rootView: AnyView(
+                VaultNewerBannerHost()
+                    .environmentObject(appState)
+                    .environmentObject(windowManager)
+            )
+        )
+        vaultNewerAccessory.isHidden = true
+        contentItem.addTopAlignedAccessoryViewController(vaultNewerAccessory)
         controller.splitView.dividerStyle = .thin
         controller.splitView.isVertical = true
         controller.view.wantsLayer = true
@@ -329,6 +351,10 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         context.coordinator.observeExternalChange(appState: appState)
         context.coordinator.writerProjectAccessory = writerProjectAccessory
         context.coordinator.observeWriterProjectIssue(appState: appState)
+        context.coordinator.vaultPageAccessory = vaultPageAccessory
+        context.coordinator.observeVaultPage(appState: appState)
+        context.coordinator.vaultNewerAccessory = vaultNewerAccessory
+        context.coordinator.observeVaultNewer(appState: appState)
         context.coordinator.applyCollapseState(
             isVisible: appState.isSidebarEffectivelyVisible
         )
@@ -366,6 +392,10 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         weak var findBarAccessory: NSSplitViewItemAccessoryViewController?
         weak var externalChangeAccessory: NSSplitViewItemAccessoryViewController?
         weak var writerProjectAccessory: NSSplitViewItemAccessoryViewController?
+        weak var vaultPageAccessory: NSSplitViewItemAccessoryViewController?
+        private var vaultPageObservation: AnyCancellable?
+        weak var vaultNewerAccessory: NSSplitViewItemAccessoryViewController?
+        private var vaultNewerObservation: AnyCancellable?
         private var writerProjectObservation: AnyCancellable?
         private var writerNoticeObservation: AnyCancellable?
         private var findBarObservation: AnyCancellable?
@@ -424,6 +454,35 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
                 }
         }
 
+        /// Плашка страницы хранилища видна, пока у выбранного документа есть `vaultPageMode`.
+        func observeVaultPage(appState: AppState) {
+            vaultPageObservation = Publishers.CombineLatest(appState.$selectedDocumentID, appState.$documents)
+                .map { id, documents -> AnyPublisher<Bool, Never> in
+                    guard let document = documents.first(where: { $0.id == id }) else {
+                        return Just(false).eraseToAnyPublisher()
+                    }
+                    return document.$vaultPageMode.map { $0 != nil }.eraseToAnyPublisher()
+                }
+                .switchToLatest()
+                .removeDuplicates()
+                .sink { [weak self] isVisible in
+                    self?.vaultPageAccessory?.isHidden = !isVisible
+                }
+        }
+
+        /// Плашка «На сервере новее» видна, пока у заметки хранилища есть состояние для показа; значение читается после изменения.
+        func observeVaultNewer(appState: AppState) {
+            // Начальное значение: окно могло пересоздать панель, когда плашка уже активна (objectWillChange сам не сработает).
+            vaultNewerAccessory?.isHidden = appState.vaultBanner == nil && appState.vaultUpload.mergeNotice == nil
+            vaultNewerObservation = appState.objectWillChange
+                .receive(on: DispatchQueue.main)
+                .map { [weak appState] in appState?.vaultBanner != nil || appState?.vaultUpload.mergeNotice != nil }
+                .removeDuplicates()
+                .sink { [weak self] isVisible in
+                    self?.vaultNewerAccessory?.isHidden = !isVisible
+                }
+        }
+
         /// Плашка «Проект не найден» видна, пока у вкладки есть `writerProjectIssue`.
         func observeWriterProjectIssue(appState: AppState) {
             writerProjectObservation = appState.$writerProjectIssue
@@ -460,6 +519,8 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
             isDismantling = true
             findBarObservation = nil
             externalChangeObservation = nil
+            vaultPageObservation = nil
+            vaultNewerObservation = nil
             writerProjectObservation = nil
             writerNoticeObservation = nil
             collapseObservation?.invalidate()

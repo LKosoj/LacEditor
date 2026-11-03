@@ -44,6 +44,7 @@
 | Палитра команд, строки, версии, окончания строк, wiki-ссылки, теги, шаблоны, замена в папке, цель письма, рукопись | [`notes.md`](docs/agents/notes.md) |
 | Любой текст интерфейса | [`localization.md`](docs/agents/localization.md) |
 | README, сборка, смена версии, выпуск | [`release.md`](docs/agents/release.md) |
+| Режим хранилища: подключение, синхронизация, конфликты, `compiled/`, поиск, быстрая запись | [`vault.md`](docs/agents/vault.md) |
 | Проверка перед завершением любой задачи с кодом | [`testing.md`](docs/agents/testing.md) |
 
 ## Делегирование

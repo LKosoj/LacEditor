@@ -264,6 +264,8 @@ final class EditorRangeReplacementRequest {
     var failureMessage: String?
     var resultingSelection: NSRange?
     var groupsUndo = false
+    /// Серверное обновление собранной страницы хранилища: единственная замена, которой можно выйти за раздел «Owner Notes».
+    var isVaultServerUpdate = false
     var suppressUndoRegistration = false
     var registerImageFileUndo: ((UndoManager, LacTextView) -> Void)?
     var virtualTableTarget: EditorVirtualTableTarget?
@@ -531,12 +533,37 @@ final class AppState: ObservableObject {
     let textTransformation = TextTransformationPreviewState()
     lazy var aiWriting = AIWritingController(appState: self)
     lazy var aiDictation = AIDictationController(appState: self)
+    /// «Записать мысль» и «Спросить» режима хранилища.
+    lazy var vaultCapture: VaultCaptureController = {
+        let controller = VaultCaptureController(appState: self)
+        controller.openDailyNote = { [weak self] in
+            guard let self else { return }
+            self.windowManager?.openVaultDailyNote(from: self)
+        }
+        return controller
+    }()
+    lazy var vaultAsk: VaultAskModel = {
+        let model = VaultAskModel()
+        model.openNote = { [weak self] path in
+            guard let self else { return }
+            self.windowManager?.openVaultNote(path: path, from: self)
+        }
+        model.openDailyNote = { [weak self] in
+            guard let self else { return }
+            self.windowManager?.openVaultDailyNote(from: self)
+        }
+        model.statusReporter = { [weak self] in self?.showVaultStatus($0) }
+        model.openText = { [weak self] name, text in self?.openVaultArtifactText(text, name: name) }
+        return model
+    }()
     lazy var aiRegex = AIRegexController(appState: self)
     lazy var symbolOutline = SymbolOutlineController()
     lazy var styleCheck = StyleCheckController(appState: self)
     lazy var autosave = AutosaveController(appState: self)
     @Published var isAIWritingVisible = false
     @Published var inspectorSegment: InspectorSegment = InspectorSegment.stored(isWriter: false)
+    /// Сегмент выбран командой (меню, запрос AI), а не умолчанием: при монтировании панели его не заменяют сохранённым.
+    var inspectorSegmentIsExplicit = false
     let commandPalette = CommandPaletteController()
     let snippetPicker = SnippetPickerController()
     weak var hostWindow: NSWindow? {
@@ -585,6 +612,32 @@ final class AppState: ObservableObject {
     /// Прежняя привязка из сессии, пока пользователь не решил судьбу плашки: закрытие приложения её не стирает.
     var pendingWriterProject: WriterProjectSession?
     var writerWizardSheet: NSWindow?
+    /// Лист подключения хранилища (режим хранилища); nil — не показан.
+    var vaultConnectionSheet: NSWindow?
+    /// Сессия хранилища, к которой привязана вкладка; nil — обычная вкладка (см. `WindowManager+Vault.swift`).
+    @Published var vaultSession: VaultSession? { didSet { observeVaultSession() } }
+    var vaultSessionObservation: AnyCancellable?
+    /// Заметка хранилища этой вкладки; сохраняется в файле сессии.
+    @Published var vaultNote: VaultNoteBinding?
+    /// Заметка ещё не загружена: оверлей «Загружается…» / «Сервер отвечает медленно» / «Заметка откроется, когда появится связь».
+    @Published var vaultOpening: VaultOpeningState?
+    /// Причина, по которой заметка не открылась (не обрыв связи); показывается на оверлее.
+    @Published var vaultOpeningIssue: String?
+    /// «Оставить мои правки» на плашке «На сервере новее».
+    @Published var vaultBannerDismissed = false
+    var vaultOpeningTask: Task<Void, Never>?
+    var vaultSlowTask: Task<Void, Never>?
+    var vaultOpeningCompletion: ((Bool) -> Void)?
+    /// Тексты до серверных обновлений для «Показать изменения сервера» (только в памяти).
+    let vaultServerUpdates = VaultServerUpdateMemory()
+    /// Состояние интерфейса отправки правок: сообщение об объединении, лист конфликта (`AppState+VaultUpload.swift`).
+    lazy var vaultUpload: VaultUploadUIState = {
+        let state = VaultUploadUIState()
+        state.owner = self
+        return state
+    }()
+    /// Поиск боковой панели хранилища; создаётся в `AppState+VaultSearch.swift`.
+    var vaultSearchStorage: VaultSearchController?
     private var textTransformationWindowController: TextTransformationWindowController?
     let fileService = FileService()
     private let fileOpeningQueue: OperationQueue = {
@@ -840,6 +893,9 @@ final class AppState: ObservableObject {
 
     var windowTitle: String {
         guard let document = selectedDocument else { return AppEnvironment.displayName }
+        if let prefix = vaultTitlePrefix, let path = vaultNote?.path {
+            return "\(document.isDirty ? "● " : "")\(prefix) › \(VaultPresentation.displayName(ofPath: path))"
+        }
         return "\(document.isDirty ? "● " : "")\(document.displayName) — \(AppEnvironment.displayName)"
     }
 
@@ -901,6 +957,7 @@ final class AppState: ObservableObject {
         if commandPalette.isPresented { commandPalette.dismiss(); return }
         if (window.firstResponder as? NSTextView)?.hasMarkedText() == true { return }
         folderSearch.cancelQuickOpen()
+        vaultSearchStorage?.dismissQuickOpen()
         snippetPicker.dismiss()
         commandPalette.present(menu: NSApp.mainMenu, preferences: preferences)
     }
@@ -908,6 +965,11 @@ final class AppState: ObservableObject {
     func showQuickOpen() {
         commandPalette.dismiss()
         snippetPicker.dismiss()
+        // Во вкладке хранилища быстрое открытие ищет по каталогу сервера, папки на диске там нет.
+        if vaultSession != nil {
+            vaultSearch.presentQuickOpen()
+            return
+        }
         folderSearch.requestQuickOpen()
     }
 
@@ -1265,7 +1327,8 @@ final class AppState: ObservableObject {
                 )
                 existing.markSaved()
                 selectedDocumentID = existing.id
-                recentFiles.record(url)
+                if !isVaultFile(url) { recentFiles.record(url) }
+                vaultDocumentLoaded(existing, at: url)
             } else {
                 selectedDocumentID = existing.id
             }
@@ -1288,8 +1351,9 @@ final class AppState: ObservableObject {
         }
         documents.append(document)
         selectedDocumentID = document.id
-        recentFiles.record(url)
+        if !isVaultFile(url) { recentFiles.record(url) }
         observe(document)
+        vaultDocumentLoaded(document, at: url)
     }
 
     var canShowVersionHistory: Bool {
@@ -1474,7 +1538,12 @@ final class AppState: ObservableObject {
             return false
         }
         document.updateFileEncoding(encoding)
-        return write(document, to: url, completion: completion)
+        // «Сохранить как…» выводит файл из хранилища: вкладка становится обычной, копия на Mac остаётся как была.
+        let wasVaultNote = vaultDocument === document
+        return write(document, to: url, completion: { [weak self] saved in
+            if saved, wasVaultNote { self?.releaseVaultNote() }
+            completion?(saved)
+        })
     }
 
     private func prepareExportImages(snapshot: DocumentTextSnapshot, document: EditorDocument, source: URL?,
@@ -2601,6 +2670,7 @@ final class AppState: ObservableObject {
         backlinksStorage?.close()
         folderTagsStorage?.invalidate()
         windowManager?.detachWriter(from: self)
+        windowManager?.detachVault(from: self)
         folderWorkspace.setRoot(nil)
         sidebarFeedback.clear()
         dismissFindReplace()
@@ -3842,9 +3912,11 @@ final class AppState: ObservableObject {
     /// SwiftUI retains its primary scene, but closed documents must not return.
     func resetClosedWindow() {
         folderSearchStorage?.close()
+        vaultSearchStorage?.cancel()
         backlinksStorage?.close()
         folderTagsStorage?.invalidate()
         windowManager?.detachWriter(from: self)
+        windowManager?.detachVault(from: self)
         folderWorkspace.setRoot(nil)
         isFocusMode = false
         focusScope = .paragraph
@@ -5234,7 +5306,7 @@ final class AppState: ObservableObject {
     /// Можно ли сдвинуть раздел заголовка на одного соседа (для меню оглавления). Считает по полному списку заголовков.
     func canMoveMarkdownSection(_ heading: MarkdownHeading, _ direction: MarkdownSectionMoveService.Direction, in document: EditorDocument) -> Bool {
         guard selectedDocument === document, document.language == .markdown, document.isMarkdownOutlineCurrent,
-              !document.isReadingMode, document.ioState == .idle,
+              !document.isReadingMode, document.vaultPageGuard == nil, document.ioState == .idle,
               let index = document.markdownHeadings.firstIndex(where: { $0.sameSource(as: heading) }) else { return false }
         return MarkdownSectionMoveService.target(direction, section: index, headings: document.markdownHeadings) != nil
     }
@@ -5300,6 +5372,10 @@ final class AppState: ObservableObject {
 
     /// Текущий список файлов для wiki-ссылок документа; nil, пока он не загружен или относится к другой базе.
     func wikiResolver(for document: EditorDocument) -> MarkdownWikiLinkResolver? {
+        // Заметка хранилища: имена берутся из каталога сервера, а не с диска Mac (там лежат только открытые заметки).
+        if let session = vaultSession, document.language == .markdown, let url = document.url, session.contains(url) {
+            return session.wikiResolver
+        }
         guard document.language == .markdown, let snapshot = wikiCatalog.snapshot,
               snapshot.base == MarkdownWikiLinkResolver.base(root: folderWorkspace.rootURL, documentURL: document.url) else { return nil }
         return snapshot
@@ -5310,6 +5386,10 @@ final class AppState: ObservableObject {
     }
 
     func requestWikiCatalog(for document: EditorDocument) {
+        if let session = vaultSession, let url = document.url, session.contains(url) {
+            if !session.catalog.isFullListingLoaded { Task { _ = await session.catalog.refreshFullListing() } }
+            return
+        }
         wikiCatalog.ensure(root: folderWorkspace.rootURL, documentURL: document.url)
     }
 
@@ -5352,6 +5432,11 @@ final class AppState: ObservableObject {
             case let .file(url, fragment):
                 let target = MarkdownLinkNavigationService.fileTarget(url)
                 let targetURL = target.url
+                // Ссылка из заметки хранилища на другую заметку хранилища открывает её с сервера.
+                if let session = vaultSession, vaultNote != nil, let serverPath = session.serverPath(for: targetURL) {
+                    windowManager?.openVaultNote(path: serverPath, from: self)
+                    return
+                }
                 guard FileService.supportedExtensions.contains(targetURL.pathExtension.lowercased()) else {
                     var external = URLComponents(url: targetURL, resolvingAgainstBaseURL: true)
                     external?.fragment = fragment
@@ -5476,6 +5561,11 @@ final class AppState: ObservableObject {
         )
 
         guard !request.wasHandled else { return true }
+        // Запасная запись в модель вышла бы за раздел «Owner Notes» в обход охранника страницы.
+        guard document.vaultPageGuard == nil else {
+            document.setStatusError(L10n.tr("这里只能编辑“Owner Notes”分区"))
+            return false
+        }
         document.text = text
         document.selectionRange = safeSelection
         document.refreshDirtyState()
@@ -5599,9 +5689,10 @@ final class AppState: ObservableObject {
                     document.statusMessage = autosaveOutcome == nil && document.isDirty
                         ? L10n.tr("已保存先前版本，仍有未保存更改")
                         : nil
-                    self.recentFiles.record(url)
+                    if !self.isVaultFile(url) { self.recentFiles.record(url) }
                     self.scheduleRecoverySnapshot(for: document, delay: 0)
-                    self.noteSavedForSearchIndex(url)
+                    if !self.isVaultFile(url) { self.noteSavedForSearchIndex(url) }
+                    self.noteSavedForVault(url)
                     self.noteSavedForWorld(url)
                     autosaveOutcome?(.saved)
                     completion?(!document.isDirty)
@@ -6032,8 +6123,17 @@ final class AppState: ObservableObject {
     ) {
         closeConfirmationDepth += 1
         confirmClosingUnguarded(document) { [weak self] result in
-            self?.closeConfirmationDepth -= 1
-            completion(result)
+            guard let self else { completion(result); return }
+            // Заметка хранилища: перед закрытием правки уходят на сервер или человек решает их судьбу.
+            guard result, self.vaultNote != nil, self.vaultDocument === document else {
+                self.closeConfirmationDepth -= 1
+                completion(result)
+                return
+            }
+            self.vaultConfirmClosing(document) { [weak self] approved in
+                self?.closeConfirmationDepth -= 1
+                completion(approved)
+            }
         }
     }
 
@@ -6631,6 +6731,7 @@ extension AppState {
         if snippetPicker.isPresented { snippetPicker.dismiss(); return }
         if (window.firstResponder as? NSTextView)?.hasMarkedText() == true { return }
         folderSearch.cancelQuickOpen()
+        vaultSearchStorage?.dismissQuickOpen()
         commandPalette.dismiss()
         snippetPicker.present(snippets: store.snippets, message: store.issueMessage)
     }

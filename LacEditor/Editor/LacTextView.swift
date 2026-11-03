@@ -359,6 +359,8 @@ final class LacTextView: NSTextView {
     var diagramMenuHandler: ((NSPoint) -> [NSMenuItem])?
     var imageTransferHandler: ((MarkdownImageTransfer) -> Bool)?
     var videoTransferHandler: ((URL) -> Bool)?
+    /// Страница хранилища, собранная сервером: правки мимо делегата (Shift-Tab) спрашивают разрешение здесь.
+    var vaultEditGate: ((NSRange, String) -> Bool)?
     var remoteImageTransferEnabled = false
     var richPasteHandler: ((NSPasteboard) -> Bool)?
     var richCopyHandler: ((NSPasteboard) -> Bool)?
@@ -1016,6 +1018,7 @@ final class LacTextView: NSTextView {
     }
 
     override func insertBacktab(_ sender: Any?) {
+        guard isEditable else { return }
         let range = selectedRange()
         guard range.length == 0, range.location > 0,
               let text = textStorage?.string as NSString? else {
@@ -1032,10 +1035,9 @@ final class LacTextView: NSTextView {
             removeCount = min(tabWidth, prefix.reversed().prefix { $0 == " " }.count)
         }
         guard removeCount > 0 else { return }
-        replaceCharacters(in: NSRange(
-            location: range.location - removeCount,
-            length: removeCount
-        ), with: "")
+        let removeRange = NSRange(location: range.location - removeCount, length: removeCount)
+        if let gate = vaultEditGate, !gate(removeRange, "") { return }
+        replaceCharacters(in: removeRange, with: "")
         setSelectedRange(NSRange(location: range.location - removeCount, length: 0))
     }
 

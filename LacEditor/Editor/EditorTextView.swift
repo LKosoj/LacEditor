@@ -13,7 +13,9 @@ struct EditorTextView: NSViewRepresentable {
     @Environment(\.isEnabled) private var isEnabled
     @ObservedObject var document: EditorDocument
 
-    private var isEditorEditable: Bool { isEnabled && !document.isReadingMode }
+    private var isEditorEditable: Bool {
+        isEnabled && !document.isReadingMode && (document.vaultPageMode.map { $0 == .ownerZone } ?? true)
+    }
     let sessionStore: EditorSessionStore
     let fontSize: CGFloat
     let lineSpacing: CGFloat
@@ -178,6 +180,7 @@ struct EditorTextView: NSViewRepresentable {
         // Первая загрузка сразу идёт через проекцию: в Markdown на экране токены, карта готова, настоящий Base64 редактор не видит.
         let displayedText = context.coordinator.displayedText(for: document.text)
         textView.string = displayedText
+        document.vaultPageGuard?.refresh(in: textView.string as NSString)
         if displayedText != document.text { context.coordinator.resetLineIndex(with: displayedText) }
         Self.applyWritingChecks(to: textView, spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled,
                                 containsDataImage: Self.containsDataImage(in: textView))
@@ -311,7 +314,7 @@ struct EditorTextView: NSViewRepresentable {
         context.coordinator.configureAIAssistance(preferences: aiPreferences)
         // Набранное в ячейке таблицы фиксируется через shouldChangeText родителя:
         // закрыть ячейку надо до того, как правка станет запрещённой.
-        if document.isReadingMode, textView.isEditable {
+        if document.isReadingMode || (document.vaultPageMode.map { $0 != .ownerZone } ?? false), textView.isEditable {
             context.coordinator.finishTableCell()
         }
         textView.isEditable = isEditorEditable
@@ -487,6 +490,7 @@ struct EditorTextView: NSViewRepresentable {
             let requestedSelection = document.selectionRange
             let displayedText = context.coordinator.displayedText(for: document.text)
             textView.string = displayedText
+            document.vaultPageGuard?.refresh(in: textView.string as NSString)
             context.coordinator.resetLineIndex(with: displayedText)
             let displayedSelection = context.coordinator.displayedRange(for: requestedSelection)
             let textLength = (displayedText as NSString).length
@@ -499,10 +503,10 @@ struct EditorTextView: NSViewRepresentable {
                 location: selectionLocation,
                 length: selectionLength
             ))
-            if reload {
-                // Записи отмены относятся к тексту до перечитывания.
+            if reload || document.vaultPageGuard != nil {
+                // Записи отмены относятся к тексту до перечитывания; на странице хранилища отмена не должна выйти за раздел.
                 textView.undoManager?.removeAllActions()
-                context.coordinator.restoreScrollOrigin(keptOrigin)
+                if reload { context.coordinator.restoreScrollOrigin(keptOrigin) }
             }
             context.coordinator.isApplyingExternalUpdate = false
             context.coordinator.lastSynchronizedRevision = document.textRevision

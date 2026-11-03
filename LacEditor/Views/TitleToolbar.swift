@@ -77,6 +77,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         static let readingMode = NSToolbarItem.Identifier("LacEditor.ReadingMode")
         static let dictation = NSToolbarItem.Identifier("LacEditor.Dictation")
         static let writerMode = NSToolbarItem.Identifier("LacEditor.WriterMode")
+        static let vault = NSToolbarItem.Identifier("LacEditor.Vault")
         static let aiWriting = NSToolbarItem.Identifier("LacEditor.AIWriting")
         static let importDocument = NSToolbarItem.Identifier("LacEditor.Import")
         static let export = NSToolbarItem.Identifier("LacEditor.Export")
@@ -106,6 +107,10 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         let dictationEnabled: Bool
         let dictationToolTip: String
         let writerTitle: String?
+        /// Режим хранилища: заголовок «Хранилище › папка», символ состояния связи и подпись для VoiceOver; nil — вкладка обычная.
+        let vaultTitle: String?
+        let vaultSymbol: String?
+        let vaultLabel: String?
     }
     private let titleField = TitlePathField(labelWithString: "LacEditor")
     private let languageButton = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -119,6 +124,8 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
     private weak var dictationItem: NSToolbarItem?
     private weak var writerModeItem: NSMenuToolbarItem?
     private let writerModeMenu = NSMenu()
+    private weak var vaultItem: NSMenuToolbarItem?
+    private let vaultMenu = NSMenu()
     private weak var aiWritingItem: NSToolbarItem?
     private weak var exportItem: NSMenuToolbarItem?
     private let exportMenu = NSMenu()
@@ -132,6 +139,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         exportMenu.delegate = self
         dictationMenu.delegate = self
         writerModeMenu.delegate = self
+        vaultMenu.delegate = self
         stateObservation = appState.objectWillChange.sink { [weak self, weak appState] in
             guard let self, !self.updateScheduled else { return }
             self.updateScheduled = true
@@ -204,13 +212,17 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             dictationState: dictation.state,
             dictationEnabled: dictation.isButtonEnabled,
             dictationToolTip: dictation.buttonToolTip,
-            writerTitle: appState.writerWindowTitlePrefix
+            writerTitle: appState.writerWindowTitlePrefix,
+            vaultTitle: appState.vaultTitlePrefix,
+            vaultSymbol: appState.vaultSession?.status.symbolName,
+            vaultLabel: appState.vaultTabAccessibilityLabel
         )
         guard presentation != lastPresentation else { return }
         // Items are materialized after makeToolbar returns. Do not cache an
         // unrendered presentation or the first real update would be skipped.
         if previewItem != nil { lastPresentation = presentation }
-        titleField.stringValue = presentation.writerTitle.map { "\($0) › \(presentation.title)" } ?? presentation.title
+        titleField.stringValue = presentation.writerTitle.map { "\($0) › \(presentation.title)" }
+            ?? presentation.vaultTitle.map { "\($0) › \(presentation.title)" } ?? presentation.title
         titleField.toolTip = document?.url?.path ?? L10n.tr("未命名文档")
         titleField.pathURL = document?.url
         if let window = appState.hostWindow {
@@ -224,6 +236,13 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
                     if view.accessibilityLabel() != label { view.setAccessibilityLabel(label) }
                 } else {
                     window.tab.accessoryView = WriterTabAccessory.make(projectTitle: writerTitle)
+                }
+            } else if let symbol = presentation.vaultSymbol, let label = presentation.vaultLabel, presentation.vaultTitle != nil {
+                // Значок облака у вкладки заметки хранилища; форма значка и подпись VoiceOver отражают состояние связи.
+                if let view = window.tab.accessoryView as? NSImageView, view.identifier == VaultTabAccessory.identifier {
+                    VaultTabAccessory.update(view, symbol: symbol, label: label)
+                } else {
+                    window.tab.accessoryView = VaultTabAccessory.make(symbol: symbol, label: label)
                 }
             } else if window.tab.accessoryView != nil {
                 window.tab.accessoryView = nil
@@ -251,6 +270,10 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         writerModeItem?.toolTip = presentation.writerTitle == nil
             ? L10n.tr("写作模式")
             : L10n.tr("写作模式：%@", presentation.writerTitle ?? "")
+        let vaultName = appState.vaultSession.map { L10n.tr("笔记库“%@”", $0.connection.name) } ?? L10n.tr("笔记库")
+        let vaultSpoken = appState.vaultSession.map { "\(vaultName)：\($0.statusText)" }
+        vaultItem?.image = NSImage(systemSymbolName: presentation.vaultSymbol ?? "cloud", accessibilityDescription: vaultSpoken ?? vaultName)
+        vaultItem?.toolTip = vaultSpoken ?? L10n.tr("笔记库")
         sidebarItem?.toolTip = appState.isSidebarVisible
             ? L10n.tr("隐藏侧边栏（⌃⌘B）")
             : L10n.tr("显示侧边栏（⌃⌘B）")
@@ -324,6 +347,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             ItemIdentifier.readingMode,
             ItemIdentifier.dictation,
             ItemIdentifier.writerMode,
+            ItemIdentifier.vault,
             ItemIdentifier.preview
         ]
     }
@@ -344,6 +368,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             ItemIdentifier.readingMode,
             ItemIdentifier.dictation,
             ItemIdentifier.writerMode,
+            ItemIdentifier.vault,
             ItemIdentifier.preview,
             ItemIdentifier.importDocument,
             ItemIdentifier.export,
@@ -460,6 +485,19 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             item.showsIndicator = true
             item.autovalidates = false
             writerModeItem = item
+            refreshAfterItemCreation()
+            return item
+        case ItemIdentifier.vault:
+            // Без действия клик по кнопке открывает меню: подключение, «Сегодня», проверка, закрытие.
+            let item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = L10n.tr("笔记库")
+            item.paletteLabel = L10n.tr("笔记库")
+            item.image = NSImage(systemSymbolName: "cloud", accessibilityDescription: L10n.tr("笔记库"))
+            item.toolTip = L10n.tr("笔记库")
+            item.menu = vaultMenu
+            item.showsIndicator = true
+            item.autovalidates = false
+            vaultItem = item
             refreshAfterItemCreation()
             return item
         case ItemIdentifier.importDocument:
@@ -636,6 +674,10 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             rebuildWriterModeMenu()
             return
         }
+        if menu === vaultMenu {
+            rebuildVaultMenu()
+            return
+        }
         guard menu === exportMenu else { return }
         rebuildExportMenu()
     }
@@ -696,6 +738,63 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         // Доступность пунктов задаём сами, без автопроверки по цели.
         writerModeMenu.autoenablesItems = false
     }
+
+    private func rebuildVaultMenu() {
+        vaultMenu.removeAllItems()
+        vaultMenu.autoenablesItems = false
+        let manager = appState?.windowManager
+        if appState?.vaultSession != nil {
+            addVaultMenuItem(title: L10n.tr("打开“今天”"), action: #selector(openVaultToday))
+            addVaultMenuItem(title: L10n.tr("记录想法…"), action: #selector(openVaultCapture))
+            vaultMenu.addItem(.separator())
+            addVaultMenuItem(title: L10n.tr("立即检查更新"), action: #selector(checkVaultNow))
+            vaultMenu.addItem(.separator())
+            addVaultMenuItem(title: L10n.tr("笔记库设置…"), action: #selector(openVaultSettings))
+            addVaultMenuItem(title: L10n.tr("关闭笔记库"), action: #selector(closeVault))
+        } else if let active = manager?.activeVaultSession {
+            // Сессия уже идёт (другая вкладка): эта вкладка присоединяется к ней.
+            addVaultMenuItem(title: L10n.tr("在此标签页打开笔记库“%@”", active.connection.name), action: #selector(joinActiveVault))
+            addVaultMenuItem(title: L10n.tr("关闭笔记库"), action: #selector(closeVault))
+        } else {
+            for connection in VaultConnectionStore.shared.connections {
+                let item = NSMenuItem(title: connection.name, action: #selector(connectVault(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = connection.id
+                vaultMenu.addItem(item)
+            }
+            if !VaultConnectionStore.shared.connections.isEmpty { vaultMenu.addItem(.separator()) }
+            addVaultMenuItem(title: L10n.tr("连接笔记库…"), action: #selector(newVaultConnection))
+        }
+    }
+
+    private func addVaultMenuItem(title: String, action: Selector) {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        vaultMenu.addItem(item)
+    }
+
+    @objc private func openVaultToday() { appState?.windowManager?.openVaultDailyNote(from: appState) }
+    @objc private func openVaultCapture() { appState?.presentVaultCapture() }
+    @objc private func checkVaultNow() { appState?.checkVaultNow() }
+    @objc private func openVaultSettings() {
+        guard let appState, let id = appState.vaultSession?.connection.id else { return }
+        appState.presentVaultConnectionSheet(preselectedID: id)
+    }
+    @objc private func closeVault() {
+        guard let manager = appState?.windowManager else { return }
+        Task { @MainActor in await manager.leaveVault() }
+    }
+    @objc private func joinActiveVault() {
+        guard let appState, let manager = appState.windowManager, let session = manager.activeVaultSession else { return }
+        manager.attachVault(session, to: appState)
+        appState.isSidebarVisible = true
+    }
+    @objc private func connectVault(_ sender: NSMenuItem) {
+        guard let appState, let id = sender.representedObject as? UUID,
+              let connection = VaultConnectionStore.shared.connections.first(where: { $0.id == id }) else { return }
+        appState.windowManager?.enterVault(connection, from: appState)
+    }
+    @objc private func newVaultConnection() { appState?.presentVaultConnectionSheet() }
 
     private func addWriterMenuItem(title: String, action: Selector) {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")

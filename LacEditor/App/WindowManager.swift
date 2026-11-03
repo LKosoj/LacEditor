@@ -102,6 +102,10 @@ final class WindowManager: ObservableObject {
     /// window that was closed after its last tab was removed.
     @Published private(set) var primaryReopenGeneration = 0
     private(set) var terminationApproved = false
+    /// Выход подтверждён вопросом про неотправленное: закрытие вкладок хранилища больше не отправляет и не спрашивает.
+    var vaultQuitApproved = false
+    /// Хозяин вкладок для движка отправки (движок держит его слабой ссылкой).
+    var vaultUploadHost: VaultUploadHost?
     private(set) var startupError: Error?
 
     private var exportingDocumentIDs: Set<UUID> = []
@@ -111,6 +115,13 @@ final class WindowManager: ObservableObject {
     private(set) var states: [UUID: AppState] = [:]
     /// Проекты рукописи, открытые в писательском режиме: ключ — стандартизованный путь корня (см. `WindowManager+Writer.swift`).
     var writerSessions: [String: WriterSession] = [:]
+    /// Сессия хранилища: одна на приложение (см. `WindowManager+Vault.swift`).
+    var activeVaultSession: VaultSession?
+    var vaultStartTask: Task<VaultSession, Error>?
+    var vaultStartingID: UUID?
+    /// Заметки, вкладки которых вернутся из сессии: уборка после сбоя их не трогает (по `vaultID`).
+    var restoredVaultPaths: [String: Set<String>] = [:]
+    var vaultCleanedIDs: Set<UUID> = []
     private var openFileObservations: [UUID: AnyCancellable] = [:]
     /// Слежение за файлами открытых документов; набор каталогов пересчитывается по изменениям состояний окон.
     private(set) lazy var openFileWatcher = OpenFileWatcher(documents: { [weak self] in
@@ -133,6 +144,7 @@ final class WindowManager: ObservableObject {
         let frame: WorkspaceWindowFrame?
         var folderStates: [UUID: FolderWorkspaceSession] = [:]
         var writerStates: [UUID: WriterProjectSession] = [:]
+        var vaultStates: [UUID: VaultNoteBinding] = [:]
     }
     private var initialRestoredWindow: RestoredWindow?
     private var pendingRestoredWindows: [RestoredWindow] = []
@@ -1017,6 +1029,7 @@ final class WindowManager: ObservableObject {
         if document.isLargeFileMode { return skipped(.largeFile) }
         if forReplace {
             if document.isReadingMode { return skipped(.readingMode) }
+            if document.vaultPageGuard != nil { return skipped(.protectedPage) }
             if document.ioState != .idle { return skipped(.busy) }
         }
         let snapshot = document.synchronizedSnapshot()
@@ -1159,7 +1172,7 @@ final class WindowManager: ObservableObject {
         guard case let .open(id, revision, _) = replace.plan.source else { return .skipped(.changed) }
         let matches = replace.plan.matches
         if let document = documentsForAI.first(where: { $0.id == id }), let state = stateContaining(document),
-           document.ioState != .idle || state.isOpeningPlaceholder(document) || document.isReadingMode {
+           document.ioState != .idle || state.isOpeningPlaceholder(document) || document.isReadingMode || document.vaultPageGuard != nil {
             return .skipped(.openDocumentBusy)
         }
         func current() -> OpenReplaceTarget? {
@@ -1193,7 +1206,7 @@ final class WindowManager: ObservableObject {
         guard let found = documentsForAI.first(where: { $0.id == id }), let foundState = stateContaining(found) else {
             return .skipped(.changed)
         }
-        if found.ioState != .idle || foundState.isOpeningPlaceholder(found) || found.isReadingMode {
+        if found.ioState != .idle || foundState.isOpeningPlaceholder(found) || found.isReadingMode || found.vaultPageGuard != nil {
             return .skipped(.openDocumentBusy)
         }
         func current() -> OpenReplaceTarget? {
@@ -1733,7 +1746,8 @@ final class WindowManager: ObservableObject {
                     fileRevisionSnapshot: document.fileRevisionSnapshot,
                     folderWorkspace: state.folderWorkspace.sessionState,
                     writerProject: state.writerSession.map { WriterProjectSession(rootPath: $0.rootURL.path, projectID: $0.projectID) }
-                        ?? state.pendingWriterProject
+                        ?? state.pendingWriterProject,
+                    vaultNote: state.vaultNote
                 )
             } }
             snapshots.append(WorkspaceWindowSnapshot(
@@ -1798,8 +1812,16 @@ final class WindowManager: ObservableObject {
                     }, uniquingKeysWith: { first, _ in first }),
                     writerStates: Dictionary(window.documents.compactMap { reference in
                         reference.snapshot.writerProject.map { (reference.snapshot.documentID, $0) }
+                    }, uniquingKeysWith: { first, _ in first }),
+                    vaultStates: Dictionary(window.documents.compactMap { reference in
+                        reference.snapshot.vaultNote.map { (reference.snapshot.documentID, $0) }
                     }, uniquingKeysWith: { first, _ in first })
                 )
+            }
+            for window in restored {
+                for binding in window.vaultStates.values where binding.isValid {
+                    restoredVaultPaths[binding.vaultID, default: []].insert(binding.path)
+                }
             }
             var windows = restored
             if !recoveryByID.isEmpty {
@@ -1821,7 +1843,8 @@ final class WindowManager: ObservableObject {
                         isSidebarVisible: first.isSidebarVisible,
                         frame: first.frame,
                         folderStates: first.folderStates,
-                        writerStates: first.writerStates
+                        writerStates: first.writerStates,
+                        vaultStates: first.vaultStates
                     )
                 }
             }
@@ -1926,7 +1949,10 @@ final class WindowManager: ObservableObject {
         if let id = restoration.documents.first?.id, let folder = restoration.folderStates[id] {
             state.folderWorkspace.restore(folder)
         }
-        if let id = restoration.documents.first?.id { restoreWriterProject(restoration.writerStates[id], in: state) }
+        if let id = restoration.documents.first?.id {
+            restoreWriterProject(restoration.writerStates[id], in: state)
+            restoreVaultNote(restoration.vaultStates[id], in: state)
+        }
         applyFrame(restoration.frame, to: window)
         var selectedWindow = window
         var previousWindow = window
@@ -1934,6 +1960,7 @@ final class WindowManager: ObservableObject {
             let tabState = openNewWindow(with: document)
             if let folder = restoration.folderStates[document.id] { tabState.folderWorkspace.restore(folder) }
             restoreWriterProject(restoration.writerStates[document.id], in: tabState)
+            restoreVaultNote(restoration.vaultStates[document.id], in: tabState)
             guard let tabWindow = tabState.hostWindow else { continue }
             previousWindow.addTabbedWindow(tabWindow, ordered: .above)
             previousWindow = tabWindow
@@ -2024,7 +2051,7 @@ extension WindowManager {
         guard case let .open(id, revision, _) = plan.source else { return .skipped(.changed) }
         let edits = plan.edits
         if let document = documentsForAI.first(where: { $0.id == id }), let state = stateContaining(document),
-           document.ioState != .idle || state.isOpeningPlaceholder(document) || document.isReadingMode {
+           document.ioState != .idle || state.isOpeningPlaceholder(document) || document.isReadingMode || document.vaultPageGuard != nil {
             return .skipped(.openDocumentBusy)
         }
         func current() -> (document: EditorDocument, state: AppState, snapshot: DocumentTextSnapshot)? {

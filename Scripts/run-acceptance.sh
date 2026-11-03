@@ -57,6 +57,9 @@ swiftc -O -parse-as-library \
     LacEditor/Models/DocumentStatistics.swift \
     LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Models/EditorDocument.swift \
+    LacEditor/Models/VaultPath.swift \
+    LacEditor/Models/VaultOwnerZone.swift \
+    LacEditor/Models/VaultPageGuard.swift \
     LacEditor/Models/MarkdownDataMedia.swift \
     LacEditor/Editor/MarkdownMediaProjection.swift \
     LacEditor/Services/LineEndingService.swift \
@@ -95,6 +98,9 @@ swiftc -O -parse-as-library \
     LacEditor/Models/DocumentStatistics.swift \
     LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Models/EditorDocument.swift \
+    LacEditor/Models/VaultPath.swift \
+    LacEditor/Models/VaultOwnerZone.swift \
+    LacEditor/Models/VaultPageGuard.swift \
     LacEditor/Models/MarkdownDataMedia.swift \
     LacEditor/Editor/MarkdownMediaProjection.swift \
     LacEditor/Models/MarkdownPresentation.swift \

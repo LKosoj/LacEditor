@@ -15,6 +15,21 @@ final class InspectorPanelTests: XCTestCase {
         XCTAssertEqual(InspectorSegment.available(isWriter: true), [.scene, .style, .ai])
     }
 
+    func testVaultSegments() throws {
+        XCTAssertEqual(InspectorSegment.available(isWriter: false, isVault: true), [.vaultNote, .vaultLinks, .vaultAsk, .ai])
+        XCTAssertEqual(InspectorSegment.available(isWriter: true, isVault: true), [.scene, .style, .ai])
+        XCTAssertEqual(InspectorSegment.resolve(.scene, isWriter: false, isVault: true), .vaultNote)
+        XCTAssertEqual(InspectorSegment.resolve(.vaultAsk, isWriter: false, isVault: false), .ai)
+        XCTAssertEqual(InspectorSegment.resolve(.vaultAsk, isWriter: true, isVault: true), .ai)
+        let suite = "LacEditor-InspectorVault-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(InspectorSegment.stored(isWriter: false, isVault: true, defaults: defaults), .vaultNote)
+        InspectorSegment.store(.vaultLinks, isWriter: false, isVault: true, defaults: defaults)
+        XCTAssertEqual(InspectorSegment.stored(isWriter: false, isVault: true, defaults: defaults), .vaultLinks)
+        XCTAssertEqual(InspectorSegment.stored(isWriter: false, defaults: defaults), .ai)
+    }
+
     func testResolveFallsBackToAI() {
         XCTAssertEqual(InspectorSegment.resolve(.scene, isWriter: false), .ai)
         XCTAssertEqual(InspectorSegment.resolve(.scene, isWriter: true), .scene)

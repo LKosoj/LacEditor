@@ -195,6 +195,8 @@ enum CustomMarkdownExportService {
                                  syntax: MarkdownSyntaxOptions = .init(), extractEmbeddedMedia: Bool = false,
                                  wiki: MarkdownWikiLinkSource? = nil) throws -> Result {
         guard !isCancelled() else { throw CancellationError() }
+        // Скрытые комментарии Obsidian `%%…%%` заметок хранилища в PDF-движок не попадают.
+        let text = MarkdownObsidianComment.appliesTo(documentURL: source) ? MarkdownObsidianComment.removed(text, syntax: syntax) : text
         guard destination.pathExtension.lowercased() == "pdf",
               let engine = profile.pdfEngine, engine.hasPrefix("/"), FileManager.default.isExecutableFile(atPath: engine) else {
             throw PandocExportError.invalidConfiguration(L10n.tr("请选择可执行的 PDF 引擎和 PDF 文件"))

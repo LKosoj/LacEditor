@@ -13,6 +13,8 @@ struct LacEditorCommands: Commands {
     }
 
     private var isReadingMode: Bool { appState?.selectedDocument?.isReadingMode == true }
+    /// Текст нельзя менять: режим чтения или страница хранилища только для чтения (собранный сервером отчёт, страница без раздела).
+    private var isTextLocked: Bool { isReadingMode || appState?.selectedDocument?.vaultPageGuard?.isReadOnly == true }
 
     var body: some Commands {
         CommandGroup(replacing: .appSettings) {
@@ -64,12 +66,83 @@ struct LacEditorCommands: Commands {
                 Label(L10n.tr("打开文件夹…"), systemImage: "folder")
             }
                 .disabled(appState == nil)
+            Button {
+                appState?.presentVaultConnectionSheet()
+            } label: {
+                Label(L10n.tr("连接笔记库…"), systemImage: "externaldrive.connected.to.line.below")
+            }
+                .disabled(appState == nil)
+            Button {
+                appState?.presentVaultCapture()
+            } label: {
+                Label(L10n.tr("记录想法…"), systemImage: "square.and.pencil")
+            }
+                .keyboardShortcut("n", modifiers: [.command, .control, .option])
+                .disabled(appState == nil)
+            Button {
+                guard let appState else { return }
+                appState.windowManager?.openVaultDailyNote(from: appState)
+            } label: {
+                Label(L10n.tr("打开“今天”"), systemImage: "sun.max")
+            }
+                .disabled(appState?.vaultSession == nil)
+            // ⌘R только в заметке хранилища: в остальных вкладках сочетание не занято
+            Button {
+                appState?.checkVaultNow()
+            } label: {
+                Label(L10n.tr("立即检查更新"), systemImage: "arrow.clockwise.icloud")
+            }
+                .keyboardShortcut("r", modifiers: .command)
+                .disabled(appState?.vaultNote == nil)
+            // Отправка правок: «Отправить сейчас» только в заметке хранилища
+            Button {
+                if let path = appState?.vaultNote?.path { appState?.sendVaultNow(path) }
+            } label: {
+                Label(L10n.tr("立即发送"), systemImage: "arrow.up.circle")
+            }
+                .keyboardShortcut("u", modifiers: [.command, .option])
+                .disabled(appState?.vaultNote == nil)
+            Button {
+                if let path = appState?.vaultNote?.path { appState?.presentVaultConflict(serverPath: path) }
+            } label: {
+                Label(L10n.tr("解决冲突…"), systemImage: "exclamationmark.triangle")
+            }
+                .disabled(appState?.vaultNoteState != .conflict)
+            Button { appState?.showVaultUnsent() } label: {
+                Label(L10n.tr("未上传的笔记"), systemImage: "arrow.up.circle")
+            }
+                .disabled(appState?.vaultSession == nil)
+            Button { appState?.showVaultUnsent(conflicts: true) } label: {
+                Label(L10n.tr("冲突的笔记"), systemImage: "exclamationmark.triangle")
+            }
+                .disabled(appState?.vaultSession == nil)
+            // Панель хранилища: без сочетаний клавиш, чтобы не занимать чужие
+            Button { appState?.showVaultInspector(.vaultNote) } label: {
+                Label(L10n.tr("笔记属性"), systemImage: "list.bullet.rectangle")
+            }
+                .disabled(appState?.vaultSession == nil)
+            Button { appState?.showVaultInspector(.vaultLinks) } label: {
+                Label(L10n.tr("笔记关联"), systemImage: "link")
+            }
+                .disabled(appState?.vaultSession == nil)
+            Button { appState?.showVaultInspector(.vaultAsk) } label: {
+                Label(L10n.tr("提问…"), systemImage: "questionmark.bubble")
+            }
+                .disabled(appState?.vaultSession == nil)
+            // ⌘⇧F только во вкладке хранилища; поиск внутри заметки (⌘F) не затронут
+            Button {
+                appState?.focusVaultSearch()
+            } label: {
+                Label(L10n.tr("搜索笔记库…"), systemImage: "magnifyingglass")
+            }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+                .disabled(appState?.vaultSession == nil)
             Button(L10n.tr("快速打开…")) {
                 guard let appState else { return }
                 appState.showQuickOpen()
             }
             .keyboardShortcut("o", modifiers: [.command, .shift])
-            .disabled(appState == nil || (appState?.folderWorkspace.rootURL == nil &&
+            .disabled(appState == nil || (appState?.vaultSession == nil && appState?.folderWorkspace.rootURL == nil &&
                 windowManager.recentFiles.folderURLs.isEmpty && windowManager.sidebarLibrary.pinnedFolderPaths.isEmpty))
             Menu(L10n.tr("文件夹位置")) {
                 ForEach(windowManager.sidebarLibrary.pinnedFolderURLs, id: \.self) { url in
@@ -194,7 +267,7 @@ struct LacEditorCommands: Commands {
                 Button(L10n.tr("复制 Markdown")) { appState?.markdownClipboard(.copyMarkdown) }
                 Button(L10n.tr("复制 HTML 代码")) { appState?.markdownClipboard(.copyHTML) }
                 Button(L10n.tr("粘贴为源文本")) { appState?.markdownClipboard(.pasteSource) }
-                    .disabled(isReadingMode)
+                    .disabled(isTextLocked)
                 Button(L10n.tr("复制代码块内容")) { appState?.markdownClipboard(.copyCodeBlock) }
             }
             .disabled(appState?.selectedDocument?.language != .markdown || appState?.selectedDocument?.ioState != .idle)
@@ -214,13 +287,13 @@ struct LacEditorCommands: Commands {
                 Button(L10n.tr("升序排序行")) { appState?.editLines(.sortAscending) }
                 Button(L10n.tr("降序排序行")) { appState?.editLines(.sortDescending) }
             }
-            .disabled(appState?.selectedDocument == nil || appState?.selectedDocument?.ioState != .idle || isReadingMode)
+            .disabled(appState?.selectedDocument == nil || appState?.selectedDocument?.ioState != .idle || isTextLocked)
             Button(L10n.tr("切换注释")) { appState?.editLines(.toggleComment) }
                 .keyboardShortcut("/", modifiers: .command)
                 .disabled(appState?.selectedDocument?.language.commentSyntax == nil
-                          || appState?.selectedDocument?.ioState != .idle || isReadingMode)
+                          || appState?.selectedDocument?.ioState != .idle || isTextLocked)
             Button(L10n.tr("插入文本片段…")) { appState?.showSnippetPicker() }
-                .disabled(appState?.selectedDocument == nil || appState?.selectedDocument?.ioState != .idle || isReadingMode)
+                .disabled(appState?.selectedDocument == nil || appState?.selectedDocument?.ioState != .idle || isTextLocked)
             Button(L10n.tr("将所选内容存为文本片段…")) { appState?.createSnippetFromSelection() }
                 .disabled(appState?.selectedDocument == nil || appState?.selectedDocument?.ioState != .idle)
             Divider()
@@ -323,19 +396,19 @@ struct LacEditorCommands: Commands {
                 Label(L10n.tr("格式化 JSON"), systemImage: "text.alignleft")
             }
                 .keyboardShortcut("l", modifiers: [.command, .option])
-                .disabled(appState == nil || isReadingMode)
+                .disabled(appState == nil || isTextLocked)
             Button {
                 appState?.formatJSON(pretty: false)
             } label: {
                 Label(L10n.tr("压缩 JSON"), systemImage: "arrow.down.right.and.arrow.up.left")
             }
-                .disabled(appState == nil || isReadingMode)
+                .disabled(appState == nil || isTextLocked)
             Menu(L10n.tr("换行符")) {
                 ForEach(LineEnding.allCases) { kind in
                     Button(L10n.tr("转换为 %@", kind.shortName)) { appState?.convertLineEndings(to: kind) }
                 }
             }
-            .disabled(appState?.selectedDocument == nil || appState?.selectedDocument?.ioState != .idle || isReadingMode)
+            .disabled(appState?.selectedDocument == nil || appState?.selectedDocument?.ioState != .idle || isTextLocked)
         }
 
         // Suppress SwiftUI's automatic sidebar titlebar control. macOS 26
@@ -433,6 +506,9 @@ struct LacEditorCommands: Commands {
             Button(L10n.tr("前进到下一个位置")) { windowManager.navigateForward() }
                 .keyboardShortcut(.rightArrow, modifiers: [.command, .control])
                 .disabled(!windowManager.navigationHistory.canGoForward)
+            Button(L10n.tr("转到“Owner Notes”")) { appState?.goToOwnerNotes() }
+                .keyboardShortcut("o", modifiers: [.command, .control])
+                .disabled(appState?.canGoToOwnerNotes != true)
             Divider()
             Toggle(L10n.tr("聚焦当前段落"), isOn: Binding(
                 get: { appState?.isFocusMode == true && appState?.focusScope == .paragraph },
@@ -733,7 +809,7 @@ struct LacEditorCommands: Commands {
                     Button(L10n.tr("上一处修订")) { appState?.criticMarkup(.previous) }
                 }
             }
-            .disabled(appState?.selectedDocument?.language != .markdown || appState?.selectedDocument?.ioState != .idle || isReadingMode)
+            .disabled(appState?.selectedDocument?.language != .markdown || appState?.selectedDocument?.ioState != .idle || isTextLocked)
         }
 
         CommandMenu(L10n.tr("标签页")) {
@@ -795,6 +871,7 @@ struct LacEditorCommands: Commands {
     private func showAIPanel() {
         if appState?.isDistractionFree == true { appState?.toggleDistractionFree() }
         appState?.isAIWritingVisible = true
+        appState?.selectAIInspectorSegmentIfVault()
     }
 
     private func largeFileFeatureItem(

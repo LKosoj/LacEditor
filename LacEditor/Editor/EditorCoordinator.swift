@@ -200,6 +200,7 @@ extension EditorTextView {
         private let styleMarksPainter = StyleMarksPainter()
         private var appliedFindRanges: [NSRange] = []
         private var hasCriticColors = false
+        private var obsidianCommentCache: (revision: UInt, ranges: [NSRange])?
         private var appliedFindVisibleRange: NSRange?
         private var findMatchesChanged = false
         private let lineIndex: LogicalLineIndex
@@ -827,9 +828,11 @@ extension EditorTextView {
                 self.clipboardCopyTask?.cancel()
                 self.clipboardCopyTask = nil
             })
+            textView?.vaultEditGate = { [weak self] range, text in self?.vaultAllows(range: range, replacement: text) ?? true }
             textView?.imageTransferHandler = { [weak self] transfer in
                 guard let self, isActive, currentLanguage == .markdown, document.language == .markdown,
                       document.ioState == .idle, let textView, textView.isEditable, !textView.hasMarkedText(), tableCellEditor?.hasMarkedText() != true,
+                      vaultAllowsRange(textView.selectedRange()),
                       (tableCellVirtualSeparators > 0 || moveTableSelectionToParent()) else { return false }
                 let request = MarkdownImageTransferRequest(documentID: document.id, transfer: transfer)
                 NotificationCenter.default.post(name: EditorCommandNotification.insertMarkdownImage, object: request)
@@ -840,7 +843,7 @@ extension EditorTextView {
                       document.ioState == .idle, tableCellEditor == nil, let textView, textView.isEditable,
                       !textView.hasMarkedText(), textView.selectedRanges.count == 1, let storage = textView.textStorage else { return false }
                 let selection = textView.selectedRange(), revision = contentRevision
-                guard selection.length == 0,
+                guard selection.length == 0, vaultAllowsRange(selection),
                       let edit = MarkdownHTMLMediaService.videoInsertion(file: file, document: document.url,
                                                                          text: storage.string, location: selection.location),
                       revision == contentRevision, textView.selectedRange() == selection else { return false }
@@ -1610,7 +1613,8 @@ extension EditorTextView {
                   document.ioState == .idle, let textView, textView.isEditable,
                   !textView.hasMarkedText(), tableCellEditor?.hasMarkedText() != true, let storage = textView.textStorage,
                   range.location != NSNotFound, range.location >= 0, range.length >= 0,
-                  range.location <= storage.length, range.length <= storage.length - range.location else { return false }
+                  range.location <= storage.length, range.length <= storage.length - range.location,
+                  vaultAllowsRange(range) else { return false }
             cancelMarkdownLinkNavigation()
             finishTableCell()
             let child = MarkdownTableCellEditor(frame: frame)
@@ -3229,9 +3233,12 @@ extension EditorTextView {
             guard isActive, textView.isEditable, !textView.hasMarkedText(), moveTableSelectionToParent() else {
                 request.failureMessage = document.isReadingMode
                     ? L10n.tr("阅读模式下无法修改")
-                    : L10n.tr("当前文本无法修改")
+                    : (vaultPageDenialMessage() ?? L10n.tr("当前文本无法修改"))
                 return
             }
+            // Серверное обновление собранной страницы: можно выйти за раздел «Owner Notes», но без записи в историю отмены.
+            let vaultServerGuard = request.isVaultServerUpdate ? document.vaultPageGuard : nil
+            if vaultServerGuard != nil { request.suppressUndoRegistration = true }
             guard request.expectedEditorRevision == contentRevision else {
                 request.failureMessage = L10n.tr("编辑内容已变化，请重新执行转换")
                 return
@@ -3281,6 +3288,9 @@ extension EditorTextView {
                 return
             }
 
+            // Выполняется последним (после enableUndoRegistration): removeAllActions сам снимает запрет записи отмены.
+            var clearsVaultUndo = false
+            defer { if clearsVaultUndo { textView.undoManager?.removeAllActions() } }
             if request.groupsUndo { textView.breakUndoCoalescing(); textView.undoManager?.beginUndoGrouping() }
             if request.suppressUndoRegistration { textView.undoManager?.disableUndoRegistration() }
             defer {
@@ -3289,11 +3299,13 @@ extension EditorTextView {
             }
             isApplyingAutomatedEdit = true
             defer { isApplyingAutomatedEdit = false }
+            vaultServerGuard?.allowsServerUpdate = true
+            defer { vaultServerGuard?.allowsServerUpdate = false }
             guard textView.shouldChangeText(
                 in: range,
                 replacementString: replacementText
             ) else {
-                request.failureMessage = L10n.tr("当前文本无法修改")
+                request.failureMessage = vaultPageDenialMessage() ?? L10n.tr("当前文本无法修改")
                 return
             }
             request.wasHandled = true
@@ -3302,6 +3314,8 @@ extension EditorTextView {
                 with: replacementText
             )
             textView.didChangeText()
+            // История отмены страницы хранит только правки внутри раздела: серверный текст отменять нельзя (кэш раздела обновил textDidChange).
+            if vaultServerGuard != nil { clearsVaultUndo = true }
             let replacementRange = NSRange(
                 location: range.location,
                 length: (replacementText as NSString).length
@@ -3711,6 +3725,8 @@ extension EditorTextView {
                 markdownPresentation?.parsedResultDidChange = { [weak self] in
                     guard let self, let range = self.visibleHighlightRange() else { return }
                     self.reapplyCriticColors(in: range)
+                    self.reapplyObsidianCommentColors(in: range)
+                    self.reapplyVaultPageDim(in: range)
                 }
                 markdownPresentation?.wikiCompletionReady = { [weak self] in self?.scheduleWikiCompletion() }
                 markdownPresentation?.wikiCatalogNeeded = { [weak self] in self?.requestWikiCatalog?() }
@@ -4216,6 +4232,9 @@ extension EditorTextView {
                     rebuildMediaMap()
                 }
             }
+            if let pageGuard = document.vaultPageGuard, let text = textView?.textStorage?.mutableString {
+                pageGuard.textDidChange(in: text)
+            }
             guard !isApplyingExternalUpdate, let textView else { return }
             if !shortenAICompletionAfterTyping() {
                 cancelAICompletion()
@@ -4479,6 +4498,9 @@ extension EditorTextView {
             shouldChangeTextIn affectedCharRange: NSRange,
             replacementString: String?
         ) -> Bool {
+            // Собранная сервером страница хранилища: вне раздела «Owner Notes» правка отклоняется до того, как ядро что-то изменит.
+            if replacementString != nil, document.vaultPageGuard != nil,
+               vaultPageDenies(textView, range: affectedCharRange, replacement: replacementString ?? "") { return false }
             // Карту сдвигает только эта обёртка: ядро иногда возвращает false после вложенной правки, которая уже сдвинула её сама.
             guard shouldChangeTextCore(textView, shouldChangeTextIn: affectedCharRange, replacementString: replacementString) else { return false }
             // Без строки меняются только атрибуты: текст и карта токенов те же.
@@ -4545,6 +4567,25 @@ extension EditorTextView {
                     nsText.length - safeLocation
                 )
             )
+            // Защищённая часть конструкции вокруг токена (`](`…`)`, значение атрибута): вставка внутрь отклоняется,
+            // удаление или замена, задевшие её, забирают конструкцию `![…](…)` целиком (как с токеном ниже).
+            if mediaMapEnabled, replacementString != nil, !(safeRange.length == 0 && replacement.isEmpty) {
+                switch liveMediaMap.decideEdit(safeRange, replacement: replacement, length: nsText.length, unit: { nsText.character(at: $0) }) {
+                case .allow:
+                    break
+                case .deny:
+                    NSSound.beep()
+                    return false
+                case let .expand(covering):
+                    guard !textView.hasMarkedText() else {
+                        NSSound.beep()
+                        return false
+                    }
+                    if isApplyingAutomatedEdit { return false }
+                    textView.insertText(replacement, replacementRange: covering)
+                    return false
+                }
+            }
             // Запрещена только правка, режущая токен; правка, накрывающая токен целиком, разрешена.
             // Правка только атрибутов (replacementString == nil) текст не меняет и токен не режет.
             if mediaMapEnabled, replacementString != nil, liveMediaMap.cutsToken(safeRange) {
@@ -4558,6 +4599,11 @@ extension EditorTextView {
                 if isApplyingAutomatedEdit { return false }
                 // У ручной правки флаг не ставится: вложенная идёт тем же путём, что обычная печать или удаление.
                 textView.insertText(replacement, replacementRange: liveMediaMap.coveringRange(safeRange))
+                return false
+            }
+            // Символ вплотную к токену приклеился бы к адресу в файле и сломал изображение: такая правка отклоняется.
+            if mediaMapEnabled, replacementString != nil, !replacement.isEmpty, liveMediaMap.joinsToken(safeRange, replacement: replacement) {
+                NSSound.beep()
                 return false
             }
             // Вставка с настоящим `data:` одной правкой заменяется текстом с токенами. Известные токены сохраняются,
@@ -5304,6 +5350,8 @@ extension EditorTextView {
             markdownPresentation?.reapplyCodeColors(in: range)
             markdownPresentation?.reapplyLinkColors(in: range)
             reapplyCriticColors(in: range)
+            reapplyObsidianCommentColors(in: range)
+            reapplyVaultPageDim(in: range)
             os_signpost(
                 .end,
                 log: editorPerformanceLog,
@@ -5405,6 +5453,8 @@ extension EditorTextView {
             markdownPresentation?.reapplyCodeColors(in: range)
             markdownPresentation?.reapplyLinkColors(in: range)
             reapplyCriticColors(in: range)
+            reapplyObsidianCommentColors(in: range)
+            reapplyVaultPageDim(in: range)
         }
 
         private func updateCursor() {
@@ -5582,6 +5632,53 @@ extension EditorTextView {
             for item in items {
                 layoutManager.addTemporaryAttribute(.foregroundColor, value: criticColor(item.kind),
                                                     forCharacterRange: NSIntersectionRange(item.range, bounded))
+            }
+        }
+
+        /// Приглушает комментарии Obsidian `%%…%%` заметок хранилища поверх подсветки; текст остаётся видимым. Диапазоны считаются один раз на версию текста
+        /// после готового разбора; в очень длинных текстах приглушение отключено (многострочным комментариям нужен полный проход).
+        private func reapplyObsidianCommentColors(in range: NSRange) {
+            guard isActive, document.language == .markdown, !document.isLargeFileMode, !document.hasPendingLiveEdits,
+                  let textView, !textView.hasMarkedText(), let layoutManager = textView.layoutManager,
+                  let storage = textView.textStorage, storage.length <= 300_000,
+                  MarkdownObsidianComment.appliesTo(documentURL: document.url),
+                  let index = markdownPresentation?.criticElementIndex(document: document, revision: contentRevision, textLength: storage.length)
+            else { return }
+            let bounded = NSIntersectionRange(range, NSRange(location: 0, length: storage.length))
+            guard bounded.length > 0 else { return }
+            let text = storage.mutableString
+            let comments: [NSRange]
+            if let cache = obsidianCommentCache, cache.revision == contentRevision {
+                comments = cache.ranges
+            } else {
+                let whole = NSRange(location: 0, length: storage.length)
+                comments = MarkdownObsidianComment.mayContainComment(text)
+                    ? MarkdownObsidianComment.ranges(in: text, excluded: index.excludedRanges(intersecting: whole)) : []
+                obsidianCommentCache = (contentRevision, comments)
+            }
+            let visible = comments.filter { NSIntersectionRange($0, bounded).length > 0 }
+            guard !visible.isEmpty else { return }
+            hasCriticColors = true
+            if !document.isSyntaxHighlightingEnabled { clearsDisabledSyntaxOnScroll = true }
+            for comment in visible {
+                layoutManager.addTemporaryAttribute(.foregroundColor, value: NSColor.lacCommentText,
+                                                    forCharacterRange: NSIntersectionRange(comment, bounded))
+            }
+        }
+
+        /// Приглушает текст вне раздела «Owner Notes» собранной страницы хранилища поверх подсветки.
+        /// Только арифметика над кэшем раздела, без прохода по тексту.
+        private func reapplyVaultPageDim(in range: NSRange) {
+            guard isActive, document.language == .markdown, !document.isLargeFileMode, !document.hasPendingLiveEdits,
+                  let pageGuard = document.vaultPageGuard, pageGuard.mode == .ownerZone,
+                  let textView, !textView.hasMarkedText(), let layoutManager = textView.layoutManager,
+                  let storage = textView.textStorage else { return }
+            let dimmed = pageGuard.dimRanges(intersecting: range, textLength: storage.length)
+            guard !dimmed.isEmpty else { return }
+            hasCriticColors = true
+            if !document.isSyntaxHighlightingEnabled { clearsDisabledSyntaxOnScroll = true }
+            for part in dimmed {
+                layoutManager.addTemporaryAttribute(.foregroundColor, value: NSColor.lacMutedText, forCharacterRange: part)
             }
         }
 

@@ -261,6 +261,10 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     /// Временный режим чтения: правка запрещена, Markdown на это время показывается оформленным. В сессию не пишется.
     @Published private(set) var isReadingMode = false
     private var markdownFormattedBeforeReading: Bool?
+    /// Охранник страницы хранилища, которую собирает сервер (`nil` для обычных документов). В сессию не пишется.
+    private(set) var vaultPageGuard: VaultPageGuard?
+    /// Режим страницы хранилища для плашки и `isEditable`; `nil` у обычных документов.
+    @Published private(set) var vaultPageMode: VaultPageMode?
     @Published var performanceProfile: DocumentPerformanceProfile
     @Published var featureOverrides = DocumentFeatureOverrides()
     @Published var ioState: DocumentIOState = .idle
@@ -370,6 +374,20 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
 
     var encodingName: String {
         FileService.encodingName(for: fileEncoding)
+    }
+
+    /// Ставит или снимает охранника страницы хранилища; режим охранника попадает в `vaultPageMode`.
+    func setVaultPageGuard(_ pageGuard: VaultPageGuard?) {
+        vaultPageGuard?.onModeChange = nil
+        vaultPageGuard = pageGuard
+        vaultPageMode = pageGuard?.mode
+        // Смена режима может прийти во время обновления SwiftUI (внешняя замена текста): публикуем на следующем круге.
+        pageGuard?.onModeChange = { [weak self, weak pageGuard] _ in
+            DispatchQueue.main.async {
+                guard let self, let pageGuard, self.vaultPageGuard === pageGuard else { return }
+                self.vaultPageMode = pageGuard.mode
+            }
+        }
     }
 
     func setReadingMode(_ enabled: Bool) {

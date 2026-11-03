@@ -200,6 +200,22 @@ final class DocumentSnapshotStore: @unchecked Sendable {
         postChange(directory)
     }
 
+    /// Все снимки файла: удаляет папку целиком (насовсем, не в корзину). Нет папки — ничего не делает.
+    func deleteAll(location: DocumentSnapshotLocation) throws {
+        let directory = self.directory(for: location)
+        do {
+            lock.lock()
+            defer { lock.unlock() }
+            guard fileManager.fileExists(atPath: directory.path) else { return }
+            do {
+                try fileManager.removeItem(at: directory)
+            } catch {
+                throw DocumentSnapshotError.io(error.localizedDescription)
+            }
+        }
+        postChange(directory)
+    }
+
     /// Перенос снимков при переименовании файла вне проекта. Нет каталога — ничего не делает;
     /// если у нового пути уже есть каталог — не перезаписывает.
     func moveFile(fromPath: String, toPath: String) throws {

@@ -33,6 +33,11 @@ struct SidebarView: View {
                 SymbolOutlineSection(document: document)
             }
             FolderTagsSection(store: appState.folderWorkspace, controller: appState.folderTags, search: appState.folderSearch)
+            if let vault = appState.vaultSession {
+                // Режим хранилища: вместо библиотеки — список заметок сервера
+                VaultSidebarView(session: vault, appState: appState, windowManager: windowManager)
+                    .id(vault.connection.id)
+            } else {
             HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass").font(.callout).foregroundStyle(.secondary)
                     .accessibilityHidden(true)
@@ -79,6 +84,7 @@ struct SidebarView: View {
                 query: filterQuery
             )
             .id(windowManager.primaryReopenGeneration)
+            }
 
             if let samples = windowManager.experimentSamples {
                 ExperimentSampleControls(samples: samples)

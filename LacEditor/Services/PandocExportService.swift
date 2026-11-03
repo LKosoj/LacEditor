@@ -974,6 +974,8 @@ enum PandocExportService {
             }
         }
         let criticWriter = profile.writer.isEmpty ? ext.lowercased() : String(profile.writer.prefix { $0 != "+" && $0 != "-" })
+        // Скрытые комментарии Obsidian `%%…%%` заметок хранилища в экспорт не попадают.
+        let original = MarkdownObsidianComment.appliesTo(documentURL: source) ? MarkdownObsidianComment.removed(original, syntax: syntax) : original
         let criticSource = CriticMarkupPandoc.source(for: original, mode: critic, supportsTracked: criticWriter.lowercased() == "docx", syntax: syntax)
         let snapshot = try markedExportSnapshot(criticSource.text, syntax: syntax, includeTOC: !profile.rawType.isEmpty, wiki: wiki, isCancelled: isCancelled)
         let manager = FileManager.default
@@ -1167,6 +1169,8 @@ enum PandocExportService {
         critic: CriticMarkupExportMode = .clean
     ) throws -> PandocExportResult {
         guard let pandoc = executable ?? findPandoc() else { throw PandocExportError.missingPandoc }
+        // Скрытые комментарии Obsidian `%%…%%` заметок хранилища в экспорт не попадают.
+        let original = MarkdownObsidianComment.appliesTo(documentURL: source) ? MarkdownObsidianComment.removed(original, syntax: syntax) : original
         let criticSource = CriticMarkupPandoc.source(for: original, mode: critic, supportsTracked: format.supportsTrackedChanges, syntax: syntax)
         let snapshot = try markedExportSnapshot(criticSource.text, syntax: syntax, includeTOC: false, wiki: wiki, isCancelled: isCancelled)
         let emojiText = snapshot.text

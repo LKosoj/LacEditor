@@ -158,6 +158,23 @@ final class MarkdownTableCellEditor: NSTextView, NSTextViewDelegate {
 
     override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
         if let replacementString, validateChange?(affectedCharRange, replacementString) == false { return false }
+        // Защищённая часть вокруг токена (`](`…`)`): вставка внутрь отклоняется, задевающая правка забирает конструкцию целиком.
+        if let replacementString, !(affectedCharRange.length == 0 && replacementString.isEmpty),
+           let map = mediaMap?(), let storage = textStorage {
+            switch map.decideEdit(affectedCharRange, replacement: replacementString, length: storage.length, unit: { storage.mutableString.character(at: $0) }) {
+            case .allow: break
+            case .deny:
+                NSSound.beep()
+                return false
+            case let .expand(covering):
+                guard !hasMarkedText() else {
+                    NSSound.beep()
+                    return false
+                }
+                insertText(replacementString, replacementRange: covering)
+                return false
+            }
+        }
         // Как в основном редакторе: правка, задевающая токен, забирает его целиком, набор строго внутри отклоняется.
         if replacementString != nil, let map = mediaMap?(), map.cutsToken(affectedCharRange) {
             guard affectedCharRange.length > 0, !hasMarkedText() else {

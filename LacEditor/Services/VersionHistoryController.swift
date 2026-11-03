@@ -207,7 +207,7 @@ final class VersionHistoryController: ObservableObject {
             if isSnapshots {
                 found = await Task.detached(priority: .userInitiated) {
                     fetchSnapshots().map {
-                        FileVersionInfo(id: $0.id.uuidString, date: $0.date, computerName: nil, contentURL: url, title: $0.name)
+                        FileVersionInfo(id: $0.id.uuidString, date: $0.date, computerName: nil, contentURL: url, title: VaultPresentation.snapshotDisplayName($0.name))
                     }
                 }.value
             } else {

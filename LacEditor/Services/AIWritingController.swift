@@ -147,6 +147,7 @@ final class AIWritingController: ObservableObject {
         guard let appState, appState.preferences.aiFeatures.contains(feature) else { return }
         requestedFeature = feature
         appState.isAIWritingVisible = true
+        appState.selectAIInspectorSegmentIfVault()
     }
 
     func explainSelection() {
@@ -169,6 +170,7 @@ final class AIWritingController: ObservableObject {
         imageEditRequest = request; imageDescriptionRequest = nil; imageEditSource = nil; image = nil; report = ""; suggestions = []; references = []; message = ""
         generatedAt = nil; resultRevision = nil; isWorking = true
         appState.isAIWritingVisible = true
+        appState.selectAIInspectorSegmentIfVault()
         let current = generation
         task = Task { [weak self, weak document] in
             defer { if let self, self.generation == current { self.isWorking = false } }
@@ -201,6 +203,7 @@ final class AIWritingController: ObservableObject {
         activeProfile = profile; activeKey = key; activeNeedsKey = true; activeFeatures = [.imageDescription]
         isWorking = true
         appState.isAIWritingVisible = true
+        appState.selectAIInspectorSegmentIfVault()
         let current = generation, describe = self.describe
         task = Task { [weak self, weak document] in
             defer { if let self, self.generation == current { self.isWorking = false } }

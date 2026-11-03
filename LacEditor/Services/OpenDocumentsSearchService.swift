@@ -3,7 +3,7 @@ import Foundation
 /// Поиск по всем открытым документам: считает совпадения по снимкам текста и выбирает следующее/предыдущее.
 /// Документы определяются по `documentID`, адрес файла не нужен: несохранённые вкладки участвуют так же.
 enum OpenDocumentsSearchService {
-    enum SkipReason: Equatable, Sendable { case opening, largeFile, readingMode, busy, changed }
+    enum SkipReason: Equatable, Sendable { case opening, largeFile, readingMode, protectedPage, busy, changed }
 
     /// Документ глазами поиска. `snapshot == nil`, если документ пропущен до чтения текста.
     struct Source: Sendable {

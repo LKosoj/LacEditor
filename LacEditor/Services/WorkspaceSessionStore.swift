@@ -24,6 +24,7 @@ struct WorkspaceDocumentSnapshot: Equatable, Sendable {
     let fileRevisionSnapshot: FileRevisionSnapshot?
     var folderWorkspace: FolderWorkspaceSession? = nil
     var writerProject: WriterProjectSession? = nil
+    var vaultNote: VaultNoteBinding? = nil
 }
 
 struct FolderWorkspaceSession: Codable, Equatable, Sendable {
@@ -117,6 +118,7 @@ final class WorkspaceSessionStore: @unchecked Sendable {
         let fileSize: Int?
         var folderWorkspace: FolderWorkspaceSession? = nil
         var writerProject: WriterProjectSession? = nil
+        var vaultNote: VaultNoteBinding? = nil
     }
 
     private let rootURL: URL
@@ -159,7 +161,8 @@ final class WorkspaceSessionStore: @unchecked Sendable {
                     scrollPositionRatio: snapshot.scrollPositionRatio, isPreviewVisible: snapshot.isPreviewVisible,
                     fileRevisionSnapshot: snapshot.fileRevisionSnapshot,
                     folderWorkspace: snapshot.folderWorkspace,
-                    writerProject: snapshot.writerProject
+                    writerProject: snapshot.writerProject,
+                    vaultNote: snapshot.vaultNote
                 )
             }, selectedDocumentID: window.selectedDocumentID,
                isSidebarVisible: window.isSidebarVisible, frame: window.frame)
@@ -216,7 +219,8 @@ final class WorkspaceSessionStore: @unchecked Sendable {
                             isPreviewVisible: document.isPreviewVisible,
                             fileRevisionSnapshot: baseline,
                             folderWorkspace: document.folderWorkspace,
-                            writerProject: document.writerProject.flatMap { $0.isValid ? $0 : nil }
+                            writerProject: document.writerProject.flatMap { $0.isValid ? $0 : nil },
+                            vaultNote: document.vaultNote.flatMap { $0.isValid ? $0 : nil }
                         ), contentURL: contentURL)
                     },
                     selectedDocumentID: window.selectedDocumentID,
@@ -301,7 +305,8 @@ final class WorkspaceSessionStore: @unchecked Sendable {
                         modificationDate: baseline?.modificationDate,
                         fileSize: baseline?.fileSize,
                         folderWorkspace: document.folderWorkspace,
-                        writerProject: document.writerProject
+                        writerProject: document.writerProject,
+                        vaultNote: document.vaultNote
                     ))
                 }
                 metadataWindows.append(WindowMetadata(

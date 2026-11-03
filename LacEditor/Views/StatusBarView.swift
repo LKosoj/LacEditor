@@ -41,6 +41,9 @@ struct StatusBarView: View {
                 if geometry.size.width >= 560, let session = appState.writerSession {
                     WriterWordCountStatus(session: session, counter: session.wordCounter, appState: appState)
                 }
+                if let vault = appState.vaultSession {
+                    VaultStatusBarItem(session: vault, appState: appState, compact: geometry.size.width < 560)
+                }
                 if let suggestion = document.textCodecSuggestionTitle, geometry.size.width >= 600 {
                     Button { appState.presentTextTransformation(.smartDecode) } label: {
                         Label(suggestion, systemImage: "arrow.left.arrow.right")

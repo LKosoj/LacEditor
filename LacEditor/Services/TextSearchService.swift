@@ -187,16 +187,22 @@ enum TextSearchService {
         return matches.last(where: { NSMaxRange($0) <= location }) ?? matches[matches.count - 1]
     }
 
-    /// Участки текста, по которым идёт поиск: всё, кроме адресов `data:` (заголовка и данных).
+    /// Участки текста, по которым идёт поиск: всё, кроме адресов `data:` (заголовка и данных) и защищённой части вокруг них.
     /// При `scope` участки урезаются областью поиска; пустые отбрасываются.
     static func searchableRanges(in text: String, scope: NSRange? = nil) -> [NSRange] {
         var parts: [NSRange] = []
         var location = 0
+        let ns = text as NSString
+        let length = ns.length
         for address in MarkdownMediaTable.addressRanges(in: text) {
-            if address.location > location { parts.append(NSRange(location: location, length: address.location - location)) }
-            location = NSMaxRange(address)
+            // Поиск и замена не трогают и защищённую часть вокруг адреса (`](`…`)`, значение атрибута): иначе замена испортит адрес.
+            var hidden = address
+            if let zone = MarkdownMediaZone.around(address, length: length, unit: { ns.character(at: $0) }) {
+                hidden = zone.protected
+            }
+            if hidden.location > location { parts.append(NSRange(location: location, length: hidden.location - location)) }
+            location = max(location, NSMaxRange(hidden))
         }
-        let length = (text as NSString).length
         if location < length { parts.append(NSRange(location: location, length: length - location)) }
         guard let scope else { return parts }
         let clamped = NSIntersectionRange(scope, NSRange(location: 0, length: length))

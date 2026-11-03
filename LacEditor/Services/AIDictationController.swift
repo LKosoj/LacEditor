@@ -63,6 +63,8 @@ final class AIDictationController: ObservableObject {
     private var task: Task<Void, Never>?
     private var generation = 0
     private var documentID: UUID?
+    /// Приёмник текста вместо вставки в документ («Записать мысль»); nil — обычная диктовка.
+    private var externalSink: ((String, String?) -> Void)?
     private var audioProfile: AIModelProfile?
     private var audioURL: URL?
     private var alert: NSAlert?
@@ -101,12 +103,17 @@ final class AIDictationController: ObservableObject {
 
     // MARK: Кнопка панели инструментов
 
-    static func unavailableReason(preferences: AppPreferences, document: EditorDocument?) -> String? {
+    /// Настройки голосового ввода без привязки к документу.
+    static func voiceUnavailableReason(preferences: AppPreferences) -> String? {
         let profile = preferences.aiProfile(for: .voiceDraft)
         guard preferences.aiFeatures.contains(.voiceDraft), profile.isEnabled, profile.supports(.audio),
               !profile.modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return L10n.tr("听写不可用：请在 AI 设置中启用「语音听写」和语音转写服务，并填写模型")
         }
+        return nil
+    }
+    static func unavailableReason(preferences: AppPreferences, document: EditorDocument?) -> String? {
+        if let reason = voiceUnavailableReason(preferences: preferences) { return reason }
         guard let document, document.ioState == .idle, !document.isReadingMode else { return L10n.tr("听写不可用：当前文档不可编辑") }
         return nil
     }
@@ -133,7 +140,7 @@ final class AIDictationController: ObservableObject {
         switch state {
         case .idle: unavailableReason ?? L10n.tr("语音听写：点击开始录音，再次点击停止")
         case .requestingPermission: L10n.tr("正在请求麦克风权限…")
-        case .recording: L10n.tr("再次点击停止录音并插入文字")
+        case .recording: externalSink != nil ? L10n.tr("再次点击停止录音并加入草稿") : L10n.tr("再次点击停止录音并插入文字")
         case .processing: L10n.tr("正在识别并整理文字…")
         }
     }
@@ -145,6 +152,18 @@ final class AIDictationController: ObservableObject {
         switch state {
         case .idle: start()
         case .recording: stop()
+        case .requestingPermission, .processing: break
+        }
+    }
+
+    /// Идёт запись, текст которой уйдёт в приёмник, а не в документ.
+    var isCapturingExternally: Bool { externalSink != nil && state != .idle }
+
+    /// Диктовка без документа: готовый текст (и необязательное замечание) отдаётся замыканию; документ и буфер обмена не используются.
+    func toggle(into sink: @escaping (String, String?) -> Void) {
+        switch state {
+        case .idle: startExternal(sink)
+        case .recording: if externalSink != nil { stop() }
         case .requestingPermission, .processing: break
         }
     }
@@ -184,19 +203,42 @@ final class AIDictationController: ObservableObject {
         }
     }
 
+    private func startExternal(_ sink: @escaping (String, String?) -> Void) {
+        guard let appState, Self.voiceUnavailableReason(preferences: appState.preferences) == nil else { return }
+        generation += 1
+        let current = generation
+        externalSink = sink
+        audioProfile = appState.preferences.aiProfile(for: .voiceDraft)
+        state = .requestingPermission
+        task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.recorder.start()
+                guard self.generation == current else { self.recorder.discard(); return }
+                self.state = .recording
+            } catch {
+                guard self.generation == current else { return }
+                self.reset()
+                if !(error is CancellationError) { self.report(error.localizedDescription, isError: true) }
+            }
+        }
+    }
+
     private func stop() {
-        guard state == .recording, let documentID else { return }
+        guard state == .recording, documentID != nil || externalSink != nil else { return }
         guard let url = recorder.stop() else { reset(); return }
         process(audio: url, documentID: documentID)
     }
 
     /// Распознаёт записанный файл, очищает текст и вставляет его; файл удаляется в конце.
-    func process(audio: URL, documentID: UUID) {
+    func process(audio: URL, documentID: UUID?) {
         audioURL = audio
         self.documentID = documentID
         audioProfile = audioProfile ?? appState?.preferences.aiProfile(for: .voiceDraft)
         // Имя берётся сейчас, пока документ ещё открыт: в историю оно попадёт и после закрытия документа.
-        let documentName = appState?.documents.first { $0.id == documentID }?.displayName ?? L10n.tr("未命名")
+        let documentName = documentID == nil
+            ? L10n.tr("记录想法")
+            : appState?.documents.first { $0.id == documentID }?.displayName ?? L10n.tr("未命名")
         state = .processing
         let current = generation
         task = Task { [weak self] in
@@ -248,9 +290,13 @@ final class AIDictationController: ObservableObject {
     }
 
     private func deliver(_ text: String, raw: String, cleanedWith: String?, documentName: String,
-                         notice: String?, documentID: UUID) {
+                         notice: String?, documentID: UUID?) {
         recordHistory(raw: raw, cleaned: cleanedWith == nil ? nil : text, cleanedWith: cleanedWith, documentName: documentName)
-        if insert(text, documentID: documentID) {
+        if let sink = externalSink {
+            sink(text, notice)
+            return
+        }
+        if let documentID, insert(text, documentID: documentID) {
             if let notice { report(notice, isError: false) }
         } else {
             writePasteboard(text)
@@ -352,7 +398,7 @@ final class AIDictationController: ObservableObject {
     }
 
     private func reset() {
-        task = nil; documentID = nil; audioProfile = nil; state = .idle
+        task = nil; documentID = nil; externalSink = nil; audioProfile = nil; state = .idle
     }
 
     private func report(_ text: String, isError: Bool) {

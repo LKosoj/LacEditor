@@ -363,6 +363,7 @@ struct MarkdownRenderedPage: Sendable {
         mark { outline: 1px solid var(--text); }
       }
       \(CriticMarkupPreviewStyle.css)
+      \(MarkdownObsidianPreviewStyle.css)
       @media print {
         :root, :root[data-theme="dark"] {
           color-scheme: light;
@@ -414,7 +415,8 @@ enum MarkdownRenderer {
                            syntax: MarkdownSyntaxOptions = .init(), forExport: Bool = false, includeHeadingNumbers: Bool = false, includeListStyles: Bool = false,
                            staticWidgetFallback: Bool = false, preserveRawHTMLBlocks: Bool = false,
                            includeSourcePositions: Bool = false, isPreview: Bool = false, highlightCode: Bool = false,
-                           wiki: MarkdownWikiLinkContext? = nil, critic: CriticMarkupRenderMode? = nil) -> MarkdownRenderedPage {
+                           wiki: MarkdownWikiLinkContext? = nil, critic: CriticMarkupRenderMode? = nil,
+                           embeds: (any MarkdownNoteEmbedProvider)? = nil, hidesObsidianComments: Bool = false) -> MarkdownRenderedPage {
         // Правки подставляются до wiki-ссылок: служебные символы вместо разделителей, числа строк в .show не меняют.
         var criticSource = markdown
         var criticComments: [String] = []
@@ -425,7 +427,22 @@ enum MarkdownRenderer {
             criticComments = prepared.comments
             criticMarkerBase = prepared.markerBase
         }
-        let markdown = substitutingWikiLinks(criticSource, wiki: wiki, syntax: syntax)
+        // Комментарии `%%…%%` скрываются первыми (число строк прежнее), чтобы `![[…]]` внутри них не встраивалось.
+        // Только в заметках хранилища: в обычных документах `%%` остаётся текстом.
+        let hidesComments = hidesObsidianComments || MarkdownObsidianComment.appliesTo(documentURL: documentURL)
+        if hidesComments, MarkdownObsidianComment.mayContainComment(criticSource) {
+            criticSource = MarkdownObsidianComment.hidden(criticSource, syntax: syntax)
+        }
+        // Встраивания `![[…]]`: вложенный вызов получает wiki: nil и embeds: nil, поэтому глубина встраивания равна 1.
+        let embedProvider = embeds ?? wiki.map { MarkdownFolderNoteEmbedProvider(context: $0) }
+        var embedPrepared: MarkdownNoteEmbed.Prepared?
+        if MarkdownNoteEmbed.mayContainEmbed(criticSource) {
+            let prepared = MarkdownNoteEmbed.prepare(criticSource, syntax: syntax, context: wiki, provider: embedProvider,
+                                                     documentURL: documentURL)
+            criticSource = prepared.text
+            embedPrepared = prepared
+        }
+        let markdown = MarkdownCalloutRender.separatingTitles(in: substitutingWikiLinks(criticSource, wiki: wiki, syntax: syntax), syntax: syntax)
         // Позиции исходника нужны только предпросмотру; в экспорт, PDF и копирование они не попадают.
         let sourcePositions = includeSourcePositions && !forExport
         let remoteImageMarkers = RemoteImageMarkers()
@@ -447,6 +464,14 @@ enum MarkdownRenderer {
             .replacingOccurrences(of: "<pre>", with: "<pre \(preAttributes)>")
             .replacingOccurrences(of: "<pre data-sourcepos=\"", with: "<pre \(preAttributes) data-sourcepos=\"")
         if let criticMarkerBase { body = CriticMarkupRender.finalize(html: body, comments: criticComments, markerBase: criticMarkerBase) }
+        if let embedPrepared, !embedPrepared.blocks.isEmpty {
+            body = MarkdownNoteEmbed.finalize(html: body, prepared: embedPrepared, context: wiki, provider: embedProvider, syntax: syntax,
+                                              darkMode: darkMode, forExport: forExport, hidesComments: hidesComments)
+        }
+        // Выноски Obsidian — после встраивания; в экспорте свёрнутые выноски раскрываются, чтобы текст не пропал.
+        if MarkdownCalloutRender.mayContainCallout(body) {
+            body = MarkdownCalloutRender.transform(html: body, expandCollapsed: forExport)
+        }
         // Подсказка нужна только предпросмотру пустого или состоящего из пробелов документа; экспорт и печать остаются пустыми.
         if isPreview, !forExport, markdown.allSatisfy(\.isWhitespace) {
             body = "<p class=\"lac-empty\">" + htmlEscaped(L10n.tr("预览为空。在编辑器中输入 Markdown 后，内容会显示在这里。")) + "</p>"

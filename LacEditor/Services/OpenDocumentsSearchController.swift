@@ -7,6 +7,7 @@ extension OpenDocumentsSearchService.SkipReason {
         case .opening: L10n.tr("正在打开")
         case .largeFile: L10n.tr("大文件")
         case .readingMode: L10n.tr("阅读模式下无法修改")
+        case .protectedPage: L10n.tr("受服务器保护的页面已跳过")
         case .busy: L10n.tr("无法修改已打开的文档")
         case .changed: L10n.tr("文档已变化")
         }

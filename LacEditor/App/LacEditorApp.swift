@@ -444,7 +444,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let finish = { shouldTerminate in
             sender.reply(toApplicationShouldTerminate: shouldTerminate)
         }
-        manager.requestApplicationTermination(completion: finish)
+        // Сначала вопрос про неотправленные заметки хранилища, затем обычная процедура выхода.
+        manager.confirmVaultUnsentBeforeQuit { proceed in
+            guard proceed else { finish(false); return }
+            manager.vaultQuitApproved = true
+            manager.requestApplicationTermination { approved in
+                manager.vaultQuitApproved = false
+                finish(approved)
+            }
+        }
         return .terminateLater
     }
 }

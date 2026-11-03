@@ -135,6 +135,135 @@ final class MarkdownMediaProjectionTests: XCTestCase {
         return (table, projection, Array(projection.text.utf16))
     }
 
+    /// Вставка вплотную к токену приклеивалась бы к адресу в файле: допустимы только разделители адреса.
+    func testJoinsTokenAtEdges() {
+        let (_, projection, _) = twoTokenSetup()
+        let map = MarkdownMediaMap(spans: projection.spans)
+        let s0 = projection.spans[0], s1 = projection.spans[1]
+        func at(_ location: Int, _ length: Int, _ text: String) -> Bool {
+            map.joinsToken(NSRange(location: location, length: length), replacement: text)
+        }
+        func at(_ location: Int, _ text: String) -> Bool { at(location, 0, text) }
+        check(at(s0.displayEnd, "x"), "буква после токена склеивается")
+        check(at(s0.displayEnd, "5") && at(s0.displayEnd, "-"), "цифра и дефис после токена склеиваются")
+        check(at(s0.displayStart, "x"), "буква перед токеном склеивается")
+        check(at(s1.displayStart, "ab"), "вставка из нескольких букв перед токеном склеивается")
+        check(at(s0.displayEnd, "😀"), "суррогатная пара после токена склеивается")
+        check(at(s0.displayEnd, 1, "x"), "замена символа сразу после токена склеивается")
+        check(!at(s0.displayEnd, " "), "пробел после токена разрешён")
+        check(!at(s0.displayStart, "\n") && !at(s0.displayEnd, "\n"), "перевод строки у границ разрешён")
+        check(!at(s1.displayEnd, ")") && !at(s1.displayStart, "(") && !at(s1.displayStart, "\""), "скобки и кавычки разрешены")
+        check(!at(s0.displayEnd, " x"), "справа от токена решает первый символ вставки")
+        check(!at(s0.displayStart, "x "), "последний символ решает для левого края")
+        check(at(s0.displayStart, " x"), "слева от токена решает последний символ вставки")
+        check(!at(s0.displayEnd, 0, ""), "пустая вставка ничего не склеивает")
+        check(!at(s0.displayEnd + 1, 0, "x") && !at(s0.displayStart - 1, 0, "x"), "через символ от токена всё свободно")
+        check(!at(0, 1, "x"), "правка вдали от токенов разрешена")
+        check(!MarkdownMediaMap().joinsToken(NSRange(location: 0, length: 0), replacement: "x"), "без токенов разрешено всё")
+    }
+
+    /// Защищённая часть `](`…`)`: вставка внутрь отклоняется, задевающая правка забирает `![…](…)` целиком.
+    func testAddressZoneDecisions() {
+        var table = MarkdownMediaTable()
+        let source = "ab ![подпись](data:image/png;base64,AAAAAAAAAAAAAAAAAAAA \"т)итул\") cd <img alt=\"x\" src=\"data:image/png;base64,BBBBBBBBBBBBBBBBBBBB\" width=3> ef"
+        let projection = table.project(source)
+        let display = Array(projection.text.utf16)
+        let map = MarkdownMediaMap(spans: projection.spans)
+        check(projection.spans.count == 2, "два токена")
+        func decide(_ location: Int, _ length: Int, _ text: String = "x") -> MarkdownMediaEditDecision {
+            map.decideEdit(NSRange(location: location, length: length), replacement: text, length: display.count) { display[$0] }
+        }
+        func find(_ text: String) -> Int {
+            (projection.text as NSString).range(of: text).location
+        }
+        let open = find("](")
+        let t0 = projection.spans[0], t1 = projection.spans[1]
+        let close = find("\")") + 1  // `)` после заголовка
+        let start = find("![")
+        let md = NSRange(location: start, length: close + 1 - start)
+        check(decide(open, 0) == .allow, "перед `]` вставка разрешена (конец подписи)")
+        check(decide(open - 1, 0) == .allow && decide(start + 3, 0) == .allow, "подпись редактируется")
+        check(decide(open + 1, 0) == .deny && decide(open + 2, 0) == .deny, "вставка между `]` и `(` и после `(` отклоняется")
+        check(decide(t0.displayEnd, 0) == .deny && decide(close, 0) == .deny, "вставка после токена и перед `)` отклоняется")
+        check(decide(NSMaxRange(md), 0) == .allow, "после `)` вставка разрешена")
+        check(decide(close, 1) == .expand(md), "Backspace сразу после `)`: конструкция целиком")
+        check(decide(open, 1) == .expand(md), "Delete перед `](`: конструкция целиком")
+        check(decide(t0.displayEnd + 2, 1) == .expand(md), "правка внутри заголовка")
+        check(decide(t0.displayStart, t0.displayLength) == .expand(md), "выделен только токен")
+        check(decide(md.location, md.length) == .allow, "выделена вся конструкция: расширять нечего")
+        check(decide(md.location - 1, md.length + 2) == .allow, "выделена конструкция с запасом")
+        check(decide(start + 3, 2) == .allow, "удаление внутри подписи")
+        check(decide(0, 2) == .allow, "далёкая правка")
+        // HTML: кавычки значения входят в защищённую часть, удаляется весь тег.
+        let tagStart = find("<img")
+        let tagEnd = find("width=3>") + 8
+        let tag = NSRange(location: tagStart, length: tagEnd - tagStart)
+        let name = t1.displayStart - 5  // начало `src`
+        check(decide(name, 0, "x") == .deny && decide(name, 0, "5") == .deny, "буква или цифра перед именем приклеились бы (`xsrc`)")
+        check(decide(name, 0, " ") == .allow && decide(name, 0, "x ") == .allow, "вставка, кончающаяся пробелом, перед именем разрешена")
+        check(decide(name, 0, "x\n") == .allow, "перевод строки в конце тоже разделитель")
+        check(decide(name + 1, 0) == .deny && decide(name + 3, 0) == .deny, "внутри имени и между именем и `=` вставка отклоняется")
+        check(decide(t1.displayStart - 1, 0) == .deny, "между `=` и открывающей кавычкой вставка отклоняется")
+        check(decide(name + 1, 1) == .expand(tag), "удаление буквы имени: тег целиком")
+        check(decide(name - 1, 1, "") == .deny, "Backspace единственного пробела перед именем отклоняется")
+        check(decide(name - 1, 1, "x") == .deny && decide(name - 1, 1, "x ") == .allow, "замена пробела: `x` отказ, `x ` разрешена")
+        check(decide(name - 1, 1, " ") == .allow, "замена пробела пробелом разрешена")
+        check(decide(name - 5, 2, "") == .allow, "правка далеко от имени разрешена")
+        var spaced = MarkdownMediaTable()
+        let spacedProjection = spaced.project("<img  src=\"data:image/png;base64,CCCCCCCCCCCCCCCCCCCC\">")
+        let spacedDisplay = Array(spacedProjection.text.utf16)
+        let spacedMap = MarkdownMediaMap(spans: spacedProjection.spans)
+        let spacedName = (spacedProjection.text as NSString).range(of: "src").location
+        func spacedDecide(_ location: Int, _ length: Int, _ text: String) -> MarkdownMediaEditDecision {
+            spacedMap.decideEdit(NSRange(location: location, length: length), replacement: text, length: spacedDisplay.count) { spacedDisplay[$0] }
+        }
+        // Определение ссылки `[id]: адрес`: `]`, `:`, пробел и адрес защищены, запись удаляется целиком.
+        var defTable = MarkdownMediaTable()
+        let defProjection = defTable.project("a\n[id]: data:image/png;base64,DDDDDDDDDDDDDDDDDDDD\nnext")
+        let defDisplay = Array(defProjection.text.utf16)
+        let defMap = MarkdownMediaMap(spans: defProjection.spans)
+        let defStart = (defProjection.text as NSString).range(of: "[id]").location
+        let defToken = defProjection.spans[0]
+        let defRecord = NSRange(location: defStart, length: defToken.displayEnd - defStart)
+        func defDecide(_ location: Int, _ length: Int, _ text: String) -> MarkdownMediaEditDecision {
+            defMap.decideEdit(NSRange(location: location, length: length), replacement: text, length: defDisplay.count) { defDisplay[$0] }
+        }
+        check(defDecide(defStart + 3, 0, "x") == .allow, "в идентификаторе ссылки вставка разрешена")
+        check(defDecide(defStart + 4, 0, "x") == .deny && defDecide(defStart + 5, 0, " ") == .deny, "между `]` и адресом вставка отклоняется")
+        check(defDecide(defStart + 4, 2, "") == .expand(defRecord), "удаление `: ` забирает всю запись")
+        check(defDecide(defStart + 3, 1, "") == .expand(defRecord), "удаление `]` забирает всю запись")
+        check(defDecide(defStart + 1, 1, "") == .allow, "правка идентификатора разрешена")
+        let defEnd = defToken.displayEnd
+        check(defDecide(defEnd, 1, "") == .deny, "Delete на переводе строки после адреса приклеил бы `next`")
+        check(defDecide(defEnd, 1, "x") == .deny && defDecide(defEnd, 1, " ") == .allow, "замена перевода строки: `x` отказ, пробел разрешён")
+        check(defDecide(defEnd - 1, 0, "x") == .deny, "вставка внутрь адреса отклоняется")
+        var blank = MarkdownMediaTable()
+        let blankProjection = blank.project("[id]: data:image/png;base64,EEEEEEEEEEEEEEEEEEEE\n\nnext")
+        let blankDisplay = Array(blankProjection.text.utf16)
+        let blankMap = MarkdownMediaMap(spans: blankProjection.spans)
+        check(blankMap.decideEdit(NSRange(location: blankProjection.spans[0].displayEnd, length: 1), replacement: "", length: blankDisplay.count) { blankDisplay[$0] } == .allow,
+              "удаление перевода строки перед пустой строкой разрешено")
+        check(spacedDecide(spacedName - 1, 1, "") == .allow, "удаление одного из двух пробелов перед именем разрешено")
+        check(spacedDecide(spacedName - 2, 2, "") == .deny, "удаление обоих пробелов отклоняется")
+        check(decide(t1.displayStart - 2, 1) == .expand(tag), "`=` перед кавычкой: тег целиком")
+        check(decide(t1.displayStart, 0) == .deny && decide(t1.displayEnd, 0) == .deny, "внутри кавычек вставка отклоняется")
+        check(decide(t1.displayEnd + 1, 0) == .allow, "после закрывающей кавычки вставка разрешена")
+        check(decide(t1.displayEnd, 1) == .expand(tag), "закрывающая кавычка: тег целиком")
+        check(decide(t1.displayStart - 1, 1) == .expand(tag), "открывающая кавычка: тег целиком")
+        check(decide(tagStart + 5, 3) == .allow, "соседние атрибуты редактируются")
+        // Файловый текст: тот же разбор для поиска и замены.
+        let units = Array(source.utf16)
+        let ranges = MarkdownMediaTable.addressRanges(in: source)
+        let z0 = MarkdownMediaZone.around(ranges[0], length: units.count) { units[$0] }
+        check(z0 != nil && String(decoding: units[z0!.protected.location..<NSMaxRange(z0!.protected)], as: UTF16.self).hasPrefix("](data:")
+              && String(decoding: units[z0!.protected.location..<NSMaxRange(z0!.protected)], as: UTF16.self).hasSuffix("\")"), "защищённая часть в файле")
+        // Голый адрес без скобок и кавычек конструкции не образует.
+        var bare = MarkdownMediaTable()
+        let bareProjection = bare.project("a data:image/png;base64,AAAAAAAAAAAAAAAAAAAA b")
+        let bareUnits = Array(bareProjection.text.utf16)
+        check(MarkdownMediaMap(spans: bareProjection.spans).decideEdit(NSRange(location: 3, length: 1), length: bareUnits.count) { bareUnits[$0] } == .allow, "голый токен не защищён зоной")
+    }
+
     // 17-22
     func testMapAndEdits() {
         let (table, projection, display) = twoTokenSetup()

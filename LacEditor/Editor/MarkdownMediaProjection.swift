@@ -802,6 +802,57 @@ struct MarkdownMediaMap: Equatable, Sendable {
         }
     }
 
+    /// Вставка вплотную к токену приклеивается к его адресу в файле (`xdata:…`, `…Base64x`), и изображение перестаёт открываться.
+    /// Вплотную можно только пробел, кавычку, скобку, `<`, `>` или `=`; пустая вставка (удаление) токен не склеивает.
+    func joinsToken(_ range: NSRange, replacement: String) -> Bool {
+        guard !spans.isEmpty, let first = replacement.utf16.first, let last = replacement.utf16.last else { return false }
+        let end = range.location + range.length
+        let before = firstIndex { spans[$0].displayEnd >= range.location }
+        if before < spans.count, spans[before].displayEnd == range.location, !Self.isAddressBoundary(first) { return true }
+        let after = firstIndex { spans[$0].displayStart >= end }
+        return after < spans.count && spans[after].displayStart == end && !Self.isAddressBoundary(last)
+    }
+
+    /// Защищённая часть вокруг якоря: `](`…`)` с необязательным заголовком у Markdown, `name="`…`"` значения атрибута у HTML.
+    /// Вставка внутрь отклоняется; удаление или замена, задевшие её хоть одним символом, забирают всю конструкцию
+    /// (`![…](…)` или тег `<…>`). Подпись `![…]` остаётся обычным текстом. Смотрятся только соседние токены и ограниченный участок рядом.
+    func decideEdit(_ range: NSRange, replacement: String = "", length: Int, unit: (Int) -> UInt16) -> MarkdownMediaEditDecision {
+        guard !spans.isEmpty else { return .allow }
+        let end = range.location + range.length
+        var i = firstIndex { spans[$0].displayEnd + MarkdownMediaZone.reach >= range.location }
+        var cover = range
+        while i < spans.count, spans[i].displayStart - MarkdownMediaZone.reach <= end {
+            let span = spans[i]
+            i += 1
+            guard let zone = MarkdownMediaZone.around(NSRange(location: span.displayStart, length: span.displayLength),
+                                                      length: length, unit: unit) else { continue }
+            let p = zone.protected
+            if range.length == 0 {
+                if range.location > p.location && range.location < NSMaxRange(p) { return .deny }
+                // Перед именем HTML-атрибута: буква или цифра приклеилась бы к имени (`xsrc=`), поэтому вставка должна кончаться пробелом.
+                if zone.isAttribute, range.location == p.location, let last = replacement.utf16.last,
+                   !(last == 32 || (9...13).contains(last)) { return .deny }
+            } else if NSIntersectionRange(range, p).length > 0 {
+                cover = NSUnionRange(cover, zone.construct)
+            } else if zone.isDefinition, range.location == NSMaxRange(p) {
+                // Правка сразу после адреса определения ссылки (Delete на переводе строки) не должна приклеить к нему следующий текст.
+                let isSpace: (UInt16) -> Bool = { $0 == 32 || (9...13).contains($0) }
+                let next = range.location + range.length < length ? unit(range.location + range.length) : 0
+                if !(replacement.utf16.first.map(isSpace) ?? (next == 0 || isSpace(next))) { return .deny }
+            } else if zone.isAttribute, end == p.location {
+                // Правка кончается перед именем атрибута: после неё прямо перед именем должен остаться пробельный символ (`<imgsrc=`, `xsrc=`).
+                let isSpace: (UInt16) -> Bool = { $0 == 32 || (9...13).contains($0) }
+                let kept = replacement.utf16.last ?? (range.location > 0 && range.location <= length ? unit(range.location - 1) : 0)
+                if !isSpace(kept) { return .deny }
+            }
+        }
+        return cover == range ? .allow : .expand(cover)
+    }
+
+    private static func isAddressBoundary(_ c: UInt16) -> Bool {
+        c == 32 || (9...13).contains(c) || c == 34 || c == 39 || c == 40 || c == 41 || c == 60 || c == 61 || c == 62
+    }
+
     /// Сдвигает токены после правки. Токены внутри заменяемого диапазона исчезают из карты
     /// (запись в таблице остаётся). `inserted` - токены новой вставки, displayStart в координатах нового текста.
     /// Если правка режет токен, возвращает false и ничего не меняет.
@@ -832,5 +883,111 @@ struct MarkdownMediaMap: Equatable, Sendable {
             if predicate(mid) { high = mid } else { low = mid + 1 }
         }
         return low
+    }
+}
+
+enum MarkdownMediaEditDecision: Equatable, Sendable {
+    case allow
+    /// Правку нужно делать над этим, более широким диапазоном.
+    case expand(NSRange)
+    case deny
+}
+
+/// Конструкция вокруг одного адреса: что защищено и что удаляется целиком.
+struct MarkdownMediaZone: Equatable, Sendable {
+    var protected: NSRange
+    var construct: NSRange
+    /// Значение HTML-атрибута (а не адрес в круглых скобках Markdown).
+    var isAttribute = false
+    /// Определение ссылки `[id]: адрес`.
+    var isDefinition = false
+
+    /// Насколько далеко от токена ищется конструкция (единицы UTF-16).
+    static let reach = 600
+
+    private static func isAttributeNameUnit(_ c: UInt16) -> Bool {
+        (48...58).contains(c) || (65...90).contains(c) || (97...122).contains(c) || c == 45 || c == 95
+    }
+
+    /// `address` — диапазон токена (или адреса в тексте файла), `unit(i)` — единица UTF-16 по позиции (`0 ..< length`).
+    static func around(_ address: NSRange, length: Int, unit: (Int) -> UInt16) -> MarkdownMediaZone? {
+        func u(_ i: Int) -> UInt16 { i >= 0 && i < length ? unit(i) : 0 }
+        let s = address.location, e = address.location + address.length
+        let quote = u(s - 1)
+        if quote == 34 || quote == 39 {
+            // HTML: `<… src="адрес" …>`, защищены имя атрибута, `=`, кавычки и значение.
+            guard u(e) == quote else { return nil }
+            // Защищены имя атрибута, `=` (с пробелами вокруг), кавычки и значение: правка любого из них ломает картинку.
+            var eq = s - 2
+            var gap = 0
+            while gap < 8, u(eq) == 32 || u(eq) == 9 { eq -= 1; gap += 1 }
+            guard u(eq) == 61 else { return nil }
+            var first = eq
+            gap = 0
+            while gap < 8, u(first - 1) == 32 || u(first - 1) == 9 { first -= 1; gap += 1 }
+            while first > 0, isAttributeNameUnit(u(first - 1)) { first -= 1 }
+            var a = first - 1
+            let low = max(0, s - reach)
+            while a >= low, u(a) != 60 {
+                if u(a) == 62 { return nil }
+                a -= 1
+            }
+            guard a >= low else { return nil }
+            var b = e + 1
+            let high = min(length, e + reach)
+            while b < high, u(b) != 62 { b += 1 }
+            guard b < high else { return nil }
+            return MarkdownMediaZone(protected: NSRange(location: first, length: e + 1 - first),
+                                     construct: NSRange(location: a, length: b + 1 - a), isAttribute: true)
+        }
+        var p = s
+        if u(p - 1) == 60 { p -= 1 }
+        var spaces = 0
+        while spaces < 8, u(p - 1) == 32 || u(p - 1) == 9 { p -= 1; spaces += 1 }
+        guard u(p - 1) == 40, u(p - 2) == 93 else {
+            // Определение ссылки `[id]: адрес` в начале строки: защищены `]`, `:`, пробелы и адрес, удаляется вся запись.
+            guard u(p - 1) == 58, u(p - 2) == 93 else { return nil }
+            var j = p - 3
+            while j >= 0, u(j) != 91, u(j) != 93, u(j) != 10, u(j) != 13 { j -= 1 }
+            guard j >= 0, u(j) == 91, j == 0 || u(j - 1) == 10 || u(j - 1) == 13 else { return nil }
+            return MarkdownMediaZone(protected: NSRange(location: p - 2, length: e - (p - 2)),
+                                     construct: NSRange(location: j, length: e - j), isDefinition: true)
+        }
+        let open = p - 2
+        var f = e
+        var inQuote: UInt16 = 0
+        let high = min(length, e + reach)
+        var close: Int?
+        while f < high {
+            let c = u(f)
+            if inQuote != 0 {
+                if c == inQuote { inQuote = 0 }
+            } else if c == 34 || c == 39 {
+                inQuote = c
+            } else if c == 41 {
+                close = f
+                break
+            } else if c == 10 || c == 13 {
+                return nil
+            }
+            f += 1
+        }
+        guard let close else { return nil }
+        // Начало конструкции: парная `[` слева на той же строке (`![` включается).
+        var start = open
+        var depth = 0
+        var j = open - 1
+        let low = max(0, open - reach)
+        while j >= low, u(j) != 10, u(j) != 13 {
+            if u(j) == 93 {
+                depth += 1
+            } else if u(j) == 91 {
+                if depth == 0 { start = u(j - 1) == 33 ? j - 1 : j; break }
+                depth -= 1
+            }
+            j -= 1
+        }
+        return MarkdownMediaZone(protected: NSRange(location: open, length: close + 1 - open),
+                                 construct: NSRange(location: start, length: close + 1 - start))
     }
 }
