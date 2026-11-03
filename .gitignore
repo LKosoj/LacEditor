@@ -10,5 +10,6 @@ DerivedData/
 xcuserdata/
 .cli-proxy/
 .cli-proxy/runtime/
+.attachments/
 LacEditor/Resources/Pandoc/pandoc
 /docs/plans
