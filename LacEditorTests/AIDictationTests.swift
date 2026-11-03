@@ -22,6 +22,8 @@ final class AIDictationTests: XCTestCase {
         let document: EditorDocument
         let preferences: AppPreferences
         let box: Box
+        let history: DictationHistoryStore
+        let historyURL: URL
         let observers: [NSObjectProtocol]
         let cleanup: () -> Void
     }
@@ -41,6 +43,9 @@ final class AIDictationTests: XCTestCase {
         let state = AppState(initialDocuments: [document], recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
         state.selectedDocumentID = document.id
         let box = Box()
+        let historyDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("LacEditor-DictationHistory-\(UUID().uuidString)", isDirectory: true)
+        let historyURL = historyDirectory.appendingPathComponent("DictationHistory.json")
+        let history = DictationHistoryStore(storageURL: historyURL)
         let center = NotificationCenter.default
         let extraction = center.addObserver(forName: EditorCommandNotification.extractTextSelection, object: nil, queue: .main) { notification in
             guard box.hasSelection, let request = notification.object as? EditorTextExtractionRequest else { return }
@@ -51,8 +56,9 @@ final class AIDictationTests: XCTestCase {
             box.replacement = notification.object as? EditorRangeReplacementRequest
             box.replacement?.wasHandled = box.handled
         }
-        return Environment(state: state, document: document, preferences: preferences, box: box, observers: [extraction, apply], cleanup: {
+        return Environment(state: state, document: document, preferences: preferences, box: box, history: history, historyURL: historyURL, observers: [extraction, apply], cleanup: {
             center.removeObserver(extraction); center.removeObserver(apply)
+            try? FileManager.default.removeItem(at: historyDirectory)
             defaults.removePersistentDomain(forName: suite)
         })
     }
@@ -72,7 +78,8 @@ final class AIDictationTests: XCTestCase {
             },
             loadKey: { _, _ in nil },
             askRetry: askRetry,
-            writePasteboard: { box.pasteboard = $0 })
+            writePasteboard: { box.pasteboard = $0 },
+            history: environment.history)
     }
 
     private func makeAudio() throws -> URL {
@@ -240,6 +247,7 @@ final class AIDictationTests: XCTestCase {
         XCTAssertNil(environment.box.replacement)
         XCTAssertNil(environment.box.pasteboard)
         XCTAssertFalse(FileManager.default.fileExists(atPath: audio.path))
+        XCTAssertTrue(environment.history.entries.isEmpty)
     }
 
     func testRecognitionRetrySucceedsOnSecondAttempt() async throws {
@@ -362,5 +370,161 @@ final class AIDictationTests: XCTestCase {
         XCTAssertNil(environment.box.replacement)
         XCTAssertNil(environment.box.pasteboard)
         XCTAssertFalse(FileManager.default.fileExists(atPath: audio.path))
+        XCTAssertTrue(environment.history.entries.isEmpty)
+    }
+
+    // MARK: История диктовок
+
+    func testSuccessRecordsRawAndCleanedInHistory() async throws {
+        let environment = try makeEnvironment()
+        defer { environment.cleanup() }
+        environment.box.editorText = "abc"
+        environment.box.selection = NSRange(location: 3, length: 0)
+        let controller = makeController(environment)
+        controller.process(audio: try makeAudio(), documentID: environment.document.id)
+        try await waitForIdle(controller)
+        XCTAssertEqual(environment.history.entries.count, 1)
+        let entry = try XCTUnwrap(environment.history.entries.first)
+        XCTAssertEqual(entry.rawText, "э привет")
+        XCTAssertEqual(entry.cleanedText, "Привет.")
+        XCTAssertEqual(entry.transcriptionModel, "audio-model")
+        XCTAssertEqual(entry.cleanupModel, "text-model")
+        XCTAssertEqual(entry.documentName, environment.document.displayName)
+    }
+
+    func testCleanupFailureRecordsRawOnly() async throws {
+        let environment = try makeEnvironment()
+        defer { environment.cleanup() }
+        environment.box.editorText = "abc "
+        environment.box.selection = NSRange(location: 4, length: 0)
+        let controller = makeController(environment, cleanup: { _, _, _ in throw AIError.network })
+        controller.process(audio: try makeAudio(), documentID: environment.document.id)
+        try await waitForIdle(controller)
+        let entry = try XCTUnwrap(environment.history.entries.first)
+        XCTAssertEqual(entry.rawText, "э привет")
+        XCTAssertNil(entry.cleanedText)
+        XCTAssertNil(entry.cleanupModel)
+        XCTAssertEqual(environment.box.replacement?.replacementText, "э привет")
+    }
+
+    func testDisabledTextProfileRecordsRawOnly() async throws {
+        let environment = try makeEnvironment(textProfileEnabled: false)
+        defer { environment.cleanup() }
+        environment.box.editorText = "abc"
+        environment.box.selection = NSRange(location: 3, length: 0)
+        let controller = makeController(environment)
+        controller.process(audio: try makeAudio(), documentID: environment.document.id)
+        try await waitForIdle(controller)
+        let entry = try XCTUnwrap(environment.history.entries.first)
+        XCTAssertEqual(entry.rawText, "э привет")
+        XCTAssertNil(entry.cleanedText)
+        XCTAssertNil(entry.cleanupModel)
+    }
+
+    func testClosedDocumentKeepsResultInHistoryAndClipboard() async throws {
+        let environment = try makeEnvironment()
+        defer { environment.cleanup() }
+        let name = environment.document.displayName
+        let other = EditorDocument(text: "other")
+        let controller = makeController(environment)
+        let documentID = environment.document.id
+        controller.process(audio: try makeAudio(), documentID: documentID)
+        // Документ закрывается, пока идёт обработка: имя уже захвачено.
+        environment.state.documents.append(other)
+        environment.state.documents.removeAll { $0.id == documentID }
+        environment.state.selectedDocumentID = other.id
+        try await waitForIdle(controller)
+        XCTAssertEqual(environment.box.pasteboard, "Привет.")
+        XCTAssertEqual(environment.history.entries.count, 1)
+        XCTAssertEqual(environment.history.entries.first?.documentName, name)
+        XCTAssertEqual(other.statusMessage, L10n.tr("无法插入到原文档，听写文字已复制到剪贴板"))
+    }
+
+    func testHistoryDisabledWritesNothing() async throws {
+        let environment = try makeEnvironment()
+        defer { environment.cleanup() }
+        environment.preferences.dictationHistoryEnabled = false
+        environment.box.editorText = "abc"
+        environment.box.selection = NSRange(location: 3, length: 0)
+        let controller = makeController(environment)
+        controller.process(audio: try makeAudio(), documentID: environment.document.id)
+        try await waitForIdle(controller)
+        XCTAssertTrue(environment.history.entries.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: environment.historyURL.path))
+        XCTAssertEqual(environment.box.replacement?.replacementText, " Привет.")
+    }
+
+    func testHistoryWriteFailureDoesNotBlockInsertion() async throws {
+        let environment = try makeEnvironment()
+        defer { environment.cleanup() }
+        // Файл новее известной версии: хранилище только для чтения, запись бросает ошибку.
+        let directory = environment.historyURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data(#"{"version":2,"entries":[]}"#.utf8).write(to: environment.historyURL)
+        let readOnly = DictationHistoryStore(storageURL: environment.historyURL)
+        XCTAssertTrue(readOnly.isReadOnly)
+        let box = environment.box
+        box.editorText = "abc"
+        box.selection = NSRange(location: 3, length: 0)
+        let controller = AIDictationController(
+            appState: environment.state,
+            recorder: AIVoiceRecorder(requestPermission: { true }),
+            transcribe: { _, _, _ in "э привет" },
+            cleanup: { _, _, _ in "Привет." },
+            loadKey: { _, _ in nil },
+            writePasteboard: { box.pasteboard = $0 },
+            history: readOnly)
+        controller.process(audio: try makeAudio(), documentID: environment.document.id)
+        try await waitForIdle(controller)
+        XCTAssertEqual(box.replacement?.replacementText, " Привет.")
+        XCTAssertTrue(readOnly.entries.isEmpty)
+    }
+
+    func testInsertFromHistoryInsertsVariantAsSingleReplacement() throws {
+        let environment = try makeEnvironment()
+        defer { environment.cleanup() }
+        let controller = makeController(environment)
+        let both = try environment.history.add(rawText: "э привет", cleanedText: "Привет.", documentName: "a.md",
+                                               transcriptionModel: "audio-model", cleanupModel: "text-model")
+        let rawOnly = try environment.history.add(rawText: "э пока", cleanedText: nil, documentName: "a.md",
+                                                  transcriptionModel: "audio-model", cleanupModel: nil)
+        environment.box.editorText = "abc"
+        environment.box.selection = NSRange(location: 3, length: 0)
+        controller.insertFromHistory(id: both.id, variant: .raw)
+        var request = try XCTUnwrap(environment.box.replacement)
+        XCTAssertEqual(request.replacementText, " э привет")
+        XCTAssertEqual(request.originalText, "")
+        XCTAssertEqual(request.range, NSRange(location: 3, length: 0))
+        XCTAssertEqual(request.actionName, AIFeature.voiceDraft.title)
+        controller.insertFromHistory(id: both.id, variant: .cleaned)
+        request = try XCTUnwrap(environment.box.replacement)
+        XCTAssertEqual(request.replacementText, " Привет.")
+        // Без очищенного текста вставляется исходный.
+        controller.insertFromHistory(id: rawOnly.id, variant: .cleaned)
+        XCTAssertEqual(environment.box.replacement?.replacementText, " э пока")
+    }
+
+    func testInsertFromHistoryFailureReportsError() throws {
+        let environment = try makeEnvironment()
+        defer { environment.cleanup() }
+        let controller = makeController(environment)
+        let entry = try environment.history.add(rawText: "э привет", cleanedText: nil, documentName: "a.md",
+                                                transcriptionModel: "audio-model", cleanupModel: nil)
+        environment.box.editorText = "abc"
+        environment.box.selection = NSRange(location: 3, length: 0)
+        environment.box.handled = false
+        controller.insertFromHistory(id: entry.id, variant: .raw)
+        XCTAssertEqual(environment.document.statusMessage, L10n.tr("无法插入听写文字"))
+        XCTAssertNil(environment.box.pasteboard)
+    }
+
+    func testDictationHistoryEnabledDefaultsToTrue() throws {
+        let suite = "LacEditor-DictationHistoryPrefs-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        XCTAssertTrue(preferences.dictationHistoryEnabled)
+        preferences.dictationHistoryEnabled = false
+        XCTAssertFalse(AppPreferences(defaults: defaults).dictationHistoryEnabled)
     }
 }

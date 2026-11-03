@@ -14,7 +14,11 @@ struct AICustomChecksSettingsView: View {
                 PreferenceRow(title: L10n.tr("自定义检查"),
                               detail: Self.emptyStateText(isEmpty: preferences.aiCustomChecks.isEmpty) ?? "",
                               searchID: nil) {
-                    Button(L10n.tr("添加检查")) { preferences.aiCustomChecks.append(AICustomCheck()) }
+                    HStack {
+                        Button(L10n.tr("添加模板“文风与节奏”")) { preferences.aiCustomChecks.append(.styleAndRhythmTemplate()) }
+                            .disabled(preferences.aiCustomChecks.contains { $0.id == AICustomCheck.styleAndRhythmTemplateID })
+                        Button(L10n.tr("添加检查")) { preferences.aiCustomChecks.append(AICustomCheck()) }
+                    }
                 }
             }
             ForEach($preferences.aiCustomChecks) { $check in

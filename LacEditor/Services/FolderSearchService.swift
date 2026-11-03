@@ -216,14 +216,17 @@ enum FolderSearchService {
     struct ManuscriptSource: Sendable { let file: File; let text: String; let isOpen: Bool }
 
     /// Тексты выбранных файлов в порядке `files`; открытые документы приоритетнее диска, невыбранные файлы не читаются.
-    static func manuscriptSources(root: URL, files: [File], openDocuments: [OpenDocument],
+    /// `markdownOnly: false` (проект рукописи) берёт также `.txt`; остальные расширения в сборку не попадают.
+    static func manuscriptSources(root: URL, files: [File], openDocuments: [OpenDocument], markdownOnly: Bool = true,
                                   isCancelled: () -> Bool = { false }) throws -> Result<ManuscriptSource> {
         let root = normalized(root)
         try checkCancellation(isCancelled)
         var order: [URL: Int] = [:]
         for (index, file) in files.enumerated() where order[normalized(file.url)] == nil { order[normalized(file.url)] = index }
         var found: [(Int, ManuscriptSource)] = []
-        let problems = try scan(root: root, openDocuments: openDocuments, markdownOnly: true, isCancelled: isCancelled,
+        let problems = try scan(root: root, openDocuments: openDocuments, markdownOnly: markdownOnly,
+                                include: { markdownOnly || ManuscriptProjectFiles.compileExtensions.contains($0.url.pathExtension.lowercased()) },
+                                isCancelled: isCancelled,
                                 skip: { url, _ in order[url] == nil }) { text, file, source in
             guard let index = order[normalized(file.url)] else { return }
             let isOpen: Bool = { if case .open = source { true } else { false } }()
@@ -550,7 +553,8 @@ enum FolderSearchService {
                         let values = try url.resourceValues(forKeys: keys)
                         try checkCancellation(isCancelled)
                         if values.isSymbolicLink != true && values.isDirectory == true {
-                            if let relative = relativePath(url, root: root), pruneDirectory(relative) { continue }
+                            // Служебная папка проекта рукописи не попадает ни в поиск, ни в быстрое открытие, ни в сборку.
+                            if let relative = relativePath(url, root: root), relative == ".laceditor" || pruneDirectory(relative) { continue }
                             pending.append(url)
                         }
                         else if (values.isSymbolicLink == true || values.isRegularFile == true), let relative = relativePath(url, root: root) {
@@ -594,7 +598,7 @@ enum FolderSearchService {
         return true
     }
 
-    private static func fileOrder(_ first: File, _ second: File) -> Bool {
+    static func fileOrder(_ first: File, _ second: File) -> Bool {
         let comparison = first.relativePath.localizedStandardCompare(second.relativePath)
         return comparison == .orderedSame ? first.url.path < second.url.path : comparison == .orderedAscending
     }

@@ -31,6 +31,10 @@ struct FolderWorkspaceView: View {
                     .contextMenu {
                         Button(L10n.tr("新建文件")) { appState.createFolderWorkspaceItem(in: root, isDirectory: false) }
                         Button(L10n.tr("新建文件夹")) { appState.createFolderWorkspaceItem(in: root, isDirectory: true) }
+                        if appState.writerSession == nil {
+                            Divider()
+                            Button(L10n.tr("作为项目打开")) { appState.startWriterProject(at: root) }
+                        }
                     }
                 HStack {
                     Menu(L10n.tr("显示方式")) {
@@ -250,6 +254,9 @@ struct FolderWorkspaceRowView: View {
                         if entry.isDirectory && !entry.isSymbolicLink {
                             Button(L10n.tr("新建文件")) { appState.createFolderWorkspaceItem(in: entry.url, isDirectory: false) }
                             Button(L10n.tr("新建文件夹")) { appState.createFolderWorkspaceItem(in: entry.url, isDirectory: true) }
+                            if appState.writerSession == nil {
+                                Button(L10n.tr("作为项目打开")) { appState.startWriterProject(at: entry.url) }
+                            }
                         }
                         Button(L10n.tr("复制文件或文件夹")) { appState.duplicateFolderWorkspaceItem(entry.url) }
                         Button(L10n.tr("重命名…")) { appState.moveFolderWorkspaceItem(entry.url, rename: true) }

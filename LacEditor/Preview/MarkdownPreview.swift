@@ -7,20 +7,20 @@ private let markdownPerformanceLog = OSLog(subsystem: "com.laceditor.LacEditor",
 
 actor MarkdownRenderActor {
     static let shared = MarkdownRenderActor()
-    private let renderer: @Sendable (String, Bool, URL?, MarkdownSyntaxOptions, MarkdownWikiLinkContext?) -> MarkdownRenderedPage
+    private let renderer: @Sendable (String, Bool, URL?, MarkdownSyntaxOptions, MarkdownWikiLinkContext?, CriticMarkupRenderMode?) -> MarkdownRenderedPage
 
-    init(renderer: @escaping @Sendable (String, Bool, URL?, MarkdownSyntaxOptions, MarkdownWikiLinkContext?) -> MarkdownRenderedPage = {
-        MarkdownRenderer.renderPage($0, darkMode: $1, renderEmoji: true, resolveLocalImages: true, documentURL: $2, prepareRemoteImages: true, syntax: $3, includeHeadingNumbers: true, includeListStyles: true, includeSourcePositions: true, isPreview: true, highlightCode: true, wiki: $4)
+    init(renderer: @escaping @Sendable (String, Bool, URL?, MarkdownSyntaxOptions, MarkdownWikiLinkContext?, CriticMarkupRenderMode?) -> MarkdownRenderedPage = {
+        MarkdownRenderer.renderPage($0, darkMode: $1, renderEmoji: true, resolveLocalImages: true, documentURL: $2, prepareRemoteImages: true, syntax: $3, includeHeadingNumbers: true, includeListStyles: true, includeSourcePositions: true, isPreview: true, highlightCode: true, wiki: $4, critic: $5)
     }) {
         self.renderer = renderer
     }
 
-    func render(_ markdown: String, darkMode: Bool, documentURL: URL? = nil, syntax: MarkdownSyntaxOptions = .init(), wiki: MarkdownWikiLinkContext? = nil, coordinator: DocumentTaskCoordinator,
+    func render(_ markdown: String, darkMode: Bool, documentURL: URL? = nil, syntax: MarkdownSyntaxOptions = .init(), wiki: MarkdownWikiLinkContext? = nil, critic: CriticMarkupRenderMode? = nil, coordinator: DocumentTaskCoordinator,
                 generation: UInt) async -> MarkdownRenderedPage? {
         guard !Task.isCancelled, coordinator.isCurrent(generation, for: .preview) else { return nil }
         let signpost = OSSignpostID(log: markdownPerformanceLog)
         os_signpost(.begin, log: markdownPerformanceLog, name: "MarkdownRender", signpostID: signpost)
-        let page = renderer(markdown, darkMode, documentURL, syntax, wiki)
+        let page = renderer(markdown, darkMode, documentURL, syntax, wiki, critic)
         os_signpost(.end, log: markdownPerformanceLog, name: "MarkdownRender", signpostID: signpost)
         guard !Task.isCancelled, coordinator.isCurrent(generation, for: .preview) else { return nil }
         return page
@@ -208,6 +208,7 @@ struct MarkdownPreview: NSViewRepresentable {
     var viewMagnification: CGFloat = 1
     var magnificationDidChange: ((CGFloat) -> Void)? = nil
     var wiki: MarkdownWikiLinkContext? = nil
+    var critic: CriticMarkupRenderMode? = nil
     @ObservedObject var document: EditorDocument
     @Environment(\.markdownPreviewActive) private var isActive
 
@@ -236,7 +237,7 @@ struct MarkdownPreview: NSViewRepresentable {
         context.coordinator.setActive(isActive)
         context.coordinator.setMathOptions(mathOptions)
         if isActive {
-            context.coordinator.render(markdown: markdown, revision: revision, darkMode: darkMode, typography: typography, syntax: syntax, wiki: wiki, immediately: true)
+            context.coordinator.render(markdown: markdown, revision: revision, darkMode: darkMode, typography: typography, syntax: syntax, wiki: wiki, critic: critic, immediately: true)
         }
         return view
     }
@@ -265,7 +266,7 @@ struct MarkdownPreview: NSViewRepresentable {
         context.coordinator.document = document
         context.coordinator.setActive(isActive)
         context.coordinator.setMathOptions(mathOptions)
-        if isActive { context.coordinator.render(markdown: markdown, revision: revision, darkMode: darkMode, typography: typography, syntax: syntax, wiki: wiki) }
+        if isActive { context.coordinator.render(markdown: markdown, revision: revision, darkMode: darkMode, typography: typography, syntax: syntax, wiki: wiki, critic: critic) }
     }
 
     static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
@@ -317,6 +318,8 @@ struct MarkdownPreview: NSViewRepresentable {
         private var renderedSyntax: MarkdownSyntaxOptions?
         private var lastWiki: MarkdownWikiLinkContext?
         private var renderedWiki: MarkdownWikiLinkContext?
+        private var lastCritic: CriticMarkupRenderMode?
+        private var renderedCritic: CriticMarkupRenderMode?
         private var lastRemoteImagesAllowed: Bool?
         private var renderedRemoteImagesAllowed = false
         private var renderedRevision: UInt?
@@ -483,11 +486,11 @@ struct MarkdownPreview: NSViewRepresentable {
             lastRequestedRevision = nil
         }
 
-        func render(markdown: String, revision: UInt, darkMode: Bool, typography: MarkdownTypography? = nil, syntax: MarkdownSyntaxOptions = .init(), wiki: MarkdownWikiLinkContext? = nil, immediately: Bool = false) {
+        func render(markdown: String, revision: UInt, darkMode: Bool, typography: MarkdownTypography? = nil, syntax: MarkdownSyntaxOptions = .init(), wiki: MarkdownWikiLinkContext? = nil, critic: CriticMarkupRenderMode? = nil, immediately: Bool = false) {
             guard isActive else { return }
             let sourceURL = document?.url
             let remoteImagesAllowed = document?.allowsRemoteImages == true
-            if revision == lastRequestedRevision, darkMode == lastDarkMode, sourceURL == lastDocumentURL, syntax == lastSyntax, wiki == lastWiki,
+            if revision == lastRequestedRevision, darkMode == lastDarkMode, sourceURL == lastDocumentURL, syntax == lastSyntax, wiki == lastWiki, critic == lastCritic,
                remoteImagesAllowed == lastRemoteImagesAllowed {
                 guard typography != lastTypography else { return }
                 lastTypography = typography
@@ -506,9 +509,10 @@ struct MarkdownPreview: NSViewRepresentable {
             lastTypography = typography
             lastSyntax = syntax
             lastWiki = wiki
+            lastCritic = critic
             lastRemoteImagesAllowed = remoteImagesAllowed
             let requestedGeneration = generation
-            if renderedRevision == revision, renderedDocumentURL == sourceURL, renderedSyntax == syntax, renderedWiki == wiki,
+            if renderedRevision == revision, renderedDocumentURL == sourceURL, renderedSyntax == syntax, renderedWiki == wiki, renderedCritic == critic,
                renderedRemoteImagesAllowed == remoteImagesAllowed, var page {
                 page.darkMode = darkMode
                 page.typography = typography
@@ -520,7 +524,7 @@ struct MarkdownPreview: NSViewRepresentable {
             if page == nil, latestNavigation == nil { (webView as? MarkdownWebView)?.setLoading(true) }
             let work = DispatchWorkItem { [weak self] in
                 guard let self, self.isActive, requestedGeneration == self.generation else { return }
-                self.beginRender(markdown: markdown, revision: revision, darkMode: darkMode, syntax: syntax, wiki: wiki,
+                self.beginRender(markdown: markdown, revision: revision, darkMode: darkMode, syntax: syntax, wiki: wiki, critic: critic,
                                  generation: requestedGeneration)
             }
             debounce = work
@@ -531,7 +535,7 @@ struct MarkdownPreview: NSViewRepresentable {
             }
         }
 
-        private func beginRender(markdown: String, revision: UInt, darkMode: Bool, syntax: MarkdownSyntaxOptions, wiki: MarkdownWikiLinkContext?, generation requestedGeneration: Int) {
+        private func beginRender(markdown: String, revision: UInt, darkMode: Bool, syntax: MarkdownSyntaxOptions, wiki: MarkdownWikiLinkContext?, critic: CriticMarkupRenderMode?, generation requestedGeneration: Int) {
             guard let document else { return }
             let sourceURL = document.url
             let remoteImagesAllowed = document.allowsRemoteImages
@@ -547,7 +551,7 @@ struct MarkdownPreview: NSViewRepresentable {
                 }
                 guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .preview) else { await clearLoading(); return }
                 guard var page = await MarkdownRenderActor.shared.render(
-                    markdown, darkMode: darkMode, documentURL: sourceURL, syntax: syntax, wiki: wiki, coordinator: coordinator, generation: taskGeneration
+                    markdown, darkMode: darkMode, documentURL: sourceURL, syntax: syntax, wiki: wiki, critic: critic, coordinator: coordinator, generation: taskGeneration
                 ) else { await clearLoading(); return }
                 guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .preview) else { await clearLoading(); return }
                 @MainActor func apply(_ page: MarkdownRenderedPage, finished: Bool) -> Bool {
@@ -566,6 +570,7 @@ struct MarkdownPreview: NSViewRepresentable {
                     self.renderedRevision = revision
                     self.renderedSyntax = syntax
                     self.renderedWiki = wiki
+                    self.renderedCritic = critic
                     self.renderedRemoteImagesAllowed = remoteImagesAllowed
                     self.renderedDocumentURL = sourceURL
                     if self.pageIsReady && !self.usesReloadFallback { self.patchPage(includingBody: true) }

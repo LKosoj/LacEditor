@@ -9,6 +9,8 @@ struct AIFeatureSettingsView: View {
     @State private var modelStatus: StatusMessage?
     @State private var modelTask: Task<Void, Never>?
     @State private var requestID = UUID()
+    @ObservedObject private var dictationHistory = DictationHistoryStore.shared
+    @State private var dictationHistoryStatus: StatusMessage?
 
     private var modelBinding: Binding<String> {
         Binding(get: { preferences.aiFeatureModelIDs[selectedFeature.rawValue] ?? "" }, set: { value in
@@ -59,6 +61,12 @@ struct AIFeatureSettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 16).padding(.vertical, 8)
+                Divider().padding(.horizontal, 16).opacity(0.5)
+                VStack(alignment: .leading, spacing: 4) {
+                    Button(L10n.tr("再次显示 AI 提示")) { AIHintStore().resetAll() }
+                    Text(L10n.tr("被你关闭的提示会重新显示。")).font(.caption).foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 8)
             }
             ForEach(AIFeatureGroup.allCases) { group in
                 PreferenceGroup(title: group.title) {
@@ -105,6 +113,23 @@ struct AIFeatureSettingsView: View {
                             .textFieldStyle(.roundedBorder).frame(width: 220)
                             .accessibilityLabel(L10n.tr("功能模型名称（留空使用默认值）"))
                     }
+                    SettingsRowDivider()
+                    PreferenceRow(title: L10n.tr("保存听写历史"),
+                                  detail: L10n.tr("在本机保存最近 20 条听写，最长 14 天；不保存录音。关闭后已保存的记录不会自动删除。")) {
+                        Toggle("", isOn: $preferences.dictationHistoryEnabled).labelsHidden()
+                            .accessibilityLabel(L10n.tr("保存听写历史"))
+                    }
+                    SettingsRowDivider()
+                    PreferenceRow(title: L10n.tr("清除听写历史"),
+                                  detail: dictationHistory.issueMessage ?? "") {
+                        HStack {
+                            Button(L10n.tr("清除"), action: clearDictationHistory)
+                                .disabled(dictationHistory.entries.isEmpty || dictationHistory.isReadOnly)
+                            if let dictationHistoryStatus {
+                                StatusMessageView(kind: dictationHistoryStatus.kind, text: dictationHistoryStatus.text)
+                            }
+                        }
+                    }
                 }
                 SettingsRowDivider()
                 PreferenceRow(title: L10n.tr("生成正则表达式的模型"),
@@ -150,6 +175,15 @@ struct AIFeatureSettingsView: View {
         modelTask = nil
         models = []
         modelStatus = nil
+    }
+
+    private func clearDictationHistory() {
+        do {
+            try dictationHistory.clear()
+            dictationHistoryStatus = StatusMessage(kind: .success, text: L10n.tr("听写历史已清除"))
+        } catch {
+            dictationHistoryStatus = StatusMessage(kind: .error, text: error.localizedDescription)
+        }
     }
 
     private func fetchModels() {

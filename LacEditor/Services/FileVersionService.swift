@@ -6,6 +6,8 @@ struct FileVersionInfo: Identifiable, Sendable, Equatable {
     let computerName: String?
     /// Путь содержимого версии в системном хранилище; читать сразу, не хранить.
     let contentURL: URL
+    /// Название снимка (режим «снимки»); у системных версий nil.
+    var title: String? = nil
 }
 
 enum FileVersionService {

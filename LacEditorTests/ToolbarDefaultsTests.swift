@@ -25,7 +25,8 @@ final class ToolbarDefaultsTests: XCTestCase {
             NSToolbarItem.Identifier.flexibleSpace.rawValue, "LacEditor.Sidebar",
             NSToolbarItem.Identifier.sidebarTrackingSeparator.rawValue, "LacEditor.WindowTitle",
             NSToolbarItem.Identifier.flexibleSpace.rawValue, "LacEditor.Find", "LacEditor.Language",
-            "LacEditor.MarkdownPresentation", "LacEditor.ReadingMode", "LacEditor.Dictation", "LacEditor.Preview"
+            "LacEditor.MarkdownPresentation", "LacEditor.ReadingMode", "LacEditor.Dictation", "LacEditor.WriterMode",
+            "LacEditor.Preview"
         ])
     }
 
@@ -35,7 +36,7 @@ final class ToolbarDefaultsTests: XCTestCase {
         let toolbar = NSToolbar(identifier: NSToolbar.Identifier("t"))
         let allowed = Set(controller.toolbarAllowedItemIdentifiers(toolbar).map(\.rawValue))
         for item in controller.toolbarDefaultItemIdentifiers(toolbar) { XCTAssertTrue(allowed.contains(item.rawValue), item.rawValue) }
-        for name in ["Open", "Save", "History", "NewDocument", "AIWriting", "Import", "Export", "ReadingMode", "Dictation"] {
+        for name in ["Open", "Save", "History", "NewDocument", "AIWriting", "Import", "Export", "ReadingMode", "Dictation", "WriterMode"] {
             XCTAssertTrue(allowed.contains("LacEditor.\(name)"), name)
         }
     }

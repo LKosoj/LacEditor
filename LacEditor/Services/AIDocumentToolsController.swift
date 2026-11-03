@@ -58,6 +58,17 @@ final class AIDocumentToolsController: ObservableObject {
          recognize: @escaping (URL, AIModelProfile, String?) async throws -> String = { try await AIMediaClient().recognize(fileURL: $0, profile: $1, key: $2) },
          loadKey: @escaping (AIRole, String) throws -> String? = { try AIKeychainStore().load(for: $0, baseURL: $1) }) {
         self.appState = appState; self.generate = generate; self.recognize = recognize; self.loadKey = loadKey
+        worldObservation = appState.$writerSession
+            .map { session -> AnyPublisher<Bool, Never> in
+                guard let session else { return Just(false).eraseToAnyPublisher() }
+                return session.world.catalog.$cards.map { !$0.isEmpty }.eraseToAnyPublisher()
+            }
+            .switchToLatest()
+            .removeDuplicates()
+            .sink { [weak self] in self?.hasWorldCards = $0 }
+        Task { [weak appState] in
+            if appState?.writerSession?.world.catalog.cards.isEmpty == true { appState?.refreshWorld() }
+        }
     }
     deinit { task?.cancel() }
 
@@ -101,6 +112,23 @@ final class AIDocumentToolsController: ObservableObject {
     func addFiles() {
         let panel = NSOpenPanel(); panel.allowsMultipleSelection = true; panel.canChooseDirectories = false
         if panel.runModal() == .OK { for url in panel.urls where !inputs.contains(.file(url)) { inputs.append(.file(url)) } }
+    }
+    /// Есть ли у вкладки писательский проект с карточками мира (обновляется вместе с каталогом).
+    @Published private(set) var hasWorldCards = false
+    private var worldObservation: AnyCancellable?
+
+    /// Добавляет файлы карточек, упомянутых в текущем документе и добавленных файлах (без `ai: exclude`).
+    func addWorldCards() {
+        guard let appState else { return }
+        let current = inputs.compactMap { input -> URL? in if case .file(let url) = input { return url } else { return nil } }
+        Task { [weak self] in
+            let urls = await appState.mentionedStoryCardURLs(files: current)
+            guard let self else { return }
+            let fresh = urls.map { AIContextInput.file($0) }.filter { !self.inputs.contains($0) }
+            guard !fresh.isEmpty else { self.post(L10n.tr("没有可添加的卡片"), kind: .info); return }
+            self.inputs.append(contentsOf: fresh)
+            self.post(L10n.tr("已添加 %lld 张卡片", fresh.count), kind: .info)
+        }
     }
     func chooseFile() {
         let panel = NSOpenPanel(); panel.canChooseDirectories = false

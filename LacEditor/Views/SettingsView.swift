@@ -51,7 +51,7 @@ extension SettingsSection {
         case .appearance:
             ["界面主题", "外观", "语言", "界面语言", "窗口界面", "显示状态栏", "Markdown 浅色外观颜色", "Markdown 深色外观颜色"]
         case .files:
-            ["离开与继续", "启动文件夹", "模板与每日笔记", "模板文件夹", "每日笔记文件夹", "每日笔记日期格式", "本地恢复", "异常关闭保护"]
+            ["离开与继续", "启动文件夹", "模板与每日笔记", "模板文件夹", "每日笔记文件夹", "每日笔记日期格式", "本地恢复", "异常关闭保护", "自动保存", "启用自动保存", "自动保存间隔", "快照", "保留的快照数量"]
         case .snippets:
             ["文本片段列表", "添加文本片段"]
         case .associations:
@@ -69,7 +69,7 @@ extension SettingsSection {
         case .ai:
             ["AI 功能", "文本模型", "判断模型", "图像模型", "文字识别模型", "语音转写模型", "API 密钥", "服务地址", "模型名称", "自定义检查",
              "Jina 搜索", "Jina 网页读取", "系统拼写检查", "系统语法检查", "接口格式", "完整接口地址",
-             "检查名称", "为功能选择模型", "整理听写文字的模型", "添加检查"]
+             "检查名称", "为功能选择模型", "整理听写文字的模型", "保存听写历史", "清除听写历史", "添加检查"]
         case .about:
             []
         }
@@ -146,6 +146,7 @@ private struct SettingsScrollRequest: Equatable {
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
+    @ObservedObject private var navigator = SettingsNavigator.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(L10n.languageKey) private var appLanguage = "system"
     @State private var selection: SettingsSection
@@ -158,8 +159,8 @@ struct SettingsView: View {
     private static let fontFamilies = NSFontManager.shared.availableFontFamilies.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
 
     init(initialSection: SettingsSection = .editor) {
-        _selection = State(initialValue: initialSection)
-        _visited = State(initialValue: [initialSection])
+        _selection = State(initialValue: SettingsNavigator.shared.request?.section ?? initialSection)
+        _visited = State(initialValue: [SettingsNavigator.shared.request?.section ?? initialSection])
     }
 
     private func orderedListStyleName(_ style: MarkdownOrderedListStyle) -> String {
@@ -201,6 +202,9 @@ struct SettingsView: View {
         .tint(LacEditorDesign.accent)
         .foregroundStyle(.primary)
         .environment(\.settingsHighlightedTitle, highlightedTitle)
+        .onChange(of: navigator.request) { _, request in
+            if let request { select(request.section) }
+        }
     }
 
     private func select(_ section: SettingsSection) {
@@ -741,6 +745,39 @@ struct SettingsView: View {
             PreferenceGroup(title: L10n.tr("本地恢复")) {
                 PreferenceRow(title: L10n.tr("异常关闭保护"), detail: L10n.tr("未保存内容保留在本机恢复目录。恢复副本与主动保存文件是两回事。")) {
                     Label(L10n.tr("本地保留"), systemImage: "internaldrive").font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+            PreferenceGroup(title: L10n.tr("自动保存")) {
+                PreferenceRow(title: L10n.tr("启用自动保存"), detail: L10n.tr("每隔选定时间保存已有磁盘路径的更改文件；新文档不受影响。")) {
+                    Toggle(L10n.tr("启用自动保存"), isOn: Binding(
+                        get: { appState.preferences.autosaveEnabled },
+                        set: { appState.preferences.autosaveEnabled = $0 }
+                    )).labelsHidden().toggleStyle(.switch)
+                }
+                rowDivider
+                PreferenceRow(title: L10n.tr("自动保存间隔"), detail: "") {
+                    Picker(L10n.tr("自动保存间隔"), selection: Binding(
+                        get: { appState.preferences.autosaveInterval },
+                        set: { appState.preferences.autosaveInterval = $0 }
+                    )) {
+                        Text(L10n.tr("30 秒")).tag(30)
+                        Text(L10n.tr("1 分钟")).tag(60)
+                        Text(L10n.tr("5 分钟")).tag(300)
+                    }.labelsHidden().frame(maxWidth: 160)
+                    .disabled(!appState.preferences.autosaveEnabled)
+                }
+                rowDivider
+                PreferenceRow(title: L10n.tr("快照"), detail: "") {
+                    Picker(L10n.tr("保留的快照数量"), selection: Binding(
+                        get: { appState.preferences.snapshotKeepLimit },
+                        set: { appState.preferences.snapshotKeepLimit = $0 }
+                    )) {
+                        Text(L10n.tr("全部")).tag(0)
+                        ForEach(AppPreferences.snapshotKeepLimits.dropFirst(), id: \.self) { count in
+                            Text(L10n.tr("最近 %d 个", count)).tag(count)
+                        }
+                    }.labelsHidden().frame(maxWidth: 220)
+                    .accessibilityLabel(L10n.tr("保留的快照数量"))
                 }
             }
             if AppEnvironment.isExperiment {

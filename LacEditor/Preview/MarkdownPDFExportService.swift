@@ -216,7 +216,7 @@ final class MarkdownPDFExportService: NSObject, WKNavigationDelegate {
                mathOptions: MathJaxRenderService.Options = .init(), options: MarkdownNativeExportOptions = .init(),
                headers: MarkdownPDFHeaderFooterOptions = .init(), sourceURL: URL? = nil,
                htmlOptions: MarkdownHTMLExportOptions = .init(), syntax: MarkdownSyntaxOptions = .init(),
-               wiki: MarkdownWikiLinkSource? = nil, allowRemoteImages: Bool = false) {
+               wiki: MarkdownWikiLinkSource? = nil, allowRemoteImages: Bool = false, critic: CriticMarkupRenderMode? = nil) {
         self.htmlOptions = htmlOptions
         self.options = options
         self.headers = headers
@@ -280,7 +280,7 @@ final class MarkdownPDFExportService: NSObject, WKNavigationDelegate {
                 } : nil
                 var page = MarkdownRenderer.renderPage(snapshot.text, darkMode: darkMode, includeHTMLMedia: isHTML, renderEmoji: true,
                                                        resolveLocalImages: !isHTML, documentURL: sourceURL, prepareRemoteImages: !isHTML, syntax: syntax, forExport: true, includeHeadingNumbers: true, includeListStyles: true,
-                                                       staticWidgetFallback: !isHTML, preserveRawHTMLBlocks: isHTML, highlightCode: !isHTML, wiki: wikiContext)
+                                                       staticWidgetFallback: !isHTML, preserveRawHTMLBlocks: isHTML, highlightCode: !isHTML, wiki: wikiContext, critic: critic)
                 if remoteImagesAllowed { try? await page.resolveRemoteImages(session: imageSession) }
                 else { try? page.hideRemoteImages() }
                 try? page.prepareLocalMedia(load: true)

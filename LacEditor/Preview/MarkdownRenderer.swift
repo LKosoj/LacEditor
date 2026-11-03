@@ -362,6 +362,7 @@ struct MarkdownRenderedPage: Sendable {
         sup.footnote-ref a, a.footnote-backref { text-decoration-line: underline; }
         mark { outline: 1px solid var(--text); }
       }
+      \(CriticMarkupPreviewStyle.css)
       @media print {
         :root, :root[data-theme="dark"] {
           color-scheme: light;
@@ -413,8 +414,18 @@ enum MarkdownRenderer {
                            syntax: MarkdownSyntaxOptions = .init(), forExport: Bool = false, includeHeadingNumbers: Bool = false, includeListStyles: Bool = false,
                            staticWidgetFallback: Bool = false, preserveRawHTMLBlocks: Bool = false,
                            includeSourcePositions: Bool = false, isPreview: Bool = false, highlightCode: Bool = false,
-                           wiki: MarkdownWikiLinkContext? = nil) -> MarkdownRenderedPage {
-        let markdown = substitutingWikiLinks(markdown, wiki: wiki, syntax: syntax)
+                           wiki: MarkdownWikiLinkContext? = nil, critic: CriticMarkupRenderMode? = nil) -> MarkdownRenderedPage {
+        // Правки подставляются до wiki-ссылок: служебные символы вместо разделителей, числа строк в .show не меняют.
+        var criticSource = markdown
+        var criticComments: [String] = []
+        var criticMarkerBase: UInt16?
+        if let critic {
+            let prepared = CriticMarkupRender.prepare(criticSource, mode: critic, syntax: syntax)
+            criticSource = prepared.text
+            criticComments = prepared.comments
+            criticMarkerBase = prepared.markerBase
+        }
+        let markdown = substitutingWikiLinks(criticSource, wiki: wiki, syntax: syntax)
         // Позиции исходника нужны только предпросмотру; в экспорт, PDF и копирование они не попадают.
         let sourcePositions = includeSourcePositions && !forExport
         let remoteImageMarkers = RemoteImageMarkers()
@@ -435,6 +446,7 @@ enum MarkdownRenderer {
             .replacingOccurrences(of: "</table>", with: "</table></div>")
             .replacingOccurrences(of: "<pre>", with: "<pre \(preAttributes)>")
             .replacingOccurrences(of: "<pre data-sourcepos=\"", with: "<pre \(preAttributes) data-sourcepos=\"")
+        if let criticMarkerBase { body = CriticMarkupRender.finalize(html: body, comments: criticComments, markerBase: criticMarkerBase) }
         // Подсказка нужна только предпросмотру пустого или состоящего из пробелов документа; экспорт и печать остаются пустыми.
         if isPreview, !forExport, markdown.allSatisfy(\.isWhitespace) {
             body = "<p class=\"lac-empty\">" + htmlEscaped(L10n.tr("预览为空。在编辑器中输入 Markdown 后，内容会显示在这里。")) + "</p>"

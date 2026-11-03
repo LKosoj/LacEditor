@@ -65,7 +65,9 @@ let package = Package(
                 .linkedFramework("Security"),
                 .linkedFramework("ImageIO"),
                 .linkedFramework("PDFKit"),
-                .linkedFramework("AVFoundation")
+                .linkedFramework("AVFoundation"),
+                .linkedFramework("NaturalLanguage"),
+                .linkedLibrary("sqlite3")
             ]
         ),
         .testTarget(

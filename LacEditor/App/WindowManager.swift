@@ -108,7 +108,9 @@ final class WindowManager: ObservableObject {
     private var folderMoveDocumentIDs: Set<UUID> = []
     private var folderMovePaths: [URL] = []
     private var folderMoveIdentities: [DocumentFileIdentity] = []
-    private var states: [UUID: AppState] = [:]
+    private(set) var states: [UUID: AppState] = [:]
+    /// Проекты рукописи, открытые в писательском режиме: ключ — стандартизованный путь корня (см. `WindowManager+Writer.swift`).
+    var writerSessions: [String: WriterSession] = [:]
     private var openFileObservations: [UUID: AnyCancellable] = [:]
     /// Слежение за файлами открытых документов; набор каталогов пересчитывается по изменениям состояний окон.
     private(set) lazy var openFileWatcher = OpenFileWatcher(documents: { [weak self] in
@@ -130,6 +132,7 @@ final class WindowManager: ObservableObject {
         let isSidebarVisible: Bool
         let frame: WorkspaceWindowFrame?
         var folderStates: [UUID: FolderWorkspaceSession] = [:]
+        var writerStates: [UUID: WriterProjectSession] = [:]
     }
     private var initialRestoredWindow: RestoredWindow?
     private var pendingRestoredWindows: [RestoredWindow] = []
@@ -315,7 +318,7 @@ final class WindowManager: ObservableObject {
     private func openFile(_ url: URL, line: Int, column: Int) {
         guard let state = activeState else { return }
         Task { @MainActor [weak self, weak state] in
-            guard let self, let state, let opened = await self.openFolderSearchFile(url, preferredState: state) else { return }
+            guard let self, let state, let opened = await self.openFolderSearchFile(url, preferredState: state, inheritsWriter: false) else { return }
             let text = opened.snapshot.text
             let location = LogicalLineIndex(text: text).location(line: line, column: column, in: text as NSString)
                 ?? (text as NSString).length
@@ -503,10 +506,13 @@ final class WindowManager: ObservableObject {
     }
 
     @discardableResult
-    func openNativeTab(from source: AppState? = nil, with document: EditorDocument? = nil) -> AppState {
+    func openNativeTab(from source: AppState? = nil, with document: EditorDocument? = nil, inheritsWriter: Bool = false) -> AppState {
         let source = source ?? activeState
         let parent = source?.hostWindow
         let state = openNewWindow(with: document)
+        if inheritsWriter, let session = inheritedWriterSession(from: source, openingFileAt: document?.url) {
+            attachWriter(session, to: state)
+        }
         if let source { state.isSidebarVisible = source.isSidebarVisible }
         if let parent, parent.isVisible || parent.tabGroup?.windows.contains(where: { $0.isVisible }) == true, let window = state.hostWindow {
             parent.addTabbedWindow(window, ordered: .above)
@@ -595,7 +601,8 @@ final class WindowManager: ObservableObject {
     func openFile(
         _ url: URL,
         preferredState: AppState?,
-        createWindowIfNeeded: Bool = false
+        createWindowIfNeeded: Bool = false,
+        inheritsWriter: Bool = false
     ) -> (state: AppState, document: EditorDocument)? {
         let identity = DocumentFileIdentity.resolve(url)
         if folderMovePaths.contains(where: { Self.pathsOverlap($0, url) || Self.pathsOverlap($0, url.resolvingSymlinksInPath()) }) ||
@@ -605,6 +612,11 @@ final class WindowManager: ObservableObject {
         }
         if let match = openDocument(matching: identity) {
             focus(match.document, in: match.state)
+            // Файл проекта, уже открытый в обычной вкладке, присоединяется к проекту (Р6); чужой проект не трогаем.
+            if inheritsWriter, match.state.writerSession == nil,
+               let session = inheritedWriterSession(from: preferredState ?? activeState, openingFileAt: url) {
+                attachWriter(session, to: match.state)
+            }
             return match
         }
         let candidate = preferredState ?? activeState
@@ -616,6 +628,10 @@ final class WindowManager: ObservableObject {
             target = candidate
         } else {
             target = openNativeTab(from: candidate)
+        }
+        if inheritsWriter, target.writerSession == nil,
+           let session = inheritedWriterSession(from: candidate, openingFileAt: url) {
+            attachWriter(session, to: target)
         }
         target.hostWindow?.makeKeyAndOrderFront(nil)
         target.beginOpeningFile(url)
@@ -770,6 +786,8 @@ final class WindowManager: ObservableObject {
             oldGroups: oldGroups, newGroups: sidebarLibrary.groups, isLink: isLink,
             oldRecentFolders: oldRecentFolders, newRecentFolders: recentFiles.folderURLs,
             oldPinnedFolders: oldPinnedFolders, newPinnedFolders: sidebarLibrary.pinnedFolderPaths)
+        // Переименование и перенос через приложение обновляют путь узла проекта рукописи; id узла не меняется.
+        writerSessions[root.standardizedFileURL.path]?.projectStore.renameFile(oldURL: source, newURL: destination)
         state.folderWorkspace.refresh()
         return (true, identity, updateLists ? listChanges : nil)
     }
@@ -1006,11 +1024,11 @@ final class WindowManager: ObservableObject {
         return .init(documentID: document.id, title: document.displayName, snapshot: snapshot, skip: nil)
     }
 
-    func openFolderSearchFile(_ url: URL, preferredState: AppState) async -> FolderSearchService.OpenDocument? {
+    func openFolderSearchFile(_ url: URL, preferredState: AppState, inheritsWriter: Bool = true) async -> FolderSearchService.OpenDocument? {
         guard !Task.isCancelled else { return nil }
         let expected = DocumentFileIdentity.resolve(url)
         pendingNavigationOrigin = preferredState.selectedDocument.map { (url: url, location: navigationLocation(of: $0)) }
-        guard !Task.isCancelled, let opened = openFile(url, preferredState: preferredState), !Task.isCancelled else {
+        guard !Task.isCancelled, let opened = openFile(url, preferredState: preferredState, inheritsWriter: inheritsWriter), !Task.isCancelled else {
             pendingNavigationOrigin = nil
             return nil
         }
@@ -1507,9 +1525,21 @@ final class WindowManager: ObservableObject {
         }
     }
 
+    /// Идёт подтверждение закрытия окна или выхода (от первого вопроса до фактического закрытия): автосохранение в это время не пишет.
+    private var closeConfirmationCount = 0
+    var isConfirmingClose: Bool { closeConfirmationCount > 0 }
+
+    func beginCloseConfirmation() { closeConfirmationCount += 1 }
+
+    func endCloseConfirmation() { closeConfirmationCount = max(0, closeConfirmationCount - 1) }
+
     func confirmClosingAllWindows(completion: @escaping (Bool) -> Void) {
         terminationApproved = false
-        confirmClosingStates(Array(states.values), completion: completion)
+        beginCloseConfirmation()
+        confirmClosingStates(Array(states.values)) { [weak self] approved in
+            self?.endCloseConfirmation()
+            completion(approved)
+        }
     }
 
     func requestApplicationTermination(
@@ -1701,7 +1731,9 @@ final class WindowManager: ObservableObject {
                     scrollPositionRatio: document.scrollPositionRatio,
                     isPreviewVisible: document.isPreviewVisible,
                     fileRevisionSnapshot: document.fileRevisionSnapshot,
-                    folderWorkspace: state.folderWorkspace.sessionState
+                    folderWorkspace: state.folderWorkspace.sessionState,
+                    writerProject: state.writerSession.map { WriterProjectSession(rootPath: $0.rootURL.path, projectID: $0.projectID) }
+                        ?? state.pendingWriterProject
                 )
             } }
             snapshots.append(WorkspaceWindowSnapshot(
@@ -1763,6 +1795,9 @@ final class WindowManager: ObservableObject {
                     frame: window.frame,
                     folderStates: Dictionary(window.documents.compactMap { reference in
                         reference.snapshot.folderWorkspace.map { (reference.snapshot.documentID, $0) }
+                    }, uniquingKeysWith: { first, _ in first }),
+                    writerStates: Dictionary(window.documents.compactMap { reference in
+                        reference.snapshot.writerProject.map { (reference.snapshot.documentID, $0) }
                     }, uniquingKeysWith: { first, _ in first })
                 )
             }
@@ -1785,7 +1820,8 @@ final class WindowManager: ObservableObject {
                         selectedDocumentID: first.selectedDocumentID,
                         isSidebarVisible: first.isSidebarVisible,
                         frame: first.frame,
-                        folderStates: first.folderStates
+                        folderStates: first.folderStates,
+                        writerStates: first.writerStates
                     )
                 }
             }
@@ -1890,12 +1926,14 @@ final class WindowManager: ObservableObject {
         if let id = restoration.documents.first?.id, let folder = restoration.folderStates[id] {
             state.folderWorkspace.restore(folder)
         }
+        if let id = restoration.documents.first?.id { restoreWriterProject(restoration.writerStates[id], in: state) }
         applyFrame(restoration.frame, to: window)
         var selectedWindow = window
         var previousWindow = window
         for document in restoration.documents.dropFirst() {
             let tabState = openNewWindow(with: document)
             if let folder = restoration.folderStates[document.id] { tabState.folderWorkspace.restore(folder) }
+            restoreWriterProject(restoration.writerStates[document.id], in: tabState)
             guard let tabWindow = tabState.hostWindow else { continue }
             previousWindow.addTabbedWindow(tabWindow, ordered: .above)
             previousWindow = tabWindow

@@ -76,6 +76,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         static let markdownPresentation = NSToolbarItem.Identifier("LacEditor.MarkdownPresentation")
         static let readingMode = NSToolbarItem.Identifier("LacEditor.ReadingMode")
         static let dictation = NSToolbarItem.Identifier("LacEditor.Dictation")
+        static let writerMode = NSToolbarItem.Identifier("LacEditor.WriterMode")
         static let aiWriting = NSToolbarItem.Identifier("LacEditor.AIWriting")
         static let importDocument = NSToolbarItem.Identifier("LacEditor.Import")
         static let export = NSToolbarItem.Identifier("LacEditor.Export")
@@ -104,6 +105,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         let dictationState: AIDictationController.State
         let dictationEnabled: Bool
         let dictationToolTip: String
+        let writerTitle: String?
     }
     private let titleField = TitlePathField(labelWithString: "LacEditor")
     private let languageButton = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -115,9 +117,12 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
     private weak var markdownPresentationItem: NSToolbarItem?
     private weak var readingModeItem: NSToolbarItem?
     private weak var dictationItem: NSToolbarItem?
+    private weak var writerModeItem: NSMenuToolbarItem?
+    private let writerModeMenu = NSMenu()
     private weak var aiWritingItem: NSToolbarItem?
     private weak var exportItem: NSMenuToolbarItem?
     private let exportMenu = NSMenu()
+    private let dictationMenu = NSMenu()
 
     init(appState: AppState) {
         self.appState = appState
@@ -125,6 +130,8 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         configureTitleField()
         configureLanguageButton()
         exportMenu.delegate = self
+        dictationMenu.delegate = self
+        writerModeMenu.delegate = self
         stateObservation = appState.objectWillChange.sink { [weak self, weak appState] in
             guard let self, !self.updateScheduled else { return }
             self.updateScheduled = true
@@ -147,6 +154,11 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             ItemIdentifier.dictation,
             after: ItemIdentifier.readingMode,
             flag: "LacEditor.ToolbarDictationAdded"
+        )
+        addSavedToolbarItem(
+            ItemIdentifier.writerMode,
+            after: ItemIdentifier.dictation,
+            flag: "LacEditor.ToolbarWriterModeAdded"
         )
         let toolbar = EditorWindowToolbar(
             identifier: NSToolbar.Identifier("LacEditor.EditorToolbar")
@@ -191,18 +203,31 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             readingMode: document?.isReadingMode == true,
             dictationState: dictation.state,
             dictationEnabled: dictation.isButtonEnabled,
-            dictationToolTip: dictation.buttonToolTip
+            dictationToolTip: dictation.buttonToolTip,
+            writerTitle: appState.writerWindowTitlePrefix
         )
         guard presentation != lastPresentation else { return }
         // Items are materialized after makeToolbar returns. Do not cache an
         // unrendered presentation or the first real update would be skipped.
         if previewItem != nil { lastPresentation = presentation }
-        titleField.stringValue = presentation.title
+        titleField.stringValue = presentation.writerTitle.map { "\($0) › \(presentation.title)" } ?? presentation.title
         titleField.toolTip = document?.url?.path ?? L10n.tr("未命名文档")
         titleField.pathURL = document?.url
         if let window = appState.hostWindow {
             if window.title != appState.windowTitle { window.title = appState.windowTitle }
             if window.tab.title != presentation.title { window.tab.title = presentation.title }
+            // Значок пера у вкладки писательского режима; заголовок вкладки остаётся именем документа.
+            if let writerTitle = presentation.writerTitle {
+                let label = L10n.tr("写作模式：%@", writerTitle)
+                if let view = window.tab.accessoryView {
+                    // Название проекта могло смениться: обновляем подпись.
+                    if view.accessibilityLabel() != label { view.setAccessibilityLabel(label) }
+                } else {
+                    window.tab.accessoryView = WriterTabAccessory.make(projectTitle: writerTitle)
+                }
+            } else if window.tab.accessoryView != nil {
+                window.tab.accessoryView = nil
+            }
             if window.isDocumentEdited != presentation.dirty { window.isDocumentEdited = presentation.dirty }
             if window.representedURL != presentation.url { window.representedURL = presentation.url }
         }
@@ -217,6 +242,15 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             accessibilityDescription: dictation.buttonAccessibility
         )
         dictationItem?.toolTip = presentation.dictationToolTip
+        writerModeItem?.image = NSImage(
+            systemSymbolName: presentation.writerTitle == nil ? "pencil.and.outline" : "pencil.circle.fill",
+            accessibilityDescription: L10n.tr("写作模式")
+        )
+        // Без действия клик по кнопке открывает меню (выход и закрытие проекта).
+        writerModeItem?.action = presentation.writerTitle == nil ? #selector(toggleWriterMode) : nil
+        writerModeItem?.toolTip = presentation.writerTitle == nil
+            ? L10n.tr("写作模式")
+            : L10n.tr("写作模式：%@", presentation.writerTitle ?? "")
         sidebarItem?.toolTip = appState.isSidebarVisible
             ? L10n.tr("隐藏侧边栏（⌃⌘B）")
             : L10n.tr("显示侧边栏（⌃⌘B）")
@@ -272,9 +306,9 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             : L10n.tr("进入阅读模式（⌥⌘R）")
         aiWritingItem?.image = NSImage(
             systemSymbolName: appState.isAIWritingVisible ? "sparkles.rectangle.stack.fill" : "sparkles.rectangle.stack",
-            accessibilityDescription: L10n.tr("显示或隐藏 AI 助手")
+            accessibilityDescription: L10n.tr("显示或隐藏检查器（⌥⌘0）")
         )
-        aiWritingItem?.toolTip = L10n.tr("显示或隐藏 AI 助手")
+        aiWritingItem?.toolTip = L10n.tr("显示或隐藏检查器（⌥⌘0）")
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -289,6 +323,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             ItemIdentifier.markdownPresentation,
             ItemIdentifier.readingMode,
             ItemIdentifier.dictation,
+            ItemIdentifier.writerMode,
             ItemIdentifier.preview
         ]
     }
@@ -308,6 +343,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             ItemIdentifier.markdownPresentation,
             ItemIdentifier.readingMode,
             ItemIdentifier.dictation,
+            ItemIdentifier.writerMode,
             ItemIdentifier.preview,
             ItemIdentifier.importDocument,
             ItemIdentifier.export,
@@ -371,9 +407,9 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         case ItemIdentifier.aiWriting:
             let item = makeActionItem(
                 identifier: itemIdentifier,
-                label: L10n.tr("AI 写作助手"),
+                label: L10n.tr("检查器"),
                 symbol: "sparkles.rectangle.stack",
-                toolTip: L10n.tr("显示或隐藏 AI 助手"),
+                toolTip: L10n.tr("显示或隐藏检查器（⌥⌘0）"),
                 action: #selector(toggleAIWriting)
             )
             aiWritingItem = item
@@ -393,15 +429,37 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             refreshAfterItemCreation()
             return item
         case ItemIdentifier.dictation:
-            let item = makeActionItem(
-                identifier: itemIdentifier,
-                label: AIFeature.voiceDraft.title,
-                symbol: "mic",
-                toolTip: AIFeature.voiceDraft.title,
-                action: #selector(toggleDictation)
+            // Значок запускает запись, стрелка открывает меню последних диктовок.
+            let item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = AIFeature.voiceDraft.title
+            item.paletteLabel = AIFeature.voiceDraft.title
+            item.image = NSImage(
+                systemSymbolName: "mic",
+                accessibilityDescription: AIFeature.voiceDraft.title
             )
+            item.toolTip = AIFeature.voiceDraft.title
+            item.target = self
+            item.action = #selector(toggleDictation)
+            item.menu = dictationMenu
+            item.showsIndicator = true
             item.autovalidates = false
+            rebuildDictationMenu()
             dictationItem = item
+            refreshAfterItemCreation()
+            return item
+        case ItemIdentifier.writerMode:
+            // Значок включает или выключает режим, стрелка открывает меню проекта.
+            let item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = L10n.tr("写作模式")
+            item.paletteLabel = L10n.tr("写作模式")
+            item.image = NSImage(systemSymbolName: "pencil.and.outline", accessibilityDescription: L10n.tr("写作模式"))
+            item.toolTip = L10n.tr("写作模式")
+            item.target = self
+            item.action = #selector(toggleWriterMode)
+            item.menu = writerModeMenu
+            item.showsIndicator = true
+            item.autovalidates = false
+            writerModeItem = item
             refreshAfterItemCreation()
             return item
         case ItemIdentifier.importDocument:
@@ -570,6 +628,14 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        if menu === dictationMenu {
+            rebuildDictationMenu()
+            return
+        }
+        if menu === writerModeMenu {
+            rebuildWriterModeMenu()
+            return
+        }
         guard menu === exportMenu else { return }
         rebuildExportMenu()
     }
@@ -580,6 +646,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         addExportItem(title: L10n.tr("HTML（无样式）"), action: #selector(exportPlainHTML))
         addExportItem(title: "PDF", action: #selector(exportPDF))
         addExportItem(title: "PNG", action: #selector(exportPNG))
+        addExportItem(title: L10n.tr("Fountain 剧本…"), action: #selector(exportFountain))
 
         let profiles = appState?.preferences.markdownExportConfiguration.profiles.filter(\.enabled) ?? []
         if !profiles.isEmpty {
@@ -611,6 +678,97 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
         exportMenu.addItem(item)
+    }
+
+    private func rebuildWriterModeMenu() {
+        writerModeMenu.removeAllItems()
+        if appState?.writerSession == nil {
+            addWriterMenuItem(title: L10n.tr("写作模式"), action: #selector(toggleWriterMode))
+        } else {
+            addWriterMenuItem(title: L10n.tr("退出写作模式"), action: #selector(exitWriterMode))
+            addWriterMenuItem(title: L10n.tr("关闭项目"), action: #selector(closeWriterProject))
+            writerModeMenu.addItem(.separator())
+            addWriterMenuItem(title: L10n.tr("制作快照…"), action: #selector(makeWriterSnapshot))
+            writerModeMenu.items.last?.isEnabled = appState?.canMakeSnapshot == true
+            addWriterMenuItem(title: L10n.tr("导图…"), action: #selector(openMindMap))
+            writerModeMenu.items.last?.isEnabled = appState?.mindMapUnavailableReason(for: .document) == nil
+        }
+        // Доступность пунктов задаём сами, без автопроверки по цели.
+        writerModeMenu.autoenablesItems = false
+    }
+
+    private func addWriterMenuItem(title: String, action: Selector) {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        writerModeMenu.addItem(item)
+    }
+
+    @objc private func toggleWriterMode() {
+        guard let appState else { return }
+        // В писательской вкладке клик только открывает меню (выход — пункт меню), поэтому действие здесь лишь включает режим.
+        if appState.writerSession == nil { appState.enableWriterMode() }
+    }
+
+    @objc private func exitWriterMode() {
+        appState?.exitWriterMode()
+    }
+
+    @objc private func makeWriterSnapshot() {
+        appState?.makeSnapshot()
+    }
+
+    @objc private func openMindMap() {
+        appState?.presentMindMap(kind: .document)
+    }
+
+    @objc private func closeWriterProject() {
+        appState?.closeWriterProject()
+    }
+
+    private func rebuildDictationMenu() {
+        dictationMenu.removeAllItems()
+        let parent = NSMenuItem(title: L10n.tr("最近的听写"), action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        let entries = appState?.aiDictation.history.recent() ?? []
+        if entries.isEmpty {
+            let empty = NSMenuItem(title: L10n.tr("暂无听写"), action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            submenu.addItem(empty)
+        }
+        for entry in entries {
+            let item = NSMenuItem(title: Self.dictationMenuTitle(entry), action: nil, keyEquivalent: "")
+            let choices = NSMenu()
+            choices.autoenablesItems = false
+            let cleaned = NSMenuItem(
+                title: L10n.tr("插入整理后的文字"),
+                action: #selector(insertDictationFromHistory(_:)),
+                keyEquivalent: ""
+            )
+            cleaned.target = self
+            cleaned.representedObject = DictationHistoryChoice(id: entry.id, variant: .cleaned)
+            cleaned.isEnabled = entry.cleanedText != nil
+            let raw = NSMenuItem(
+                title: L10n.tr("插入原始识别文字"),
+                action: #selector(insertDictationFromHistory(_:)),
+                keyEquivalent: ""
+            )
+            raw.target = self
+            raw.representedObject = DictationHistoryChoice(id: entry.id, variant: .raw)
+            choices.addItem(cleaned)
+            choices.addItem(raw)
+            item.submenu = choices
+            submenu.addItem(item)
+        }
+        parent.submenu = submenu
+        dictationMenu.addItem(parent)
+    }
+
+    /// «Дата и время · первые 40 знаков» (очищенный текст, иначе исходный; переводы строк заменены пробелами).
+    private static func dictationMenuTitle(_ entry: DictationHistoryEntry) -> String {
+        let source = (entry.cleanedText ?? entry.rawText).split(whereSeparator: \.isNewline).joined(separator: " ")
+        let preview = source.count > 40 ? String(source.prefix(40)) + "…" : source
+        return "\(entry.date.formatted(date: .abbreviated, time: .shortened)) · \(preview)"
     }
 
     private func makeActionItem(
@@ -721,6 +879,10 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         appState?.exportMarkdownImage()
     }
 
+    @objc private func exportFountain() {
+        appState?.presentFountainExport(scope: .document)
+    }
+
     @objc private func exportProfile(_ sender: NSMenuItem) {
         guard let profile = sender.representedObject as? MarkdownExportProfile else { return }
         appState?.exportMarkdown(profile: profile)
@@ -768,6 +930,11 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         appState?.aiDictation.toggle()
     }
 
+    @objc private func insertDictationFromHistory(_ sender: NSMenuItem) {
+        guard let choice = sender.representedObject as? DictationHistoryChoice else { return }
+        appState?.aiDictation.insertFromHistory(id: choice.id, variant: choice.variant)
+    }
+
     @objc private func toggleMarkdownPresentation() {
         guard let document = appState?.selectedDocument,
               document.language == .markdown else { return }
@@ -778,6 +945,12 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
         }
         update()
     }
+}
+
+/// Что вставить из истории диктовок; хранится в `representedObject` пункта меню.
+private struct DictationHistoryChoice {
+    let id: UUID
+    let variant: AIDictationController.HistoryVariant
 }
 
 private final class EditorWindowToolbar: NSToolbar {

@@ -100,6 +100,10 @@ final class DocumentTaskCoordinator: @unchecked Sendable {
         case lineEndings
         case lineEndingConversion
         case symbolOutline
+        case styleCheck
+        case styleReview
+        case worldCards
+        case mindMap
     }
 
     private let lock = NSLock()

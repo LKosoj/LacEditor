@@ -939,7 +939,7 @@ enum PandocExportService {
     static func prepare(text original: String, source: URL?, destination: URL, profile: MarkdownExportProfile,
                         title: String, executable: URL? = nil, isCancelled: @escaping () -> Bool = { false },
                         htmlOptions: MarkdownHTMLExportOptions? = nil, syntax: MarkdownSyntaxOptions = .init(),
-                        wiki: MarkdownWikiLinkSource? = nil) throws -> PandocExportResult {
+                        wiki: MarkdownWikiLinkSource? = nil, critic: CriticMarkupExportMode = .clean) throws -> PandocExportResult {
         if isCancelled() { throw CancellationError() }
         guard let pandoc = executable ?? findPandoc() else { throw PandocExportError.missingPandoc }
         guard ["", "mediawiki", "latex"].contains(profile.rawType) else { throw PandocExportError.invalidConfiguration(L10n.tr("不支持此原始类型")) }
@@ -973,7 +973,9 @@ enum PandocExportService {
                 throw PandocExportError.invalidConfiguration(L10n.tr("原始类型与输出格式不匹配"))
             }
         }
-        let snapshot = try markedExportSnapshot(original, syntax: syntax, includeTOC: !profile.rawType.isEmpty, wiki: wiki, isCancelled: isCancelled)
+        let criticWriter = profile.writer.isEmpty ? ext.lowercased() : String(profile.writer.prefix { $0 != "+" && $0 != "-" })
+        let criticSource = CriticMarkupPandoc.source(for: original, mode: critic, supportsTracked: criticWriter.lowercased() == "docx", syntax: syntax)
+        let snapshot = try markedExportSnapshot(criticSource.text, syntax: syntax, includeTOC: !profile.rawType.isEmpty, wiki: wiki, isCancelled: isCancelled)
         let manager = FileManager.default
         let temporary = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try manager.createDirectory(at: temporary, withIntermediateDirectories: false)
@@ -1120,6 +1122,7 @@ enum PandocExportService {
                 tree = try resolveRootImages(in: tree, text: original, document: source, isCancelled: isCancelled)
             }
         }
+        if let prefix = criticSource.prefix { CriticMarkupPandoc.apply(to: &tree, prefix: prefix) }
         tree = try restoreMath(in: tree, markers: snapshot.math, latexWhitespace: ["latex", "tex"].contains(selectedWriter.lowercased()), isCancelled: isCancelled)
         let latexAssets = ["latex", "tex"].contains(selectedWriter.lowercased())
             ? try stageLatexImages(in: &tree, destination: destination, temporary: temporary, isCancelled: isCancelled) : nil
@@ -1160,10 +1163,12 @@ enum PandocExportService {
     static func prepare(
         text original: String, source: URL?, destination: URL, format: PandocExportFormat,
         title: String, executable: URL? = nil, isCancelled: @escaping () -> Bool = { false },
-        htmlOptions: MarkdownHTMLExportOptions = .init(), syntax: MarkdownSyntaxOptions = .init(), wiki: MarkdownWikiLinkSource? = nil
+        htmlOptions: MarkdownHTMLExportOptions = .init(), syntax: MarkdownSyntaxOptions = .init(), wiki: MarkdownWikiLinkSource? = nil,
+        critic: CriticMarkupExportMode = .clean
     ) throws -> PandocExportResult {
         guard let pandoc = executable ?? findPandoc() else { throw PandocExportError.missingPandoc }
-        let snapshot = try markedExportSnapshot(original, syntax: syntax, includeTOC: false, wiki: wiki, isCancelled: isCancelled)
+        let criticSource = CriticMarkupPandoc.source(for: original, mode: critic, supportsTracked: format.supportsTrackedChanges, syntax: syntax)
+        let snapshot = try markedExportSnapshot(criticSource.text, syntax: syntax, includeTOC: false, wiki: wiki, isCancelled: isCancelled)
         let emojiText = snapshot.text
         let rootedText: String
         if format == .html {
@@ -1221,6 +1226,7 @@ enum PandocExportService {
                 let resolved = try resolveRootImages(in: ["meta": metadata], text: original, document: source, isCancelled: isCancelled)
                 tree["meta"] = resolved["meta"]
             } else if needsRootImages { tree = try resolveRootImages(in: tree, text: original, document: source, isCancelled: isCancelled) }
+            if let prefix = criticSource.prefix { CriticMarkupPandoc.apply(to: &tree, prefix: prefix) }
             tree = try restoreMath(in: tree, markers: snapshot.math, latexWhitespace: format == .latex, isCancelled: isCancelled)
             if format == .latex { latexAssets = try stageLatexImages(in: &tree, destination: destination, temporary: temporary, isCancelled: isCancelled) }
             try JSONSerialization.data(withJSONObject: tree).write(to: ast, options: .atomic)

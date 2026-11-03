@@ -3,6 +3,7 @@ import Foundation
 enum AIFeature: String, CaseIterable, Identifiable, Codable {
     case clarity, rewrite, completion, consistency, readerReview, structure, summary, sources, metadata, translation, tasksAndDecisions, table, illustration, imageDescription, imageEdit
     case contextReview, compareVersions, customCheck, recognizeDocument, voiceDraft, mermaid, ask, agent
+    case styleReview, searchExpansion, worldCards, mindMap, fountainAdaptation
 
     var id: String { rawValue }
 
@@ -31,6 +32,11 @@ enum AIFeature: String, CaseIterable, Identifiable, Codable {
         case .mermaid: L10n.tr("生成 Mermaid 图表")
         case .ask: L10n.tr("向文档提问")
         case .agent: L10n.tr("AI 代理")
+        case .styleReview: L10n.tr("文风检查")
+        case .searchExpansion: L10n.tr("按含义扩展搜索词")
+        case .worldCards: L10n.tr("查找设定条目")
+        case .mindMap: L10n.tr("生成导图")
+        case .fountainAdaptation: L10n.tr("改编为 Fountain 剧本")
         }
     }
 
@@ -74,7 +80,8 @@ enum AIFeature: String, CaseIterable, Identifiable, Codable {
         case .illustration: L10n.tr("描述需要生成的插图；留空则使用所选文本")
         case .imageEdit: L10n.tr("描述需要如何修改图片")
         case .imageDescription: nil
-        case .contextReview, .compareVersions, .customCheck, .recognizeDocument, .voiceDraft, .mermaid, .ask, .agent: nil
+        case .contextReview, .compareVersions, .customCheck, .recognizeDocument, .voiceDraft, .mermaid, .ask, .agent,
+             .styleReview, .searchExpansion, .worldCards, .mindMap, .fountainAdaptation: nil
         }
     }
 }
@@ -98,8 +105,9 @@ extension AIFeature {
         switch self {
         case .clarity, .rewrite, .completion, .translation, .table, .summary, .metadata, .tasksAndDecisions: .writing
         case .consistency, .readerReview, .structure, .sources, .contextReview, .compareVersions,
-             .customCheck, .ask, .agent: .analysis
-        case .illustration, .imageDescription, .imageEdit, .recognizeDocument, .voiceDraft, .mermaid: .media
+             .customCheck, .ask, .agent, .styleReview, .searchExpansion, .worldCards: .analysis
+        case .illustration, .imageDescription, .imageEdit, .recognizeDocument, .voiceDraft, .mermaid, .mindMap: .media
+        case .fountainAdaptation: .writing
         }
     }
 
@@ -108,7 +116,7 @@ extension AIFeature {
     var needs: String {
         switch self {
         case .table: L10n.tr("需要：选中的文本")
-        case .clarity, .structure, .summary, .metadata, .consistency, .tasksAndDecisions: L10n.tr("需要：选中的文本，没有选区时使用整篇文档")
+        case .clarity, .structure, .summary, .metadata, .consistency, .tasksAndDecisions, .styleReview, .worldCards, .mindMap: L10n.tr("需要：选中的文本，没有选区时使用整篇文档")
         case .rewrite: L10n.tr("需要：选中的文本；选择「调整语气」时还需填写期望的语气")
         case .completion: L10n.tr("需要：光标前后的文字、文件类型和当前章节标题")
         case .readerReview: L10n.tr("需要：选中的文本或整篇文档；可填写目标读者，留空则按普通读者")
@@ -124,6 +132,8 @@ extension AIFeature {
         case .voiceDraft: L10n.tr("需要：麦克风；点击工具栏的麦克风按钮开始录音，再次点击停止")
         case .mermaid: L10n.tr("需要：选中的文本，并说明要绘制的图表")
         case .ask: L10n.tr("需要：一个问题，以及当前文档（选区或全文）、当前窗口已打开的文档或所选文件")
+        case .searchExpansion: L10n.tr("需要：搜索词")
+        case .fountainAdaptation: L10n.tr("需要：要改编的场景文本，逐个场景发送")
         case .agent: L10n.tr("需要：一个任务。代理会自行读取当前窗口已打开的文档和工作文件夹中的文件，读取的内容会发送给 AI 服务器")
         }
     }
@@ -153,10 +163,23 @@ extension AIFeature {
         case .recognizeDocument: L10n.tr("结果：识别出的文字，可插入文档")
         case .voiceDraft: L10n.tr("结果：识别并整理后的文字，插入光标处")
         case .mermaid: L10n.tr("结果：Mermaid 图表代码，可插入文档")
+        case .styleReview: L10n.tr("结果：文风问题清单，含原文引用，可逐条查看")
+        case .searchExpansion: L10n.tr("结果：近义词和相关词，可在搜索前删除")
+        case .worldCards: L10n.tr("结果：人物、地点等设定条目候选，未经你确认不会创建")
+        case .mindMap: L10n.tr("结果：导图的节点结构建议")
+        case .fountainAdaptation: L10n.tr("结果：Fountain 格式的剧本，在新标签页中打开")
         }
     }
 
     var detail: String { needs + "\n" + result }
+
+    /// Функции писательских панелей запускаются из своих окон: в общем списке действий AI-панели и в меню «AI 写作助手» их нет.
+    var isWriterFeature: Bool {
+        switch self {
+        case .styleReview, .searchExpansion, .worldCards, .mindMap, .fountainAdaptation: true
+        default: false
+        }
+    }
 }
 
 enum AIRewriteMode: String, CaseIterable, Identifiable {

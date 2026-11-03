@@ -49,6 +49,9 @@ struct AIDocumentToolsView: View {
                     }
                 }
                 Button(L10n.tr("添加文件")) { controller.addFiles() }
+                if controller.hasWorldCards {
+                    Button(L10n.tr("添加提到的卡片")) { controller.addWorldCards() }
+                }
                 ForEach(controller.inputs) { input in
                     HStack {
                         Text(controller.name(input)).lineLimit(1).truncationMode(.middle)

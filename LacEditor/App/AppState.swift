@@ -59,6 +59,10 @@ private func documentTaskSignpostName(
     case .lineEndings: "LineEndings"
     case .lineEndingConversion: "LineEndingConversion"
     case .symbolOutline: "SymbolOutline"
+    case .styleCheck: "StyleCheck"
+    case .styleReview: "StyleReview"
+    case .worldCards: "WorldCards"
+    case .mindMap: "MindMap"
     }
 }
 
@@ -323,6 +327,7 @@ final class AppState: ObservableObject {
         didSet {
             if oldValue != selectedDocumentID, findReplace.scope != nil { findReplace.scope = nil }
             if oldValue != selectedDocumentID { aiWriting.selectedDocumentChanged() }
+            if oldValue != selectedDocumentID { styleCheck.selectedDocumentChanged() }
             if oldValue != selectedDocumentID, let selectedDocumentID {
                 windowManager?.prioritizeRestoration(selectedDocumentID)
             }
@@ -478,6 +483,7 @@ final class AppState: ObservableObject {
             alert.addButton(withTitle: L10n.tr("确定"))
             alert.runModal()
         })
+        controller.words.appState = self
         controller.setRoot(folderWorkspace.rootURL)
         folderSearchStorage = controller
         folderSearchRootCancellable = folderWorkspace.$rootURL.sink { [weak controller] root in
@@ -527,7 +533,10 @@ final class AppState: ObservableObject {
     lazy var aiDictation = AIDictationController(appState: self)
     lazy var aiRegex = AIRegexController(appState: self)
     lazy var symbolOutline = SymbolOutlineController()
+    lazy var styleCheck = StyleCheckController(appState: self)
+    lazy var autosave = AutosaveController(appState: self)
     @Published var isAIWritingVisible = false
+    @Published var inspectorSegment: InspectorSegment = InspectorSegment.stored(isWriter: false)
     let commandPalette = CommandPaletteController()
     let snippetPicker = SnippetPickerController()
     weak var hostWindow: NSWindow? {
@@ -564,6 +573,18 @@ final class AppState: ObservableObject {
     var renameLinkTask: Task<Void, Never>?
     var manuscriptSheet: NSWindow?
     var manuscriptStorage: ManuscriptController?
+    var fountainSheet: NSWindow?
+    var fountainStorage: FountainExportController?
+    /// Окно ментальной карты этой вкладки (один экземпляр).
+    var mindMapController: MindMapController?
+    var mindMapWindowController: WriterAuxiliaryWindowController?
+    /// Проект рукописи этой вкладки; nil — обычная вкладка (весь писательский интерфейс скрыт).
+    @Published var writerSession: WriterSession?
+    /// Восстановленная вкладка, чей проект не найден: показывается плашка.
+    @Published var writerProjectIssue: WriterProjectIssue?
+    /// Прежняя привязка из сессии, пока пользователь не решил судьбу плашки: закрытие приложения её не стирает.
+    var pendingWriterProject: WriterProjectSession?
+    var writerWizardSheet: NSWindow?
     private var textTransformationWindowController: TextTransformationWindowController?
     let fileService = FileService()
     private let fileOpeningQueue: OperationQueue = {
@@ -672,6 +693,7 @@ final class AppState: ObservableObject {
         } else {
             newDocument()
         }
+        autosave.start()
         markdownLinkObserver = NotificationCenter.default.addObserver(forName: EditorCommandNotification.navigateMarkdownLink, object: nil, queue: .main) { [weak self] notification in
             MainActor.assumeIsolated {
                 guard let self, let request = notification.object as? MarkdownLinkNavigationRequest,
@@ -1014,7 +1036,7 @@ final class AppState: ObservableObject {
 
     func openFile(_ url: URL) {
         if let windowManager {
-            windowManager.openFile(url, preferredState: self)
+            windowManager.openFile(url, preferredState: self, inheritsWriter: true)
             return
         }
         beginOpeningFile(url)
@@ -1275,18 +1297,42 @@ final class AppState: ObservableObject {
         return document.url != nil && document.ioState == .idle && !isOpeningPlaceholder(document)
     }
 
-    func presentVersionHistory(mode: VersionHistoryController.Mode) {
+    func presentVersionHistory(mode: VersionHistoryController.Mode, selecting: UUID? = nil) {
         guard canShowVersionHistory, versionHistorySheet == nil,
               let document = selectedDocument, let url = document.url,
               let window = hostWindow, let manager = windowManager, manager.activeState === self,
               manager.ownsVisibleState(self, window: window) else { return }
-        let controller = VersionHistoryController(document: document, url: url, mode: mode) { [weak self, weak document] text, base in
-            guard let self, let document else { return L10n.tr("当前文本无法修改") }
-            return self.applyVersionRestore(text, to: document, base: base)
-        }
+        let isSnapshots = mode == .snapshots
+        let location = isSnapshots ? snapshotLocation(for: document) : nil
+        if isSnapshots && location == nil { return }
+        let store = DocumentSnapshotStore.shared
+        let controller = VersionHistoryController(
+            document: document, url: url, mode: mode,
+            apply: { [weak self, weak document] text, base in
+                guard let self, let document else { return L10n.tr("当前文本无法修改") }
+                return isSnapshots
+                    ? self.applyVersionRestore(text, to: document, base: base, actionName: L10n.tr("恢复快照"))
+                    : self.applyVersionRestore(text, to: document, base: base)
+            },
+            fetchSnapshots: { location.map { store.list(location: $0) } ?? [] },
+            fetchSnapshotText: { id in
+                guard let location else { throw DocumentSnapshotError.notFound }
+                return try store.text(id: id, location: location)
+            },
+            renameSnapshot: { id, name in
+                guard let location else { throw DocumentSnapshotError.notFound }
+                try store.rename(id: id, to: name, location: location)
+            },
+            deleteSnapshot: { id in
+                guard let location else { throw DocumentSnapshotError.notFound }
+                try store.delete(id: id, location: location)
+            }
+        )
+        controller.initialSelection = selecting
+        controller.onMakeSnapshot = { [weak self] in self?.makeSnapshot() }
         controller.onRestored = { [weak self, weak document] in
             self?.closeVersionHistory()
-            document?.statusMessage = L10n.tr("已恢复历史版本，尚未保存")
+            document?.statusMessage = isSnapshots ? L10n.tr("已恢复快照，尚未保存") : L10n.tr("已恢复历史版本，尚未保存")
         }
         let sheet = NSWindow(contentViewController: NSHostingController(rootView: VersionHistoryView(
             controller: controller,
@@ -1354,7 +1400,8 @@ final class AppState: ObservableObject {
 
     /// Заменяет весь текст версией одной заменой редактора; файл на диске не пишется.
     /// Возвращает текст ошибки или nil при успехе.
-    private func applyVersionRestore(_ text: String, to document: EditorDocument, base: DocumentTextSnapshot) -> String? {
+    func applyVersionRestore(_ text: String, to document: EditorDocument, base: DocumentTextSnapshot,
+                             actionName: String = L10n.tr("恢复历史版本")) -> String? {
         guard selectedDocument === document, document.ioState == .idle, !document.hasPendingLiveEdits,
               document.synchronizedSnapshot() == base else { return L10n.tr("文档已更改，比较结果已过期") }
         let extraction = EditorTextExtractionRequest(documentID: document.id, allowsTokenAtCaret: false,
@@ -1367,7 +1414,7 @@ final class AppState: ObservableObject {
             originalText: base.text,
             replacementText: text,
             expectedEditorRevision: current.editorRevision,
-            actionName: L10n.tr("恢复历史版本")
+            actionName: actionName
         )
         let newLength = (text as NSString).length
         let location = min(document.selectionRange.location, newLength)
@@ -1475,15 +1522,20 @@ final class AppState: ObservableObject {
         if rejectUnknownMediaTokens(document, title: L10n.tr("无法导出")) { return }
         let baseName = document.url?.deletingPathExtension().lastPathComponent ?? L10n.tr("未命名")
         let destination: URL
+        var chosenCritic = CriticMarkupExportAccessory.lastChoice()
         if let fixedDestination { destination = fixedDestination }
         else {
             let panel = NSSavePanel()
             panel.nameFieldStringValue = baseName + "." + format.fileExtension
             if let type = UTType(filenameExtension: format.fileExtension) { panel.allowedContentTypes = [type] }
             panel.canCreateDirectories = true
+            let criticAccessory = criticExportAccessory(for: document, panel: panel,
+                                                        formatSupportsTracked: format.supportsTrackedChanges || format == .pdf || format == .htmlPlain)
             guard panel.runModal() == .OK, let url = panel.url else { return }
+            if let criticAccessory { chosenCritic = criticAccessory.mode }
             destination = url
         }
+        let criticMode = chosenCritic
         guard documents.contains(where: { $0 === document }),
               document.language == .markdown, document.ioState == .idle else { return }
         if let expectedRevision, (try? FileRevisionSnapshot.capture(destination)) != expectedRevision {
@@ -1503,7 +1555,7 @@ final class AppState: ObservableObject {
             started = true
             let options = htmlOptions ?? preferences.markdownHTMLExportOptions
             startNativeMarkdownOutput(document: document, snapshot: snapshot, destination: destination, mode: .htmlPlain,
-                                      previousKind: .htmlPlain(options), htmlOptions: options)
+                                      previousKind: .htmlPlain(options), htmlOptions: options, critic: criticMode.renderMode)
             return
         }
         if format == .pdf {
@@ -1512,7 +1564,7 @@ final class AppState: ObservableObject {
             let options = nativeOptions ?? preferences.markdownNativeExportOptions
             let headers = pdfHeaders ?? preferences.markdownPDFHeaderFooterOptions
             startNativeMarkdownOutput(document: document, snapshot: snapshot, destination: destination, mode: .pdf,
-                                      previousKind: .pdf(options, headers), options: options, headers: headers)
+                                      previousKind: .pdf(options, headers), options: options, headers: headers, critic: criticMode.renderMode)
             return
         }
         let destinationExisted = FileManager.default.fileExists(atPath: destination.path)
@@ -1533,7 +1585,7 @@ final class AppState: ObservableObject {
             let result = Result {
                 let prepared = try PandocExportService.prepare(
                     text: preparedText, source: source, destination: destination, format: format,
-                    title: baseName, isCancelled: { operation.isCancelled }, htmlOptions: savedHTMLOptions, syntax: syntax, wiki: wiki
+                    title: baseName, isCancelled: { operation.isCancelled }, htmlOptions: savedHTMLOptions, syntax: syntax, wiki: wiki, critic: criticMode
                 )
                 guard prepared.latexAssets != nil else { return (prepared, false) }
                 do {
@@ -1674,15 +1726,21 @@ final class AppState: ObservableObject {
         if rejectUnknownMediaTokens(document, title: L10n.tr("无法导出")) { return }
         let baseName = document.url?.deletingPathExtension().lastPathComponent ?? L10n.tr("未命名")
         let destination: URL
+        var chosenCritic = CriticMarkupExportAccessory.lastChoice()
         if let fixedDestination { destination = fixedDestination }
         else {
             let panel = NSSavePanel()
             panel.nameFieldStringValue = baseName + (profile.extensions.first.map { "." + $0 } ?? "")
             panel.allowedContentTypes = profile.extensions.compactMap { UTType(filenameExtension: $0) }
             panel.canCreateDirectories = true
+            let profileWriter = String(profile.writer.prefix { $0 != "+" && $0 != "-" }).lowercased()
+            let criticAccessory = criticExportAccessory(for: document, panel: panel,
+                formatSupportsTracked: (profileWriter.isEmpty ? (profile.extensions.first ?? "").lowercased() : profileWriter) == "docx")
             guard panel.runModal() == .OK, let url = panel.url else { return }
+            if let criticAccessory { chosenCritic = criticAccessory.mode }
             destination = url
         }
+        let criticMode = chosenCritic
         guard selectedDocument === document, document.language == .markdown, document.ioState == .idle else { return }
         let source = document.url
         let openURLs = manager?.openDocumentURLs ?? documents.compactMap(\.url)
@@ -1716,7 +1774,7 @@ final class AppState: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [self, document] in
             let result = Result {
                 let prepared = try PandocExportService.prepare(text: preparedText, source: source, destination: destination,
-                    profile: profile, title: baseName, isCancelled: { operation.isCancelled }, htmlOptions: isHTML ? savedHTMLOptions : nil, syntax: syntax, wiki: wiki)
+                    profile: profile, title: baseName, isCancelled: { operation.isCancelled }, htmlOptions: isHTML ? savedHTMLOptions : nil, syntax: syntax, wiki: wiki, critic: criticMode)
                 guard prepared.latexAssets != nil else { return (prepared, false) }
                 do {
                     @MainActor func validateCurrent() throws {
@@ -2053,7 +2111,8 @@ final class AppState: ObservableObject {
         let snapshot = document.synchronizedSnapshot()
         started = true
         let options = nativeOptions ?? preferences.markdownNativeExportOptions
-        startNativeMarkdownOutput(document: document, snapshot: snapshot, destination: destination, mode: .png, previousKind: .image(options), options: options)
+        startNativeMarkdownOutput(document: document, snapshot: snapshot, destination: destination, mode: .png, previousKind: .image(options), options: options,
+                                  critic: preferences.criticPreviewMode)
     }
 
     func printMarkdown() {
@@ -2102,7 +2161,8 @@ final class AppState: ObservableObject {
             started = true
             self.startNativeMarkdownOutput(document: document, snapshot: initial, destination: destination, mode: .printJob(info),
                                            options: self.preferences.markdownNativeExportOptions,
-                                           headers: self.preferences.markdownPDFHeaderFooterOptions)
+                                           headers: self.preferences.markdownPDFHeaderFooterOptions,
+                                           critic: self.preferences.criticPreviewMode)
         }
     }
 
@@ -2119,7 +2179,8 @@ final class AppState: ObservableObject {
                                            previousKind: PreviousMarkdownExportKind? = nil,
                                            options: MarkdownNativeExportOptions = .init(),
                                            headers: MarkdownPDFHeaderFooterOptions = .init(),
-                                           htmlOptions: MarkdownHTMLExportOptions = .init()) {
+                                           htmlOptions: MarkdownHTMLExportOptions = .init(),
+                                           critic: CriticMarkupRenderMode? = nil) {
         guard let window = hostWindow else {
             exportingDocumentIDs.remove(document.id)
             windowManager?.endMarkdownExport(documentID: document.id)
@@ -2189,7 +2250,8 @@ final class AppState: ObservableObject {
         let darkMode = Self.markdownOutputUsesDarkMode(for: mode, windowIsDark: windowIsDark)
         service.start(snapshot: snapshot, darkMode: darkMode, typography: preferences.markdownTypography,
                       mathOptions: .init(physics: preferences.mathPhysicsEnabled, numbering: preferences.mathNumbering), options: options, headers: headers, sourceURL: source, htmlOptions: htmlOptions, syntax: preferences.markdownSyntax,
-                      wiki: MarkdownWikiLinkSource(root: folderWorkspace.rootURL, documentURL: source), allowRemoteImages: document.allowsRemoteImages)
+                      wiki: MarkdownWikiLinkSource(root: folderWorkspace.rootURL, documentURL: source), allowRemoteImages: document.allowsRemoteImages,
+                      critic: critic)
     }
 
     func closeSelectedDocument() {
@@ -2197,6 +2259,9 @@ final class AppState: ObservableObject {
     }
 
     private var isClosingDocument = false
+    var closeConfirmationDepth = 0
+    /// Идёт закрытие вкладки или вопрос «Сохранить изменения?»: автосохранение в это время не пишет.
+    var isClosingOrConfirmingDocument: Bool { isClosingDocument || closeConfirmationDepth > 0 }
 
     func close(_ document: EditorDocument) {
         guard !isClosingDocument else { return }
@@ -2510,9 +2575,13 @@ final class AppState: ObservableObject {
         aiWriting.windowClosed()
         aiDictation.windowClosed()
         aiRegex.windowClosed()
+        styleCheck.windowClosed()
         closeVersionHistory()
         closeTextCompare()
         closeManuscript()
+        closeMindMapWindow()
+        closeFountainExport()
+        closeWriterWizard()
         templateTask?.cancel()
         templateTask = nil
         renameLinkTask?.cancel()
@@ -2531,6 +2600,7 @@ final class AppState: ObservableObject {
         folderSearchStorage?.close()
         backlinksStorage?.close()
         folderTagsStorage?.invalidate()
+        windowManager?.detachWriter(from: self)
         folderWorkspace.setRoot(nil)
         sidebarFeedback.clear()
         dismissFindReplace()
@@ -3288,14 +3358,17 @@ final class AppState: ObservableObject {
     }
 
     func increaseFontSize() {
+        if MindMapZoomRouter.handle(.zoomIn) { return }
         editorFontSize = min(editorFontSize + 1, 32)
     }
 
     func decreaseFontSize() {
+        if MindMapZoomRouter.handle(.zoomOut) { return }
         editorFontSize = max(editorFontSize - 1, 9)
     }
 
     func resetFontSize() {
+        if MindMapZoomRouter.handle(.reset) { return }
         editorFontSize = AppPreferences.defaultFontSize
     }
 
@@ -3314,6 +3387,11 @@ final class AppState: ObservableObject {
     func updateRenamedFileReference(from oldURL: URL, to newURL: URL) {
         for document in documents {
             document.updateLocationAfterRename(from: oldURL, to: newURL)
+        }
+        // Файл проекта рукописи ищет снимки по id узла, переименование им не мешает.
+        if writerSession?.projectStore.node(forFileURL: oldURL) == nil, writerSession?.projectStore.node(forFileURL: newURL) == nil {
+            let oldPath = oldURL.standardizedFileURL.path, newPath = newURL.standardizedFileURL.path
+            Task.detached { try? DocumentSnapshotStore.shared.moveFile(fromPath: oldPath, toPath: newPath) }
         }
     }
 
@@ -3679,6 +3757,7 @@ final class AppState: ObservableObject {
         document.taskCoordinator.cancel(.textTransformation)
         textTransformation.invalidate(documentID: document.id)
         aiWriting.invalidate(documentID: document.id)
+        styleCheck.invalidate(documentID: document.id)
         documentCancellables.removeValue(forKey: document.id)?.cancel()
         recoveryCancellables.removeValue(forKey: document.id)?.cancel()
         writingGoalCancellables.removeValue(forKey: document.id)?.cancel()
@@ -3765,6 +3844,7 @@ final class AppState: ObservableObject {
         folderSearchStorage?.close()
         backlinksStorage?.close()
         folderTagsStorage?.invalidate()
+        windowManager?.detachWriter(from: self)
         folderWorkspace.setRoot(nil)
         isFocusMode = false
         focusScope = .paragraph
@@ -5403,35 +5483,53 @@ final class AppState: ObservableObject {
         return true
     }
 
-    private func write(
+    /// `origin` отличает автосохранение: оно не открывает окон и не меняет `statusMessage`, а итог сообщает через `onOutcome`.
+    func write(
         _ document: EditorDocument,
         to url: URL,
         bypassExternalConflict: Bool = false,
-        completion: ((Bool) -> Void)? = nil
+        completion: ((Bool) -> Void)? = nil,
+        origin: SaveOrigin = .user
     ) -> Bool {
+        let autosaveOutcome = origin.outcomeHandler
         guard windowManager?.isFolderMoveBlocked(document, target: url) != true else {
-            document.statusMessage = L10n.tr("文件操作进行中，请稍后重试")
+            if let autosaveOutcome { autosaveOutcome(.skipped) }
+            else { document.statusMessage = L10n.tr("文件操作进行中，请稍后重试") }
             completion?(false)
             return false
         }
         guard !openingPlaceholderIDs.contains(document.id) else {
+            autosaveOutcome?(.skipped)
             completion?(false)
             return false
         }
         guard document.ioState != .saving else {
-            document.statusMessage = L10n.tr("已有保存任务正在进行")
+            if let autosaveOutcome { autosaveOutcome(.skipped) }
+            else { document.statusMessage = L10n.tr("已有保存任务正在进行") }
             completion?(false)
             return false
         }
         // До диалога конфликта: незачем спрашивать про запись, которую всё равно отклонят.
-        if rejectUnknownMediaTokens(document, title: L10n.tr("无法保存文件")) {
+        if let autosaveOutcome {
+            _ = document.synchronizedText()
+            if document.hasUnknownMediaTokens {
+                autosaveOutcome(.failed(L10n.tr("文档含无法识别的媒体标记，请撤销最近的修改")))
+                completion?(false)
+                return false
+            }
+        } else if rejectUnknownMediaTokens(document, title: L10n.tr("无法保存文件")) {
             completion?(false)
             return false
         }
         if !bypassExternalConflict,
            url.standardizedFileURL == document.url?.standardizedFileURL,
            hasExternalFileConflict(document, at: url) {
-            resolveExternalFileConflict(for: document, at: url, completion: completion)
+            if let autosaveOutcome {
+                autosaveOutcome(.pausedExternalChange)
+                completion?(false)
+            } else {
+                resolveExternalFileConflict(for: document, at: url, completion: completion)
+            }
             return false
         }
         let text = document.synchronizedText()
@@ -5440,7 +5538,8 @@ final class AppState: ObservableObject {
         let encodingName = document.encodingName
         let saveGeneration = document.taskCoordinator.begin(.save)
         document.ioState = .saving
-        document.statusMessage = L10n.tr("正在保存…")
+        if autosaveOutcome == nil { document.statusMessage = L10n.tr("正在保存…") }
+        let recordsVersion = origin.recordsVersion
         let signpostID = OSSignpostID(log: filePerformanceLog)
         fileWriteQueue.async { [weak self, weak document] in
             os_signpost(
@@ -5497,29 +5596,39 @@ final class AppState: ObservableObject {
                     document.markSaved(snapshot: text, revision: revision)
                     document.noteSavedToDisk(at: Date())
                     document.ioState = .idle
-                    document.statusMessage = document.isDirty
+                    document.statusMessage = autosaveOutcome == nil && document.isDirty
                         ? L10n.tr("已保存先前版本，仍有未保存更改")
                         : nil
                     self.recentFiles.record(url)
                     self.scheduleRecoverySnapshot(for: document, delay: 0)
+                    self.noteSavedForSearchIndex(url)
+                    self.noteSavedForWorld(url)
+                    autosaveOutcome?(.saved)
                     completion?(!document.isDirty)
                 } else {
                     let description = saveResult.errorDescription ?? L10n.tr("无法取得保存后的文件状态")
-                    document.ioState = .failed(description)
-                    document.statusMessage = L10n.tr("保存失败：%@", String(describing: description))
-                    if let saveError {
-                        self.handleSaveError(
-                            saveError,
-                            for: document,
-                            completion: completion
-                        )
-                    } else {
+                    if let autosaveOutcome {
+                        // Автосохранение молчит: без окон и без состояния «ошибка», повтор через интервал.
+                        document.ioState = .idle
+                        autosaveOutcome(.failed(description))
                         completion?(false)
+                    } else {
+                        document.ioState = .failed(description)
+                        document.statusMessage = L10n.tr("保存失败：%@", String(describing: description))
+                        if let saveError {
+                            self.handleSaveError(
+                                saveError,
+                                for: document,
+                                completion: completion
+                            )
+                        } else {
+                            completion?(false)
+                        }
                     }
                 }
             }
             // Версия не участвует в результате сохранения: снимок файла уже зафиксирован выше.
-            if saveResult.succeeded, let error = FileVersionService.recordVersion(of: url) {
+            if saveResult.succeeded, recordsVersion, let error = FileVersionService.recordVersion(of: url) {
                 os_log(.error, log: fileVersionLog, "FileVersion: %{public}@", error.localizedDescription)
             }
         }
@@ -5921,6 +6030,17 @@ final class AppState: ObservableObject {
         _ document: EditorDocument,
         completion: @escaping (Bool) -> Void
     ) {
+        closeConfirmationDepth += 1
+        confirmClosingUnguarded(document) { [weak self] result in
+            self?.closeConfirmationDepth -= 1
+            completion(result)
+        }
+    }
+
+    private func confirmClosingUnguarded(
+        _ document: EditorDocument,
+        completion: @escaping (Bool) -> Void
+    ) {
         if openingPlaceholderIDs.contains(document.id) {
             guard document.isDirty else { completion(true); return }
             let alert = NSAlert()
@@ -6057,6 +6177,7 @@ final class AppState: ObservableObject {
             openingFileURLs.remove(url)
         }
         openingPlaceholderIDs.remove(document.id)
+        autosave.forget(document.id)
         stopObserving(document)
         recoveryStore?.discard(documentID: document.id)
         document.temporaryMedia.removeAll()
@@ -6406,7 +6527,7 @@ extension AppState {
               let window = hostWindow, let manager = windowManager, manager.activeState === self,
               manager.ownsVisibleState(self, window: window) else { return }
         let controller = manuscript
-        controller.attach(root: root)
+        if let session = writerSession { controller.attachProject(session.projectStore) } else { controller.attach(root: root) }
         let sheet = NSWindow(contentViewController: NSHostingController(rootView: ManuscriptView(
             controller: controller,
             folderName: root.lastPathComponent,
@@ -6442,11 +6563,13 @@ extension AppState {
     private func finishManuscript(_ output: ManuscriptService.Output) {
         guard manuscriptSheet != nil, let window = hostWindow, let manager = windowManager,
               manager.ownsVisibleState(self, window: window),
-              folderWorkspace.rootURL == manuscriptStorage?.root else { return }
+              folderWorkspace.rootURL?.standardizedFileURL.path == manuscriptStorage?.root?.standardizedFileURL.path else { return }
         let document = EditorDocument(text: output.text, language: .markdown, isDirty: true, requiresExplicitSave: true)
-        document.statusMessage = L10n.tr("已合并 %d 个文件", output.report.mergedFiles)
+        document.statusMessage = writerSession == nil
+            ? L10n.tr("已合并 %d 个文件", output.report.mergedFiles)
+            : L10n.tr("编译结果——修改不会写回各章节")
         closeManuscript()
-        manager.openNativeTab(from: self, with: document)
+        manager.openNativeTab(from: self, with: document, inheritsWriter: true)
         if output.report.hasNotes { showManuscriptNotes(output.report) }
     }
 
@@ -6473,6 +6596,12 @@ extension AppState {
                                  report.duplicateFootnoteLabels.joined(separator: ", ")))
         }
         if report.blockedByRootURL { parts.append(L10n.tr("第一个文件的元数据设置了 typora-root-url，相对地址未转换。")) }
+        if !report.closedCodeBlocks.isEmpty {
+            parts.append(L10n.tr("代码块未闭合，已在末尾补上结束标记：%@", report.closedCodeBlocks.prefix(10).joined(separator: ", ")))
+        }
+        if !report.missingSynopses.isEmpty {
+            parts.append(L10n.tr("没有梗概：%@", report.missingSynopses.prefix(10).joined(separator: ", ")))
+        }
         let alert = NSAlert()
         alert.messageText = L10n.tr("合并完成，但有需要注意的地方")
         alert.informativeText = parts.joined(separator: "\n\n")

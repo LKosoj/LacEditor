@@ -3,7 +3,7 @@ import Foundation
 
 @MainActor
 final class FolderSearchController: ObservableObject {
-    enum Mode: String, CaseIterable, Sendable { case files, text, tags }
+    enum Mode: String, CaseIterable, Sendable { case files, text, tags, words }
     enum Message: Equatable { case stale, failed, invalidPattern }
     enum ExtractionNote: Equatable { case empty, stale, failed, invalidPattern }
     enum QuickOpenItem: Equatable, Sendable {
@@ -69,6 +69,7 @@ final class FolderSearchController: ObservableObject {
                 if mode != .files { quickOpenRequest = nil }
                 report = nil
                 invalidate()
+                if mode == .words { words.refreshIndex() }
             }
         }
     }
@@ -113,6 +114,9 @@ final class FolderSearchController: ObservableObject {
     private var generation: UInt = 0
     private var task: Task<Void, Never>?
     private var extractionTask: Task<Void, Never>?
+    /// Режим «По словам»: свой контроллер; его изменения пересылаются сюда, иначе боковая панель не перерисуется.
+    let words: WordSearchController
+    private var wordsObserver: AnyCancellable?
 
     init(snapshots: @escaping () -> [FolderSearchService.OpenDocument]?,
          open: @escaping (URL) async -> FolderSearchService.OpenDocument?,
@@ -139,6 +143,8 @@ final class FolderSearchController: ObservableObject {
         self.backupStore = backupStore
         self.confirmRevert = confirmRevert
         self.showRevertResult = showRevertResult
+        words = WordSearchController(snapshots: snapshots, open: open, reveal: reveal, openFile: openFile)
+        wordsObserver = words.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         hasReplaceBackup = backupStore?.hasBackup ?? false
     }
 
@@ -150,9 +156,11 @@ final class FolderSearchController: ObservableObject {
         report = nil
         cancelReplace()
         invalidate()
+        words.setRoot(value)
+        if mode == .words { words.refreshIndex() }
     }
 
-    func close() { cancelReplace(); invalidate(); quickOpenRequest = nil; report = nil; root = nil }
+    func close() { cancelReplace(); invalidate(); quickOpenRequest = nil; report = nil; root = nil; words.setRoot(nil) }
 
     /// Esc / клик вне панели: снимает запрос и результаты быстрого вызова, корень не трогает.
     func cancelQuickOpen() {
@@ -198,6 +206,7 @@ final class FolderSearchController: ObservableObject {
 
     private func invalidate() {
         generation &+= 1
+        words.cancel()
         cancelExtraction()
         task?.cancel()
         task = nil
@@ -217,6 +226,7 @@ final class FolderSearchController: ObservableObject {
 
     @discardableResult
     func start(quickLocations: [URL]? = nil) -> Task<Void, Never>? {
+        if mode == .words { words.start(query: query); return nil }
         let locations = quickLocations ?? (quickOpenRequest != nil ? folderLocations() : nil)
         invalidate()
         let root = self.root
@@ -266,6 +276,9 @@ final class FolderSearchController: ObservableObject {
                     include: { mode == .text ? filter.includes(relativePath: $0.relativePath) : true },
                     pruneDirectory: { mode == .text ? filter.excludesDirectory(relativePath: $0) : false },
                     isCancelled: { Task.isCancelled }))
+            case .words:
+                // Режим «По словам» сюда не попадает: `start()` отдаёт его `WordSearchController`.
+                throw CancellationError()
             }
         }
         let task = Task { [weak self] in

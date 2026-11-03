@@ -140,4 +140,105 @@ final class VersionHistoryControllerTests: XCTestCase {
         XCTAssertEqual(controller.message, "failure")
         XCTAssertFalse(restored)
     }
+
+    // MARK: Снимки
+
+    private final class SnapshotBox: @unchecked Sendable {
+        let lock = NSLock()
+        var infos: [DocumentSnapshotInfo]
+        var texts: [UUID: String]
+        init(_ infos: [DocumentSnapshotInfo], _ texts: [UUID: String]) { self.infos = infos; self.texts = texts }
+    }
+
+    private func snapshotInfo(_ name: String, _ seconds: TimeInterval) -> DocumentSnapshotInfo {
+        DocumentSnapshotInfo(id: UUID(), name: name, date: Date(timeIntervalSince1970: 1_700_000_000 + seconds),
+                             byteCount: 1, sha256: "", encoding: "UTF-8")
+    }
+
+    private func makeSnapshotController(document: EditorDocument, box: SnapshotBox,
+                                        apply: @escaping (String, DocumentTextSnapshot) -> String? = { _, _ in nil }) -> VersionHistoryController {
+        VersionHistoryController(
+            document: document, url: url, mode: .snapshots, apply: apply,
+            fetchSnapshots: { box.lock.lock(); defer { box.lock.unlock() }; return box.infos.sorted { $0.date > $1.date } },
+            fetchSnapshotText: { id in
+                box.lock.lock(); defer { box.lock.unlock() }
+                guard let text = box.texts[id] else { throw DocumentSnapshotError.notFound }
+                return text
+            },
+            renameSnapshot: { id, name in
+                box.lock.lock(); defer { box.lock.unlock() }
+                guard let index = box.infos.firstIndex(where: { $0.id == id }) else { throw DocumentSnapshotError.notFound }
+                box.infos[index].name = name
+            },
+            deleteSnapshot: { id in
+                box.lock.lock(); defer { box.lock.unlock() }
+                box.infos.removeAll { $0.id == id }
+                box.texts[id] = nil
+            }
+        )
+    }
+
+    func testSnapshotsModeLoadsListAndRestoresText() async {
+        let old = snapshotInfo("Черновик", 0), newer = snapshotInfo("Перед правкой", 10)
+        let box = SnapshotBox([old, newer], [old.id: "old\n", newer.id: "newer\n"])
+        let document = EditorDocument(text: "current\n", url: url)
+        var restoredText: String?
+        let controller = makeSnapshotController(document: document, box: box, apply: { text, _ in restoredText = text; return nil })
+        controller.start()
+        await settle(controller)
+        XCTAssertEqual(controller.versions.map(\.title), ["Перед правкой", "Черновик"])
+        controller.select(old.id.uuidString)
+        await settle(controller)
+        XCTAssertTrue(controller.hasResult)
+        XCTAssertTrue(controller.canRestore)
+        controller.restore()
+        XCTAssertEqual(restoredText, "old\n")
+    }
+
+    func testSnapshotsModeLargeFileSkipsDiffButAllowsRestore() async {
+        let info = snapshotInfo("Большой", 0)
+        let box = SnapshotBox([info], [info.id: "other\n"])
+        let document = EditorDocument(text: "current\n", url: url)
+        document.performanceProfile = .large
+        let controller = makeSnapshotController(document: document, box: box)
+        controller.start()
+        await settle(controller)
+        controller.select(info.id.uuidString)
+        await settle(controller)
+        XCTAssertTrue(controller.isDiffSkipped)
+        XCTAssertTrue(controller.changes.isEmpty)
+        XCTAssertTrue(controller.canRestore)
+        XCTAssertEqual(controller.message, L10n.tr("文本过大，无法比较"))
+    }
+
+    func testInitialSelectionSelectsSnapshot() async {
+        let first = snapshotInfo("A", 0), second = snapshotInfo("B", 10)
+        let box = SnapshotBox([first, second], [first.id: "a\n", second.id: "b\n"])
+        let controller = makeSnapshotController(document: EditorDocument(text: "current\n", url: url), box: box)
+        controller.initialSelection = first.id
+        controller.start()
+        await settle(controller)
+        await settle(controller)
+        XCTAssertEqual(controller.selectedID, first.id.uuidString)
+        XCTAssertTrue(controller.hasResult)
+    }
+
+    func testRenameDeleteSnapshotReloadsList() async {
+        let first = snapshotInfo("A", 0), second = snapshotInfo("B", 10)
+        let box = SnapshotBox([first, second], [first.id: "a\n", second.id: "b\n"])
+        let controller = makeSnapshotController(document: EditorDocument(text: "current\n", url: url), box: box)
+        controller.start()
+        await settle(controller)
+        controller.select(second.id.uuidString)
+        await settle(controller)
+        controller.renameSnapshot(id: second.id.uuidString, name: "Новое")
+        await settle(controller)
+        await settle(controller)
+        XCTAssertEqual(controller.versions.first?.title, "Новое")
+        controller.deleteSnapshot(id: second.id.uuidString)
+        await settle(controller)
+        await settle(controller)
+        XCTAssertEqual(controller.versions.map(\.id), [first.id.uuidString])
+        XCTAssertEqual(controller.selectedID, first.id.uuidString)
+    }
 }

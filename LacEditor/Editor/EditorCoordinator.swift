@@ -197,6 +197,7 @@ extension EditorTextView {
         private var pendingOffscreenSelectionRange: NSRange?
         private var observerTokens: [NSObjectProtocol] = []
         private var findHighlightMatches: [NSRange] = []
+        private let styleMarksPainter = StyleMarksPainter()
         private var appliedFindRanges: [NSRange] = []
         private var hasCriticColors = false
         private var appliedFindVisibleRange: NSRange?
@@ -1115,6 +1116,7 @@ extension EditorTextView {
                         self?.applyVisibleLigatures()
                         self?.markdownPresentation?.viewportChanged()
                         self?.applyFindHighlights()
+                        self?.refreshStyleMarks()
                     }
                     return
                 }
@@ -1122,6 +1124,7 @@ extension EditorTextView {
                 schedulePreviewScrollSync()
                 applyVisibleLigatures()
                 applyFindHighlights()
+                refreshStyleMarks()
                 refreshRulerForViewportChange()
                 Task { @MainActor [weak self] in
                     self?.markdownPresentation?.viewportChanged()
@@ -1164,6 +1167,7 @@ extension EditorTextView {
                 textView.scrollRangeToVisible(range)
                 if request.focusesEditor { textView.window?.makeFirstResponder(textView) }
                 applyFindHighlights()
+                refreshStyleMarks()
             })
             observerTokens.append(NotificationCenter.default.addObserver(
                 forName: EditorCommandNotification.findHighlights,
@@ -1176,6 +1180,18 @@ extension EditorTextView {
                 findHighlightMatches = request.matches
                 findMatchesChanged = true
                 applyFindHighlights()
+                refreshStyleMarks()
+            })
+            observerTokens.append(NotificationCenter.default.addObserver(
+                forName: EditorCommandNotification.styleMarks,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let self,
+                      let request = notification.object as? StyleMarksRequest,
+                      request.documentID == document.id else { return }
+                styleMarksPainter.set(request.marks, revision: request.textRevision)
+                refreshStyleMarks()
             })
             observerTokens.append(NotificationCenter.default.addObserver(
                 forName: EditorCommandNotification.toggleFold,
@@ -2640,6 +2656,7 @@ extension EditorTextView {
             let copyMathWidth = max(1, view.enclosingScrollView?.contentView.bounds.width ?? view.bounds.width)
             let copyMathFontSize = view.font?.pointSize ?? 16
             let copyMathDark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let copyCritic = aiPreferences?.criticPreviewMode ?? .show
             let project = clipboardCopyProject
             let session = clipboardCopySession
             let remoteImagesAllowed = document.allowsRemoteImages
@@ -2649,9 +2666,16 @@ extension EditorTextView {
                 // Неизвестный токен или выход за границы: настоящий текст не получить, копирование отменяется.
                 let valid = restored?.unknownTokens.isEmpty != false && NSMaxRange(fileSelection) <= markdown.utf16.count
                 let mediaSource = !valid ? nil : cellMediaSource ?? (hasMediaSelection ? (markdown as NSString).substring(with: fileSelection) : nil)
+                // Режимы «только результат» и «только оригинал» действуют и на копирование; «показывать правки» копирует текст как есть.
+                var copyMarkdown = markdown, copySelection = fileSelection
+                if valid, mode != .markdown, copyCritic != .show {
+                    let resolved = CriticMarkupRender.resolved(copyMarkdown, accept: copyCritic == .result, selection: copySelection, syntax: syntax)
+                    copyMarkdown = resolved.text
+                    copySelection = resolved.selection
+                }
                 var fragment: MarkdownClipboardCopyService.Fragment? = !valid ? nil : mode == .markdown
                     ? MarkdownClipboardCopyService.Fragment(text: (markdown as NSString).substring(with: fileSelection), html: "", runs: [])
-                    : project(markdown, fileSelection, documentURL, true, syntax, copyDetailsOverrides)
+                    : project(copyMarkdown, copySelection, documentURL, true, syntax, copyDetailsOverrides)
                 if mode == .rich, remoteImagesAllowed, let projected = fragment, !projected.remoteImages.isEmpty {
                     fragment = try? await MarkdownClipboardCopyService.resolveRemoteImages(projected, session: session)
                 }
@@ -3730,6 +3754,9 @@ extension EditorTextView {
                 markdownPresentation?.restoreDelimiterHighlight = { [weak self] in
                     guard let self, let layoutManager = self.textView?.layoutManager else { return }
                     self.restoreFindHighlights()
+                    // Оформление Markdown снимает подчёркивание с оформленных диапазонов: метки стиля накладываются заново.
+                    self.styleMarksPainter.reapply()
+                    self.refreshStyleMarks()
                     for range in self.delimiterHighlightRanges {
                         layoutManager.addTemporaryAttribute(
                             .backgroundColor, value: NSColor.lacDelimiterMatchBackground,
@@ -3750,6 +3777,7 @@ extension EditorTextView {
                     self.markdownPresentation?.compositionFinished(revision: self.contentRevision)
                     self.applyVisibleLigatures()
                     self.applyFindHighlights()
+                    self.refreshStyleMarks()
                     if self.clearsDisabledSyntaxOnScroll { self.scheduleHighlight(delay: 0) }
                     self.applyWritingModes()
                     if self.pendingTypewriterAfterComposition {
@@ -4293,6 +4321,10 @@ extension EditorTextView {
             liveTextSnapshot = nil
             delimiterMatchingContext.reset()
             cancelDelimiterMatch(clearHighlight: true)
+            // После любой правки позиции меток устарели; новые придут с результатом проверки.
+            if let layoutManager = textView?.layoutManager {
+                styleMarksPainter.clear(in: layoutManager, length: textView?.textStorage?.length ?? 0)
+            }
         }
 
         /// Набранный символ стоит в строке каретки: TextKit уже сбросил её раскладку, а линейку планирует `textDidChange`.
@@ -5037,7 +5069,19 @@ extension EditorTextView {
         private func clearFindHighlights() {
             findHighlightMatches = []
             findMatchesChanged = false
-            if let layoutManager = textView?.layoutManager { clearAppliedFindHighlights(in: layoutManager) }
+            if let layoutManager = textView?.layoutManager {
+                clearAppliedFindHighlights(in: layoutManager)
+                // Временные атрибуты сдвигаются вместе с текстом, поэтому метки стиля снимаются до правки.
+                styleMarksPainter.clear(in: layoutManager, length: textView?.textStorage?.length ?? 0)
+            }
+        }
+
+        /// Подчёркивания проверки стиля в видимой области: временные атрибуты, текст и undo не меняются.
+        private func refreshStyleMarks() {
+            guard let textView, let layoutManager = textView.layoutManager else { return }
+            styleMarksPainter.refresh(in: layoutManager, visible: visibleHighlightRange(), map: liveMediaMap,
+                                      length: textView.textStorage?.length ?? 0, currentRevision: document.textRevision,
+                                      hasPendingLiveEdits: document.hasPendingLiveEdits, hasMarkedText: textView.hasMarkedText())
         }
 
         private func cancelDelimiterMatch(

@@ -452,6 +452,8 @@ final class FolderWorkspaceStore: ObservableObject {
         }
         let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey, .creationDateKey, .contentModificationDateKey]
         return try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: Array(keys), options: [])
+            // Служебная папка проекта рукописи в корне не показывается.
+            .filter { !(components == rootComponents && $0.lastPathComponent == ".laceditor") }
             .map { child in
                 let values = try child.resourceValues(forKeys: keys)
                 let link = values.isSymbolicLink == true

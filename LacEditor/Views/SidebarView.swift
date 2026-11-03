@@ -62,6 +62,15 @@ struct SidebarView: View {
                     .padding(.horizontal, 10)
             }
 
+            if let session = appState.writerSession {
+                ManuscriptSectionView(session: session, appState: appState)
+                    .id(session.projectID)
+                Divider()
+                WorldSectionView(session: session, appState: appState)
+                    .id(session.projectID)
+                Divider()
+            }
+
             SidebarLibraryView(
                 recentFiles: appState.recentFiles,
                 library: windowManager.sidebarLibrary,

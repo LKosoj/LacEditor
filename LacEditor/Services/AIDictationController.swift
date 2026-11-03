@@ -73,6 +73,7 @@ final class AIDictationController: ObservableObject {
     private let loadKey: (AIRole, String) throws -> String?
     private let askRetry: ((String) async -> Bool)?
     private let writePasteboard: (String) -> Void
+    let history: DictationHistoryStore
 
     init(appState: AppState,
          recorder: AIVoiceRecorder? = nil,
@@ -82,9 +83,11 @@ final class AIDictationController: ObservableObject {
          },
          loadKey: @escaping (AIRole, String) throws -> String? = { try AIKeychainStore().load(for: $0, baseURL: $1) },
          askRetry: ((String) async -> Bool)? = nil,
-         writePasteboard: @escaping (String) -> Void = { NSPasteboard.general.clearContents(); NSPasteboard.general.setString($0, forType: .string) }) {
+         writePasteboard: @escaping (String) -> Void = { NSPasteboard.general.clearContents(); NSPasteboard.general.setString($0, forType: .string) },
+         history: DictationHistoryStore = .shared) {
         self.appState = appState; self.recorder = recorder ?? AIVoiceRecorder(); self.transcribe = transcribe; self.cleanup = cleanup
         self.loadKey = loadKey; self.askRetry = askRetry; self.writePasteboard = writePasteboard
+        self.history = history
         // Панель инструментов слушает AppState, поэтому каждая смена состояния пересылается туда.
         stateObserver = $state.dropFirst().sink { [weak appState] _ in appState?.objectWillChange.send() }
         settingsObserver = appState.preferences.objectWillChange.sink { [weak self] in
@@ -148,6 +151,17 @@ final class AIDictationController: ObservableObject {
 
     func windowClosed() { cancel() }
 
+    enum HistoryVariant { case cleaned, raw }
+
+    /// Вставляет сохранённый текст после выделения выбранного документа одной отменяемой правкой (как обычная диктовка).
+    func insertFromHistory(id: UUID, variant: HistoryVariant) {
+        guard let appState, let entry = history.entry(id: id), let document = appState.selectedDocument else { return }
+        let text = variant == .cleaned ? (entry.cleanedText ?? entry.rawText) : entry.rawText
+        if !insert(text, documentID: document.id) {
+            report(L10n.tr("无法插入听写文字"), isError: true)
+        }
+    }
+
     private func start() {
         guard let appState, let document = appState.selectedDocument,
               Self.unavailableReason(preferences: appState.preferences, document: document) == nil else { return }
@@ -181,15 +195,17 @@ final class AIDictationController: ObservableObject {
         audioURL = audio
         self.documentID = documentID
         audioProfile = audioProfile ?? appState?.preferences.aiProfile(for: .voiceDraft)
+        // Имя берётся сейчас, пока документ ещё открыт: в историю оно попадёт и после закрытия документа.
+        let documentName = appState?.documents.first { $0.id == documentID }?.displayName ?? L10n.tr("未命名")
         state = .processing
         let current = generation
         task = Task { [weak self] in
             guard let self else { return }
             defer { self.finish(current) }
             guard let raw = await self.transcribeWithRetry(audio, generation: current) else { return }
-            let (text, notice) = await self.cleanedText(raw, generation: current)
+            let (text, notice, cleanedWith) = await self.cleanedText(raw, generation: current)
             guard self.generation == current else { return }
-            self.deliver(text, notice: notice, documentID: documentID)
+            self.deliver(text, raw: raw, cleanedWith: cleanedWith, documentName: documentName, notice: notice, documentID: documentID)
         }
     }
 
@@ -213,31 +229,40 @@ final class AIDictationController: ObservableObject {
         }
     }
 
-    private func cleanedText(_ raw: String, generation current: Int) async -> (String, String?) {
-        guard let appState else { return (raw, nil) }
+    private func cleanedText(_ raw: String, generation current: Int) async -> (text: String, notice: String?, cleanedWith: String?) {
+        guard let appState else { return (raw, nil, nil) }
         let profile = appState.preferences.voiceCleanupProfile()
         guard profile.isEnabled, profile.supports(.text),
               !profile.modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return (raw, L10n.tr("文本模型未启用，已插入未整理的识别结果"))
+            return (raw, L10n.tr("文本模型未启用，已插入未整理的识别结果"), nil)
         }
         do {
             let key = try loadKey(.text, profile.baseURL)
             let response = try await cleanup(raw, profile, key)
             guard generation == current, appState.preferences.voiceCleanupProfile() == profile,
                   (try? loadKey(.text, profile.baseURL)) == key else { throw AIError.invalidConfiguration }
-            return (Self.cleaned(response, fallback: raw), nil)
+            return (Self.cleaned(response, fallback: raw), nil, profile.modelID)
         } catch {
-            return (raw, L10n.tr("整理文字失败，已插入未整理的识别结果"))
+            return (raw, L10n.tr("整理文字失败，已插入未整理的识别结果"), nil)
         }
     }
 
-    private func deliver(_ text: String, notice: String?, documentID: UUID) {
+    private func deliver(_ text: String, raw: String, cleanedWith: String?, documentName: String,
+                         notice: String?, documentID: UUID) {
+        recordHistory(raw: raw, cleaned: cleanedWith == nil ? nil : text, cleanedWith: cleanedWith, documentName: documentName)
         if insert(text, documentID: documentID) {
             if let notice { report(notice, isError: false) }
         } else {
             writePasteboard(text)
             report(L10n.tr("无法插入到原文档，听写文字已复制到剪贴板"), isError: false)
         }
+    }
+
+    /// Запись в историю до вставки: результат остаётся, даже если документ закрыт. Ошибка записи вставке не мешает.
+    private func recordHistory(raw: String, cleaned: String?, cleanedWith: String?, documentName: String) {
+        guard appState?.preferences.dictationHistoryEnabled == true else { return }
+        _ = try? history.add(rawText: raw, cleanedText: cleaned, documentName: documentName,
+                             transcriptionModel: audioProfile?.modelID ?? "", cleanupModel: cleanedWith)
     }
 
     /// Вставка после выделения в координатах редактора; выделение не заменяется.

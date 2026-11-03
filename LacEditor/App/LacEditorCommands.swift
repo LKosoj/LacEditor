@@ -143,6 +143,7 @@ struct LacEditorCommands: Commands {
                 Button(L10n.tr("HTML（无样式）")) { appState?.exportMarkdown(as: .htmlPlain) }
                 Button("PDF") { appState?.exportMarkdown(as: .pdf) }
                 Button("PNG") { appState?.exportMarkdownImage() }
+                Button(L10n.tr("Fountain 剧本…")) { appState?.presentFountainExport(scope: .document) }
                 if let profiles = appState?.preferences.markdownExportConfiguration.profiles {
                     ForEach(profiles.filter(\.enabled)) { profile in
                         Button(profile.name) { appState?.exportMarkdown(profile: profile) }
@@ -155,6 +156,9 @@ struct LacEditorCommands: Commands {
                     .disabled(appState?.hasPreviousMarkdownExport != true)
             }
             .disabled(appState?.selectedDocument?.language != .markdown)
+            if appState?.writerSession != nil {
+                Button(L10n.tr("将项目导出为 Fountain 剧本…")) { appState?.presentFountainExport(scope: .project) }
+            }
             Button(L10n.tr("打印 Markdown…")) { appState?.printMarkdown() }
                 .keyboardShortcut("p", modifiers: .command)
                 .disabled(appState?.selectedDocument?.language != .markdown)
@@ -165,6 +169,11 @@ struct LacEditorCommands: Commands {
                 .disabled(appState?.canShowVersionHistory != true)
             Button(L10n.tr("比较文本…")) { appState?.presentTextCompare() }
                 .disabled(appState?.canShowTextCompare != true)
+            Button(L10n.tr("制作快照…")) { appState?.makeSnapshot() }
+                .keyboardShortcut("s", modifiers: [.command, .control])
+                .disabled(appState?.canMakeSnapshot != true)
+            Button(L10n.tr("浏览快照…")) { appState?.presentVersionHistory(mode: .snapshots) }
+                .disabled(appState?.canMakeSnapshot != true)
             Divider()
             Button {
                 if let keyWindow = NSApp.keyWindow,
@@ -263,6 +272,18 @@ struct LacEditorCommands: Commands {
                 Label(L10n.tr("撤销上次文件夹替换…"), systemImage: "arrow.uturn.backward")
             }
                 .disabled(appState == nil)
+            Button {
+                appState?.rebuildSearchIndex()
+            } label: {
+                Label(L10n.tr("重建索引"), systemImage: "arrow.triangle.2.circlepath")
+            }
+                .disabled(appState?.folderWorkspace.rootURL == nil)
+            Button {
+                appState?.deleteSearchIndex()
+            } label: {
+                Label(L10n.tr("删除索引…"), systemImage: "trash")
+            }
+                .disabled(appState?.folderWorkspace.rootURL == nil)
             Divider()
             Menu {
                 Button {
@@ -331,10 +352,11 @@ struct LacEditorCommands: Commands {
         }
 
         CommandMenu(L10n.tr("AI 写作助手")) {
-            Button(L10n.tr("显示或隐藏 AI 助手")) {
+            Button(L10n.tr("显示或隐藏检查器")) {
                 if appState?.isDistractionFree == true { appState?.toggleDistractionFree() }
                 appState?.isAIWritingVisible.toggle()
             }
+            .keyboardShortcut("0", modifiers: [.command, .option])
             .disabled(appState == nil)
             Divider()
             Button(L10n.tr("向文档提问…")) {
@@ -352,7 +374,7 @@ struct LacEditorCommands: Commands {
             Divider()
             ForEach(AIFeatureGroup.allCases) { group in
                 Menu(group.title) {
-                    ForEach(AIFeature.features(in: group).filter { $0 != .ask && $0 != .completion && $0 != .voiceDraft }) { feature in
+                    ForEach(AIFeature.features(in: group).filter { $0 != .ask && $0 != .completion && $0 != .voiceDraft && !$0.isWriterFeature }) { feature in
                         if feature == .rewrite {
                             Menu(feature.title) {
                                 ForEach(AIRewriteMode.allCases) { mode in
@@ -434,6 +456,14 @@ struct LacEditorCommands: Commands {
             .keyboardShortcut("r", modifiers: [.command, .option])
             .disabled(appState?.selectedDocument == nil)
             Divider()
+            if appState?.writerSession == nil {
+                Button(L10n.tr("写作模式")) { appState?.enableWriterMode() }
+                    .disabled(appState?.hostWindow == nil)
+            } else {
+                Button(L10n.tr("退出写作模式")) { appState?.exitWriterMode() }
+                Button(L10n.tr("关闭项目")) { appState?.closeWriterProject() }
+            }
+            Divider()
             Picker(L10n.tr("Markdown 编辑方式"), selection: Binding(
                 get: { appState?.selectedDocument?.isMarkdownFormatted ?? false },
                 set: { formatted in
@@ -460,6 +490,18 @@ struct LacEditorCommands: Commands {
             }
                 .keyboardShortcut("p", modifiers: [.command, .option])
                 .disabled(appState == nil)
+            Menu(L10n.tr("预览中的修订")) {
+                Picker(L10n.tr("预览中的修订"), selection: Binding(
+                    get: { appState?.preferences.criticPreviewMode ?? .show },
+                    set: { appState?.preferences.criticPreviewMode = $0 }
+                )) {
+                    Text(L10n.tr("显示修订")).tag(CriticMarkupRenderMode.show)
+                    Text(L10n.tr("仅看结果")).tag(CriticMarkupRenderMode.result)
+                    Text(L10n.tr("仅看原文")).tag(CriticMarkupRenderMode.original)
+                }
+                .pickerStyle(.inline)
+            }
+            .disabled(appState?.selectedDocument?.language != .markdown)
             Button {
                 appState?.toggleWordWrap()
             } label: {
@@ -533,6 +575,9 @@ struct LacEditorCommands: Commands {
             }
             .disabled(appState == nil)
             Divider()
+            Button(L10n.tr("导图…")) { appState?.presentMindMap(kind: .document) }
+                .disabled(appState?.mindMapUnavailableReason(for: .document) != nil)
+            Divider()
             Button {
                 appState?.increaseFontSize()
             } label: {
@@ -579,6 +624,35 @@ struct LacEditorCommands: Commands {
             .disabled(appState == nil)
         }
 
+        CommandMenu(L10n.tr("书稿项目")) {
+            Button(L10n.tr("纳入书稿")) { appState?.manuscriptIncludeShortcut() }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+                .disabled(appState?.writerSession == nil)
+            Button(L10n.tr("上移")) { if let id = appState?.manuscriptActionNodeID { appState?.moveManuscriptNodeUp(id) } }
+                .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+                .disabled(appState?.manuscriptActionNodeID == nil)
+            Button(L10n.tr("下移")) { if let id = appState?.manuscriptActionNodeID { appState?.moveManuscriptNodeDown(id) } }
+                .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+                .disabled(appState?.manuscriptActionNodeID == nil)
+            Divider()
+            Button(L10n.tr("新建场景")) { appState?.createScene(parent: nil, after: appState?.currentManuscriptNodeID) }
+                .disabled(appState?.writerSession == nil)
+            Button(L10n.tr("新建书稿分组")) { appState?.createGroup(parent: nil, after: nil) }
+                .disabled(appState?.writerSession == nil)
+            Divider()
+            Button(L10n.tr("编译书稿…")) { appState?.presentManuscript() }
+                .disabled(appState?.writerSession == nil)
+            Button(L10n.tr("卡片板")) { appState?.presentWriterBoard() }
+                .disabled(appState?.writerSession == nil)
+            Button(L10n.tr("合并预览")) { appState?.presentWriterCombinedView() }
+                .disabled(appState?.writerSession == nil)
+            Button(L10n.tr("项目导图…")) { appState?.presentMindMap(kind: .project) }
+                .disabled(appState?.writerSession == nil)
+            Button(L10n.tr("关系图…")) { appState?.presentMindMap(kind: .links) }
+                .disabled(appState?.writerSession == nil)
+            Button(L10n.tr("查找候选…")) { appState?.findWorldCandidates() }
+                .disabled(appState?.writerSession == nil || appState?.selectedDocument?.language != .markdown)
+        }
         CommandMenu(L10n.tr("Markdown 格式")) {
             Group {
                 Button(L10n.tr("设置代码块语言")) { appState?.markdownClipboard(.setCodeLanguage) }

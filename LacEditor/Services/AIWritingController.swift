@@ -98,7 +98,7 @@ final class AIWritingController: ObservableObject {
 
     var enabledFeatures: [AIFeature] {
         guard let preferences = appState?.preferences else { return [] }
-        return AIFeature.allCases.filter { preferences.aiFeatures.contains($0) && $0 != .completion && $0 != .voiceDraft }
+        return AIFeature.allCases.filter { preferences.aiFeatures.contains($0) && $0 != .completion && $0 != .voiceDraft && !$0.isWriterFeature }
     }
 
     var translationTarget: String {

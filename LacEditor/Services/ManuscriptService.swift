@@ -5,6 +5,19 @@ enum ManuscriptService {
     struct Part: Equatable, Sendable {
         let file: FolderSearchService.File
         let text: String
+        /// Название, описание и цепочка групп сцены из проекта; без проекта пусты.
+        var title: String? = nil
+        var synopsis: String? = nil
+        var groupPath: [String] = []
+    }
+
+    /// Что попадает в результат: текст глав, только описания или описания перед текстом.
+    enum Mode: Equatable { case prose, synopses, proseWithSynopses }
+
+    struct Options: Equatable {
+        var mode: Mode = .prose
+        /// Названия групп проекта становятся заголовками (глубина группы = уровень заголовка, не больше 6).
+        var groupTitles = false
     }
 
     struct Report: Equatable, Sendable {
@@ -18,8 +31,13 @@ enum ManuscriptService {
         var duplicateFootnoteLabels: [String] = []
         /// В метаданных первого файла задан `typora-root-url`.
         var blockedByRootURL = false
+        /// Файлы, где не был закрыт блок кода: в конец части добавлено закрывающее ограждение.
+        var closedCodeBlocks: [String] = []
+        /// Сцены без описания, пропущенные в режиме «仅梗概».
+        var missingSynopses: [String] = []
         var hasNotes: Bool { !skipped.isEmpty || unconvertedAddresses > 0 || !filesWithoutImageCheck.isEmpty
-            || !duplicateFootnoteLabels.isEmpty || blockedByRootURL }
+            || !duplicateFootnoteLabels.isEmpty || blockedByRootURL || !closedCodeBlocks.isEmpty
+            || !missingSynopses.isEmpty }
     }
 
     struct Output: Equatable, Sendable {
@@ -69,7 +87,7 @@ enum ManuscriptService {
     }
 
     static func merge(_ parts: [Part], skipped: [FolderSearchService.Problem], syntax: MarkdownSyntaxOptions,
-                      isCancelled: () -> Bool = { false }) throws -> Output {
+                      options: Options = Options(), isCancelled: () -> Bool = { false }) throws -> Output {
         var report = Report()
         report.skipped = skipped
         if isCancelled() { throw CancellationError() }
@@ -83,21 +101,51 @@ enum ManuscriptService {
         var texts: [String] = []
         var labelCounts: [String: Int] = [:]
         var labelOrder: [(folded: String, name: String)] = []
+        var emittedGroups: [String] = []
+        var mergedParts = 0
         for (index, part) in parts.enumerated() {
             if isCancelled() { throw CancellationError() }
-            let prepared = try prepare(part, isFirst: index == firstIndex, convertsAddresses: convertsAddresses,
-                                       syntax: syntax, isCancelled: isCancelled)
-            guard !prepared.text.isEmpty else { continue }
-            texts.append(prepared.text)
-            report.unconvertedAddresses += prepared.unconverted
-            if prepared.imageCheckFailed { report.filesWithoutImageCheck.append(part.file.relativePath) }
-            for label in prepared.footnoteLabels {
-                let folded = label.lowercased()
-                if labelCounts[folded] == nil { labelOrder.append((folded, label)) }
-                labelCounts[folded, default: 0] += 1
+            let partTitle = part.title ?? ((part.file.relativePath as NSString).lastPathComponent as NSString).deletingPathExtension
+            let synopsis = part.synopsis?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            var body: String
+            if options.mode == .synopses {
+                // Текст глав не нужен: ни адреса, ни сноски не разбираются.
+                guard !synopsis.isEmpty else { report.missingSynopses.append(partTitle); continue }
+                body = "# \(partTitle)\n\n\(synopsis)"
+            } else {
+                let prepared = try prepare(part, isFirst: index == firstIndex, convertsAddresses: convertsAddresses,
+                                           syntax: syntax, isCancelled: isCancelled)
+                body = prepared.text
+                if let closed = closingOpenFence(body) {
+                    body = closed
+                    report.closedCodeBlocks.append(part.file.relativePath)
+                }
+                if options.mode == .proseWithSynopses, !synopsis.isEmpty, !body.isEmpty {
+                    let italic = synopsis.components(separatedBy: "\n\n")
+                        .map { "*\($0.trimmingCharacters(in: .whitespacesAndNewlines))*" }
+                        .joined(separator: "\n\n")
+                    body = italic + "\n\n" + body
+                }
+                guard !body.isEmpty else { continue }
+                report.unconvertedAddresses += prepared.unconverted
+                if prepared.imageCheckFailed { report.filesWithoutImageCheck.append(part.file.relativePath) }
+                for label in prepared.footnoteLabels {
+                    let folded = label.lowercased()
+                    if labelCounts[folded] == nil { labelOrder.append((folded, label)) }
+                    labelCounts[folded, default: 0] += 1
+                }
             }
+            if options.groupTitles {
+                let common = zip(emittedGroups, part.groupPath).prefix { $0 == $1 }.count
+                for depth in common..<part.groupPath.count {
+                    texts.append(String(repeating: "#", count: min(depth + 1, 6)) + " " + part.groupPath[depth])
+                }
+                emittedGroups = part.groupPath
+            }
+            texts.append(body)
+            mergedParts += 1
         }
-        report.mergedFiles = texts.count
+        report.mergedFiles = mergedParts
         report.duplicateFootnoteLabels = labelOrder.filter { (labelCounts[$0.folded] ?? 0) >= 2 }.map(\.name)
         return Output(text: join(texts), report: report)
     }
@@ -141,8 +189,9 @@ enum ManuscriptService {
             guard range.location >= 0, range.length >= 4, NSMaxRange(range) <= source.length,
                   seenDefinitions.insert(range.location).inserted else { continue }
             let marker = source.substring(with: range)
-            guard marker.hasPrefix("[^"), marker.hasSuffix("]:") else { continue }
-            let label = (marker as NSString).substring(with: NSRange(location: 2, length: range.length - 4))
+            // Разбор отдаёт маркер определения без двоеточия: `[^метка]`.
+            guard marker.hasPrefix("[^"), marker.hasSuffix("]") else { continue }
+            let label = (marker as NSString).substring(with: NSRange(location: 2, length: range.length - 3))
             if seenLabels.insert(label.lowercased()).inserted { labels.append(label) }
         }
         if convertsAddresses {
@@ -200,8 +249,10 @@ enum ManuscriptService {
                 }
             }
             // Не переписываются, только считаются; теги внутри блоков кода тоже попадают в счёт.
+            // `<a href>`, который разбор уже вернул ссылкой (её диапазон начинается с открывающего тега), посчитан выше.
+            let parsedLinkStarts = Set(presentation.links.map(\.range.location))
             htmlAddress?.enumerateMatches(in: text, range: NSRange(location: 0, length: source.length)) { match, _, _ in
-                guard let match else { return }
+                guard let match, !parsedLinkStarts.contains(match.range.location) else { return }
                 for group in 1...3 where match.range(at: group).location != NSNotFound {
                     countIfRelative(source.substring(with: match.range(at: group)))
                 }
@@ -260,6 +311,31 @@ enum ManuscriptService {
                   url.path == target, fragment == oldFragment else { return .unconfirmed }
         }
         return .converted(new)
+    }
+
+    /// Если ограждённый блок кода не закрыт до конца части, возвращает текст с закрывающей строкой; иначе nil.
+    /// Иначе незакрытый блок поглотил бы следующую часть книги.
+    static func closingOpenFence(_ text: String) -> String? {
+        var open: (character: Character, length: Int)?
+        for rawLine in text.split(omittingEmptySubsequences: false, whereSeparator: { $0 == "\n" || $0 == "\r" || $0 == "\r\n" }) {
+            let line = rawLine.drop { $0 == " " }
+            guard rawLine.count - line.count <= 3, let first = line.first, first == "`" || first == "~" else {
+                continue
+            }
+            let length = line.prefix { $0 == first }.count
+            guard length >= 3 else { continue }
+            let rest = line.dropFirst(length)
+            if let current = open {
+                if first == current.character, length >= current.length,
+                   rest.allSatisfy({ $0 == " " || $0 == "\t" }) { open = nil }
+            } else if first != "`" || !rest.contains("`") {
+                open = (first, length)
+            }
+        }
+        guard let open else { return nil }
+        let ending = lineEnding(of: text)
+        let separator = text.hasSuffix("\n") || text.hasSuffix("\r") ? "" : ending
+        return text + separator + String(repeating: open.character, count: open.length)
     }
 
     /// Перевод строки по последнему `\r`/`\n` в тексте: стык продолжает конец предыдущей части.

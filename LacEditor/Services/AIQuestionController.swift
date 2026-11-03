@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 
 struct AIQuestionWebApproval: Equatable, Identifiable {
@@ -33,6 +34,8 @@ final class AIQuestionController: ObservableObject {
     @Published private(set) var messageAction: AIMessageAction?
     private weak var appState: AppState?
     private var task: Task<Void, Never>?
+    private var suggestTask: Task<Void, Never>?
+    private var suggestGeneration = 0
     private var generation = 0
     private var approvalContinuation: CheckedContinuation<Bool, Never>?
     private var pending: Pending?
@@ -60,6 +63,17 @@ final class AIQuestionController: ObservableObject {
          jinaClient: JinaClient = JinaClient()) {
         self.appState = appState; self.converse = converse; self.loadKey = loadKey
         self.converseWeb = converseWeb; self.loadJinaKey = loadJinaKey; self.jinaClient = jinaClient
+        worldObservation = appState.$writerSession
+            .map { session -> AnyPublisher<Bool, Never> in
+                guard let session else { return Just(false).eraseToAnyPublisher() }
+                return session.world.catalog.$cards.map { !$0.isEmpty }.eraseToAnyPublisher()
+            }
+            .switchToLatest()
+            .removeDuplicates()
+            .sink { [weak self] in self?.hasWorldCards = $0 }
+        Task { [weak appState] in
+            if appState?.writerSession?.world.catalog.cards.isEmpty == true { appState?.refreshWorld() }
+        }
         observer = NotificationCenter.default.addObserver(forName: EditorCommandNotification.documentContentDidChange, object: nil, queue: .main) { [weak self] note in
             MainActor.assumeIsolated {
                 guard let self, let id = note.object as? UUID else { return }
@@ -71,7 +85,7 @@ final class AIQuestionController: ObservableObject {
             }
         }
     }
-    deinit { task?.cancel(); if let observer { NotificationCenter.default.removeObserver(observer) } }
+    deinit { task?.cancel(); suggestTask?.cancel(); if let observer { NotificationCenter.default.removeObserver(observer) } }
 
     private func post(_ text: String, kind: StatusKind = .error, action: AIMessageAction? = nil) {
         message = text; messageKind = kind; messageAction = action
@@ -87,6 +101,69 @@ final class AIQuestionController: ObservableObject {
         if panel.runModal() == .OK { for url in panel.urls where !files.contains(url) { files.append(url) } }
     }
     func removeFile(_ url: URL) { files.removeAll { $0 == url } }
+
+    /// Подбирает до 5 файлов рабочей папки по тексту вопроса через индекс слов; в модель уходят файлы целиком.
+    func suggestSources() {
+        suggestTask?.cancel()
+        suggestGeneration &+= 1
+        let token = suggestGeneration
+        let question = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !question.isEmpty else { return }
+        guard let appState, let root = appState.folderWorkspace.rootURL else {
+            post(L10n.tr("按词搜索需要先打开文件夹。"), kind: .info); return
+        }
+        guard SearchDatabase.fts5Available() else {
+            post(L10n.tr("此系统无法使用按词搜索。"), kind: .info); return
+        }
+        let snapshots = appState.windowManager?.folderSearchSnapshots(root: root) ?? []
+        let index = SearchIndexRegistry.shared.index(for: root)
+        let cache = SearchLiveDocumentCache()
+        suggestTask = Task { [weak self] in
+            do {
+                _ = try await SearchIndexer.refresh(index, root: root, progress: { _ in }, isCancelled: { Task.isCancelled })
+                let live = await Task.detached { SearchLiveDocuments.build(snapshots: snapshots, root: root, cache: cache) }.value
+                let hits = try await index.search(SearchQuery(text: question), limit: 20, live: live)
+                var urls: [URL] = []
+                for hit in hits {
+                    let url = hit.url(in: root)
+                    if !urls.contains(url) { urls.append(url) }
+                    if urls.count == 5 { break }
+                }
+                // Папка, вопрос или другой запрос могли смениться, пока шёл поиск: старый результат не применяется.
+                guard let self, !Task.isCancelled, self.suggestGeneration == token,
+                      self.appState?.folderWorkspace.rootURL == root,
+                      self.draft.trimmingCharacters(in: .whitespacesAndNewlines) == question else { return }
+                self.suggestTask = nil
+                guard !urls.isEmpty else { self.post(L10n.tr("未找到相关文件。"), kind: .info); return }
+                for url in urls where !self.files.contains(url) { self.files.append(url) }
+                self.sourceMode = .files
+                self.post(L10n.tr("已添加 %d 个来源文件。", urls.count), kind: .info)
+            } catch {
+                guard let self, !Task.isCancelled, self.suggestGeneration == token else { return }
+                self.suggestTask = nil
+                self.fail(error)
+            }
+        }
+    }
+
+    /// Есть ли у вкладки писательский проект с карточками мира (обновляется вместе с каталогом).
+    @Published private(set) var hasWorldCards = false
+    private var worldObservation: AnyCancellable?
+
+    /// Добавляет в источники файлы карточек, упомянутых в текущем документе и выбранных файлах (без `ai: exclude`).
+    func addWorldCards() {
+        guard let appState else { return }
+        let current = files
+        Task { [weak self] in
+            let urls = await appState.mentionedStoryCardURLs(files: current)
+            guard let self else { return }
+            let fresh = urls.filter { !self.files.contains($0) }
+            guard !fresh.isEmpty else { self.post(L10n.tr("没有可添加的卡片"), kind: .info); return }
+            self.files.append(contentsOf: fresh)
+            self.sourceMode = .files
+            self.post(L10n.tr("已添加 %lld 张卡片", fresh.count), kind: .info)
+        }
+    }
 
     func ask() { send(question: draft.trimmingCharacters(in: .whitespacesAndNewlines), usesDraft: true, selectionOnly: false) }
     func askAboutSelection() {
@@ -327,6 +404,7 @@ final class AIQuestionController: ObservableObject {
     }
 
     func selectedDocumentChanged() {
+        suggestTask?.cancel(); suggestTask = nil; suggestGeneration &+= 1
         cancel(); message = ""
         refreshStaleness()
     }

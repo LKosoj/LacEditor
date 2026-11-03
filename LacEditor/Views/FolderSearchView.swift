@@ -14,6 +14,7 @@ struct FolderSearchView: View {
                     Text(L10n.tr("按名称打开")).tag(FolderSearchController.Mode.files)
                     Text(L10n.tr("搜索文件内容")).tag(FolderSearchController.Mode.text)
                     Text(L10n.tr("搜索标签")).tag(FolderSearchController.Mode.tags)
+                    Text(L10n.tr("按词")).tag(FolderSearchController.Mode.words)
                 }.pickerStyle(.segmented).disabled(controller.root == nil)
                     .onChange(of: controller.mode) { _, _ in
                         if appState.aiRegex.target == .folderSearch { appState.aiRegex.cancel() }
@@ -31,6 +32,7 @@ struct FolderSearchView: View {
                     StatusMessageView(kind: message.kind, text: message.text)
                         .accessibilityIdentifier("folderSearch.aiRegex.message")
                 }
+                if controller.mode == .words { WordSearchPanel(words: controller.words) }
                 if controller.mode == .text {
                     TextField(L10n.tr("文件过滤，例如 *.md, !build"), text: $controller.fileMask)
                         .disabled(controller.replaceState == .applying)
@@ -46,6 +48,9 @@ struct FolderSearchView: View {
                 if controller.message == .failed {
                     Text(L10n.tr("搜索失败")).foregroundStyle(.secondary)
                     Button(L10n.tr("选择其他文件夹…")) { appState.openFolder() }.controlSize(.small)
+                }
+                if controller.mode == .words && controller.words.hasSearched && controller.words.hits.isEmpty {
+                    Text(L10n.tr("没有匹配结果")).foregroundStyle(.secondary)
                 }
                 if controller.quickOpenRequest == nil && controller.hasSearched && controller.files.isEmpty && controller.matches.isEmpty && controller.quickOpenItems.isEmpty {
                     Text(L10n.tr("没有匹配结果")).foregroundStyle(.secondary)
@@ -201,6 +206,7 @@ extension FolderSearchView {
 struct FolderSearchRow: Identifiable {
     enum Content {
         case file(FolderSearchService.File), match(FolderSearchService.Match), problem(FolderSearchService.Problem)
+        case word(SearchIndexHit)
     }
     let id: String
     let content: Content
@@ -213,7 +219,8 @@ struct FolderSearchRow: Identifiable {
             : []
         let matches: [Self] = controller.matches.enumerated().map { .init(id: "match-\($0.offset)", content: .match($0.element)) }
         let problems: [Self] = controller.problems.enumerated().map { .init(id: "problem-\($0.offset)", content: .problem($0.element)) }
-        return files + matches + problems
+        let words: [Self] = controller.words.hits.enumerated().map { .init(id: "word-\($0.offset)", content: .word($0.element)) }
+        return files + matches + words + problems
     }
 }
 
@@ -258,6 +265,8 @@ struct FolderSearchRowView: View {
                                ? L10n.tr("取消选择此文件的全部匹配") : L10n.tr("选择此文件的全部匹配")) { controller.toggle(match.file) }
                     }
                 }
+            case let .word(hit):
+                wordRow(hit, id: id)
             case let .problem(problem):
                 Text(L10n.tr("%@：%@", String(describing: problem.url.path), reason(problem.reason)))
                     .font(.caption).foregroundStyle(.secondary)
@@ -265,6 +274,31 @@ struct FolderSearchRowView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Результат режима «По словам»: файл, путь заголовков и отрывок с подсвеченными словами.
+    @ViewBuilder
+    private func wordRow(_ hit: SearchIndexHit, id: AnyHashable) -> some View {
+        let excerpt = SearchHighlight.excerpt(from: hit.text, terms: controller.words.terms)
+        let showsTitle = !hit.title.isEmpty && hit.title != (hit.path as NSString).lastPathComponent
+        let spoken = [hit.path, hit.isLive ? L10n.tr("未保存") : "", showsTitle ? hit.title : "", excerpt.text]
+            .filter { !$0.isEmpty }.joined(separator: ", ")
+        Button { navigation.focused = id; controller.words.select(hit) } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text(hit.path).font(.caption).lineLimit(1).truncationMode(.middle)
+                    if hit.isLive { Text(L10n.tr("未保存")).font(.caption2).foregroundStyle(.secondary) }
+                }
+                if showsTitle {
+                    Text(hit.title).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
+                }
+                Text(SearchHighlight.attributed(excerpt)).lineLimit(4)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .modifier(FolderListRowNavigation(id: id, navigation: navigation) {
+            controller.words.select(hit); return .handled
+        })
+        .accessibilityLabel(spoken)
     }
 
     /// Контекст строки; при включённой замене совпадение зачёркнуто и сразу за ним показана вставка.
@@ -284,7 +318,7 @@ struct FolderSearchRowView: View {
     static func selectableIDs(_ rows: [FolderSearchRow]) -> [AnyHashable] {
         rows.compactMap { row -> AnyHashable? in
             switch row.content {
-            case .file, .match: return AnyHashable(row.id)
+            case .file, .match, .word: return AnyHashable(row.id)
             case .problem: return nil
             }
         }
@@ -304,6 +338,64 @@ extension FolderSearchService.ProblemReason {
         case .invalidTags: L10n.tr("无法读取 YAML 标签")
         case .changed: L10n.tr("文件已变化")
         case .conflictingOpenDocuments: L10n.tr("打开的文档冲突")
+        }
+    }
+}
+
+/// Панель режима «По словам»: подсказка, ход обновления индекса, переключатель ИИ, слова-расширения и меню индекса.
+struct WordSearchPanel: View {
+    @ObservedObject var words: WordSearchController
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        let aiAvailable = appState.aiAvailability(for: .searchExpansion) == .available
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L10n.tr("查找词的所有形式：写了 → 写")).font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Toggle(isOn: $words.usesMeaning) {
+                    Label(L10n.tr("按含义（AI）"), systemImage: "sparkles")
+                }
+                .toggleStyle(.button).controlSize(.small)
+                .disabled(!aiAvailable)
+                .accessibilityIdentifier("folderSearch.words.meaning")
+                Spacer()
+                Menu {
+                    Button(L10n.tr("重建索引")) { words.rebuildIndex() }
+                    Button(L10n.tr("删除索引…")) { appState.deleteSearchIndex() }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .menuStyle(.borderlessButton).fixedSize()
+                .help(L10n.tr("索引")).accessibilityLabel(L10n.tr("索引"))
+                .accessibilityIdentifier("folderSearch.words.menu")
+            }
+            if !aiAvailable {
+                AIRecommendationHint(feature: .searchExpansion, message: L10n.tr("启用 AI 后可按含义查找相关位置"))
+            }
+            if let progress = words.progress {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text(L10n.tr("索引更新中：%d / %d 个文件", progress.done, progress.total)).font(.caption).foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+            }
+            if !words.expansion.isEmpty {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 4, alignment: .leading)], alignment: .leading, spacing: 4) {
+                    ForEach(words.expansion, id: \.self) { word in
+                        HStack(spacing: 4) {
+                            Text(word).lineLimit(1)
+                            Button { words.removeExpansion(word) } label: { Image(systemName: "xmark") }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel(L10n.tr("移除扩展词 %@", word))
+                        }
+                        .font(.caption)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Capsule().fill(Color.secondary.opacity(0.15)))
+                    }
+                }
+            }
+            if words.isSearching { ProgressView().controlSize(.small) }
+            if !words.message.isEmpty { Text(words.message).foregroundStyle(.secondary) }
         }
     }
 }

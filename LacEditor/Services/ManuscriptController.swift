@@ -9,6 +9,23 @@ final class ManuscriptController: ObservableObject {
         var id: String { file.relativePath }
         let file: FolderSearchService.File
         var isOn: Bool
+        /// Узел проекта (в проектном режиме), иначе nil.
+        var node: ManuscriptNode? = nil
+        var groupPath: [String] = []
+        /// Файл узла не найден на диске.
+        var isMissing = false
+        /// Расширение вне `compileExtensions` (например `.fountain`): в сборку не берётся.
+        var isUnsupported = false
+        /// Одна из объемлющих групп выключена: отметка «выкл.» берётся из неё, а не из самого узла.
+        var isInDisabledGroup = false
+        var isSelectable: Bool { !isMissing && !isUnsupported }
+    }
+
+    /// Данные узла проекта для части книги.
+    struct PartMeta: Equatable, Sendable {
+        let title: String
+        let synopsis: String?
+        let groupPath: [String]
     }
 
     struct Request: Sendable {
@@ -17,6 +34,11 @@ final class ManuscriptController: ObservableObject {
         let files: [FolderSearchService.File]
         let documents: [FolderSearchService.OpenDocument]
         let syntax: MarkdownSyntaxOptions
+        var options = ManuscriptService.Options()
+        /// Данные узлов по относительному пути файла (пусто без проекта).
+        var meta: [String: PartMeta] = [:]
+        /// В проектном режиме берутся все `compileExtensions`, а не только Markdown.
+        var markdownOnly = true
     }
 
     enum BuildError: Error { case nothingToMerge }
@@ -25,9 +47,12 @@ final class ManuscriptController: ObservableObject {
     @Published var selectedID: String?
     @Published private(set) var isLoading = false
     @Published private(set) var isBuilding = false
+    @Published var options = ManuscriptService.Options()
     @Published private(set) var message: String?
     @Published private(set) var messageKind: StatusKind = .info
     private(set) var root: URL?
+    /// Проект рукописи, по которому построен список; nil — обычная сборка папки.
+    private(set) var store: ManuscriptProjectStore?
 
     private let snapshots: () -> [FolderSearchService.OpenDocument]?
     private let syntax: () -> MarkdownSyntaxOptions
@@ -57,10 +82,15 @@ final class ManuscriptController: ObservableObject {
     nonisolated static let defaultBuild: @Sendable (Request) async throws -> ManuscriptService.Output = { request in
         let work = Task.detached(priority: .userInitiated) { () throws -> ManuscriptService.Output in
             let sources = try FolderSearchService.manuscriptSources(root: request.root, files: request.files,
-                                                                    openDocuments: request.documents, isCancelled: { Task.isCancelled })
-            let parts = sources.values.map { ManuscriptService.Part(file: $0.file, text: $0.text) }
+                                                                    openDocuments: request.documents,
+                                                                    markdownOnly: request.markdownOnly, isCancelled: { Task.isCancelled })
+            let parts = sources.values.map { source -> ManuscriptService.Part in
+                let meta = request.meta[source.file.relativePath]
+                return ManuscriptService.Part(file: source.file, text: source.text, title: meta?.title,
+                                              synopsis: meta?.synopsis, groupPath: meta?.groupPath ?? [])
+            }
             return try ManuscriptService.merge(parts, skipped: sources.problems, syntax: request.syntax,
-                                               isCancelled: { Task.isCancelled })
+                                               options: request.options, isCancelled: { Task.isCancelled })
         }
         return try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
     }
@@ -70,6 +100,14 @@ final class ManuscriptController: ObservableObject {
 
     /// Смена корня сбрасывает выбор; тот же корень сохраняет порядок и флажки.
     func attach(root newRoot: URL) {
+        if store != nil {
+            // Из проектного режима в обычный: список проекта не подходит.
+            cancel()
+            store = nil
+            items = []
+            selectedID = nil
+            root = nil
+        }
         if root != newRoot {
             cancel()
             items = []
@@ -79,8 +117,55 @@ final class ManuscriptController: ObservableObject {
         reload()
     }
 
+    /// Проектный режим: порядок, включение и названия берутся из манифеста. Порядок в листе — выбор для одной сборки.
+    func attachProject(_ projectStore: ManuscriptProjectStore) {
+        cancel()
+        store = projectStore
+        root = projectStore.rootURL
+        selectedID = nil
+        message = nil
+        var result: [Item] = []
+        func walk(_ nodes: [ManuscriptNode], path: [String], parentOn: Bool) {
+            for node in nodes {
+                if node.kind == .group {
+                    walk(node.children, path: path + [node.title], parentOn: parentOn && node.include)
+                    continue
+                }
+                guard let relative = node.path, let url = projectStore.fileURL(for: node) else { continue }
+                let supported = ManuscriptProjectFiles.compileExtensions.contains((relative as NSString).pathExtension.lowercased())
+                let exists = FileManager.default.fileExists(atPath: url.path)
+                var item = Item(file: FolderSearchService.File(url: url, relativePath: relative),
+                                isOn: parentOn && node.include && supported && exists)
+                item.node = node
+                item.groupPath = path
+                item.isMissing = !exists
+                item.isUnsupported = !supported
+                item.isInDisabledGroup = !parentOn
+                result.append(item)
+            }
+        }
+        walk(projectStore.project?.nodes ?? [], path: [], parentOn: true)
+        items = result
+    }
+
+    /// Записывает отметки листа в поле «Включать в книгу» узлов. Недоступные файлы не затрагиваются.
+    func rememberSelection() {
+        guard let store else { return }
+        // Выключенное через группу не записываем: иначе потомки потеряют собственную отметку.
+        let states = items.filter { $0.isSelectable && !($0.isInDisabledGroup && !$0.isOn) }.compactMap { item in item.node.map { ($0.id, item.isOn) } }
+        do {
+            try store.update { project in
+                for (id, on) in states { project.mutateNode(id: id) { $0.include = on } }
+            }
+            message = L10n.tr("已记住选择")
+            messageKind = .success
+        } catch {
+            fail(error.localizedDescription)
+        }
+    }
+
     func reload() {
-        guard let root else { return }
+        guard store == nil, let root else { return }
         listGeneration += 1
         let current = listGeneration
         listTask?.cancel()
@@ -133,12 +218,12 @@ final class ManuscriptController: ObservableObject {
     }
 
     func setAll(_ on: Bool) {
-        for index in items.indices { items[index].isOn = on }
+        for index in items.indices { items[index].isOn = on && items[index].isSelectable }
     }
 
     func setItem(_ id: String, on: Bool) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        items[index].isOn = on
+        items[index].isOn = on && items[index].isSelectable
     }
 
     func build() {
@@ -152,7 +237,14 @@ final class ManuscriptController: ObservableObject {
         buildTask?.cancel()
         isBuilding = true
         message = nil
-        let request = Request(root: root, files: items.filter(\.isOn).map(\.file), documents: documents, syntax: syntax())
+        let selected = items.filter(\.isOn)
+        var meta: [String: PartMeta] = [:]
+        for item in selected {
+            guard let node = item.node else { continue }
+            meta[item.file.relativePath] = PartMeta(title: node.title, synopsis: node.synopsis, groupPath: item.groupPath)
+        }
+        let request = Request(root: root, files: selected.map(\.file), documents: documents, syntax: syntax(),
+                              options: options, meta: meta, markdownOnly: store == nil)
         let builder = builder
         buildTask = Task { [weak self] in
             let outcome: Result<ManuscriptService.Output, Error>

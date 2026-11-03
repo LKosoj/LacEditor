@@ -25,6 +25,9 @@ struct StatusBarView: View {
                 .accessibilityLabel(saveStatusLabel)
                 .accessibilityValue(saveStatusDetail)
                 .accessibilityIdentifier("status.save")
+                if geometry.size.width >= 500, appState.preferences.autosaveEnabled {
+                    AutosaveStatusItem(controller: appState.autosave, document: document)
+                }
                 if document.isLargeFileMode { performanceMenu }
                 if document.isReadingMode {
                     Button { appState.toggleReadingMode() } label: {
@@ -34,6 +37,9 @@ struct StatusBarView: View {
                     .help(L10n.tr("阅读模式：文本只读，可选择、复制并跟随链接（⌥⌘R 退出）"))
                     .accessibilityLabel(L10n.tr("退出阅读模式"))
                     .accessibilityIdentifier("status.readingMode")
+                }
+                if geometry.size.width >= 560, let session = appState.writerSession {
+                    WriterWordCountStatus(session: session, counter: session.wordCounter, appState: appState)
                 }
                 if let suggestion = document.textCodecSuggestionTitle, geometry.size.width >= 600 {
                     Button { appState.presentTextTransformation(.smartDecode) } label: {
@@ -353,5 +359,70 @@ extension MarkdownElementPath {
     var displayText: String {
         let shown = elements.suffix(4).map(\.title).joined(separator: " › ")
         return elements.count > 4 ? "… › " + shown : shown
+    }
+}
+
+/// Строка статуса автосохранения: время последней записи, пауза из-за внешнего изменения или ошибка.
+struct AutosaveStatusItem: View {
+    @ObservedObject var controller: AutosaveController
+    @ObservedObject var document: EditorDocument
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        formatter.locale = Locale(identifier: L10n.languageCode)
+        return formatter
+    }()
+
+    private var status: AutosaveController.Status? { controller.status(for: document.id) }
+
+    private var text: String? {
+        switch status {
+        case .saved(let date)?:
+            guard !document.isDirty, let last = document.lastSavedAt, abs(last.timeIntervalSince(date)) < 1 else { return nil }
+            return L10n.tr("自动保存于 %@", Self.timeFormatter.string(from: date))
+        case .pausedExternalChange?:
+            return L10n.tr("自动保存已暂停：文件已在磁盘上更改")
+        case .failed(let message)?:
+            return L10n.tr("自动保存失败：%@", message)
+        case nil:
+            return nil
+        }
+    }
+
+    private var needsAttention: Bool {
+        switch status {
+        case .pausedExternalChange?, .failed?: true
+        default: false
+        }
+    }
+
+    var body: some View {
+        if let text {
+            HStack(spacing: 4) {
+                if needsAttention {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(color)
+                }
+                // Цвет только у значка: текст остаётся системным, контраст не зависит от оттенка.
+                Text(text).foregroundStyle(needsAttention ? .primary : .secondary)
+            }
+                .lineLimit(1)
+                .help(text)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(text)
+                .accessibilityIdentifier("status.autosave")
+                .onChange(of: needsAttention) { _, attention in
+                    if attention, let text { AccessibilityNotification.Announcement(text).post() }
+                }
+        }
+    }
+
+    private var color: Color {
+        switch status {
+        case .pausedExternalChange?: .orange
+        case .failed?: .red
+        default: .secondary
+        }
     }
 }

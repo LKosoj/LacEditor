@@ -56,7 +56,7 @@ struct MainWindowView: View {
                     if !appState.isDistractionFree && !selectedDocument.isPreviewEffectivelyEnabled { EditorStartHints(document: selectedDocument) }
                 }
                 if appState.isAIWritingVisible && !appState.isDistractionFree {
-                    AIWritingView(controller: appState.aiWriting, openSettings: { SettingsWindowController.shared.present(windowManager: windowManager) })
+                    InspectorPanelView(appState: appState, openSettings: { SettingsWindowController.shared.present(windowManager: windowManager) })
                         .frame(minWidth: 280, idealWidth: 340, maxWidth: 520)
                 }
                 }
@@ -299,6 +299,15 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         )
         externalChangeAccessory.isHidden = true
         contentItem.addTopAlignedAccessoryViewController(externalChangeAccessory)
+        let writerProjectAccessory = FindBarAccessoryController(
+            rootView: AnyView(
+                WriterProjectBanner(appState: appState)
+                    .environmentObject(appState)
+                    .environmentObject(windowManager)
+            )
+        )
+        writerProjectAccessory.isHidden = appState.writerProjectIssue == nil
+        contentItem.addTopAlignedAccessoryViewController(writerProjectAccessory)
         controller.splitView.dividerStyle = .thin
         controller.splitView.isVertical = true
         controller.view.wantsLayer = true
@@ -318,6 +327,8 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         context.coordinator.observeFindBarVisibility(appState: appState)
         context.coordinator.externalChangeAccessory = externalChangeAccessory
         context.coordinator.observeExternalChange(appState: appState)
+        context.coordinator.writerProjectAccessory = writerProjectAccessory
+        context.coordinator.observeWriterProjectIssue(appState: appState)
         context.coordinator.applyCollapseState(
             isVisible: appState.isSidebarEffectivelyVisible
         )
@@ -354,6 +365,9 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         weak var sidebarItem: NSSplitViewItem?
         weak var findBarAccessory: NSSplitViewItemAccessoryViewController?
         weak var externalChangeAccessory: NSSplitViewItemAccessoryViewController?
+        weak var writerProjectAccessory: NSSplitViewItemAccessoryViewController?
+        private var writerProjectObservation: AnyCancellable?
+        private var writerNoticeObservation: AnyCancellable?
         private var findBarObservation: AnyCancellable?
         private var externalChangeObservation: AnyCancellable?
         private var collapseObservation: NSKeyValueObservation?
@@ -410,6 +424,29 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
                 }
         }
 
+        /// Плашка «Проект не найден» видна, пока у вкладки есть `writerProjectIssue`.
+        func observeWriterProjectIssue(appState: AppState) {
+            writerProjectObservation = appState.$writerProjectIssue
+                .map { $0 != nil }
+                .removeDuplicates()
+                .sink { [weak self] isVisible in
+                    self?.writerProjectAccessory?.isHidden = !isVisible
+                }
+            // Манифест изменён извне и перечитан: сообщаем один раз и сбрасываем флаг.
+            writerNoticeObservation = appState.$writerSession
+                .map { session -> AnyPublisher<Bool, Never> in
+                    session?.projectStore.$externalChangeNotice.eraseToAnyPublisher() ?? Just(false).eraseToAnyPublisher()
+                }
+                .switchToLatest()
+                .filter { $0 }
+                .sink { [weak appState] _ in
+                    guard let appState, let store = appState.writerSession?.projectStore else { return }
+                    store.externalChangeNotice = false
+                    appState.sidebarFeedback.show(ManuscriptProjectError.changedExternally.errorDescription ?? "",
+                                                  symbol: "exclamationmark.triangle")
+                }
+        }
+
         private func synchronizeCollapseState(item: NSSplitViewItem, appState: AppState?) {
             guard let appState, !isDismantling, !isApplyingCollapseState,
                   !appState.isDistractionFree else { return }
@@ -423,6 +460,8 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
             isDismantling = true
             findBarObservation = nil
             externalChangeObservation = nil
+            writerProjectObservation = nil
+            writerNoticeObservation = nil
             collapseObservation?.invalidate()
             collapseObservation = nil
             if let splitResizeObservation {
@@ -551,6 +590,7 @@ private struct DocumentEditorPane: View {
                         viewMagnification: appState.viewMagnification,
                         magnificationDidChange: appState.setViewMagnification,
                         wiki: appState.wikiContext(for: document),
+                        critic: appState.preferences.criticPreviewMode,
                         document: document
                     )
                 ) : nil

@@ -30,9 +30,30 @@ final class ContrastTests: XCTestCase {
         }
     }
 
+    func testCriticMarkupPreviewStyleMeetsContrast() {
+        func lum(_ hex: String) -> Double {
+            let value = Int(hex.dropFirst(), radix: 16)!
+            func lin(_ v: Int) -> Double { let c = Double(v) / 255; return c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
+            return 0.2126 * lin(value >> 16) + 0.7152 * lin((value >> 8) & 255) + 0.0722 * lin(value & 255)
+        }
+        for palette in [CriticMarkupPreviewStyle.light, CriticMarkupPreviewStyle.dark, CriticMarkupPreviewStyle.contrast] {
+            for pair in [palette.ins, palette.del, palette.hl, palette.comment] {
+                let a = lum(pair.text), b = lum(pair.background)
+                XCTAssertGreaterThanOrEqual((max(a, b) + 0.05) / (min(a, b) + 0.05), 4.5, "\(pair.text) on \(pair.background)")
+            }
+        }
+    }
+
     func testTagColorMeetsContrastOnEditorBackground() {
         for name in [NSAppearance.Name.aqua, .darkAqua] {
             XCTAssertGreaterThanOrEqual(contrast(.lacTagText, .lacEditorBackground, name), 4.5)
+        }
+    }
+
+    func testStyleMarkColorsMeetContrastOnEditorBackground() {
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            XCTAssertGreaterThanOrEqual(contrast(.lacStyleRuleUnderline, .lacEditorBackground, name), 4.5)
+            XCTAssertGreaterThanOrEqual(contrast(.lacStyleAIUnderline, .lacEditorBackground, name), 4.5)
         }
     }
 
@@ -94,5 +115,33 @@ final class ContrastTests: XCTestCase {
         let json = try JSONSerialization.jsonObject(with: Data(contentsOf: path)) as? [String: Any]
         let colors = json?["colors"] as? [[String: Any]] ?? []
         XCTAssertTrue(colors.allSatisfy { $0["color"] == nil })
+    }
+
+    /// Контраст точек статуса с фоном намеренно не проверяется на 4,5:1: точка — графика, рядом всегда подпись,
+    /// а у systemTeal на белом контраст ниже 3:1. Проверяем только, что шесть цветов различимы между собой.
+    func testStatusColorsAreDistinctInBothAppearances() {
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            var components: [[CGFloat]] = []
+            NSAppearance(named: name)!.performAsCurrentDrawingAppearance {
+                components = StatusColor.allCases.map {
+                    let c = $0.nsColor.usingColorSpace(.sRGB)!
+                    return [c.redComponent, c.greenComponent, c.blueComponent]
+                }
+            }
+            for i in components.indices {
+                for j in components.indices where j > i {
+                    XCTAssertNotEqual(components[i], components[j], "\(StatusColor.allCases[i]) и \(StatusColor.allCases[j]) в \(name.rawValue)")
+                }
+            }
+        }
+    }
+
+    func testMindMapColorsMeetContrast() {
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            XCTAssertGreaterThanOrEqual(contrast(MindMapPalette.lineColor, .textBackgroundColor, name), 3)
+            XCTAssertGreaterThanOrEqual(contrast(MindMapPalette.nodeStrokeColor, .textBackgroundColor, name), 3)
+            XCTAssertGreaterThanOrEqual(contrast(MindMapPalette.textColor, .textBackgroundColor, name), 4.5)
+            XCTAssertGreaterThanOrEqual(contrast(MindMapPalette.textColor, MindMapPalette.nodeFillColor, name), 4.5)
+        }
     }
 }

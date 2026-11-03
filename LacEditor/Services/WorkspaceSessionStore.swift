@@ -23,6 +23,7 @@ struct WorkspaceDocumentSnapshot: Equatable, Sendable {
     let isPreviewVisible: Bool
     let fileRevisionSnapshot: FileRevisionSnapshot?
     var folderWorkspace: FolderWorkspaceSession? = nil
+    var writerProject: WriterProjectSession? = nil
 }
 
 struct FolderWorkspaceSession: Codable, Equatable, Sendable {
@@ -115,6 +116,7 @@ final class WorkspaceSessionStore: @unchecked Sendable {
         let modificationDate: Date?
         let fileSize: Int?
         var folderWorkspace: FolderWorkspaceSession? = nil
+        var writerProject: WriterProjectSession? = nil
     }
 
     private let rootURL: URL
@@ -156,7 +158,8 @@ final class WorkspaceSessionStore: @unchecked Sendable {
                     isDirty: snapshot.isDirty, selectionRange: snapshot.selectionRange,
                     scrollPositionRatio: snapshot.scrollPositionRatio, isPreviewVisible: snapshot.isPreviewVisible,
                     fileRevisionSnapshot: snapshot.fileRevisionSnapshot,
-                    folderWorkspace: snapshot.folderWorkspace
+                    folderWorkspace: snapshot.folderWorkspace,
+                    writerProject: snapshot.writerProject
                 )
             }, selectedDocumentID: window.selectedDocumentID,
                isSidebarVisible: window.isSidebarVisible, frame: window.frame)
@@ -212,7 +215,8 @@ final class WorkspaceSessionStore: @unchecked Sendable {
                             ),
                             isPreviewVisible: document.isPreviewVisible,
                             fileRevisionSnapshot: baseline,
-                            folderWorkspace: document.folderWorkspace
+                            folderWorkspace: document.folderWorkspace,
+                            writerProject: document.writerProject.flatMap { $0.isValid ? $0 : nil }
                         ), contentURL: contentURL)
                     },
                     selectedDocumentID: window.selectedDocumentID,
@@ -296,7 +300,8 @@ final class WorkspaceSessionStore: @unchecked Sendable {
                         resourceIdentifier: baseline?.identity.resourceIdentifier,
                         modificationDate: baseline?.modificationDate,
                         fileSize: baseline?.fileSize,
-                        folderWorkspace: document.folderWorkspace
+                        folderWorkspace: document.folderWorkspace,
+                        writerProject: document.writerProject
                     ))
                 }
                 metadataWindows.append(WindowMetadata(

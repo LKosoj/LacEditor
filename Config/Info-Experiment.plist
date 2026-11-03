@@ -56,6 +56,26 @@
             <key>UTTypeIdentifier</key>
             <string>com.laceditor.outline-section</string>
         </dict>
+        <dict>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+            <key>UTTypeDescription</key>
+            <string>LacEditor Manuscript Node</string>
+            <key>UTTypeIdentifier</key>
+            <string>com.laceditor.manuscript-node</string>
+        </dict>
+        <dict>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+            <key>UTTypeDescription</key>
+            <string>LacEditor Manuscript Card</string>
+            <key>UTTypeIdentifier</key>
+            <string>com.laceditor.manuscript-card</string>
+        </dict>
     </array>
 </dict>
 </plist>

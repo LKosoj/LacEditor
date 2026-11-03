@@ -203,6 +203,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         presentationWorkItem = nil
         stopWaitingForActivation()
         windowController = nil
+        SettingsNavigator.shared.clear()
     }
 }
 
@@ -716,11 +717,14 @@ struct WindowCloseCoordinator: NSViewRepresentable {
             if windowManager.terminationApproved { return true }
             guard !isWaitingForSave else { return false }
             isWaitingForSave = true
+            let manager = windowManager
+            manager.beginCloseConfirmation()
             let confirm = { [weak self, weak sender] in
-                guard let self, let sender else { return }
+                guard let self, let sender else { manager.endCloseConfirmation(); return }
                 self.appState.confirmClosingAllDocuments { [weak self, weak sender] approved in
-                    guard let self, let sender else { return }
+                    guard let self, let sender else { manager.endCloseConfirmation(); return }
                     guard approved else {
+                        manager.endCloseConfirmation()
                         self.isWaitingForSave = false
                         return
                     }
@@ -728,6 +732,7 @@ struct WindowCloseCoordinator: NSViewRepresentable {
                     // modal session. Do not re-enter performClose: a dirty native
                     // tab can reject that second request even after Discard.
                     DispatchQueue.main.async { [weak self, weak sender] in
+                        defer { manager.endCloseConfirmation() }
                         guard let self, let sender else { return }
                         self.appState.prepareForApprovedWindowClose()
                         sender.close()

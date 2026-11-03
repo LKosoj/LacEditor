@@ -19,7 +19,14 @@ struct AISettingsView: View {
     @ObservedObject var preferences: AppPreferences
     let isActive: Bool
     @State private var keyRevision = UUID()
-    @State private var page: AISettingsPage = .features
+    @State private var page: AISettingsPage
+    @ObservedObject private var navigator = SettingsNavigator.shared
+
+    init(preferences: AppPreferences, isActive: Bool) {
+        self.preferences = preferences
+        self.isActive = isActive
+        _page = State(initialValue: SettingsNavigator.shared.request?.aiPage ?? .features)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -39,6 +46,9 @@ struct AISettingsView: View {
             case .jina:
                 JinaSettingsView(preferences: preferences, isActive: isActive)
             }
+        }
+        .onChange(of: navigator.request) { _, request in
+            if let page = request?.aiPage { self.page = page }
         }
     }
 }

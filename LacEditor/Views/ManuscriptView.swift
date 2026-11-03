@@ -9,14 +9,30 @@ struct ManuscriptView: View {
         controller.items.firstIndex { $0.id == controller.selectedID }
     }
 
+    private var isProject: Bool { controller.store != nil }
+
+    private var projectOptions: some View {
+        HStack(spacing: 12) {
+            Picker(L10n.tr("编译模式"), selection: $controller.options.mode) {
+                Text(L10n.tr("正文")).tag(ManuscriptService.Mode.prose)
+                Text(L10n.tr("仅梗概")).tag(ManuscriptService.Mode.synopses)
+                Text(L10n.tr("正文与梗概")).tag(ManuscriptService.Mode.proseWithSynopses)
+            }
+            .accessibilityIdentifier("manuscript.mode")
+            Toggle(L10n.tr("分组标题"), isOn: $controller.options.groupTitles)
+                .accessibilityIdentifier("manuscript.groupTitles")
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.tr("合并为文稿"))
+            Text(isProject ? L10n.tr("编译书稿") : L10n.tr("合并为文稿"))
                 .font(.headline)
                 .accessibilityAddTraits(.isHeader)
             Text(folderName).font(.subheadline).foregroundStyle(.secondary)
             Text(L10n.tr("选择要合并的 Markdown 文件，拖动行或使用按钮调整顺序。"))
                 .font(.caption).foregroundStyle(.secondary)
+            if isProject { projectOptions }
             fileList
             Text(L10n.tr("已选择 %d 个，共 %d 个文件", controller.selectedCount, controller.items.count))
                 .font(.caption).foregroundStyle(.secondary)
@@ -34,6 +50,11 @@ struct ManuscriptView: View {
                 Button(allSelected ? L10n.tr("取消全选") : L10n.tr("全选")) { controller.setAll(!allSelected) }
                     .disabled(controller.items.isEmpty)
                     .accessibilityIdentifier("manuscript.toggleAll")
+                if isProject {
+                    Button(L10n.tr("记住选择")) { controller.rememberSelection() }
+                        .disabled(controller.items.isEmpty)
+                        .accessibilityIdentifier("manuscript.remember")
+                }
                 Spacer()
                 if controller.isLoading || controller.isBuilding { ProgressView().controlSize(.small) }
                 Button(L10n.tr("取消")) {
@@ -62,7 +83,13 @@ struct ManuscriptView: View {
                 HStack(spacing: 6) {
                     Toggle(item.file.relativePath, isOn: Binding(get: { item.isOn }, set: { controller.setItem(item.id, on: $0) }))
                         .labelsHidden()
-                    Text(item.file.relativePath).lineLimit(1).truncationMode(.middle)
+                        .disabled(!item.isSelectable)
+                    Text(item.node?.title ?? item.file.relativePath).lineLimit(1).truncationMode(.middle)
+                    if item.isMissing {
+                        Text(L10n.tr("没有文件")).font(.caption).foregroundStyle(.secondary)
+                    } else if item.isUnsupported {
+                        Text(L10n.tr("未纳入编译（不是文本）")).font(.caption).foregroundStyle(.secondary)
+                    }
                 }
             }
             .onMove(perform: controller.move)

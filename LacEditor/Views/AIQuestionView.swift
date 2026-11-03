@@ -96,6 +96,11 @@ struct AIQuestionView: View {
             Text(L10n.tr("当前窗口的 %lld 个文档", controller.availableDocuments.count)).font(.caption).foregroundStyle(.secondary)
         case .files:
             Button(L10n.tr("添加文件")) { controller.addFiles() }
+            Button(L10n.tr("选取来源")) { controller.suggestSources() }
+                .disabled(controller.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            if controller.hasWorldCards {
+                Button(L10n.tr("添加提到的卡片")) { controller.addWorldCards() }
+            }
             ForEach(controller.files, id: \.self) { url in
                 HStack {
                     Text(url.lastPathComponent).lineLimit(1).truncationMode(.middle)

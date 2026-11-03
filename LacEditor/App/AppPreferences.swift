@@ -248,6 +248,10 @@ final class AppPreferences: ObservableObject {
             else { defaults.removeObject(forKey: Keys.markdownTextAlignment) }
         }
     }
+    /// Показ правок CriticMarkup в предпросмотре (по умолчанию правки подсвечены).
+    @Published var criticPreviewMode: CriticMarkupRenderMode {
+        didSet { defaults.set(criticPreviewMode.rawValue, forKey: Keys.criticPreviewMode) }
+    }
     @Published var markdownRightToLeft: Bool {
         didSet { defaults.set(markdownRightToLeft, forKey: Keys.markdownRightToLeft) }
     }
@@ -490,6 +494,11 @@ final class AppPreferences: ObservableObject {
             if let data = try? JSONEncoder().encode(aiCustomChecks) { defaults.set(data, forKey: Keys.aiCustomChecks) }
         }
     }
+    @Published var styleCheck: StyleCheckSettings {
+        didSet {
+            if let data = try? JSONEncoder().encode(styleCheck) { defaults.set(data, forKey: Keys.styleCheck) }
+        }
+    }
     @Published var autoPairBracketsEnabled: Bool {
         didSet { defaults.set(autoPairBracketsEnabled, forKey: Keys.autoPairBracketsEnabled) }
     }
@@ -520,6 +529,24 @@ final class AppPreferences: ObservableObject {
     @Published var aiImageDescriptionsEnabled: Bool {
         didSet { defaults.set(aiImageDescriptionsEnabled, forKey: Keys.aiImageDescriptionsEnabled) }
     }
+    /// История диктовок (решение Р4): по умолчанию включена.
+    @Published var dictationHistoryEnabled: Bool {
+        didSet { defaults.set(dictationHistoryEnabled, forKey: Keys.dictationHistoryEnabled) }
+    }
+    /// Автосохранение файлов с путём на диске: по умолчанию выключено.
+    @Published var autosaveEnabled: Bool {
+        didSet { defaults.set(autosaveEnabled, forKey: Keys.autosaveEnabled) }
+    }
+    /// Секунды: 30, 60 или 300.
+    @Published var autosaveInterval: Int {
+        didSet { defaults.set(autosaveInterval, forKey: Keys.autosaveInterval) }
+    }
+    /// Сколько снимков файла хранить; 0 — все.
+    @Published var snapshotKeepLimit: Int {
+        didSet { defaults.set(snapshotKeepLimit, forKey: Keys.snapshotKeepLimit) }
+    }
+    static let autosaveIntervals = [30, 60, 300]
+    static let snapshotKeepLimits = [0, 10, 25, 50, 100]
 
     private let defaults: UserDefaults
 
@@ -563,6 +590,7 @@ final class AppPreferences: ObservableObject {
         markdownEditingSoftBreaks = (defaults.object(forKey: Keys.markdownEditingSoftBreaks) as? Bool) ?? true
         markdownExportSoftBreaks = defaults.object(forKey: Keys.markdownExportSoftBreaks) as? Bool
         markdownTextAlignment = defaults.string(forKey: Keys.markdownTextAlignment).flatMap(MarkdownTextAlignment.init(rawValue:))
+        criticPreviewMode = defaults.string(forKey: Keys.criticPreviewMode).flatMap(CriticMarkupRenderMode.init(rawValue:)) ?? .show
         markdownRightToLeft = defaults.bool(forKey: Keys.markdownRightToLeft)
         markdownVerticalWriting = defaults.bool(forKey: Keys.markdownVerticalWriting)
         markdownStrikeCompletedTasks = defaults.bool(forKey: Keys.markdownStrikeCompletedTasks)
@@ -632,6 +660,8 @@ final class AppPreferences: ObservableObject {
         aiFeatureModelIDs = migrated.models
         aiCustomChecks = defaults.data(forKey: Keys.aiCustomChecks)
             .flatMap { try? JSONDecoder().decode([AICustomCheck].self, from: $0) } ?? []
+        styleCheck = defaults.data(forKey: Keys.styleCheck)
+            .flatMap { try? JSONDecoder().decode(StyleCheckSettings.self, from: $0) }?.clamped() ?? .default
         autoPairBracketsEnabled = defaults.bool(forKey: Keys.autoPairBracketsEnabled)
         autoPairMarkdownEnabled = defaults.bool(forKey: Keys.autoPairMarkdownEnabled)
         smartQuotesEnabled = defaults.bool(forKey: Keys.smartQuotesEnabled)
@@ -642,6 +672,12 @@ final class AppPreferences: ObservableObject {
         systemSpellingEnabled = defaults.bool(forKey: Keys.systemSpellingEnabled)
         systemGrammarEnabled = defaults.bool(forKey: Keys.systemGrammarEnabled)
         aiImageDescriptionsEnabled = defaults.bool(forKey: Keys.aiImageDescriptionsEnabled)
+        dictationHistoryEnabled = defaults.object(forKey: Keys.dictationHistoryEnabled) as? Bool ?? true
+        autosaveEnabled = defaults.bool(forKey: Keys.autosaveEnabled)
+        let storedInterval = defaults.object(forKey: Keys.autosaveInterval) as? Int ?? 60
+        autosaveInterval = Self.autosaveIntervals.contains(storedInterval) ? storedInterval : 60
+        let storedLimit = defaults.object(forKey: Keys.snapshotKeepLimit) as? Int ?? 0
+        snapshotKeepLimit = Self.snapshotKeepLimits.contains(storedLimit) ? storedLimit : 0
         aiConfiguration = defaults.data(forKey: Keys.aiConfiguration)
             .flatMap { try? JSONDecoder().decode(AIConfiguration.self, from: $0) }
             ?? AIConfiguration()
@@ -790,6 +826,7 @@ final class AppPreferences: ObservableObject {
         static let markdownSmallCapsLevels = "markdownSmallCapsLevels"
         static let markdownCenteredHeadingLevels = "markdownCenteredHeadingLevels"
         static let markdownTextAlignment = "markdownTextAlignment"
+        static let criticPreviewMode = "criticPreviewMode"
         static let markdownRightToLeft = "markdownRightToLeft"
         static let markdownVerticalWriting = "markdownVerticalWriting"
         static let markdownStrikeCompletedTasks = "markdownStrikeCompletedTasks"
@@ -819,6 +856,7 @@ final class AppPreferences: ObservableObject {
         static let aiFeatures = "aiFeatures"
         static let aiFeatureModelIDs = "aiFeatureModelIDs"
         static let aiCustomChecks = "aiCustomChecks"
+        static let styleCheck = "styleCheckSettings"
         static let aiBackgroundEnabled = "aiBackgroundEnabled"
         static let aiBackgroundRemoved = "aiBackgroundRemoved"
         static let autoPairBracketsEnabled = "autoPairBracketsEnabled"
@@ -831,6 +869,10 @@ final class AppPreferences: ObservableObject {
         static let systemSpellingEnabled = "systemSpellingEnabled"
         static let systemGrammarEnabled = "systemGrammarEnabled"
         static let aiImageDescriptionsEnabled = "aiImageDescriptionsEnabled"
+        static let dictationHistoryEnabled = "dictationHistoryEnabled"
+        static let autosaveEnabled = "autosaveEnabled"
+        static let autosaveInterval = "autosaveInterval"
+        static let snapshotKeepLimit = "snapshotKeepLimit"
         static let markdownExportConfiguration = "markdownExportConfiguration"
         static let statisticsDisplayUnit = "statisticsDisplayUnit"
         static let readingWordsPerMinute = "readingWordsPerMinute"
