@@ -152,17 +152,17 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
                 attempts += 1
                 if attempts > 250 { timedOut = true; finished = true; NSApp.abortModal(); completed.fulfill(); return }
                 guard let content = NSApp.modalWindow?.contentView else {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { act() }; return
+                    RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { act() } }, forMode: .modalPanel); return
                 }
                 func views(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(views) }
                 let all = views(content)
                 let buttonTitle = stale ? L10n.tr("确定") : L10n.tr("取消")
                 guard let button = all.compactMap({ $0 as? NSButton }).first(where: { $0.title == buttonTitle }) else {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { act() }; return
+                    RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { act() } }, forMode: .modalPanel); return
                 }
                 if stale {
                     guard let input = all.compactMap({ $0 as? NSTextField }).first(where: { $0.isEditable }) else {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { act() }; return
+                        RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { act() } }, forMode: .modalPanel); return
                     }
                     input.stringValue = "python"
                     view.insertText("!", replacementRange: NSRange(location: (source as NSString).length, length: 0))
@@ -171,7 +171,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
                 button.performClick(nil)
                 DispatchQueue.main.async { completed.fulfill() }
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { act() }
+            RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { act() } }, forMode: .modalPanel)
             NotificationCenter.default.post(name: EditorCommandNotification.markdownClipboard,
                 object: MarkdownClipboardRequest(documentID: document.id, command: .setCodeLanguage))
             await fulfillment(of: [completed], timeout: 10)
@@ -221,7 +221,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
             attempts += 1
             if attempts > 250 { timedOut = true; NSApp.abortModal(); return }
             guard let content = NSApp.modalWindow?.contentView else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { act() }
+                RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { act() } }, forMode: .modalPanel)
                 return
             }
             func views(in view: NSView) -> [NSView] {
@@ -230,7 +230,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
             let all = views(in: content)
             guard let input = all.compactMap({ $0 as? NSTextField }).first(where: { $0.isEditable }),
                   let button = all.compactMap({ $0 as? NSButton }).first(where: { $0.title == L10n.tr("确定") }) else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { act() }
+                RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { act() } }, forMode: .modalPanel)
                 return
             }
             input.stringValue = "python"
@@ -238,7 +238,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
             button.performClick(nil)
         }
         defer { finished = true; if NSApp.modalWindow != nil { NSApp.abortModal() } }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { act() }
+        RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { act() } }, forMode: .modalPanel)
         command(.setCodeLanguage)
         for _ in 0..<250 where view.string == source { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertTrue(accepted)
@@ -574,7 +574,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         func stopUnexpectedPanel() {
             guard waiting else { return }
             if NSApp.modalWindow is NSSavePanel { sawPanel = true; NSApp.abortModal(); return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { stopUnexpectedPanel() }
+            RunLoop.main.add(Timer(timeInterval: 0.05, repeats: false) { _ in MainActor.assumeIsolated { stopUnexpectedPanel() } }, forMode: .modalPanel)
         }
         stopUnexpectedPanel()
         view.paste(nil)
@@ -667,14 +667,18 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         }
         var waiting = true
         defer { waiting = false }
+        coordinator?.clipboardSavePanelPrepare = { panel in
+            panel.directoryURL = directory
+            panel.nameFieldStringValue = "released.png"
+        }
         func acceptPanel() {
             guard waiting else { return }
-            if let panel = NSApp.modalWindow as? NSSavePanel {
-                panel.directoryURL = directory
-                panel.nameFieldStringValue = "released.png"
-                panel.defaultButtonCell?.performClick(nil)
+            if let panel = NSApp.modalWindow as? NSSavePanel,
+               panel.url?.path.hasSuffix(directory.appendingPathComponent("released.png").path) == true {
+                NSApp.stopModal(withCode: .OK)
+                return
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { acceptPanel() }
+            RunLoop.main.add(Timer(timeInterval: 0.05, repeats: false) { _ in MainActor.assumeIsolated { acceptPanel() } }, forMode: .modalPanel)
         }
         let hex = png.map { String(format: "%02x", $0) }.joined()
         board.clearContents()
@@ -698,6 +702,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         document = nil
         targetWindow.makeKeyAndOrderFront(nil)
         manager.activate(windowID: targetID)
+        await Task.yield()
         XCTAssertNil(weakDocument)
         release.signal()
         await task.value
@@ -745,16 +750,21 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(view)
         var waiting = true, sawPanel = false
+        var nextName = "chosen.png"
         defer { waiting = false; coordinator.updateActivity(false); if NSApp.modalWindow != nil { NSApp.abortModal() }; window.close() }
+        coordinator.clipboardSavePanelPrepare = { panel in
+            panel.directoryURL = directory
+            panel.nameFieldStringValue = nextName
+        }
         func acceptPanel() {
             guard waiting else { return }
-            if let panel = NSApp.modalWindow as? NSSavePanel {
+            if let panel = NSApp.modalWindow as? NSSavePanel,
+               panel.url?.path.hasSuffix(directory.appendingPathComponent(nextName).path) == true {
                 sawPanel = true
-                panel.directoryURL = directory
-                panel.nameFieldStringValue = "chosen.png"
-                panel.defaultButtonCell?.performClick(nil)
+                NSApp.stopModal(withCode: .OK)
+                return
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { acceptPanel() }
+            RunLoop.main.add(Timer(timeInterval: 0.05, repeats: false) { _ in MainActor.assumeIsolated { acceptPanel() } }, forMode: .modalPanel)
         }
         board.clearContents()
         board.setData(Data("{\\rtf1\\ansi {\\pict\\pngblip \(hex)}}".utf8), forType: .rtf)
@@ -775,21 +785,20 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(150))
         var firstPanel: NSSavePanel?, cancelledSecond = false
         waiting = true
+        nextName = "partial.png"
         func selectThenCancel() {
             guard waiting else { return }
             if let panel = NSApp.modalWindow as? NSSavePanel {
-                if firstPanel == nil, let button = panel.defaultButtonCell {
+                if firstPanel == nil, panel.url?.path.hasSuffix(directory.appendingPathComponent(nextName).path) == true {
                     firstPanel = panel
-                    panel.directoryURL = directory
-                    panel.nameFieldStringValue = "partial.png"
-                    button.performClick(nil)
+                    NSApp.stopModal(withCode: .OK)
                 } else if let firstPanel, panel !== firstPanel {
                     cancelledSecond = true
                     NSApp.abortModal()
                     return
                 }
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { selectThenCancel() }
+            RunLoop.main.add(Timer(timeInterval: 0.05, repeats: false) { _ in MainActor.assumeIsolated { selectThenCancel() } }, forMode: .modalPanel)
         }
         board.clearContents()
         board.setData(Data("{\\rtf1\\ansi {\\pict\\pngblip \(hex)} {\\pict\\pngblip \(hex)}}".utf8), forType: .rtf)
@@ -812,14 +821,15 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
             release.wait()
         }
         waiting = true
+        nextName = "stale.png"
         func acceptStalePanel() {
             guard waiting else { return }
-            if let panel = NSApp.modalWindow as? NSSavePanel {
-                panel.directoryURL = directory
-                panel.nameFieldStringValue = "stale.png"
-                panel.defaultButtonCell?.performClick(nil)
+            if let panel = NSApp.modalWindow as? NSSavePanel,
+               panel.url?.path.hasSuffix(directory.appendingPathComponent(nextName).path) == true {
+                NSApp.stopModal(withCode: .OK)
+                return
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { acceptStalePanel() }
+            RunLoop.main.add(Timer(timeInterval: 0.05, repeats: false) { _ in MainActor.assumeIsolated { acceptStalePanel() } }, forMode: .modalPanel)
         }
         let staleFile = directory.appendingPathComponent("stale.png")
         board.clearContents()
@@ -842,14 +852,15 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(150))
         coordinator.clipboardImageWrite = { try $0.write(to: $1, options: .withoutOverwriting) }
         waiting = true
+        nextName = "mixed.png"
         func acceptMixedPanel() {
             guard waiting else { return }
-            if let panel = NSApp.modalWindow as? NSSavePanel {
-                panel.directoryURL = directory
-                panel.nameFieldStringValue = "mixed.png"
-                panel.defaultButtonCell?.performClick(nil)
+            if let panel = NSApp.modalWindow as? NSSavePanel,
+               panel.url?.path.hasSuffix(directory.appendingPathComponent(nextName).path) == true {
+                NSApp.stopModal(withCode: .OK)
+                return
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { acceptMixedPanel() }
+            RunLoop.main.add(Timer(timeInterval: 0.05, repeats: false) { _ in MainActor.assumeIsolated { acceptMixedPanel() } }, forMode: .modalPanel)
         }
         let beforeMixed = view.string
         board.clearContents()
@@ -900,7 +911,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         func cancelPanel() {
             guard waiting else { return }
             if NSApp.modalWindow is NSSavePanel { didCancel = true; NSApp.abortModal(); return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { cancelPanel() }
+            RunLoop.main.add(Timer(timeInterval: 0.05, repeats: false) { _ in MainActor.assumeIsolated { cancelPanel() } }, forMode: .modalPanel)
         }
         board.clearContents()
         board.setData(rtf, forType: .rtf)
@@ -1800,6 +1811,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false) }
+        let displayedSource = view.string
         let selection = (source as NSString).range(of: "中文😀")
         view.setSelectedRange(selection)
         board.clearContents()
@@ -1807,7 +1819,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         view.copy(nil)
         for _ in 0..<250 where board.string(forType: .string) != "中文😀" { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertEqual(board.string(forType: .string), "中文😀")
-        XCTAssertEqual(view.string, source)
+        XCTAssertEqual(view.string, displayedSource)
         XCTAssertEqual(view.selectedRange(), selection)
         let raw = source as NSString
         let second = raw.range(of: "   [b]: /y")
@@ -1817,7 +1829,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         view.copy(nil)
         for _ in 0..<250 where board.string(forType: .string) != " [b]: /y" { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertEqual(board.string(forType: .string), " [b]: /y")
-        XCTAssertEqual(view.string, source)
+        XCTAssertEqual(view.string, displayedSource)
         XCTAssertEqual(view.selectedRange(), second)
         let tab = raw.range(of: "\t[d]: /q")
         view.setSelectedRange(tab)
@@ -1826,7 +1838,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         view.copy(nil)
         for _ in 0..<250 where board.string(forType: .string) != "  [d]: /q" { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertEqual(board.string(forType: .string), "  [d]: /q")
-        XCTAssertEqual(view.string, source)
+        XCTAssertEqual(view.string, displayedSource)
         XCTAssertEqual(view.selectedRange(), tab)
         let bold = raw.range(of: "bold")
         view.setSelectedRange(bold)
@@ -1836,7 +1848,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         for _ in 0..<250 where board.string(forType: .string) != "bold" { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertEqual(board.string(forType: .string), "bold")
         XCTAssertTrue(board.string(forType: .html)?.contains("<strong>bold</strong>") == true)
-        XCTAssertEqual(view.string, source)
+        XCTAssertEqual(view.string, displayedSource)
         XCTAssertEqual(view.selectedRange(), bold)
         let linked = raw.range(of: "文字")
         view.setSelectedRange(linked)
@@ -1846,7 +1858,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         for _ in 0..<250 where board.string(forType: .string) != "文字" { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertEqual(board.string(forType: .string), "文字")
         XCTAssertTrue(board.string(forType: .html)?.contains("href=\"#target\"") == true)
-        XCTAssertEqual(view.string, source)
+        XCTAssertEqual(view.string, displayedSource)
         XCTAssertEqual(view.selectedRange(), linked)
         let partialMarker = raw.range(of: "href")
         view.setSelectedRange(partialMarker)
@@ -1856,8 +1868,8 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         let refused = try XCTUnwrap(coordinator.clipboardCopyTask)
         await refused.value
         XCTAssertEqual(board.string(forType: .string), "old")
-        XCTAssertEqual(view.string, source)
-        let nestedImage = raw.range(of: tag, options: .backwards)
+        XCTAssertEqual(view.string, displayedSource)
+        let nestedImage = coordinator.displayedRange(for: raw.range(of: tag, options: .backwards))
         view.setSelectedRange(nestedImage)
         board.clearContents()
         board.setString("old", forType: .string)
@@ -1867,8 +1879,8 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         XCTAssertEqual(board.string(forType: .string), "image")
         XCTAssertTrue(board.string(forType: .html)?.contains("data:image/png;base64," + png) == true)
         XCTAssertFalse(board.string(forType: .html)?.contains("before") == true)
-        XCTAssertEqual(view.string, source)
-        let styledImage = raw.range(of: styledImageTag)
+        XCTAssertEqual(view.string, displayedSource)
+        let styledImage = coordinator.displayedRange(for: raw.range(of: styledImageTag))
         view.setSelectedRange(styledImage)
         board.clearContents(); board.setString("old", forType: .string)
         view.copy(nil)
@@ -1878,9 +1890,9 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         XCTAssertTrue(board.string(forType: .html)?.contains("<mark><span style=\"background-color:") == true)
         XCTAssertTrue(board.string(forType: .html)?.contains("<p><mark>") == true)
         XCTAssertTrue(board.string(forType: .html)?.contains("data:image/png;base64," + png) == true)
-        XCTAssertEqual(view.string, source)
+        XCTAssertEqual(view.string, displayedSource)
         XCTAssertEqual(view.selectedRange(), styledImage)
-        let mixedRange = raw.range(of: mixedBlock)
+        let mixedRange = coordinator.displayedRange(for: raw.range(of: mixedBlock))
         view.setSelectedRange(mixedRange)
         board.clearContents()
         board.setString("old", forType: .string)
@@ -1890,8 +1902,8 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         XCTAssertEqual(board.string(forType: .string), "before bold2 image after")
         XCTAssertTrue(board.string(forType: .html)?.contains("<strong>bold2</strong>") == true)
         XCTAssertTrue(board.string(forType: .html)?.contains("data:image/png;base64," + png) == true)
-        XCTAssertEqual(view.string, source)
-        let htmlBreak = raw.range(of: "<br>")
+        XCTAssertEqual(view.string, displayedSource)
+        let htmlBreak = coordinator.displayedRange(for: raw.range(of: "<br>"))
         view.setSelectedRange(htmlBreak)
         board.clearContents()
         board.setString("old", forType: .string)
@@ -1900,9 +1912,9 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         await breakCopy.value
         XCTAssertEqual(board.string(forType: .string), "\n")
         XCTAssertTrue(board.string(forType: .html)?.contains("<br>") == true)
-        XCTAssertEqual(view.string, source)
+        XCTAssertEqual(view.string, displayedSource)
         XCTAssertEqual(view.selectedRange(), htmlBreak)
-        let htmlImage = raw.range(of: tag)
+        let htmlImage = coordinator.displayedRange(for: raw.range(of: tag))
         view.setSelectedRange(htmlImage)
         board.clearContents()
         board.setString("old", forType: .string)
@@ -1911,7 +1923,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         await imageCopy.value
         XCTAssertEqual(board.string(forType: .string), "image")
         XCTAssertTrue(board.string(forType: .html)?.contains("data:image/png;base64," + png) == true)
-        XCTAssertEqual(view.string, source)
+        XCTAssertEqual(view.string, displayedSource)
         XCTAssertEqual(view.selectedRange(), htmlImage)
         view.setSelectedRange(NSRange(location: htmlImage.location + 1, length: htmlImage.length - 2))
         board.clearContents()
@@ -1920,8 +1932,8 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         let partialImage = try XCTUnwrap(coordinator.clipboardCopyTask)
         await partialImage.value
         XCTAssertEqual(board.string(forType: .string), "old")
-        XCTAssertEqual(view.string, source)
-        let edge = raw.range(of: " edge-text")
+        XCTAssertEqual(view.string, displayedSource)
+        let edge = coordinator.displayedRange(for: raw.range(of: " edge-text"))
         view.setSelectedRange(edge)
         board.clearContents(); board.setString("old", forType: .string)
         view.copy(nil)
@@ -1929,7 +1941,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         await edgeCopy.value
         XCTAssertEqual(board.string(forType: .string), " edge-text")
         XCTAssertFalse(board.string(forType: .html)?.contains("<img") ?? true)
-        XCTAssertEqual(view.string, source)
+        XCTAssertEqual(view.string, displayedSource)
         XCTAssertEqual(view.selectedRange(), edge)
     }
 
@@ -2023,7 +2035,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
         let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
-        XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 100, height: 30), cell: cell))
+        XCTAssertTrue(coordinator.beginTableCell((source as NSString).range(of: "one"), frame: NSRect(x: 0, y: 0, width: 100, height: 30), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         child.setSelectedRange(NSRange(location: 1, length: 0))
         board.clearContents()

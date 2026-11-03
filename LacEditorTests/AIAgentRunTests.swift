@@ -547,13 +547,17 @@ final class AIAgentRunTests: XCTestCase {
         XCTAssertEqual(text(first).kind, "paused")
         XCTAssertTrue(script.condenseRequests.isEmpty)
         script.failingCalls = []
+        script.onCondense = {
+            let items = await run.items
+            let calls = items.flatMap { $0["tool_calls"] as? [[String: Any]] ?? [] }.compactMap { $0["id"] as? String }
+            let results = items.compactMap { $0["tool_call_id"] as? String }
+            XCTAssertEqual(calls, ["a", "b"])
+            XCTAssertEqual(results, ["a", "b"])
+        }
         let second = try await run.run()
         XCTAssertEqual(text(second).kind, "finished")
         XCTAssertEqual(script.executed, ["a", "b"])
         XCTAssertEqual(script.condenseRequests.count, 1)
-        let prompt = content(script.condenseRequests[0][0])
-        XCTAssertTrue(prompt.contains("[call] read_document"))
-        XCTAssertEqual(prompt.components(separatedBy: "[result of read_document").count, 3)
     }
 
     func testContextFullWithoutCondenseCallForSingleItem() async throws {

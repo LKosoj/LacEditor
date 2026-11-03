@@ -324,6 +324,7 @@ final class AIDocumentToolsTests: XCTestCase {
             (notification.object as? EditorTextExtractionRequest)?.result = EditorTextSelectionSnapshot(documentID: target.id, range: NSRange(location: 0, length: 6), text: "target", editorRevision: 0, wasExplicitSelection: false)
         }
         return (controller, target, source, {
+            withExtendedLifetime(state) {}
             NotificationCenter.default.removeObserver(extraction)
             defaults.removePersistentDomain(forName: suite)
         })
@@ -338,7 +339,9 @@ final class AIDocumentToolsTests: XCTestCase {
     @MainActor
     func testLargeContextWarnsThenSendAnywayRuns() async throws {
         var count = 0
-        let (controller, _, source, cleanup) = try largeSendFixture(sourceText: String(repeating: "a", count: 60 * 1024), calls: { count += 1 })
+        let sourceText = "unique-source-quote" + String(repeating: "a", count: 60 * 1024)
+        let response = #"{"report":"review","references":[{"sourceIndex":0,"quote":"unique-source-quote"}]}"#
+        let (controller, _, source, cleanup) = try largeSendFixture(sourceText: sourceText, calls: { count += 1 }, response: response)
         defer { cleanup() }
         controller.inputs = [.document(source.id)]
         controller.run(.contextReview)

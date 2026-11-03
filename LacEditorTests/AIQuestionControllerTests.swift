@@ -3,6 +3,7 @@ import XCTest
 
 final class AIQuestionControllerTests: XCTestCase {
     private let valid = #"{"answer":"ok","citations":[]}"#
+    private var retainedStates: [AppState] = []
 
     @MainActor
     private func make(_ documents: [EditorDocument], converse: @escaping ([AIConversationMessage], AIModelProfile, String?) async throws -> String) throws -> (AIQuestionController, AppState, AppPreferences) {
@@ -14,6 +15,7 @@ final class AIQuestionControllerTests: XCTestCase {
         configuration.text.modelID = "test-model"
         preferences.aiConfiguration = configuration
         let state = AppState(initialDocuments: documents, recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
+        retainedStates.append(state)
         return (AIQuestionController(appState: state, converse: converse, loadKey: { _, _ in nil }), state, preferences)
     }
 

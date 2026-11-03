@@ -54,7 +54,7 @@
     try {
       cm.runMode(text, mime, function (piece, style) {
         if ((checks++ & 255) === 0 && codeMirrorCancelled()) throw new Error("cancelled");
-        if (style) tokens.push([offset, piece.length, style]);
+        if (style && piece.length) tokens.push([offset, piece.length, style]);
         offset += piece.length;
       });
     } finally { cm.getMode = getMode; }

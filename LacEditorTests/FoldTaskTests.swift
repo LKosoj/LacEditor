@@ -91,7 +91,11 @@ final class FoldTaskTests: XCTestCase {
         let source = "before\n![image](data:image/png;base64,\(payload))\nafter"
         let document = EditorDocument(text: source, language: .markdown)
         let editor = makeEditor(document, formatted: false)
-        defer { editor.close() }
+        let window = NSWindow(contentRect: editor.view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = editor.scroll
+        window.makeFirstResponder(editor.view)
+        defer { editor.close(); window.close() }
         XCTAssertTrue(editor.view.string.contains("#lac-media-"))
         XCTAssertFalse(editor.view.string.contains(payload))
         editor.view.allowsUndo = true

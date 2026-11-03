@@ -157,6 +157,7 @@ final class EngineAuditTests: XCTestCase {
         textView.string = original
         textView.delegate = coordinator
         coordinator.textView = textView
+        coordinator.updateActivity(true)
         textView.setSelectedRange(NSRange(location: (original as NSString).length, length: 0))
         XCTAssertTrue(coordinator.indentCurrentListItem(outdent: true))
         XCTAssertEqual(textView.string, "\(Int.max). first\n1. nested")
@@ -176,6 +177,7 @@ final class EngineAuditTests: XCTestCase {
         textView.delegate = coordinator
         coordinator.textView = textView
         coordinator.attachLiveTextProvider()
+        coordinator.updateActivity(true)
         window.makeFirstResponder(textView)
         textView.setSelectedRange(NSRange(location: (original as NSString).length, length: 0))
 

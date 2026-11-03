@@ -674,6 +674,7 @@ final class WindowManager: ObservableObject {
         let folderSource = source.resolvingSymlinksInPath()
         func linkTargetPreserved(_ old: URL, new: URL) -> Bool {
             guard let target = try? FileManager.default.destinationOfSymbolicLink(atPath: old.path) else { return false }
+            let current = (target.hasPrefix("/") ? URL(fileURLWithPath: target) : old.deletingLastPathComponent().appendingPathComponent(target)).standardizedFileURL
             let future = (target.hasPrefix("/") ? URL(fileURLWithPath: target) : new.deletingLastPathComponent().appendingPathComponent(target)).standardizedFileURL
             let oldCandidate: URL
             if let mapped = Self.movedURL(future, from: destination, to: source) {
@@ -682,7 +683,7 @@ final class WindowManager: ObservableObject {
                 guard Self.movedURL(future, from: source, to: source) == nil else { return false }
                 oldCandidate = future
             }
-            return DocumentFileIdentity.resolve(old).matches(DocumentFileIdentity.resolve(oldCandidate))
+            return DocumentFileIdentity.resolve(current).matches(DocumentFileIdentity.resolve(oldCandidate))
         }
         var ambiguous = false
         let documents = documentsForAI.compactMap { document -> (EditorDocument, URL, URL)? in
@@ -1049,7 +1050,7 @@ final class WindowManager: ObservableObject {
             }
             return true
         }
-        guard (state.hostWindow?.firstResponder as? NSTextView)?.hasMarkedText() != true,
+        guard !document.hasLiveTextComposition,
               isCurrent() else { return false }
         if case .disk = match.source {
             guard activeState === state, state.selectedDocument === document else { return false }
@@ -1057,7 +1058,7 @@ final class WindowManager: ObservableObject {
             focus(document, in: state)
         }
         guard state.selectedDocument === document,
-              (state.hostWindow?.firstResponder as? NSTextView)?.hasMarkedText() != true,
+              !document.hasLiveTextComposition,
               isCurrent() else { return false }
         if recordsOrigin, let origin { navigationHistory.record(origin) }
         state.revealFolderSearchRange(match.range, in: document)
@@ -1250,6 +1251,9 @@ final class WindowManager: ObservableObject {
 
     func focus(_ document: EditorDocument, in state: AppState) {
         state.selectedDocumentID = document.id
+        if let windowID = states.first(where: { $0.value === state })?.key {
+            activate(windowID: windowID)
+        }
         if let window = state.hostWindow { window.tabGroup?.selectedWindow = window }
         state.hostWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)

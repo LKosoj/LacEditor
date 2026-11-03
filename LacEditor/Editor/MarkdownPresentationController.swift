@@ -1248,6 +1248,7 @@ final class MarkdownPresentationController {
 
     func viewportChanged() {
         guard isActive, enabled, !hasMarkedText else { return }
+        ensureVisibleLayout()
         if !uppercaseHeadingLevels.isEmpty, let container = textView?.textContainer,
            layout?.uppercaseHeadingsNeedLayout(in: container) == true {
             clearUppercaseHeadings()
@@ -1794,6 +1795,7 @@ final class MarkdownPresentationController {
         pruneCodeHighlighting(keeping: result.codeBlocks)
         lastRevealedRange = revealedRange()
         layout?.setMarkdownPresentation(result, revealedRange: lastRevealedRange, inlineSelection: inlineSelection(), invalidating: visibleRange() ?? NSRange(location: 0, length: 0))
+        ensureVisibleLayout()
         if visibleRange() == nil { notifyGeometryChanged() }
         startEmojiResolution()
         applyVisible()
@@ -1936,6 +1938,7 @@ final class MarkdownPresentationController {
             rubyRendered.removeValue(forKey: range)
         }
         if touched.hasCode, let blocks = presentation?.codeBlocks { pruneCodeHighlighting(keeping: blocks) }
+        if touched.hasInserts { expandedDetails.removeAll() }
         // Вставок больше нет в разборе: обновление снимает их вью с экрана.
         if touched.hasInserts, let visible = visibleRange() {
             updateAudio(in: visible)
@@ -2088,6 +2091,12 @@ final class MarkdownPresentationController {
             low += 1
         }
         return result
+    }
+
+    private func ensureVisibleLayout() {
+        guard let textView, let layout, let container = textView.textContainer else { return }
+        let rect = textView.visibleRect.offsetBy(dx: -textView.textContainerOrigin.x, dy: -textView.textContainerOrigin.y)
+        layout.ensureLayout(forBoundingRect: rect, in: container)
     }
 
     private func visibleRange() -> NSRange? {

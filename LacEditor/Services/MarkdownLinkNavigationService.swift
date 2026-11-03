@@ -34,7 +34,11 @@ enum MarkdownLinkNavigationService {
         if address.hasPrefix("/") { base = URL(fileURLWithPath: "/", isDirectory: true) }
         else { base = documentURL }
         guard parts.scheme != nil || base?.isFileURL == true else { throw NavigationError.missingDocumentURL }
-        guard let resolved = URL(string: address, relativeTo: base)?.absoluteURL, resolved.isFileURL, resolved.path.hasPrefix("/"),
+        var normalized = parts
+        if parts.path.unicodeScalars.contains(where: { !$0.isASCII }), let path = parts.path.removingPercentEncoding {
+            normalized.path = path
+        }
+        guard let resolved = normalized.url(relativeTo: base)?.absoluteURL, resolved.isFileURL, resolved.path.hasPrefix("/"),
               var file = URLComponents(url: resolved, resolvingAgainstBaseURL: true) else { throw NavigationError.invalidAddress }
         let fragment = file.fragment
         guard file.host == nil || file.host == "" || file.host?.lowercased() == "localhost" else {

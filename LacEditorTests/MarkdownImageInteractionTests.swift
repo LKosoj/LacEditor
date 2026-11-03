@@ -358,14 +358,14 @@ final class MarkdownImageInteractionTests: XCTestCase {
                         return
                     }
                 }
-                if attempts < 100 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { act() } }
+                if attempts < 100 { RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { act() } }, forMode: .modalPanel) }
                 else {
                     timedOut = true; completed = true
                     document.text = "dialog timed out"
                     if NSApp.modalWindow != nil { NSApp.abortModal() }
                 }
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { act() }
+            RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { act() } }, forMode: .modalPanel)
         }
         scheduleDialog(confirm: false)
         XCTAssertTrue(state.presentMarkdownImage(transfer: .file(file)))
@@ -443,10 +443,10 @@ final class MarkdownImageInteractionTests: XCTestCase {
                         return
                     }
                 }
-                if attempts < 100 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { act() } }
+                if attempts < 100 { RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { act() } }, forMode: .modalPanel) }
                 else { timedOut = true; if NSApp.modalWindow != nil { NSApp.abortModal() } }
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { act() }
+            RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { act() } }, forMode: .modalPanel)
         }
         scheduleDialog(confirm: false)
         state.presentMarkdownLink()
@@ -776,14 +776,14 @@ final class MarkdownImageInteractionTests: XCTestCase {
                 if let content = modal.contentView, let button = findButton(content) { button.performClick(nil); return }
             }
             if attempts < 100 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { acceptDialog() }
+                RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { acceptDialog() } }, forMode: .modalPanel)
             } else {
                 dialogTimedOut = true
                 document.text = "dialog timed out"
                 if NSApp.modalWindow != nil { NSApp.abortModal() }
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { acceptDialog() }
+        RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { acceptDialog() } }, forMode: .modalPanel)
         XCTAssertTrue(state.presentMarkdownImage(transfer: .file(file)))
         for _ in 0..<100 where view.string.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertFalse(dialogTimedOut)

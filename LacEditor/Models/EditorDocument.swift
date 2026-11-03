@@ -293,6 +293,8 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     private var liveTextProviderID: UUID?
     private var liveTextProvider: (() -> String?)?
     private var liveTextAcknowledgement: ((UInt) -> Void)?
+    private var liveTextCompositionProvider: (() -> Bool)?
+    var hasLiveTextComposition: Bool { liveTextCompositionProvider?() ?? false }
     private(set) var hasPendingLiveEdits = false
     private var pendingLiveTextIsEmpty: Bool?
     static let typingPause: TimeInterval = 1
@@ -593,11 +595,13 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     func attachLiveTextProvider(
         id: UUID,
         provider: @escaping () -> String?,
-        acknowledgement: @escaping (UInt) -> Void
+        acknowledgement: @escaping (UInt) -> Void,
+        hasMarkedText: @escaping () -> Bool = { false }
     ) {
         liveTextProviderID = id
         liveTextProvider = provider
         liveTextAcknowledgement = acknowledgement
+        liveTextCompositionProvider = hasMarkedText
     }
 
     func setHasUnknownMediaTokens(_ value: Bool) {
@@ -610,6 +614,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         liveTextProviderID = nil
         liveTextProvider = nil
         liveTextAcknowledgement = nil
+        liveTextCompositionProvider = nil
         hasPendingLiveEdits = false
         pendingLiveTextIsEmpty = nil
         let shouldBeDirty = (savedText.map { Self.textsDiffer(text, $0) } ?? true) || fileEncoding != savedEncoding

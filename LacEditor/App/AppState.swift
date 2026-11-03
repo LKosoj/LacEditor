@@ -892,8 +892,7 @@ final class AppState: ObservableObject {
     func toggleDistractionFree() {
         if isDistractionFree {
             if let previousToolbarVisibility,
-               let toolbar = distractionFreeToolbar,
-               hostWindow?.toolbar === toolbar {
+               let toolbar = distractionFreeToolbar {
                 toolbar.isVisible = previousToolbarVisibility
             }
             distractionFreeToolbar = nil
@@ -4668,13 +4667,21 @@ final class AppState: ObservableObject {
     nonisolated private static func identifyMarkdownImage(_ source: MarkdownImageTransfer) -> (Data?, URL?, String)? {
         switch source {
         case let .file(url):
-            guard let image = CGImageSourceCreateWithURL(url as CFURL, nil), CGImageSourceGetCount(image) > 0,
-                  let identifier = CGImageSourceGetType(image) as String?, UTType(identifier)?.conforms(to: .image) == true else { return nil }
-            return (nil, url, identifier)
+            if let image = CGImageSourceCreateWithURL(url as CFURL, nil), CGImageSourceGetCount(image) > 0,
+               let identifier = CGImageSourceGetType(image) as String?, UTType(identifier)?.conforms(to: .image) == true {
+                return (nil, url, identifier)
+            }
+            guard let payload = try? MarkdownImageUploadService.payload(data: try Data(contentsOf: url)),
+                  let type = UTType(mimeType: payload.mime), type.conforms(to: .image) else { return nil }
+            return (nil, url, type.identifier)
         case let .data(data):
-            guard let image = CGImageSourceCreateWithData(data as CFData, nil), CGImageSourceGetCount(image) > 0,
-                  let identifier = CGImageSourceGetType(image) as String?, UTType(identifier)?.conforms(to: .image) == true else { return nil }
-            return (data, nil, identifier)
+            if let image = CGImageSourceCreateWithData(data as CFData, nil), CGImageSourceGetCount(image) > 0,
+               let identifier = CGImageSourceGetType(image) as String?, UTType(identifier)?.conforms(to: .image) == true {
+                return (data, nil, identifier)
+            }
+            guard let payload = try? MarkdownImageUploadService.payload(data: data),
+                  let type = UTType(mimeType: payload.mime), type.conforms(to: .image) else { return nil }
+            return (data, nil, type.identifier)
         case let .remote(url):
             guard ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil else { return nil }
             return (nil, url, "")

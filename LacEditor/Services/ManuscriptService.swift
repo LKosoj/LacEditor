@@ -42,6 +42,7 @@ enum ManuscriptService {
         return set
     }()
 
+    private static let resolutionAllowed = CharacterSet.urlPathAllowed.union(CharacterSet(charactersIn: "%"))
     private static let unsafeInPath = CharacterSet(charactersIn: " ()[]<>\\%#?&\"'|`{}^*~")
 
     /// HTML-ссылки и медиа; `<img>` разбирает `MarkdownImageUploadService`.
@@ -141,8 +142,8 @@ enum ManuscriptService {
             guard range.location >= 0, range.length >= 4, NSMaxRange(range) <= source.length,
                   seenDefinitions.insert(range.location).inserted else { continue }
             let marker = source.substring(with: range)
-            guard marker.hasPrefix("[^"), marker.hasSuffix("]:") else { continue }
-            let label = (marker as NSString).substring(with: NSRange(location: 2, length: range.length - 4))
+            guard marker.hasPrefix("[^"), marker.hasSuffix("]") else { continue }
+            let label = (marker as NSString).substring(with: NSRange(location: 2, length: range.length - 3))
             if seenLabels.insert(label.lowercased()).inserted { labels.append(label) }
         }
         if convertsAddresses {
@@ -189,6 +190,8 @@ enum ManuscriptService {
             for span in presentation.spans where span.kind == .link && span.markerRanges.count == 2 { tails[span.range] = span.markerRanges[1] }
             for link in presentation.links {
                 if isCancelled() { throw CancellationError() }
+                if let tail = tails[link.range], tail.location >= 0, NSMaxRange(tail) <= source.length,
+                   source.substring(with: tail).lowercased() == "</a>" { continue }
                 if let tail = tails[link.range], tail.location >= 0, tail.length >= 3, NSMaxRange(tail) <= source.length,
                    source.substring(with: NSRange(location: tail.location, length: 2)) == "](",
                    source.character(at: NSMaxRange(tail) - 1) == 41,
@@ -246,14 +249,16 @@ enum ManuscriptService {
             let directory = file.standardizedFileURL.deletingLastPathComponent()
             target = URL(fileURLWithPath: decoded, relativeTo: directory).standardizedFileURL.path
             // Так относительный адрес разрешает приложение.
-            guard URL(string: pathPart, relativeTo: directory)?.absoluteURL.standardizedFileURL.path == target else { return .unconfirmed }
+            guard let encodedPath = pathPart.addingPercentEncoding(withAllowedCharacters: resolutionAllowed),
+                  URL(string: encodedPath, relativeTo: directory)?.absoluteURL.standardizedFileURL.path == target else { return .unconfirmed }
         }
         let components = target.split(separator: "/").map(String.init).map { part -> String in
             let needs = part.unicodeScalars.contains { $0.value < 0x20 || $0.value == 0x7F || unsafeInPath.contains($0) }
             return needs ? encodedComponent(part) : part
         }
         let new = "/" + components.joined(separator: "/")
-        guard URL(string: new, relativeTo: URL(fileURLWithPath: "/"))?.absoluteURL.path == target else { return .unconfirmed }
+        guard let encodedNew = new.addingPercentEncoding(withAllowedCharacters: resolutionAllowed),
+              URL(string: encodedNew, relativeTo: URL(fileURLWithPath: "/"))?.absoluteURL.path == target else { return .unconfirmed }
         if checksNavigation {
             guard case let .file(url, fragment)? = try? MarkdownLinkNavigationService.destination(for: new + suffix, documentURL: nil),
                   case let .file(_, oldFragment)? = try? MarkdownLinkNavigationService.destination(for: raw, documentURL: file),

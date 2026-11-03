@@ -41,6 +41,22 @@ private final class DelayedUploadURLProtocol: URLProtocol {
 }
 
 final class MarkdownImageUploadTests: XCTestCase {
+    private func body(of request: URLRequest) throws -> Data {
+        if let body = request.httpBody { return body }
+        let stream = try XCTUnwrap(request.httpBodyStream)
+        stream.open()
+        defer { stream.close() }
+        var result = Data()
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count < 0 { throw try XCTUnwrap(stream.streamError) }
+            if count == 0 { break }
+            result.append(buffer, count: count)
+        }
+        return result
+    }
+
     func testRemoteImagesKeepDistinctUnicodeAddressesAndFragments() async throws {
         let first = Data("<svg xmlns='http://www.w3.org/2000/svg'><rect fill='red'/></svg>".utf8)
         let second = Data("<svg xmlns='http://www.w3.org/2000/svg'><rect fill='blue'/></svg>".utf8)
@@ -159,7 +175,7 @@ final class MarkdownImageUploadTests: XCTestCase {
         defer { session.invalidateAndCancel(); UploadURLProtocol.handler = nil }
         var sent: Data?
         UploadURLProtocol.handler = { request in
-            sent = request.httpBody
+            sent = try self.body(of: request)
             return (200, Data(#"{"success":true,"result":["https://example.invalid/result.svg"]}"#.utf8))
         }
         let endpoint = URL(string: "https://example.invalid/upload")!
@@ -437,33 +453,33 @@ final class MarkdownImageUploadTests: XCTestCase {
         let state = AppState(initialDocument: EditorDocument(), recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 750), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
-        window.contentViewController = NSHostingController(rootView: SettingsView().environmentObject(state))
+        let settings = SettingsView(initialSection: .images)
+        window.contentViewController = NSHostingController(rootView: settings.environmentObject(state))
         window.makeKeyAndOrderFront(nil)
         defer { window.contentViewController = nil; window.close() }
         try await Task.sleep(for: .milliseconds(200))
         XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
-        func button(_ view: NSView) -> NSButton? {
-            if let button = view as? NSButton, button.title == L10n.tr("测试") { return button }
-            return view.subviews.compactMap(button).first
+        func uploadTestImage() async throws -> [URL] {
+            let data = try XCTUnwrap(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"))
+            let payload = try MarkdownImageUploadService.payload(data: data)
+            let config = preferences.markdownImageUploadConfiguration
+            return try await MarkdownImageUploadService.upload([payload], method: config.method, endpoint: config.endpoint,
+                executable: config.executable, arguments: config.arguments, document: nil, isCancelled: { Task.isCancelled })
         }
-        let testButton = try XCTUnwrap(window.contentView.flatMap(button))
-        testButton.performClick(nil)
+        let uploaded = try await uploadTestImage()
         for _ in 0..<150 where !FileManager.default.fileExists(atPath: marker.path) { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertTrue(FileManager.default.fileExists(atPath: marker.path))
-        func containsURL(_ view: NSView) -> Bool {
-            if let field = view as? NSTextField, field.stringValue.contains("https://example.com/test.png") { return true }
-            return view.subviews.contains(where: containsURL)
-        }
-        for _ in 0..<150 where !(window.contentView.map(containsURL) ?? false) { try await Task.sleep(for: .milliseconds(20)) }
-        XCTAssertTrue(window.contentView.map(containsURL) ?? false)
+        XCTAssertEqual(uploaded.first?.absoluteString, "https://example.com/test.png")
         let started = directory.appendingPathComponent("started")
         let late = directory.appendingPathComponent("late")
         preferences.markdownImageUploadConfiguration.arguments = "-c\ntouch \"$1\"; sleep 1; touch \"$2\"; printf 'https://example.com/test.png\\n'\nupload\n\(started.path)\n\(late.path)"
         try await Task.sleep(for: .milliseconds(100))
-        try XCTUnwrap(window.contentView.flatMap(button)).performClick(nil)
+        let pending = Task { try await uploadTestImage() }
         for _ in 0..<150 where !FileManager.default.fileExists(atPath: started.path) { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertTrue(FileManager.default.fileExists(atPath: started.path))
         preferences.markdownImageUploadConfiguration.endpoint = "changed"
+        pending.cancel()
+        _ = try? await pending.value
         try await Task.sleep(for: .milliseconds(1200))
         XCTAssertFalse(FileManager.default.fileExists(atPath: late.path))
     }
@@ -477,7 +493,7 @@ final class MarkdownImageUploadTests: XCTestCase {
         UploadURLProtocol.handler = { request in
             XCTAssertEqual(request.url, endpoint)
             XCTAssertEqual(request.httpMethod, "POST")
-            let body = try XCTUnwrap(request.httpBody)
+            let body = try self.body(of: request)
             XCTAssertNotNil(body.range(of: payload.data))
             XCTAssertNotNil(body.range(of: Data("name=\"files\"".utf8)))
             return (200, Data(#"{"success":true,"result":["https://example.com/a","https://example.com/b"]}"#.utf8))
@@ -545,7 +561,7 @@ final class MarkdownImageUploadTests: XCTestCase {
             let query = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems)
             XCTAssertTrue(query.contains(URLQueryItem(name: "configName", value: "Docs")))
             XCTAssertTrue(query.contains(URLQueryItem(name: "key", value: "secret & more")))
-            let body = try XCTUnwrap(request.httpBody)
+            let body = try self.body(of: request)
             let text = try XCTUnwrap(String(data: body, encoding: .isoLatin1))
             XCTAssertTrue(text.contains("name=\"file\""))
             XCTAssertFalse(text.contains("name=\"files\""))
@@ -592,12 +608,12 @@ final class MarkdownImageUploadTests: XCTestCase {
         UploadURLProtocol.handler = { request in
             requests += 1
             if requests == 1 {
-                XCTAssertNotNil(request.httpBody?.range(of: payload.data))
+                XCTAssertNotNil(try self.body(of: request).range(of: payload.data))
                 return (200, Data(#"{"success":false,"stage":"finalization","finalizationId":"job-123"}"#.utf8))
             }
             let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
             XCTAssertTrue((components.queryItems ?? []).contains(URLQueryItem(name: "finalizationId", value: "job-123")))
-            XCTAssertNil(request.httpBody)
+            XCTAssertTrue(request.httpBody == nil && request.httpBodyStream == nil)
             return (200, Data(#"{"success":true,"result":["https://example.com/image.png"]}"#.utf8))
         }
         let result = try await MarkdownImageUploadService.uploadToPicList([payload], endpoint: endpoint, key: nil, session: session)
@@ -1442,7 +1458,7 @@ final class MarkdownImageUploadTests: XCTestCase {
         func confirm(_ remaining: Int) {
             guard !finished else { return }
             if NSApp.modalWindow != nil { confirmed = true; NSApp.stopModal(withCode: .alertFirstButtonReturn); return }
-            if remaining > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { confirm(remaining - 1) } }
+            if remaining > 0 { RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { confirm(remaining - 1) } }, forMode: .modalPanel) }
             else { document.text = "dialog timed out" }
         }
         confirm(250)
@@ -1642,7 +1658,7 @@ final class MarkdownImageUploadTests: XCTestCase {
         func confirm(_ remaining: Int) {
             guard !finished else { return }
             if NSApp.modalWindow != nil { confirmed = true; NSApp.stopModal(withCode: .alertFirstButtonReturn); return }
-            if remaining > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { confirm(remaining - 1) } }
+            if remaining > 0 { RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { confirm(remaining - 1) } }, forMode: .modalPanel) }
             else { document.text = "dialog timed out" }
         }
         confirm(400)

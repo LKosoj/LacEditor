@@ -668,7 +668,7 @@ final class MarkdownLayoutTests: XCTestCase {
 
     func testUppercaseHeadingPrototypeReservesWrappedBlockAndRevealsSource() throws {
         _ = NSApplication.shared
-        let title = "Straße " + String(repeating: "long title ", count: 8)
+        let title = "Straße" + String(repeating: " long title", count: 8)
         let source = "# \(title)\n\nend"
         let projection = MarkdownHeadingUppercaseProjection(title)
         let (storage, layout, container) = makeLayout(source)
@@ -711,9 +711,20 @@ final class MarkdownLayoutTests: XCTestCase {
             let blockPoint = NSPoint(x: line.minX + container.lineFragmentPadding + displayPoint.x, y: line.minY + displayPoint.y)
             XCTAssertEqual(layout.markdownImageLocation(at: blockPoint, in: container), heading.range.location)
             let viewPoint = NSPoint(x: blockPoint.x + view.textContainerOrigin.x, y: blockPoint.y + view.textContainerOrigin.y)
-            let event = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: view.convert(viewPoint, to: nil), modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
-            let up = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseUp, location: view.convert(viewPoint, to: nil), modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 0))
-            NSApp.postEvent(up, atStart: false)
+            let event = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: view.convert(viewPoint, to: nil), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+            let up = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseUp, location: view.convert(viewPoint, to: nil), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 0))
+            view.mouseUp(with: up)
+            let trackingMode = CFRunLoopMode(rawValue: RunLoop.Mode.eventTracking.rawValue as CFString)
+            let trackingObserver = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, false, 0) { _, _ in
+                NSApp.postEvent(up, atStart: false)
+            }
+            if let trackingObserver { CFRunLoopAddObserver(CFRunLoopGetMain(), trackingObserver, trackingMode) }
+            defer {
+                if let trackingObserver {
+                    CFRunLoopRemoveObserver(CFRunLoopGetMain(), trackingObserver, trackingMode)
+                    CFRunLoopObserverInvalidate(trackingObserver)
+                }
+            }
             view.mouseDown(with: event)
             XCTAssertEqual(view.selectedRange().location, offset == 0 ? sharpS.location : NSMaxRange(sharpS))
         }
@@ -724,7 +735,7 @@ final class MarkdownLayoutTests: XCTestCase {
             return window.convertPoint(fromScreen: NSPoint(x: caret.midX, y: caret.midY))
         }
         let sourceEnd = sourcePoint(NSMaxRange(sharpS))
-        func click(_ offset: Int, modifiers: NSEvent.ModifierFlags = [], count: Int = 1, drag: NSPoint? = nil) throws {
+        func click(_ offset: Int, modifiers: NSEvent.ModifierFlags = [], count: Int = 1, drag: NSPoint? = nil, release: NSPoint? = nil) throws {
             layout.updateMarkdownRevealedRange((source as NSString).range(of: "end"))
             layout.ensureLayout(for: container)
             let glyphs = displayLayout.glyphRange(forCharacterRange: NSRange(location: expanded.location + offset, length: 1), actualCharacterRange: nil)
@@ -733,19 +744,30 @@ final class MarkdownLayoutTests: XCTestCase {
                                 y: line.minY + rect.midY + view.textContainerOrigin.y)
             let windowPoint = view.convert(point, to: nil)
             let down = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: windowPoint, modifierFlags: modifiers,
-                timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 2, clickCount: count, pressure: 1))
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 2, clickCount: count, pressure: 1))
             if let drag {
                 let moved = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDragged, location: drag, modifierFlags: modifiers,
-                    timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 2, clickCount: count, pressure: 1))
+                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 2, clickCount: count, pressure: 1))
                 NSApp.postEvent(moved, atStart: false)
             }
-            let up = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseUp, location: drag ?? windowPoint, modifierFlags: modifiers,
-                timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 2, clickCount: count, pressure: 0))
-            NSApp.postEvent(up, atStart: false)
+            let up = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseUp, location: release ?? drag ?? windowPoint, modifierFlags: modifiers,
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 2, clickCount: count, pressure: 0))
+            let trackingMode = CFRunLoopMode(rawValue: RunLoop.Mode.eventTracking.rawValue as CFString)
+            var trackingObserver: CFRunLoopObserver?
+            trackingObserver = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, false, 0) { _, _ in
+                    NSApp.postEvent(up, atStart: false)
+                }
+                if let trackingObserver { CFRunLoopAddObserver(CFRunLoopGetMain(), trackingObserver, trackingMode) }
+            defer {
+                if let trackingObserver {
+                    CFRunLoopRemoveObserver(CFRunLoopGetMain(), trackingObserver, trackingMode)
+                    CFRunLoopObserverInvalidate(trackingObserver)
+                }
+            }
             view.mouseDown(with: down)
         }
         view.setSelectedRange(NSRange(location: sourceTitle.location, length: 0))
-        try click(1, modifiers: .shift)
+        try click(1, modifiers: .shift, release: sourceEnd)
         XCTAssertEqual(view.selectedRange(), NSRange(location: sourceTitle.location, length: NSMaxRange(sharpS) - sourceTitle.location))
         try click(0, count: 2)
         XCTAssertEqual((source as NSString).substring(with: view.selectedRange()), "Straße")
@@ -953,40 +975,73 @@ final class MarkdownLayoutTests: XCTestCase {
         layout.setMarkdownMathReferences([(rect: CGRect(x: 0, y: 0, width: 1, height: 1), target: target)], for: formula)
         XCTAssertEqual(layout.markdownMathReference(at: NSPoint(x: rect.midX, y: rect.midY), in: container)?.target, target)
         let glyph = layout.glyphIndexForCharacter(at: heading.range.location)
+        view.scrollRangeToVisible(heading.range)
         let line = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
         let local = NSPoint(x: line.minX + container.lineFragmentPadding + 1, y: line.minY + 4)
         let expected = try XCTUnwrap(layout.uppercaseHeadingSourcePosition(at: local, in: container))
         let point = NSPoint(x: local.x + view.textContainerOrigin.x, y: local.y + view.textContainerOrigin.y)
         let windowPoint = view.convert(point, to: nil)
-        let down = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: windowPoint, modifierFlags: [], timestamp: 0,
+        let down = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: windowPoint, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
             windowNumber: window.windowNumber, context: nil, eventNumber: 4, clickCount: 1, pressure: 1))
-        let up = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseUp, location: windowPoint, modifierFlags: [], timestamp: 0,
-            windowNumber: window.windowNumber, context: nil, eventNumber: 4, clickCount: 1, pressure: 0))
-        NSApp.postEvent(up, atStart: false)
-        view.mouseDown(with: down)
-        XCTAssertEqual(view.selectedRange().location, expected)
+
         let word = (source as NSString).range(of: "Straße")
         guard expected >= word.location, expected <= NSMaxRange(word) else {
             return XCTFail("Uppercase hit did not map to the first word")
         }
-        func clickAgain(modifiers: NSEvent.ModifierFlags = [], count: Int = 1, drag: NSPoint? = nil) throws {
+        func sourcePoint(_ position: Int) -> NSPoint {
+            layout.updateMarkdownRevealedRange((source as NSString).range(of: "end"))
+            layout.ensureLayout(forCharacterRange: heading.range)
+            let caret = view.firstRect(forCharacterRange: NSRange(location: position, length: 0), actualRange: nil)
+            return window.convertPoint(fromScreen: NSPoint(x: caret.midX, y: caret.midY))
+        }
+        let sourceStart = sourcePoint(expected), sourceEnd = sourcePoint(NSMaxRange(word))
+        XCTAssertTrue(layout.setUppercaseHeading(heading.range, runs: runs, width: 200, level: 1, attachmentImages: images))
+        layout.ensureLayout(for: container)
+        let up = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseUp, location: sourceStart, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 4, clickCount: 1, pressure: 0))
+        let trackingMode = CFRunLoopMode(rawValue: RunLoop.Mode.eventTracking.rawValue as CFString)
+        let trackingObserver = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, false, 0) { _, _ in
+            NSApp.postEvent(up, atStart: false)
+        }
+        if let trackingObserver { CFRunLoopAddObserver(CFRunLoopGetMain(), trackingObserver, trackingMode) }
+        defer {
+            if let trackingObserver {
+                CFRunLoopRemoveObserver(CFRunLoopGetMain(), trackingObserver, trackingMode)
+                CFRunLoopObserverInvalidate(trackingObserver)
+            }
+        }
+        view.mouseDown(with: down)
+        view.mouseUp(with: up)
+        XCTAssertEqual(view.selectedRange().location, expected)
+        func clickAgain(modifiers: NSEvent.ModifierFlags = [], count: Int = 1, drag: NSPoint? = nil, release: NSPoint? = nil) throws {
             layout.updateMarkdownRevealedRange((source as NSString).range(of: "end"))
             XCTAssertTrue(layout.setUppercaseHeading(heading.range, runs: runs, width: 200, level: 1, attachmentImages: images))
             layout.ensureLayout(for: container)
             let event = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: windowPoint, modifierFlags: modifiers,
-                timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 5, clickCount: count, pressure: 1))
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 5, clickCount: count, pressure: 1))
             if let drag {
                 let moved = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDragged, location: drag, modifierFlags: modifiers,
-                    timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 5, clickCount: count, pressure: 1))
+                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 5, clickCount: count, pressure: 1))
                 NSApp.postEvent(moved, atStart: false)
             }
-            let released = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseUp, location: drag ?? windowPoint, modifierFlags: modifiers,
-                timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 5, clickCount: count, pressure: 0))
-            NSApp.postEvent(released, atStart: false)
+            let released = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseUp, location: release ?? drag ?? sourceStart, modifierFlags: modifiers,
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 5, clickCount: count, pressure: 0))
+            let trackingMode = CFRunLoopMode(rawValue: RunLoop.Mode.eventTracking.rawValue as CFString)
+            var trackingObserver: CFRunLoopObserver?
+            trackingObserver = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, false, 0) { _, _ in
+                    NSApp.postEvent(released, atStart: false)
+                }
+                if let trackingObserver { CFRunLoopAddObserver(CFRunLoopGetMain(), trackingObserver, trackingMode) }
+            defer {
+                if let trackingObserver {
+                    CFRunLoopRemoveObserver(CFRunLoopGetMain(), trackingObserver, trackingMode)
+                    CFRunLoopObserverInvalidate(trackingObserver)
+                }
+            }
             view.mouseDown(with: event)
         }
         view.setSelectedRange(NSRange(location: NSMaxRange(word), length: 0))
-        try clickAgain(modifiers: .shift)
+        try clickAgain(modifiers: .shift, release: sourceEnd)
         XCTAssertEqual(view.selectedRange(), NSRange(location: expected, length: NSMaxRange(word) - expected))
         try clickAgain(count: 2)
         XCTAssertEqual((source as NSString).substring(with: view.selectedRange()), "Straße")
@@ -2268,6 +2323,7 @@ final class MarkdownLayoutTests: XCTestCase {
         func countCall() -> Int { lock.withLock { calls += 1; return calls } }
 
         /// Печатает один символ после `marker` так же, как редактор: `beforeEdit`, правка текста, `edited`.
+        @MainActor
         func type(after marker: String, _ text: String = "x") {
             let edit = NSRange(location: NSMaxRange(storage.mutableString.range(of: marker)), length: 0)
             revision += 1
@@ -3471,7 +3527,7 @@ final class MarkdownLayoutTests: XCTestCase {
         func click(_ modifiers: NSEvent.ModifierFlags) throws {
             let point = summary.convert(NSPoint(x: 3, y: 8), to: nil)
             let event = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: point, modifierFlags: modifiers,
-                timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
             summary.mouseDown(with: event)
         }
         try click([.command]); XCTAssertEqual(link, "relative.md")

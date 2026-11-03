@@ -120,6 +120,7 @@ actor AIAgentRun<Journal: Sendable> {
     }
 
     private func loop() async throws -> AIAgentRunResult {
+        defer { onProgress(snapshot(entry: nil)) }
         while true {
             try Task.checkCancellation()
             if pending == nil {

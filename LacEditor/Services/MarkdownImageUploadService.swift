@@ -106,8 +106,11 @@ final class MarkdownSVGRenderService: NSObject, WKNavigationDelegate {
         self.navigation = nil
         let script = """
         const image = document.querySelector('img');
+        image.style.maxWidth = 'none';
         image.src = 'data:image/svg+xml;base64,' + encoded + fragment;
         await image.decode();
+        const intrinsicWidth = image.naturalWidth, intrinsicHeight = image.naturalHeight;
+        image.style.maxWidth = '100%';
         const rect = image.getBoundingClientRect();
         if (!(rect.width > 0 && rect.height > 0)) throw new Error('Invalid image size');
         const canvas = document.createElement('canvas');
@@ -115,7 +118,7 @@ final class MarkdownSVGRenderService: NSObject, WKNavigationDelegate {
         canvas.width = Math.ceil(rect.width * scale);
         canvas.height = Math.ceil(rect.height * scale);
         canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
-        return [rect.width, rect.height, canvas.toDataURL('image/png'), image.naturalWidth, image.naturalHeight];
+        return [rect.width, rect.height, canvas.toDataURL('image/png'), intrinsicWidth, intrinsicHeight];
         """
         webView.callAsyncJavaScript(script, arguments: ["encoded": encoded, "fragment": fragment], in: nil, in: .defaultClient) { [weak self, weak webView] result in
             guard let self, let webView, self.completion != nil else { return }

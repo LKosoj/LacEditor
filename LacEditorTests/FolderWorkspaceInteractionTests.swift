@@ -384,6 +384,9 @@ final class FolderWorkspaceInteractionTests: XCTestCase {
         let store = FolderWorkspaceStore()
         let rootTask = try XCTUnwrap(store.setRoot(root))
         await rootTask.value
+        for _ in 0..<100 where store.loading.contains(root) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
         XCTAssertEqual(FolderWorkspaceVisibleRow.rows(in: store).map(\.depth), [0, 0])
 
         let childTask = try XCTUnwrap(store.expand(child))

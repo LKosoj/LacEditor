@@ -2028,10 +2028,10 @@ enum MarkdownPresentationParser {
                     child = cmark_node_next(current)
                 }
                 if plain {
-                    plainMultilineParagraphs.insert(node)
-                    plainMultilineNodes.formUnion(candidates)
                     if let ranges = source.lazyParagraphInlineRanges(node, text: sourceText, plainEditing: true,
                                                                     inlineMath: inlineByNode, isCancelled: isCancelled) {
+                        plainMultilineParagraphs.insert(node)
+                        plainMultilineNodes.formUnion(candidates)
                         plainMultilineRanges.merge(ranges) { first, _ in first }
                         for current in candidates {
                             if inlineByNode[current] != nil, let range = ranges[current] { confirmedInlineAttachments[current] = range }
@@ -3592,8 +3592,12 @@ enum MarkdownPresentationParser {
                             for index in lineStarts[physical]..<startByte {
                                 if isCancelled() { return }
                                 let byte = bytes[index]
+                                if byte == 91 || byte >= 128 || (65...90).contains(byte) || (97...122).contains(byte) { break }
                                 if byte == 62 { quotes += 1 }
-                                else if byte != 32 && byte != 9 { matches = false; break }
+                                else if byte != 32 && byte != 9 && byte != 45 && byte != 43 && byte != 42 && byte != 46 && byte != 41 && !(48...57).contains(byte) {
+                                    matches = false
+                                    break
+                                }
                             }
                             if !matches || quotes != quoteDepth { matches = false; break }
                         }
@@ -3614,11 +3618,15 @@ enum MarkdownPresentationParser {
                     while let current = ancestor, current != root {
                         if isCancelled() { return }
                         let startLine = Int(cmark_node_get_start_line(current)) - 1
-                        let endLine = Int(cmark_node_get_end_line(current)) - 1
+                        var endLine = Int(cmark_node_get_end_line(current)) - 1
                         let startColumn = Int(cmark_node_get_start_column(current))
-                        let endColumn = Int(cmark_node_get_end_column(current))
-                        guard startLine >= 0, startLine <= first, endLine == last, startColumn > 0,
-                              !lineHasTab[startLine], endColumn == lineEnds[last] - lineStarts[last],
+                        var endColumn = Int(cmark_node_get_end_column(current))
+                        if endColumn == 0, endLine > first, endLine <= lineStarts.count {
+                            endLine -= 1
+                            endColumn = lineEnds[endLine] - lineStarts[endLine]
+                        }
+                        guard startLine >= 0, startLine <= first, endLine >= last, startColumn > 0,
+                              !lineHasTab[startLine], endLine > last || endColumn == lineEnds[last] - lineStarts[last],
                               lineStarts[startLine] + startColumn - 1 <= lineEnds[startLine],
                               let lower = utf16Offset(at: lineStarts[startLine] + startColumn - 1),
                               let upper = utf16Offset(at: lineEnds[last]), upper >= lower else { valid = false; break }
@@ -4253,9 +4261,52 @@ enum MarkdownPresentationParser {
             guard first >= 0, last >= first, last < lineStarts.count,
                   startColumn > 0, endColumn > 0,
                   !lineHasTab[first...last].contains(true) else { return nil }
-            let start = lineStarts[first] + startColumn - 1
-            let end = lineStarts[last] + endColumn
-            guard start >= lineStarts[first], start <= lineEnds[first],
+            var start = lineStarts[first] + startColumn - 1
+            var end = lineStarts[last] + endColumn
+            if first == last, start > lineEnds[first] || end > lineEnds[last] {
+                var ancestor = cmark_node_parent(node)
+                while let current = ancestor, cmark_node_get_type(current) != CMARK_NODE_PARAGRAPH {
+                    ancestor = cmark_node_parent(current)
+                }
+                guard let paragraph = ancestor else { return nil }
+                var hasCode = false
+                var child = cmark_node_first_child(paragraph)
+                while let current = child {
+                    if cmark_node_get_type(current) == CMARK_NODE_CODE { hasCode = true; break }
+                    child = cmark_node_next(current)
+                }
+                var quoted = false
+                var container = paragraph
+                while let parent = cmark_node_parent(container) {
+                    if cmark_node_get_type(parent) == CMARK_NODE_BLOCK_QUOTE { quoted = true; break }
+                    container = parent
+                }
+                guard (hasCode && !quoted) || cmark_node_get_type(node) == CMARK_NODE_IMAGE else { return nil }
+                last = Int(cmark_node_get_end_line(paragraph)) - 1
+                guard last >= first, last < lineStarts.count else { return nil }
+                guard let paragraphContent = cmark_node_get_string_content(paragraph) else { return nil }
+                let retainedLines = String(cString: paragraphContent).components(separatedBy: "\n")
+                func sourceByte(_ position: Int) -> Int? {
+                    var shift = 0
+                    for line in first..<last {
+                        let next = line + 1
+                        guard next - first < retainedLines.count else { return nil }
+                        let retained = retainedLines[next - first]
+                        let contentStart = lineEnds[next] - retained.utf8.count
+                        let retainedBytes = Array(retained.utf8)
+                        guard contentStart >= lineStarts[next], contentStart <= lineEnds[next],
+                              contentStart + retainedBytes.count <= bytes.count,
+                              Array(bytes[contentStart..<contentStart + retainedBytes.count]) == retainedBytes else { return nil }
+                        let extra = contentStart - lineStarts[next] + lineStarts[next] - lineEnds[line] - 1
+                        if position >= lineEnds[line] + 1 - shift { shift += extra }
+                    }
+                    return position + shift
+                }
+                guard let mappedStart = sourceByte(start), let mappedEnd = sourceByte(end) else { return nil }
+                start = mappedStart
+                end = mappedEnd
+            }
+            guard start >= lineStarts[first],
                   end >= lineStarts[last], end <= lineEnds[last], end >= start,
                   let startUTF16 = utf16Offset(at: start), let endUTF16 = utf16Offset(at: end) else { return nil }
             return NSRange(location: startUTF16, length: endUTF16 - startUTF16)

@@ -111,6 +111,7 @@ extension EditorTextView {
         private(set) var remoteImagesConsentSnapshot = false
         var clipboardConversionExecutable: URL?
         var clipboardImageWrite: @Sendable (Data, URL) throws -> Void = { try $0.write(to: $1, options: .withoutOverwriting) }
+        var clipboardSavePanelPrepare: @MainActor (NSSavePanel) -> Void = { _ in }
         private var tableCellVirtualSeparators = 0
         private var tableCellColumn = 0
         private var tableCellRowStart: Int?
@@ -449,11 +450,14 @@ extension EditorTextView {
             if textView?.hasMarkedText() == true { return true }
             guard isActive, currentLanguage == .markdown, document.ioState == .idle,
                   let textView, textView.isEditable, textView.selectedRanges.count == 1,
-                  let storage = textView.textStorage,
-                  ListContinuationService.isListOutsideCode(in: storage.mutableString, at: textView.selectedRange().location) else { return false }
+                  let storage = textView.textStorage else { return false }
             let selection = textView.selectedRange()
-            guard selection.length == 0 else { return true }
+            let outsideCode = ListContinuationService.isListOutsideCode(in: storage.mutableString, at: selection.location)
             let indentUnit = textView.indentationStyle == .tabs ? "\t" : String(repeating: " ", count: textView.tabWidth)
+            let orderedEdits = ListContinuationService.indentationEdit(in: storage.mutableString, at: selection.location,
+                indentUnit: indentUnit, outdent: outdent)
+            guard outsideCode || (outdent && orderedEdits?.count == 1) else { return false }
+            guard selection.length == 0 else { return true }
             if let edit = ListContinuationService.unorderedIndentEdit(in: storage.mutableString, selection: selection, indentUnit: indentUnit, outdent: outdent) {
                 textView.breakUndoCoalescing()
                 textView.undoManager?.beginUndoGrouping()
@@ -469,8 +473,7 @@ extension EditorTextView {
             if ListContinuationService.isUnorderedList(in: storage.mutableString, at: selection.location) {
                 return !(outdent && ListContinuationService.isUnorderedRoot(in: storage.mutableString, at: selection.location))
             }
-            guard let edits = ListContinuationService.indentationEdit(in: storage.mutableString, at: selection.location,
-                indentUnit: indentUnit, outdent: outdent) else { return false }
+            guard let edits = orderedEdits else { return false }
             let selectionLocation = textView.selectedRange().location
             let updatedText = NSMutableString(string: storage.string)
             for edit in edits.sorted(by: { $0.range.location > $1.range.location }) {
@@ -1597,7 +1600,12 @@ extension EditorTextView {
                   range.location <= storage.length, range.length <= storage.length - range.location else { return false }
             cancelMarkdownLinkNavigation()
             finishTableCell()
-            let child = MarkdownTableCellEditor(frame: frame)
+            let childStorage = NSTextStorage()
+            let childLayout = NSLayoutManager()
+            childStorage.addLayoutManager(childLayout)
+            let container = NSTextContainer(containerSize: frame.size)
+            childLayout.addTextContainer(container)
+            let child = MarkdownTableCellEditor(frame: frame, textContainer: container)
             child.delegate = child
             child.beginTextChecking = { [weak self] options in self?.beginSmartTextChecking(options, child: true) ?? options }
             child.filterTextCheckingResults = { [weak self, weak child] results, options in
@@ -2316,6 +2324,10 @@ extension EditorTextView {
                 },
                 acknowledgement: { [weak self] revision in
                     self?.lastSynchronizedRevision = revision
+                },
+                hasMarkedText: { [weak self] in
+                    guard let self else { return false }
+                    return self.textView?.hasMarkedText() == true || self.tableCellEditor?.hasMarkedText() == true
                 }
             )
         }
@@ -2968,6 +2980,7 @@ extension EditorTextView {
             if format == .html || text.range(of: #"(?i)\\pict\b"#, options: .regularExpression) != nil {
                 let documentURL = document.url
                 let writeImage = clipboardImageWrite
+                let prepareSavePanel = clipboardSavePanelPrepare
                 let current: @MainActor () -> Bool = { [weak self, weak document, weak child] in
                     guard let self, let document, self.document === document, self.clipboardPasteID == pasteID,
                           self.isActive, self.contentRevision == revision, document.textRevision == documentRevision,
@@ -2987,9 +3000,8 @@ extension EditorTextView {
                     return storage.mutableString.substring(with: selection) == original
                 }
                 clipboardPasteTask = Task.detached(priority: .userInitiated) { [weak self, weak document, weak child] in
-                    let capturedSelf = self, capturedDocument = document, capturedChild = child
                     guard let htmlImages = format == .html ? Self.htmlImageSources(text, isCancelled: { Task.isCancelled }) : [], !Task.isCancelled else {
-                        await MainActor.run { [capturedDocument] in if !Task.isCancelled, current() { capturedDocument?.statusMessage = L10n.tr("无法粘贴格式化内容") } }
+                        await MainActor.run { [weak document] in if !Task.isCancelled, current() { document?.statusMessage = L10n.tr("无法粘贴格式化内容") } }
                         return
                     }
                     let converted = Result {
@@ -3002,7 +3014,7 @@ extension EditorTextView {
                           format != .html || parsedImages.map(\.address) == htmlImages,
                           format != .rtf || ClipboardMarkdownConversionService.rtfPictureCount(data, isCancelled: { Task.isCancelled }) == parsedImages.count,
                           let images = try? MarkdownClipboardCopyService.embeddedImages(in: output.markdown, allowingExternal: format == .html, isCancelled: { Task.isCancelled }) else {
-                        await MainActor.run { [capturedDocument] in if !Task.isCancelled, current() { capturedDocument?.statusMessage = L10n.tr("无法粘贴格式化内容") } }
+                        await MainActor.run { [weak document] in if !Task.isCancelled, current() { document?.statusMessage = L10n.tr("无法粘贴格式化内容") } }
                         return
                     }
                     var destinations: [URL] = []
@@ -3010,9 +3022,9 @@ extension EditorTextView {
                         guard !destinations.isEmpty else { return }
                         let paths = destinations.map(\.path).joined(separator: "\n")
                         let notice = ClipboardSavedImagesNotice(documentID: documentID, message: L10n.tr("图片位于 %@，未插入", paths))
-                        await MainActor.run { [capturedDocument] in
+                        await MainActor.run { [weak document] in
                             NotificationCenter.default.post(name: EditorCommandNotification.clipboardSavedImages, object: notice)
-                            if !notice.handled, let document = capturedDocument {
+                            if !notice.handled, let document = document {
                                 if let existing = document.statusMessage, !existing.isEmpty {
                                     if !existing.contains(notice.message) { document.statusMessage = existing + "\n" + notice.message }
                                 } else { document.statusMessage = notice.message }
@@ -3025,6 +3037,7 @@ extension EditorTextView {
                             let panel = NSSavePanel()
                             panel.nameFieldStringValue = image.filename
                             if let type = UTType(mimeType: image.mime) { panel.allowedContentTypes = [type] }
+                            prepareSavePanel(panel)
                             guard panel.runModal() == .OK, current(), !Task.isCancelled else { return nil }
                             return panel.url
                         }
@@ -3033,7 +3046,7 @@ extension EditorTextView {
                         catch {
                             await reportSaved()
                             let noDestinations = destinations.isEmpty
-                            await MainActor.run { [capturedDocument] in if noDestinations, current() { capturedDocument?.statusMessage = L10n.tr("无法保存图片，文件可能已存在") } }
+                            await MainActor.run { [weak document] in if noDestinations, current() { document?.statusMessage = L10n.tr("无法保存图片，文件可能已存在") } }
                             return
                         }
                         destinations.append(destination)
@@ -3048,10 +3061,10 @@ extension EditorTextView {
                         await reportSaved(); return
                     }
                     let markdown = convertedMarkdown.hasSuffix("\n") ? String(convertedMarkdown.dropLast()) : convertedMarkdown
-                    let applied = await MainActor.run { [capturedSelf, capturedChild] () -> Bool in
-                        guard !Task.isCancelled, current(), let self = capturedSelf, let view = self.textView else { return false }
-                        self.clipboardPasteTask = nil
-                        if wasChild, let child = capturedChild {
+                    let applied = await MainActor.run { [weak self, weak child] () -> Bool in
+                        guard !Task.isCancelled, current(), let self, let view = self.textView else { return false }
+                        let range = wasChild ? NSRange(location: 0, length: 0) : selection
+                        if wasChild, let child = child {
                             child.insertText(markdown, replacementRange: selection)
                             return self.contentRevision != revision
                         }
@@ -3073,8 +3086,7 @@ extension EditorTextView {
             clipboardPasteTask = Task.detached(priority: .userInitiated) { [weak self, weak child, weak document] in
                 let result = Result { try ClipboardMarkdownConversionService.convert(data, format: format, executable: executable, isCancelled: { Task.isCancelled }) }
                 guard !Task.isCancelled else { return }
-                let capturedSelf = self, capturedDocument = document, capturedChild = child
-                await MainActor.run { [weak self = capturedSelf, weak document = capturedDocument, weak child = capturedChild] in
+                await MainActor.run { [weak self, weak document, weak child] in
                     guard !Task.isCancelled, let self, let document, self.document === document,
                           document.textRevision == documentRevision, self.clipboardPasteID == pasteID, self.isActive, self.document.id == documentID,
                           self.document.language == .markdown, self.currentLanguage == .markdown,
@@ -4469,6 +4481,17 @@ extension EditorTextView {
             guard mediaMapEnabled, !mediaMap.isEmpty || mediaMapStale, textView === self.textView,
                   !isApplyingExternalUpdate, !textView.hasMarkedText() else { return newSelectedCharRange }
             return liveMediaMap.snappedRange(newSelectedCharRange, from: oldSelectedCharRange)
+        }
+
+        func textView(_ textView: NSTextView,
+                      willChangeSelectionFromCharacterRanges oldRanges: [NSValue],
+                      toCharacterRanges newRanges: [NSValue]) -> [NSValue] {
+            guard mediaMapEnabled, !mediaMap.isEmpty || mediaMapStale, textView === self.textView,
+                  !isApplyingExternalUpdate, !textView.hasMarkedText(), oldRanges.count == newRanges.count else { return newRanges }
+            let map = liveMediaMap
+            return newRanges.enumerated().map {
+                NSValue(range: map.snappedRange($0.element.rangeValue, from: oldRanges[$0.offset].rangeValue))
+            }
         }
 
         private func shouldChangeTextCore(

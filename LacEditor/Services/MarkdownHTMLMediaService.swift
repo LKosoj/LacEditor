@@ -1134,7 +1134,7 @@ enum MarkdownHTMLMediaService {
             }
         }
         guard let html = renderMarkedHTML(root: root, mathExtension: mathExtension, options: options, insertions: insertions, isCancelled: isCancelled),
-              !isCancelled(), let document = try? SwiftSoup.parse(html, "", Parser.htmlParser()) else { return nil }
+              !isCancelled(), let document = try? SwiftSoup.parseBodyFragment(html) else { return nil }
         var pending: [Node] = [document], starts: [Int: Comment] = [:], ends: [Int: Comment] = [:], duplicates: Set<Int> = []
         while let node = pending.popLast() {
             if isCancelled() { return nil }
@@ -1442,7 +1442,7 @@ enum MarkdownHTMLMediaService {
         guard let html = renderMarkedHTML(root: root, mathExtension: mathExtension, options: options, insertions: insertions, isCancelled: isCancelled),
               !isCancelled() else { return [] }
         do {
-            let document = try SwiftSoup.parse(html, "", Parser.htmlParser())
+            let document = try SwiftSoup.parseBodyFragment(html)
             if confirmedHTML != nil { document.outputSettings().prettyPrint(pretty: false) }
             var pending: [Node] = [document], openings: [Int: Comment] = [:], closings: [Int: Comment] = [:], duplicates: Set<Int> = []
             while let node = pending.popLast() {
@@ -1638,7 +1638,7 @@ enum MarkdownHTMLMediaService {
         guard let html = renderMarkedHTML(root: root, mathExtension: mathExtension, options: options,
                                           insertions: insertions, isCancelled: isCancelled) else { return [] }
         do {
-            let document = try SwiftSoup.parse(html, "", Parser.htmlParser())
+            let document = try SwiftSoup.parseBodyFragment(html)
             var pending: [Node] = [document], openings: [Int: Comment] = [:], closings: [Int: Comment] = [:], duplicates = Set<Int>()
             while let node = pending.popLast() {
                 if isCancelled() { return [] }
@@ -1739,7 +1739,7 @@ enum MarkdownHTMLMediaService {
         guard let html = renderMarkedHTML(root: root, mathExtension: mathExtension, options: options,
                                           insertions: insertions, isCancelled: isCancelled) else { return [] }
         do {
-            let document = try SwiftSoup.parse(html, "", Parser.htmlParser())
+            let document = try SwiftSoup.parseBodyFragment(html)
             var pending: [Node] = [document], openings: [Int: Comment] = [:], closings: [Int: Comment] = [:], duplicates = Set<Int>()
             while let node = pending.popLast() {
                 if isCancelled() { return [] }
@@ -1814,7 +1814,7 @@ enum MarkdownHTMLMediaService {
         guard let html = renderMarkedHTML(root: root, mathExtension: mathExtension, options: options,
                                           insertions: insertions, isCancelled: isCancelled), !isCancelled() else { return [] }
         do {
-            let document = try SwiftSoup.parse(html, "", Parser.htmlParser())
+            let document = try SwiftSoup.parseBodyFragment(html)
             document.outputSettings().prettyPrint(pretty: false)
             var pending: [Node] = [document], seen = Set<String>(), duplicates = Set<String>(), accepted: [String: OpaquePointer] = [:]
             while let node = pending.popLast() {
@@ -1861,7 +1861,7 @@ enum MarkdownHTMLMediaService {
         guard let html = renderMarkedHTML(root: root, mathExtension: mathExtension, options: options,
                                           insertions: insertions, isCancelled: isCancelled) else { return [] }
         do {
-            let document = try SwiftSoup.parse(html, "", Parser.htmlParser())
+            let document = try SwiftSoup.parseBodyFragment(html)
             document.outputSettings().prettyPrint(pretty: false)
             var pending: [Node] = [document], openings: [Int: Comment] = [:], closings: [Int: Comment] = [:], duplicates = Set<Int>()
             while let node = pending.popLast() {
@@ -1917,7 +1917,7 @@ enum MarkdownHTMLMediaService {
         guard let html = renderMarkedHTML(root: root, mathExtension: mathExtension, options: options,
                                           insertions: insertions, isCancelled: isCancelled) else { return [] }
         do {
-            let document = try SwiftSoup.parse(html, "", Parser.htmlParser())
+            let document = try SwiftSoup.parseBodyFragment(html)
             document.outputSettings().prettyPrint(pretty: false)
             var pending: [Node] = [document], openings: [Int: Comment] = [:], closings: [Int: Comment] = [:], duplicates = Set<Int>()
             while let node = pending.popLast() {
@@ -1969,7 +1969,7 @@ enum MarkdownHTMLMediaService {
         guard let html = renderMarkedHTML(root: root, mathExtension: mathExtension, options: options,
                                           insertions: insertions, isCancelled: isCancelled), !isCancelled() else { return [] }
         do {
-            let document = try SwiftSoup.parse(html, "", Parser.htmlParser())
+            let document = try SwiftSoup.parseBodyFragment(html)
             var pending: [Node] = [document], seen = Set<String>(), duplicates = Set<String>(), accepted: [String: OpaquePointer] = [:]
             while let node = pending.popLast() {
                 if isCancelled() { return [] }
@@ -2024,7 +2024,7 @@ enum MarkdownHTMLMediaService {
     static func confirmedImageMarkers(in html: String, expected: [String: String], ancestors: [String: [ImageAncestor]] = [:], isCancelled: () -> Bool) -> Set<String>? {
         guard !isCancelled() else { return nil }
         do {
-            let document = try SwiftSoup.parse(html, "", Parser.htmlParser())
+            let document = try SwiftSoup.parseBodyFragment(html)
             guard !isCancelled() else { return nil }
             var pending: [Node] = [document], found: [String: Int] = [:], accepted: Set<String> = []
             while let node = pending.popLast() {

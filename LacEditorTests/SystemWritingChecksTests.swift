@@ -8,7 +8,8 @@ final class SystemWritingChecksTests: XCTestCase {
         let view = NSTextView()
         view.string = "![alt](data:image/png;base64,AAAA+/==)"
 
-        EditorTextView.applyWritingChecks(to: view, spellingEnabled: true, grammarEnabled: true)
+        EditorTextView.applyWritingChecks(to: view, spellingEnabled: true, grammarEnabled: true,
+                                          containsDataImage: EditorTextView.containsDataImage(in: view))
 
         XCTAssertFalse(view.isContinuousSpellCheckingEnabled)
         XCTAssertFalse(view.isGrammarCheckingEnabled)
@@ -19,7 +20,8 @@ final class SystemWritingChecksTests: XCTestCase {
         let view = NSTextView()
         for spelling in [false, true] {
             for grammar in [false, true] {
-                EditorTextView.applyWritingChecks(to: view, spellingEnabled: spelling, grammarEnabled: grammar)
+                EditorTextView.applyWritingChecks(to: view, spellingEnabled: spelling, grammarEnabled: grammar,
+                                                  containsDataImage: false)
                 XCTAssertEqual(view.isContinuousSpellCheckingEnabled, spelling)
                 XCTAssertEqual(view.isGrammarCheckingEnabled, grammar)
                 XCTAssertFalse(view.isAutomaticSpellingCorrectionEnabled)

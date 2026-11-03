@@ -1415,6 +1415,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         var result: [NSRange: NSRect] = [:]
         for entry in markdownInlineImages where ranges.contains(entry.range) { result[entry.range] = inlineImageRect(entry, in: container) }
         for entry in markdownImages where ranges.contains(entry.range) { result[entry.range] = imageRect(entry, in: container, centered: true) }
+        for entry in markdownBlockImages where ranges.contains(entry.range) { result[entry.range] = imageRect(entry, in: container) }
         for (range, rect) in uppercaseAttachmentRects(in: container) where ranges.contains(range) { result[range] = rect }
         guard let text = textStorage?.mutableString else { return result }
         var cells: [NSRange: (MarkdownTableCell, NSRect, Set<NSRange>)] = [:]
