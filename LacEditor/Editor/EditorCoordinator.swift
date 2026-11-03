@@ -3063,7 +3063,6 @@ extension EditorTextView {
                     let markdown = convertedMarkdown.hasSuffix("\n") ? String(convertedMarkdown.dropLast()) : convertedMarkdown
                     let applied = await MainActor.run { [weak self, weak child] () -> Bool in
                         guard !Task.isCancelled, current(), let self, let view = self.textView else { return false }
-                        let range = wasChild ? NSRange(location: 0, length: 0) : selection
                         if wasChild, let child = child {
                             child.insertText(markdown, replacementRange: selection)
                             return self.contentRevision != revision
