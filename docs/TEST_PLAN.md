@@ -106,6 +106,22 @@ macOS: 0 ошибок, 0 предупреждений, 0 пропусков GUI-
 - [x] Проверить 0 предупреждений и выполнить `git diff --check`.
 - [ ] Обновить итоговый статус и отметить цель выполненной после общего прогона.
 
+### Последняя адресная проверка (2026-11-05)
+
+- `MarkdownPresentationTests/testFormattingAndReturningToSourcePreserveTextAndSelection` — 1/1 после исправления fixture и ожидания production-разбора.
+- `MarkdownPresentationTests/testInactiveEditorWaitsUntilActivationToApplyFormatting` — 1/1 после исправления fixture окна/first responder и ожидания production-разбора.
+- Класс `MarkdownPresentationTests` — 55/75 passed, 20 failed; полный прогон пока не повторяется до исправления подтверждённых причин.
+- `TaskCheckboxTests/testClickUsesCurrentSourceAndUndo` — 1/1.
+- `ToolbarDefaultsTests/testDefaultToolbarItemIdentifiers` — 1/1.
+- `MarkdownFormattingInteractionTests` — 12/16 passed, 0 failed, 4 skipped;
+  skipped-сценарии перенесены в `LacEditorUITests`.
+- Критерий классификации: тест, который ждёт нажатия кнопки либо зависит от
+  реальной доставки клавиатуры/first responder/IME, относится к UI-сценарию.
+  Такие тесты переносить в `LacEditorUITests`; внутренние проверки parser и
+  controller без пользовательского события оставлять в `LacEditorTests`.
+- `MarkdownAudioInteractionTests` — 19/28 passed после синхронизации fixture;
+  9 media runtime-падений остаются.
+
 ## Linux-стенд (2026-11-04)
 
 Тесты без AppKit/AppState собираются и запускаются на сервере стендом
@@ -160,3 +176,10 @@ macOS: 0 ошибок, 0 предупреждений, 0 пропусков GUI-
 - Правило диагностики: перед исправлением каждого падения сверять fixture,
   lifecycle и ожидания с похожим проходящим тестом; полный прогон запускать
   только после устранения известных падений и дожидаться его завершения.
+- Сценарии, ожидающие кнопку или зависящие от реальной доставки клавиатуры,
+  first responder, IME либо text-checking/completion, считать UI-тестами и
+  переносить в `LacEditorUITests`; текущие math-pair и smart-quote требуют
+  такого переноса или отдельной диагностики AppKit event delivery.
+- После переноса UI-сценариев проверять не только наличие окна, но и
+  editable/first-responder state перед `typeText`; таймаут синтеза события
+  считать отдельной ошибкой fixture/lifecycle.

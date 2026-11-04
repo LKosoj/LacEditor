@@ -52,6 +52,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 500, height: 600))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 600), textContainer: container)
+        view.string = source
         let scroll = NSScrollView(frame: view.frame); scroll.documentView = view
         let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false; window.contentView = scroll; window.makeKeyAndOrderFront(nil)
@@ -156,6 +157,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 500, height: 600))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 600), textContainer: container)
+        view.string = source
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
         let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
@@ -216,6 +218,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 500, height: 600))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 600), textContainer: container)
+        view.string = source
         let scroll = NSScrollView(frame: view.frame)
         scroll.allowsMagnification = true
         scroll.documentView = view
@@ -279,6 +282,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 500, height: 600))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 600), textContainer: container)
+        view.string = source
         let scroll = NSScrollView(frame: view.frame)
         scroll.allowsMagnification = true; scroll.documentView = view
         let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
@@ -436,6 +440,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 500, height: 300))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 300), textContainer: container)
+        view.string = source
         view.allowsUndo = true
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
@@ -497,6 +502,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 700, height: 400))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 700, height: 400), textContainer: container)
+        view.string = source
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
         view.setSelectedRange((source as NSString).range(of: "end"))
@@ -528,6 +534,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 700, height: 400))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 700, height: 400), textContainer: container)
+        view.string = source
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
         view.setSelectedRange((source as NSString).range(of: "![one]"))
@@ -775,6 +782,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 1000))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 400), textContainer: container)
+        view.string = source
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
         let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
@@ -815,6 +823,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 1000))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 800), textContainer: container)
+        view.string = source
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
         view.setSelectedRange(NSRange(location: 0, length: 0))
@@ -882,6 +891,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 1000))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 800), textContainer: container)
+        view.string = source
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
         view.setSelectedRange(NSRange(location: 0, length: 0))
@@ -1076,6 +1086,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         storage.addLayoutManager(layout)
         let container = NSTextContainer(containerSize: NSSize(width: 500, height: 800)); layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 800), textContainer: container)
+        view.string = source
         let scroll = NSScrollView(frame: view.frame); scroll.documentView = view
         let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false; window.contentView = scroll; window.makeKeyAndOrderFront(nil)

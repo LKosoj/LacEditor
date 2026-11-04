@@ -26,7 +26,7 @@ final class ToolbarDefaultsTests: XCTestCase {
             NSToolbarItem.Identifier.sidebarTrackingSeparator.rawValue, "LacEditor.WindowTitle",
             NSToolbarItem.Identifier.flexibleSpace.rawValue, "LacEditor.Find", "LacEditor.Language",
             "LacEditor.MarkdownPresentation", "LacEditor.ReadingMode", "LacEditor.Dictation", "LacEditor.WriterMode",
-            "LacEditor.Preview"
+            "LacEditor.Vault", "LacEditor.Preview"
         ])
     }
 

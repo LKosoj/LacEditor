@@ -18,12 +18,14 @@ final class MarkdownImageEditingTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
+        view.string = source
         view.allowsUndo = true
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
         let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = scroll
+        window.makeKeyAndOrderFront(nil)
         let id = UUID()
         manager.register(windowID: id, state: state, window: window)
         coordinator.textView = view
@@ -32,7 +34,7 @@ final class MarkdownImageEditingTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.attachLiveTextProvider()
         coordinator.updateActivity(true)
-        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(view)
         defer { coordinator.updateActivity(false); manager.unregister(windowID: id); window.close() }
         view.setSelectedRange(NSRange(location: (source as NSString).length, length: 0))
         state.presentMarkdownResourceRoot(choose: { URL(fileURLWithPath: "/tmp/新 folder", isDirectory: true) })

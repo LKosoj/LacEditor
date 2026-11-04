@@ -14,6 +14,13 @@ final class MarkdownPresentationTests: XCTestCase {
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 500), textContainer: container)
         view.font = lacEditorFont(size: 14)
+        view.string = source
+        let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = view
+        defer { window.close() }
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(view)
         let selection = NSRange(location: 2, length: 3)
         view.setSelectedRange(selection)
         layout.ensureLayout(for: container)
@@ -22,8 +29,9 @@ final class MarkdownPresentationTests: XCTestCase {
         var revision: UInt = 0
         var geometryChanges = 0
         controller.geometryDidChange = { geometryChanges += 1 }
-        controller.update(document: document, enabled: true, isActive: true, revision: revision, currentRevision: { revision })
-        try await Task.sleep(for: .milliseconds(500))
+        controller.update(document: document, enabled: true, isActive: true, revision: revision,
+                          currentRevision: { revision }, textProvider: { storage.string })
+        try await Task.sleep(for: .milliseconds(900))
         XCTAssertEqual(view.string, source)
         XCTAssertEqual(view.selectedRange(), selection)
         let headingFont = try XCTUnwrap(storage.attribute(.font, at: 2, effectiveRange: nil) as? NSFont)
@@ -48,7 +56,7 @@ final class MarkdownPresentationTests: XCTestCase {
         storage.replaceCharacters(in: insertion, with: "x")
         revision += 1
         controller.edited(revision: revision)
-        try await Task.sleep(for: .milliseconds(500))
+        try await Task.sleep(for: .milliseconds(900))
         var typing = view.typingAttributes
         typing[.font] = layout.markdownHeadingFont(level: 1)
         view.typingAttributes = typing
@@ -93,15 +101,24 @@ final class MarkdownPresentationTests: XCTestCase {
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
         view.font = lacEditorFont(size: 14)
+        view.string = source
+        let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = view
+        defer { window.close() }
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(view)
         layout.ensureLayout(for: container)
         let document = EditorDocument(text: source, language: .markdown)
         let controller = MarkdownPresentationController(textView: view, layout: layout)
-        controller.update(document: document, enabled: true, isActive: false, revision: 0, currentRevision: { 0 })
+        controller.update(document: document, enabled: true, isActive: false, revision: 0,
+                          currentRevision: { 0 }, textProvider: { storage.string })
         try await Task.sleep(for: .milliseconds(300))
         let inactiveFont = try XCTUnwrap(storage.attribute(.font, at: 2, effectiveRange: nil) as? NSFont)
         XCTAssertEqual(inactiveFont.pointSize, layout.textFont.pointSize)
-        controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
-        try await Task.sleep(for: .milliseconds(500))
+        controller.update(document: document, enabled: true, isActive: true, revision: 0,
+                          currentRevision: { 0 }, textProvider: { storage.string })
+        try await Task.sleep(for: .milliseconds(900))
         let activeFont = try XCTUnwrap(storage.attribute(.font, at: 2, effectiveRange: nil) as? NSFont)
         XCTAssertGreaterThan(activeFont.pointSize, layout.textFont.pointSize)
         XCTAssertEqual(view.string, source)
@@ -117,6 +134,7 @@ final class MarkdownPresentationTests: XCTestCase {
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
         view.font = lacEditorFont(size: 14)
+        view.string = source
         view.isRichText = false
         view.allowsUndo = true
         let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
@@ -137,7 +155,8 @@ final class MarkdownPresentationTests: XCTestCase {
         let document = EditorDocument(text: source, language: .markdown)
         let controller = MarkdownPresentationController(textView: view, layout: layout)
         XCTAssertFalse(document.isDirty)
-        controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
+        controller.update(document: document, enabled: true, isActive: true, revision: 0,
+                          currentRevision: { 0 }, textProvider: { storage.string })
         let deadline = Date().addingTimeInterval(2)
         while Date() < deadline {
             if let font = storage.attribute(.font, at: 2, effectiveRange: nil) as? NSFont,
@@ -1164,7 +1183,7 @@ final class MarkdownPresentationTests: XCTestCase {
         XCTAssertNotNil(fixture.controller.work)
         let kept = try XCTUnwrap(fixture.storage.attribute(.font, at: 2, effectiveRange: nil) as? NSFont)
         XCTAssertGreaterThan(kept.pointSize, fixture.layout.textFont.pointSize)
-        try await Task.sleep(for: .milliseconds(500))
+        try await Task.sleep(for: .milliseconds(900))
         XCTAssertEqual(fixture.view.string, "# Heading\n\nSoxme **bold** text")
         XCTAssertTrue(fixture.layout.isMarkdownMarkerHidden(at: 0))
         let installed = try XCTUnwrap(fixture.storage.attribute(.font, at: 2, effectiveRange: nil) as? NSFont)
@@ -1366,15 +1385,21 @@ final class MarkdownPresentationTests: XCTestCase {
         let storage: NSTextStorage
         let layout: FoldLayoutManager
         let view: LacTextView
+        let window: NSWindow
         let controller: MarkdownPresentationController
         let document: EditorDocument
         var revision: UInt = 0
-        init(storage: NSTextStorage, layout: FoldLayoutManager, view: LacTextView, controller: MarkdownPresentationController, document: EditorDocument) {
+        init(storage: NSTextStorage, layout: FoldLayoutManager, view: LacTextView, window: NSWindow, controller: MarkdownPresentationController, document: EditorDocument) {
             self.storage = storage
             self.layout = layout
             self.view = view
+            self.window = window
             self.controller = controller
             self.document = document
+        }
+
+        nonisolated deinit {
+            MainActor.assumeIsolated { window.close() }
         }
     }
 
@@ -1388,14 +1413,28 @@ final class MarkdownPresentationTests: XCTestCase {
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 500), textContainer: container)
         view.font = lacEditorFont(size: 14)
+        // The text view is backed by the standalone storage above; keep its
+        // source synchronized so the controller parses the same fixture text.
+        view.string = source
+        // Keep the AppKit editor active just like the production window. The
+        // presentation controller defers formatting while the text view is
+        // not in a key window, which otherwise makes typing/readiness tests
+        // observe an unformatted fixture.
+        let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = view
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(view)
         view.setSelectedRange(NSRange(location: (source as NSString).length, length: 0))
         layout.ensureLayout(for: container)
         let document = EditorDocument(text: source, language: .markdown)
         let controller = MarkdownPresentationController(textView: view, layout: layout)
-        let fixture = TypingFixture(storage: storage, layout: layout, view: view, controller: controller, document: document)
-        controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { [unowned fixture] in fixture.revision })
+        let fixture = TypingFixture(storage: storage, layout: layout, view: view, window: window, controller: controller, document: document)
+        controller.update(document: document, enabled: true, isActive: true, revision: 0,
+                          currentRevision: { [unowned fixture] in fixture.revision },
+                          textProvider: { [unowned fixture] in fixture.storage.string })
         controller.selectionChanged()
-        try await Task.sleep(for: .milliseconds(500))
+        try await Task.sleep(for: .milliseconds(900))
         return fixture
     }
 

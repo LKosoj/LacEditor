@@ -99,6 +99,7 @@ final class MarkdownImageCopyTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
+        view.string = source
         view.allowsUndo = true
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
@@ -173,12 +174,14 @@ final class MarkdownImageCopyTests: XCTestCase {
         let composed = "é ![a](a.png)"
         storage.replaceCharacters(in: NSRange(location: 0, length: storage.length), with: composed)
         view.didChangeText()
+        document.synchronizeLiveText()
         undo.removeAllActions()
         view.setSelectedRange(NSRange(location: 4, length: 0))
         state.moveOrDeleteMarkdownImage(deleteOriginal: false, choose: { _ in movedFile })
         let changed = "é ![a](b.png)"
         XCTAssertEqual(view.string, changed)
         storage.replaceCharacters(in: NSRange(location: 0, length: 1), with: "e\u{301}")
+        document.synchronizeLiveText()
         undo.undo()
         XCTAssertTrue(view.string.utf16.elementsEqual("e\u{301} ![a](b.png)".utf16))
         XCTAssertTrue(FileManager.default.fileExists(atPath: movedFile.path))
@@ -186,6 +189,7 @@ final class MarkdownImageCopyTests: XCTestCase {
         try FileManager.default.moveItem(at: movedFile, to: sourceFile)
         storage.replaceCharacters(in: NSRange(location: 0, length: storage.length), with: source)
         view.didChangeText()
+        document.synchronizeLiveText()
         undo.removeAllActions()
         view.setSelectedRange(NSRange(location: 2, length: 0))
         state.moveOrDeleteMarkdownImage(deleteOriginal: false, choose: { _ in movedFile })
@@ -205,6 +209,7 @@ final class MarkdownImageCopyTests: XCTestCase {
         let sharedReference = "![a][r] ![b][r]\n\n[r]: b.png"
         storage.replaceCharacters(in: NSRange(location: 0, length: storage.length), with: sharedReference)
         view.didChangeText()
+        document.synchronizeLiveText()
         undo.removeAllActions()
         view.setSelectedRange(NSRange(location: 2, length: 0))
         state.moveOrDeleteMarkdownImage(deleteOriginal: true, confirm: { _ in true })
@@ -213,6 +218,7 @@ final class MarkdownImageCopyTests: XCTestCase {
         try FileManager.default.moveItem(at: movedFile, to: sourceFile)
         storage.replaceCharacters(in: NSRange(location: 0, length: storage.length), with: source)
         view.didChangeText()
+        document.synchronizeLiveText()
         undo.removeAllActions()
         view.setSelectedRange(NSRange(location: 2, length: 0))
         state.moveOrDeleteMarkdownImage(deleteOriginal: false, choose: { _ in movedFile })
@@ -241,6 +247,7 @@ final class MarkdownImageCopyTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
+        view.string = source
         view.allowsUndo = true
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
@@ -425,6 +432,7 @@ final class MarkdownImageCopyTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
+        view.string = source
         view.allowsUndo = true
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view

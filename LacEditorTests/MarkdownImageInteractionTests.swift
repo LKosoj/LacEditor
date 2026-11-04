@@ -130,6 +130,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
+        view.string = source
         let scroll = NSScrollView(frame: view.frame); scroll.documentView = view
         let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false; window.contentView = scroll; window.makeKeyAndOrderFront(nil)
@@ -240,6 +241,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
+        view.string = source
         let range = (source as NSString).range(of: "<img src='x.png' width='0'>")
         layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: nil)
         let image = NSImage(size: NSSize(width: 20, height: 10))

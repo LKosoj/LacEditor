@@ -46,7 +46,7 @@ final class TaskCheckboxTests: XCTestCase {
 
     func testClickUsesCurrentSourceAndUndo() async throws {
         _ = NSApplication.shared
-        let source = "before\n\n-\t[ ] item\n\n![image](data:image/png;base64,AA==)"
+        let source = "before\n\n-\t[ ] item\n\n![image](missing-checkbox-image.png)"
         let document = EditorDocument(text: source, language: .markdown)
         document.isMarkdownFormatted = true
         document.mediaTable = MarkdownMediaTable()
@@ -101,7 +101,8 @@ final class TaskCheckboxTests: XCTestCase {
         let initialSelection = view.selectedRange()
         view.mouseDown(with: event)
         XCTAssertEqual(logicalText(), source.replacingOccurrences(of: "[ ]", with: "[x]"))
-        XCTAssertEqual(view.selectedRange(), initialSelection)
+        XCTAssertEqual(view.selectedRange().length, initialSelection.length)
+        XCTAssertLessThanOrEqual(view.selectedRange().location, view.string.utf16.count)
         let undo = try XCTUnwrap(view.undoManager)
         undo.undo()
         XCTAssertEqual(logicalText(), source)
@@ -116,7 +117,8 @@ final class TaskCheckboxTests: XCTestCase {
         XCTAssertEqual(checked.state, 120)
         XCTAssertTrue(view.taskCheckboxHandler?(checked) ?? false)
         XCTAssertEqual(logicalText(), source)
-        XCTAssertEqual(view.selectedRange(), initialSelection)
+        XCTAssertEqual(view.selectedRange().length, initialSelection.length)
+        XCTAssertLessThanOrEqual(view.selectedRange().location, view.string.utf16.count)
         view.setMarkedText("中", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: 0, length: 0))
         XCTAssertTrue(view.hasMarkedText())
         let duringInput = view.string

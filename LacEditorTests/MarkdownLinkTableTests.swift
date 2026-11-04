@@ -72,6 +72,7 @@ final class MarkdownLinkTableTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 450, height: 500))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 450, height: 500), textContainer: container)
+        view.string = source
         view.allowsUndo = true
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view

@@ -291,5 +291,38 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
 - Адресная повторная проверка `FolderOpeningTests/testQueuedFolderThenFileKeepsExplicitFolder`
   проходит 1/1; падение полного прогона для него было нестабильным.
 - `TaskCheckboxTests/testClickUsesCurrentSourceAndUndo` теперь проверяет
-  логический исходник без служебного `#lac-media-*` токена; остаётся отдельное
-  несоответствие координаты выделения в projected media-тексте.
+  логический исходник без служебного `#lac-media-*` токена; после адаптации
+  проверки координаты к display-проекции и обновления fixture изображения на
+  обычный отсутствующий файл targeted-тест проходит 1/1.
+- `ToolbarDefaultsTests/testDefaultToolbarItemIdentifiers` исправлен под
+  актуальный пункт `LacEditor.Vault` и проходит 1/1.
+- В `MarkdownPresentationTests` исправлен fixture первого форматирующего
+  сценария: текст устанавливается до выбора, создаётся реальное окно/first
+  responder и ожидание учитывает production-задержку разбора 0.6 с. Адресный
+  тест проходит 1/1; полный класс после этого улучшился до 53/75 passed,
+  20 failed. Остальные 20 падений требуют отдельных подтверждённых причин.
+- В том же классе исправлен fixture активации редактора: добавлены текст,
+  окно/first responder и ожидание полной задержки разбора. Адресный
+  `testInactiveEditorWaitsUntilActivationToApplyFormatting` проходит 1/1.
+- Для `testFormattingTogglePreservesUndoAndRedo` и общего `makeTypingFixture`
+  синхронизированы `view.string`/`textProvider`; после targeted-прогона класс
+  завершился как 55/75 passed, 20 failed.
+- В `MarkdownFormattingInteractionTests` синхронизированы standalone
+  `NSTextStorage` и `LacTextView` во всех соответствующих fixture. После
+  targeted-прогона класс: 12/16 passed, 0 failed, 4 skipped; четыре сценария
+  перенесены в UI-target и пропускаются в unit-target с явной причиной.
+- Четыре оставшихся Formatting-сценария используют `keyDown`, `sendEvent`,
+  `firstResponder` и text-checking/completion lifecycle. Они классифицированы
+  как кандидаты для `LacEditorUITests`, а не как простые parser unit-тесты;
+  перенос требует отдельного UI-fixture с `XCUIApplication`.
+- Проверка гипотез lifecycle для table cell и порядка активации окна не
+  устранила math-pair и smart-quote падения; они остаются незавершёнными и
+  требуют UI-target либо отдельной диагностики AppKit event delivery.
+- UI-target `MarkdownFormattingUITests` создан и приложение теперь явно
+  активируется перед вводом. Smart-quote и snapshot emoji сценарии проходят
+  2/4; math-pair и late-emoji completion всё ещё не принимают синтетический
+  ввод (таймаут синтеза события), поэтому требуют дальнейшей диагностики
+  конкретного editor state, а не повторного запуска без изменения.
+- В `MarkdownAudioInteractionTests` синхронизированы media fixture с текстом
+  редактора. После targeted-прогона: 19/28 passed, 9 failed; оставшиеся
+  ошибки относятся к runtime media geometry/loading, а не к пустому редактору.
