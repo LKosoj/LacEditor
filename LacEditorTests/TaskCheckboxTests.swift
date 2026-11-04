@@ -49,6 +49,7 @@ final class TaskCheckboxTests: XCTestCase {
         let source = "before\n\n-\t[ ] item\n\n![image](data:image/png;base64,AA==)"
         let document = EditorDocument(text: source, language: .markdown)
         document.isMarkdownFormatted = true
+        document.mediaTable = MarkdownMediaTable()
         let coordinator = EditorTextView.Coordinator(document: document)
         let storage = NSTextStorage(string: source)
         let layout = FoldLayoutManager()
@@ -68,6 +69,7 @@ final class TaskCheckboxTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
+        func logicalText() -> String { document.mediaTable.restore(view.string).text }
         window.makeFirstResponder(view)
         view.setSelectedRange(NSRange(location: 1, length: 0))
         let marker = (source as NSString).range(of: "[ ]")
@@ -87,24 +89,24 @@ final class TaskCheckboxTests: XCTestCase {
         XCTAssertNil(layout.markdownImageLocation(at: point(), in: container))
         view.isEditable = false
         XCTAssertFalse(view.taskCheckboxHandler?(checkbox) ?? true)
-        XCTAssertEqual(view.string, source)
+        XCTAssertEqual(logicalText(), source)
         view.isEditable = true
         view.setSelectedRanges([NSValue(range: NSRange(location: 0, length: 1)), NSValue(range: NSRange(location: 3, length: 1))], affinity: .downstream, stillSelecting: false)
         let multipleSelections = view.selectedRanges
         XCTAssertEqual(multipleSelections.count, 2)
         view.mouseDown(with: event)
-        XCTAssertEqual(view.string, source)
+        XCTAssertEqual(logicalText(), source)
         XCTAssertEqual(view.selectedRanges, multipleSelections)
         view.setSelectedRange(NSRange(location: 1, length: 0))
         let initialSelection = view.selectedRange()
         view.mouseDown(with: event)
-        XCTAssertEqual(view.string, source.replacingOccurrences(of: "[ ]", with: "[x]"))
+        XCTAssertEqual(logicalText(), source.replacingOccurrences(of: "[ ]", with: "[x]"))
         XCTAssertEqual(view.selectedRange(), initialSelection)
         let undo = try XCTUnwrap(view.undoManager)
         undo.undo()
-        XCTAssertEqual(view.string, source)
+        XCTAssertEqual(logicalText(), source)
         undo.redo()
-        XCTAssertEqual(view.string, source.replacingOccurrences(of: "[ ]", with: "[x]"))
+        XCTAssertEqual(logicalText(), source.replacingOccurrences(of: "[ ]", with: "[x]"))
         XCTAssertFalse(view.taskCheckboxHandler?(checkbox) ?? true)
         for _ in 0..<30 {
             if layout.markdownTaskCheckbox(at: point(), in: container)?.state == 120 { break }
@@ -113,7 +115,7 @@ final class TaskCheckboxTests: XCTestCase {
         let checked = try XCTUnwrap(layout.markdownTaskCheckbox(at: point(), in: container))
         XCTAssertEqual(checked.state, 120)
         XCTAssertTrue(view.taskCheckboxHandler?(checked) ?? false)
-        XCTAssertEqual(view.string, source)
+        XCTAssertEqual(logicalText(), source)
         XCTAssertEqual(view.selectedRange(), initialSelection)
         view.setMarkedText("中", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: 0, length: 0))
         XCTAssertTrue(view.hasMarkedText())

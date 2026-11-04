@@ -128,9 +128,9 @@ macOS: 0 ошибок, 0 предупреждений, 0 пропусков GUI-
   `TextCompareController`, `MarkdownBacklinks`, `FileVersion`,
   `MarkdownReadableText`, `MarkdownTableEditing`, `SemanticFont`, `UIPolishK`,
   часть `MarkdownPresentationParser`.
-- [ ] Итоговый чистый прогон ещё не достигнут: на Mac остаются пять падений
-  lifecycle-тестов изображений (ready/pending cache). Linux-only список не
-  считать объяснением этих Mac-падений.
+- [ ] Итоговый чистый прогон ещё не достигнут: после исправлений остаются
+  только ещё не проверенные классы и общий прогон; Linux-only список не считать
+  объяснением Mac-падений.
 
 Осталось:
 
@@ -151,12 +151,12 @@ macOS: 0 ошибок, 0 предупреждений, 0 пропусков GUI-
   реальной доставки ввода проходят в `LacEditorUITests` (2/2).
 - Develop/Debug build: 0 ошибок, 0 предупреждений.
 - Повторная пачка успешных классов: 132/132.
-- `MarkdownImageTests`: после исправления hit-test и fixture — 9/14 проходят;
-  падают `testReadyImageStaysUnderShiftedKeyAndIsNotReloadedAfterParse`,
-  `testStructuralEditOutsideKeepsReadyImage`,
-  `testSecondKeyBeforeParseKeepsReadyImage`,
-  `testDivergentParseDropsReadyImage` и
-  `testPendingRemoteImageSurvivesShiftAndInstallsOnce`.
+- `MarkdownImageTests`: 14/14 проходят после исправления fixture lifecycle,
+  переноса media-cache, divergent parse и pending remote loading.
+- Полный прогон 2026-11-05 завершён штатно: 3900 тестов, 3701 passed,
+  191 failed, 7 skipped, 1 not run. Следующий этап — распределить новые
+  падения по кластерам и устранить их; причины 7 skipped и 1 not run также
+  должны быть отдельно установлены и записаны.
 - Правило диагностики: перед исправлением каждого падения сверять fixture,
   lifecycle и ожидания с похожим проходящим тестом; полный прогон запускать
   только после устранения известных падений и дожидаться его завершения.

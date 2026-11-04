@@ -273,14 +273,23 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
   проверяется по line fragment, а не только по физическому размеру картинки.
   Одновременно сохранено изображение при входе курсора в его source token.
   Сборка успешна; `MarkdownImageTests` дал 9/14 passed, 5 падений.
-- Для `ImageShiftFixture` добавлен `textProvider`, чтобы контроллер разбирал
-  фактический `NSTextStorage`, который изменяет fixture, а не пустую строку
-  `NSTextView`. Это устранило ошибку стенда, но пять ready/pending lifecycle
-  тестов всё ещё падают; следующий шаг — исправление переноса cache/pending
-  в `MarkdownPresentationController`, затем targeted-прогон.
-- Попытка переносить `loadedImageRanges`, ширину и animated view при смене
-  placement в `reconcileMediaCache` не устранила пять падений (класс остаётся
-  9/14); при этом pending-сценарий изменился с отмены запроса на отсутствие
-  отмены, но всё ещё создаёт второй запрос. Изменение оставлено как
-  подтверждённо направленное, требуется разобрать lifecycle `setMarkdownPresentation`/
-  `shiftPresentation`, который очищает snapshot сразу после beforeEdit.
+- Для `ImageShiftFixture` добавлен `textProvider`, а ввод в fixture теперь
+  проходит через тот же `NSTextView` и корректно подтверждает revision после
+  `beforeEdit`. Это устранило прежнее рассогласование lifecycle.
+- В `MarkdownPresentationController` исправлен перенос готовых media-cache
+  placement, divergent parse очищает старое изображение, а pending remote
+  загрузка не устанавливает placeholder до получения ответа. `ImageCacheKey`
+  учитывает alt-текст, поэтому изменённый токен не переиспользует старый ресурс.
+  Сборка успешна; `MarkdownImageTests` — 14/14, ошибок и пропусков нет.
+- После удаления placeholder до завершения локальной/удалённой загрузки
+  повторный targeted-прогон `MarkdownImageTests` завершён 14/14. Это также
+  устранило ложное отображение удалённого файла при divergent parse.
+- Полный `RunAllTests` завершён штатно без зависания: 3900 тестов, 3701
+  прошёл, 191 упал, 7 пропущено, 1 не запущен. Полный отчёт сохранён Xcode в
+  `D0B39FC4-AE3C-47D8-B575-ED9BC863C0E3.txt`; оставшиеся падения теперь
+  актуализированы по этому отчёту и требуют следующей очереди исправлений.
+- Адресная повторная проверка `FolderOpeningTests/testQueuedFolderThenFileKeepsExplicitFolder`
+  проходит 1/1; падение полного прогона для него было нестабильным.
+- `TaskCheckboxTests/testClickUsesCurrentSourceAndUndo` теперь проверяет
+  логический исходник без служебного `#lac-media-*` токена; остаётся отдельное
+  несоответствие координаты выделения в projected media-тексте.
