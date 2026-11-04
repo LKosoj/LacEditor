@@ -1191,6 +1191,10 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         }
         guard let revealed = markdownRevealedRange, touches(range, revealed) else { return true }
 
+        // A direct reveal of this media token (without a selection update)
+        // must still expose its source text.
+        if NSIntersectionRange(range, revealed).length > 0 { return false }
+
         // Only source-backed blocks are revealable.  In particular, an image
         // or another opaque media item on the same line as the caret remains
         // rendered.  Requiring the actual selection to be inside the block

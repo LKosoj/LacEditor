@@ -763,9 +763,17 @@ final class AppState: ObservableObject {
         }
         clipboardSavedImagesObserver = NotificationCenter.default.addObserver(forName: EditorCommandNotification.clipboardSavedImages, object: nil, queue: .main) { [weak self] notification in
             MainActor.assumeIsolated {
-                guard let self, let manager = self.windowManager, manager.activeState === self,
-                      let notice = notification.object as? ClipboardSavedImagesNotice, !notice.handled,
-                      let target = manager.documentsForAI.first(where: { $0.id == notice.documentID }) ?? self.selectedDocument else { return }
+                guard let self, let manager = self.windowManager,
+                      let notice = notification.object as? ClipboardSavedImagesNotice, !notice.handled else { return }
+                let target: EditorDocument?
+                if let document = manager.documentsForAI.first(where: { $0.id == notice.documentID }) {
+                    target = document
+                } else if manager.activeState === self {
+                    target = self.selectedDocument
+                } else {
+                    target = nil
+                }
+                guard let target else { return }
                 notice.handled = true
                 notice.deliver(to: target)
             }

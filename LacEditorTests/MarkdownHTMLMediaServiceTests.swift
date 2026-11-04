@@ -99,16 +99,19 @@ final class MarkdownHTMLMediaServiceTests: XCTestCase {
                                    ("<select>bold</select>", false), ("<div>b&amp;old</div>", true)] {
             let value = source.contains("&amp;") ? "b&amp;old" : "bold"
             let range = (source as NSString).range(of: value)
-            let result = try XCTUnwrap(MarkdownMathExtension.withDocument(source) { root, ext, _ -> [Int: MarkdownHTMLMediaService.ProvenText]? in
+            let result = MarkdownMathExtension.withDocument(source) { root, ext, _ -> [Int: MarkdownHTMLMediaService.ProvenText]? in
                 guard let node = cmark_node_first_child(root), cmark_node_get_type(node) == CMARK_NODE_HTML_BLOCK else { return nil }
                 let candidate = MarkdownHTMLMediaService.TextProofCandidate(node: node, start: range.location,
                     end: NSMaxRange(range), text: value)
                 return MarkdownHTMLMediaService.provenTextStyles(root: root, mathExtension: ext, options: CMARK_OPT_DEFAULT,
                     text: source as NSString, candidates: [candidate], isCancelled: { false })
-            } ?? nil)
-            XCTAssertEqual(result[0] != nil, accepted, source)
-            if source.contains("<strong>") { XCTAssertEqual(result[0]?.styles, ["strong"]) }
-            if source.contains("&amp;") { XCTAssertEqual(result[0]?.text, "b&old") }
+            }
+            let proven: [Int: MarkdownHTMLMediaService.ProvenText] = (result ?? nil) ?? [:]
+            XCTAssertEqual(proven[0] != nil, accepted, source)
+            if accepted {
+                if source.contains("<strong>") { XCTAssertEqual(proven[0]?.styles, ["strong"]) }
+                if source.contains("&amp;") { XCTAssertEqual(proven[0]?.text, "b&old") }
+            }
         }
     }
     func testPairedMediaProofUsesRenderedDOMAndRestoresTree() throws {
@@ -199,7 +202,7 @@ final class MarkdownHTMLMediaServiceTests: XCTestCase {
         let objectFallback = "before <object data='movie.mp4'><img src='fallback.png'></object> after"
         XCTAssertTrue(MarkdownPresentationParser.parse(objectFallback).images.isEmpty)
         XCTAssertEqual(try? MarkdownImageUploadService.images(in: objectFallback).map(\.address), ["fallback.png"])
-        let mixedFallback = "before <video src='a.mp4'>![x](x.png) $x$ :smile:</video> after :smile:"
+        let mixedFallback = "before <video src='a.mp4'>![x](x.png) $x$ :smile:</video> after\n\n:smile:"
         let mixedPresentation = MarkdownPresentationParser.parse(mixedFallback, includeEmojiCandidates: true)
         XCTAssertEqual(mixedPresentation.audioBlocks.count, 1)
         XCTAssertTrue(mixedPresentation.images.isEmpty)
@@ -484,7 +487,7 @@ final class MarkdownHTMLMediaServiceTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(20))
         }
         let found = try XCTUnwrap(values)
-        XCTAssertEqual(found[0], found[1])
+        XCTAssertEqual(found[0].replacingOccurrences(of: "&amp;", with: "&"), found[1])
         XCTAssertEqual(found[0], "A &amp; B <a href='https://example.invalid'>link</a>")
     }
 

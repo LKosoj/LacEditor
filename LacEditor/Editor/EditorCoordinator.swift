@@ -1633,6 +1633,7 @@ extension EditorTextView {
                 return self.filterSmartSubstitutions(results, options: options, child: child)
             }
             child.isRichText = false
+            child.isEditable = true
             child.allowsUndo = false
             child.mediaMap = { [weak self, weak child] in
                 guard let self, self.mediaMapEnabled, let child, child.string.contains("#lac-media-") else { return nil }

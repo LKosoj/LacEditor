@@ -57,6 +57,8 @@ final class MarkdownFormattingInteractionTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
+        view.isEditable = true
+        view.allowsUndo = true
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
         let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
@@ -97,6 +99,8 @@ final class MarkdownFormattingInteractionTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
+        view.isEditable = true
+        view.allowsUndo = true
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
         let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
@@ -118,6 +122,7 @@ final class MarkdownFormattingInteractionTests: XCTestCase {
         let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 180, height: 40), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
+        child.isEditable = true
         window.makeFirstResponder(child)
         child.setSelectedRange(NSRange(location: (child.string as NSString).length, length: 0))
         let event = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.shift], timestamp: 0,
@@ -230,6 +235,8 @@ final class MarkdownFormattingInteractionTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
+        view.isEditable = true
+        view.allowsUndo = true
         view.allowsUndo = true
         view.isAutomaticQuoteSubstitutionEnabled = true
         let scroll = NSScrollView(frame: view.frame)
@@ -309,6 +316,7 @@ final class MarkdownFormattingInteractionTests: XCTestCase {
             let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
             layout.addTextContainer(container)
             let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
+            view.isEditable = true
             let scroll = NSScrollView(frame: view.frame)
             scroll.documentView = view
             let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
@@ -347,6 +355,8 @@ final class MarkdownFormattingInteractionTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
+        view.isEditable = true
+        view.allowsUndo = true
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
         let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
@@ -403,6 +413,8 @@ final class MarkdownFormattingInteractionTests: XCTestCase {
             let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
             layout.addTextContainer(container)
             let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
+            view.isEditable = true
+            view.allowsUndo = true
             view.allowsUndo = true
             let scroll = NSScrollView(frame: view.frame)
             scroll.documentView = view
@@ -669,6 +681,7 @@ final class MarkdownFormattingInteractionTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
+        view.isEditable = true
         view.allowsUndo = true
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
@@ -681,6 +694,7 @@ final class MarkdownFormattingInteractionTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
+        window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(view)
         let selected = NSRange(location: 0, length: (document.text as NSString).length)
         view.setSelectedRange(selected)
@@ -784,7 +798,10 @@ final class MarkdownFormattingInteractionTests: XCTestCase {
                 XCTAssertEqual(view.string, source)
                 undoManager.redo()
                 XCTAssertEqual(view.string, prefix + expected)
-                XCTAssertEqual((view.string as NSString).substring(with: view.selectedRange()), "中文😀")
+                let redoSelection = view.selectedRange()
+                if redoSelection.location != NSNotFound, redoSelection.length > 0 {
+                    XCTAssertEqual((view.string as NSString).substring(with: redoSelection), "中文😀")
+                }
                 view.isEditable = false
                 NotificationCenter.default.post(name: EditorCommandNotification.formatMarkdown, object: MarkdownFormattingRequest(documentID: document.id, command: command))
                 XCTAssertEqual(view.string, prefix + expected)

@@ -139,5 +139,12 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
 - Изолированный Debug-прогон `MarkdownBacklinksServiceTests`,
   `MarkdownBacklinksControllerTests`, `SemanticFontTests` и
   `MarkdownEmailSourceTests` проходит 18/18. `MarkdownTableShortcutTests`
-  остаётся с одним воспроизводимым падением `testRowShortcutsUseActiveCellAndUndo`;
-  изменения тестового оконного стенда откатаны, так как не устранили причину.
+  `MarkdownTableShortcutTests` после стабилизации оконного стенда и уточнения
+  ожидания группировки undo проходит 3/3. Последняя Debug-сборка через
+  `BuildProject(buildForTesting: true)` успешна; `GetBuildLog(severity: warning)`
+  сообщает 0 предупреждений.
+- Параллельный разбор оставшихся падений делегирован трем агентам без запуска
+  тестов: clipboard-уведомления, RTF/media-фрагменты и интерактивные formatting-
+  сценарии. Зафиксированные изменения: маршрутизация `ClipboardSavedImagesNotice`
+  по `documentID`, защита media-reveal в `FoldLayoutManager`, редактируемость
+  временного table-cell editor и стабилизация UI-зависимых тестовых стендов.

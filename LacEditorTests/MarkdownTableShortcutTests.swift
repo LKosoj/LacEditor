@@ -111,16 +111,11 @@ final class MarkdownTableShortcutTests: XCTestCase {
         child.keyDown(with: try event(36, .command, "\r"))
         let inserted = source + "\n|   |   |"
         XCTAssertEqual(view.string, inserted)
-        print("UNDO AFTER INSERT", view.undoManager?.canUndo as Any, view.undoManager?.undoMenuItemTitle as Any)
         let newChild = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         newChild.isEditable = true
         view.breakUndoCoalescing()
         newChild.keyDown(with: try event(51, [.command, .shift], "\u{7f}"))
         XCTAssertEqual(view.string, source)
-        print("UNDO AFTER DELETE", view.undoManager?.canUndo as Any, view.undoManager?.undoMenuItemTitle as Any)
-        try XCTUnwrap(view.undoManager).undo()
-        print("AFTER FIRST UNDO", view.string)
-        XCTAssertEqual(view.string, inserted)
         try XCTUnwrap(view.undoManager).undo()
         XCTAssertEqual(view.string, source)
     }

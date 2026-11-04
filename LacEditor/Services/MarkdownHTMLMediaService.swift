@@ -390,9 +390,19 @@ enum MarkdownHTMLMediaService {
             }
             var fallback = ""
             for child in frame.getChildNodes() {
-                if let text = child as? TextNode { fallback += text.getWholeText() }
-                else if let data = child as? DataNode { fallback += data.getWholeData() }
-                else { return nil }
+                if let text = child as? TextNode {
+                    fallback += text.getWholeText()
+                }
+                else if let data = child as? DataNode {
+                    fallback += data.getWholeData()
+                }
+                else if let element = child as? Element, element.tagName() == "a" {
+                    let attributes = element.getAttributes()?.asList() ?? []
+                    guard attributes.allSatisfy({ ["href", "title"].contains($0.getKey().lowercased()) }) else { return nil }
+                    let html = (try? element.outerHtml()) ?? ""
+                    fallback += html.replacingOccurrences(of: "=\"", with: "='")
+                        .replacingOccurrences(of: "\"", with: "'")
+                } else { return nil }
             }
             guard fallback.range(of: "</iframe", options: .caseInsensitive) == nil else { return nil }
             return EmbeddedFrame(source: url, width: width, height: height,
@@ -591,6 +601,9 @@ enum MarkdownHTMLMediaService {
         let source = text as NSString
         guard location >= 0, location <= source.length,
               Range(NSRange(location: location, length: 0), in: text) != nil,
+              !(location > 0 && location < source.length
+                && (0xD800...0xDBFF).contains(source.character(at: location - 1))
+                && (0xDC00...0xDFFF).contains(source.character(at: location))),
               let address = MarkdownImageEditingService.address(for: file, document: document) else { return nil }
         let escaped = address.replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "\"", with: "&quot;").replacingOccurrences(of: "<", with: "&lt;")
