@@ -81,7 +81,10 @@ private final class ImageShiftFixture {
     var images: [Int] { layout.markdownListsSnapshot["images"] ?? [] }
 
     func waitForImage() async throws {
-        for _ in 0..<200 where images.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+        for _ in 0..<200 where images.isEmpty {
+            controller.viewportChanged()
+            try await Task.sleep(for: .milliseconds(20))
+        }
     }
 
     func type(after marker: String, _ text: String = "x", also change: (() -> Void)? = nil) {

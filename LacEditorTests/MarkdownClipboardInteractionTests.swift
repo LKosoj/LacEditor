@@ -426,6 +426,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         XCTAssertNil(board.data(forType: .rtf))
         XCTAssertEqual(document.statusMessage, L10n.tr("已复制纯文本和 HTML"))
         XCTAssertEqual(view.string, aligned)
+        if let task = coordinator.clipboardCopyTask { await task.value }
         let quoteTable = "> 中😀\r\n>\r\n> | A | B |\r\n> |---|---|\r\n> | x | y |"
         view.string = quoteTable
         view.setSelectedRange(NSRange(location: 0, length: (quoteTable as NSString).length))

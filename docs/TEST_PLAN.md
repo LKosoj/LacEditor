@@ -53,6 +53,13 @@ macOS: 0 ошибок, 0 предупреждений, 0 пропусков GUI-
 
 ## Правило размещения UI-тестов
 
+Для AppKit/SwiftUI unit-стендов, создающих `NSWindow` вручную, обязательна
+явная раскладка hosting view: задать frame по размеру окна, `isHidden = false`,
+вызвать `displayIfNeeded()` и `layoutSubtreeIfNeeded()`, а затем проверить
+`NSTextView.string` и ненулевой frame. Иначе окно может быть видимым, но
+содержать визуально пустой редактор, а проверки temporary attributes будут
+ложно падать.
+
 Только тесты, для которых unit-стенд не воспроизводит реальную доставку
 пользовательского ввода (синтетические `keyDown`, IME, first responder),
 размещаются в target `LacEditorUITests`. Остальные UI-проверки не переносятся

@@ -177,6 +177,13 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
 - Полный bundle `/private/tmp/lac-result.xcresult` найден, но извлечение имён
   `not-run`/`skipped` заблокировано `xcresulttool` ошибкой прав каталога
   `TestReport`; без имён статус не дополнялся выдуманными причинами.
+- Исправлен общий дефект AppKit/SwiftUI тестового стенда: hosting view в
+  `MarkdownColorsTests` не имел гарантированного frame и визуально пустой
+  редактор давал ложные падения temporary attributes. Добавлены явный frame,
+  `isHidden = false`, `displayIfNeeded` и `layoutSubtreeIfNeeded`; targeted-тест
+  цветов проходит 1/1. Правило добавлено в `TEST_PLAN.md`.
+- После ожидания предыдущего clipboard task `MarkdownClipboardInteractionTests/
+  testThematicBreakCopiesAvailableFormatsAndExplicitHTML` проходит 1/1.
 - Следующий блок `MarkdownImageTests` локализован как отсутствие полноценного
   window/visible-range стенда для `markdownImageLocation`; production-логика
   block image не изменялась до подтверждения test-only исправления.

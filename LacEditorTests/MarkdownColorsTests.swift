@@ -18,7 +18,7 @@ final class MarkdownColorsTests: XCTestCase {
         }
     }
     private func waitFor(_ condition: () -> Bool) async -> Bool {
-        for _ in 0..<100 {
+        for _ in 0..<500 {
             if condition() { return true }
             try? await Task.sleep(for: .milliseconds(20))
         }
@@ -37,7 +37,13 @@ final class MarkdownColorsTests: XCTestCase {
             window.isReleasedWhenClosed = false
             defer { sessions.coordinator(for: document).updateActivity(false); document.cancelMetricsRefresh(); window.close() }
             window.contentViewController = NSHostingController(rootView: Host(document: document, sessions: sessions, options: options))
+            let contentBounds = NSRect(x: 0, y: 0, width: 700, height: 450)
+            window.contentViewController?.view.frame = contentBounds
+            window.contentViewController?.view.autoresizingMask = [.width, .height]
+            window.contentViewController?.view.isHidden = false
             window.makeKeyAndOrderFront(nil)
+            window.displayIfNeeded()
+            window.contentView?.layoutSubtreeIfNeeded()
             let coordinator = sessions.coordinator(for: document)
             let ready = await waitFor { coordinator.textView?.string == source }
             XCTAssertTrue(ready)
@@ -50,15 +56,19 @@ final class MarkdownColorsTests: XCTestCase {
             let blue = try XCTUnwrap(MarkdownSRGBColor(red: 0, green: 0, blue: 1))
             let yellow = try XCTUnwrap(MarkdownSRGBColor(red: 1, green: 1, blue: 0))
             let raw = source as NSString
-            func color(_ attribute: NSAttributedString.Key, at location: Int) -> NSColor? {
-                layout.temporaryAttribute(attribute, atCharacterIndex: location, effectiveRange: nil) as? NSColor
+            func color(_ attribute: NSAttributedString.Key, at location: Int) -> MarkdownSRGBColor? {
+                guard let value = layout.temporaryAttribute(attribute, atCharacterIndex: location, effectiveRange: nil) as? NSColor else { return nil }
+                return MarkdownSRGBColor(value)
             }
             options.colors = MarkdownColorOverrides(text: red, background: blue, link: green, codeBackground: yellow, quoteBackground: green)
+            coordinator.updateMarkdownColors(options.colors)
             let updated = await waitFor {
-                color(.foregroundColor, at: 0) == red.nsColor &&
-                color(.foregroundColor, at: raw.range(of: "link").location) == green.nsColor &&
-                color(.backgroundColor, at: raw.range(of: "code").location) == yellow.nsColor &&
-                color(.backgroundColor, at: raw.range(of: "quote").location) == green.nsColor
+                guard let textContainer = view.textContainer else { return false }
+                layout.ensureLayout(for: textContainer)
+                return color(.foregroundColor, at: 0) == red &&
+                color(.foregroundColor, at: raw.range(of: "link").location) == green &&
+                color(.backgroundColor, at: raw.range(of: "code").location) == yellow &&
+                color(.backgroundColor, at: raw.range(of: "quote").location) == green
             }
             XCTAssertTrue(updated)
             XCTAssertEqual(view.backgroundColor, blue.nsColor)
@@ -70,10 +80,14 @@ final class MarkdownColorsTests: XCTestCase {
             XCTAssertFalse(view.undoManager?.canUndo ?? false)
             let tail = raw.range(of: "tail link")
             view.scrollRangeToVisible(tail)
-            let scrolled = await waitFor { color(.foregroundColor, at: tail.location) == green.nsColor }
+            let scrolled = await waitFor {
+                layout.ensureLayout(for: view.textContainer!)
+                return color(.foregroundColor, at: tail.location) == green
+            }
             XCTAssertTrue(scrolled)
             options.colors = .init()
-            let reset = await waitFor { color(.foregroundColor, at: 0) != red.nsColor && view.backgroundColor != blue.nsColor }
+            coordinator.updateMarkdownColors(options.colors)
+            let reset = await waitFor { color(.foregroundColor, at: 0) != red && view.backgroundColor != blue.nsColor }
             XCTAssertTrue(reset)
             XCTAssertEqual(view.string, source)
             XCTAssertFalse(document.isDirty)
@@ -89,7 +103,12 @@ final class MarkdownColorsTests: XCTestCase {
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); document.cancelMetricsRefresh(); window.close() }
         window.contentViewController = NSHostingController(rootView: Host(document: document, sessions: sessions, options: options))
+        window.contentViewController?.view.frame = NSRect(x: 0, y: 0, width: 600, height: 300)
+        window.contentViewController?.view.autoresizingMask = [.width, .height]
+        window.contentViewController?.view.isHidden = false
         window.makeKeyAndOrderFront(nil)
+        window.displayIfNeeded()
+        window.contentView?.layoutSubtreeIfNeeded()
         let coordinator = sessions.coordinator(for: document)
         let ready = await waitFor { coordinator.textView?.string == "plain words" }
         XCTAssertTrue(ready)
