@@ -75,7 +75,9 @@ private final class ImageShiftFixture {
         controller.viewportChanged()
     }
 
-    deinit { window.close() }
+    nonisolated deinit {
+        MainActor.assumeIsolated { window.close() }
+    }
 
     /// Диапазоны картинок в слое оформления: пары «начало, длина».
     var images: [Int] { layout.markdownListsSnapshot["images"] ?? [] }
