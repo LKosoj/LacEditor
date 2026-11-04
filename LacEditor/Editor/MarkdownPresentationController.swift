@@ -3895,7 +3895,15 @@ final class MarkdownPresentationController {
 
     private func installImagePlaceholder(for image: MarkdownImage, key: NSRange, layout: FoldLayoutManager) {
         guard !loadedImageRanges.contains(key), imageOperations[key] == nil, svgImageJobs[key] == nil else { return }
-        let placeholder = NSImage(size: NSSize(width: 1, height: 1))
+        let intrinsic = NSSize(width: 1, height: 1)
+        let placeholderSize: NSSize
+        if let sizing = image.sizing, let width = imageWidth(for: image),
+           let sized = sizing.size(intrinsic: intrinsic, availableWidth: width), sized.width > 0, sized.height > 0 {
+            placeholderSize = sized
+        } else {
+            placeholderSize = intrinsic
+        }
+        let placeholder = NSImage(size: placeholderSize)
         if image.isInline {
             _ = layout.setMarkdownInlineImage(placeholder, for: image.range)
         } else {

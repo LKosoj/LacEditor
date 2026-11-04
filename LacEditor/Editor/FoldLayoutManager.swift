@@ -1434,7 +1434,9 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
 
     func markdownRenderedImageRects(for ranges: Set<NSRange>, in container: NSTextContainer, editingCell: NSRange? = nil) -> [NSRange: NSRect] {
         var result: [NSRange: NSRect] = [:]
-        for entry in markdownInlineImages where ranges.contains(entry.range) { result[entry.range] = inlineImageRect(entry, in: container) }
+        for entry in markdownInlineImages where ranges.contains(entry.range) && imageIsVisible(entry.range) {
+            result[entry.range] = inlineImageRect(entry, in: container)
+        }
         for entry in markdownImages where ranges.contains(entry.range) { result[entry.range] = imageRect(entry, in: container, centered: true) }
         for entry in markdownBlockImages where ranges.contains(entry.range) { result[entry.range] = imageRect(entry, in: container) }
         for (range, rect) in uppercaseAttachmentRects(in: container) where ranges.contains(range) { result[range] = rect }

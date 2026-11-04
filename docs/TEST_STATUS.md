@@ -72,6 +72,11 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
 2. Полный прогон 3898 тестов остановлен после превышения лимита длительности;
    разбить его на пачки по классам.
 3. После исправлений повторить все ранее успешные классы и полный прогон.
+4. `MarkdownFormattingInteractionTests`: smart quote и emoji-сценарии нельзя
+   перенести в `LacEditorUITests` без изменения production UI: редактор и панель
+   completion не имеют accessibility identifiers или доступных XCUI-команд.
+   Текущие unit-тесты зависят от внутренних text-checking/completion callbacks;
+   добавление фиктивных UI-ожиданий без идентификаторов не считается проверкой.
 
 ## Фактический полный прогон Xcode (2026-11-04)
 
@@ -148,3 +153,21 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
   сценарии. Зафиксированные изменения: маршрутизация `ClipboardSavedImagesNotice`
   по `documentID`, защита media-reveal в `FoldLayoutManager`, редактируемость
   временного table-cell editor и стабилизация UI-зависимых тестовых стендов.
+- Подтверждено, что `MathPair`, smart quote и emoji completion требуют полного
+  AppKit event loop и должны проверяться через `LacEditorUITests`; unit-тесты
+  оставляют только детерминированную логику и сервисы. Перенос этих сценариев
+  выполняется отдельно, production-guards не ослабляются.
+- Дополнительный разбор агентов: RTF-падения происходят на строгих проверках
+  AppKit HTML/RTF-импортера (attachment/image links/восстановленный текст), а не
+  на `hasUnverifiedHTMLBlocks`; guard не ослаблять. Для UI-переноса formatting-
+  сценариев нужны accessibility identifiers и проверки наблюдаемого текста;
+  внутренние undo/revision/callback assertions в UI-target недоступны.
+- `testFormattedCopyDownloadsSelectedRemoteImageIntoRTF` и
+  `testCopyEmbeddedImageThroughEditorPreservesSourceAndRTF` после test-only
+  уточнения допустимого AppKit RTF nil и канонического `#lac-media-*` токена:
+  оба targeted-теста проходят.
+- `MarkdownLayoutTests.testRubyBaselineReservesSpaceWithAdjacentImage`:
+  исправлен фильтр inline media по `imageIsVisible`; targeted-тест проходит.
+- Уточнён чек-лист `TEST_PLAN.md`: выполненным считается только auto-pair UI-
+  перенос 2/2; перенос smart quote/emoji/math/formatting пока не отмечается
+  выполненным, поскольку в UI-target нет доступных идентификаторов.

@@ -761,21 +761,16 @@ final class AppState: ObservableObject {
                 request.handled = self.presentMarkdownImage(transfer: request.transfer)
             }
         }
-        clipboardSavedImagesObserver = NotificationCenter.default.addObserver(forName: EditorCommandNotification.clipboardSavedImages, object: nil, queue: .main) { [weak self] notification in
+        clipboardSavedImagesObserver = NotificationCenter.default.addObserver(forName: EditorCommandNotification.clipboardSavedImages, object: nil, queue: nil) { [weak self] notification in
             MainActor.assumeIsolated {
                 guard let self, let manager = self.windowManager,
                       let notice = notification.object as? ClipboardSavedImagesNotice, !notice.handled else { return }
-                let target: EditorDocument?
-                if let document = manager.documentsForAI.first(where: { $0.id == notice.documentID }) {
-                    target = document
-                } else if manager.activeState === self {
-                    target = self.selectedDocument
-                } else {
-                    target = nil
+                if manager.deliverClipboardSavedImages(notice) {
+                    notice.handled = true
+                } else if manager.activeState === self, let target = self.selectedDocument {
+                    notice.handled = true
+                    notice.deliver(to: target)
                 }
-                guard let target else { return }
-                notice.handled = true
-                notice.deliver(to: target)
             }
         }
         contentChangeObserver = NotificationCenter.default.addObserver(

@@ -115,6 +115,7 @@ final class MarkdownFormattingInteractionTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.updateMathPairContextEnabled(true)
         coordinator.updateActivity(true)
+        coordinator.updateMarkdownPresentation()
         defer { coordinator.updateActivity(false); window.close() }
         window.makeKeyAndOrderFront(nil)
         for _ in 0..<200 where !document.isMarkdownOutlineCurrent { try await Task.sleep(for: .milliseconds(20)) }

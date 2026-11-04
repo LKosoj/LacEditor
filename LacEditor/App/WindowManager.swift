@@ -969,6 +969,14 @@ final class WindowManager: ObservableObject {
         states.values.first { state in state.documents.contains { $0 === document } }
     }
 
+    @discardableResult
+    func deliverClipboardSavedImages(_ notice: ClipboardSavedImagesNotice) -> Bool {
+        let matches = states.values.flatMap(\.documents).filter { $0.id == notice.documentID }
+        guard !matches.isEmpty else { return false }
+        matches.forEach { notice.deliver(to: $0) }
+        return true
+    }
+
     var documentsForAI: [EditorDocument] {
         states.values.flatMap(\.documents)
     }
