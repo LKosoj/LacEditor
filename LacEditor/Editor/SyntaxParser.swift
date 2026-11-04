@@ -694,6 +694,16 @@ struct TreeSitterGenericBackend: SyntaxParserBackend {
             }
         }
         visit(root)
+        if result.isEmpty, supportedLanguage == .swift, !isCancelled() {
+            return SyntaxHighlighter.lexicalTokens(
+                in: string,
+                language: .swift,
+                range: requested,
+                context: nil,
+                revision: revision,
+                isCancelled: isCancelled
+            )
+        }
         return result
     }
 

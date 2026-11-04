@@ -34,12 +34,15 @@ final class MarkdownTableShortcutTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
+        view.isEditable = true
         view.allowsUndo = true
+        view.undoManager?.groupsByEvent = false
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
         let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = scroll
+        window.makeKeyAndOrderFront(nil)
         coordinator.textView = view
         coordinator.foldLayoutManager = layout
         view.delegate = coordinator
@@ -81,12 +84,14 @@ final class MarkdownTableShortcutTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
+        view.isEditable = true
         view.allowsUndo = true
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
         let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = scroll
+        window.makeKeyAndOrderFront(nil)
         coordinator.textView = view
         coordinator.foldLayoutManager = layout
         view.delegate = coordinator
@@ -96,6 +101,8 @@ final class MarkdownTableShortcutTests: XCTestCase {
         let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 100, height: 30), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
+        child.isEditable = true
+        XCTAssertTrue(window.makeFirstResponder(child))
         func event(_ keyCode: UInt16, _ flags: NSEvent.ModifierFlags, _ characters: String) throws -> NSEvent {
             try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags,
                 timestamp: 0, windowNumber: window.windowNumber, context: nil,
@@ -104,10 +111,15 @@ final class MarkdownTableShortcutTests: XCTestCase {
         child.keyDown(with: try event(36, .command, "\r"))
         let inserted = source + "\n|   |   |"
         XCTAssertEqual(view.string, inserted)
+        print("UNDO AFTER INSERT", view.undoManager?.canUndo as Any, view.undoManager?.undoMenuItemTitle as Any)
         let newChild = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
+        newChild.isEditable = true
+        view.breakUndoCoalescing()
         newChild.keyDown(with: try event(51, [.command, .shift], "\u{7f}"))
         XCTAssertEqual(view.string, source)
+        print("UNDO AFTER DELETE", view.undoManager?.canUndo as Any, view.undoManager?.undoMenuItemTitle as Any)
         try XCTUnwrap(view.undoManager).undo()
+        print("AFTER FIRST UNDO", view.string)
         XCTAssertEqual(view.string, inserted)
         try XCTUnwrap(view.undoManager).undo()
         XCTAssertEqual(view.string, source)

@@ -54,7 +54,7 @@ final class MathJaxRenderServiceTests: XCTestCase {
         await fulfillment(of: [done], timeout: 30)
         let math = try XCTUnwrap(service.mathML[1])
         XCTAssertTrue(math.contains("<mfrac"))
-        XCTAssertTrue(math.contains("中"))
+        XCTAssertTrue(math.contains("中") || math.contains("&#x4E2D;"))
     }
 
     func testNumberingAndPhysicsOptionsUseIsolatedDocuments() async throws {

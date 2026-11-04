@@ -3010,7 +3010,7 @@ enum MarkdownPresentationParser {
                 if newline == 13 && cursor < after.location && sourceText.character(at: cursor) == 10 { cursor += 1 }
                 let tail = NSRange(location: cursor, length: after.location - cursor)
                 if sourceText.substring(with: tail).utf16.elementsEqual(prefix.source.utf16),
-                   cmark_node_parent(paragraph).map { cmark_node_get_type($0) == CMARK_NODE_DOCUMENT } == true || wholeContainerTabs(sourceText, tail) {
+                   cmark_node_parent(paragraph).map({ cmark_node_get_type($0) == CMARK_NODE_DOCUMENT }) == true || wholeContainerTabs(sourceText, tail) {
                     return NSRange(location: NSMaxRange(before), length: after.location - NSMaxRange(before))
                 }
             }

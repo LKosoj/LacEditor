@@ -26,6 +26,15 @@ fail() {
 print "[1/7] XCTest 稳定性回归"
 sh "$SCRIPT_DIR/prepare-pandoc.sh"
 swift test
+xcodebuild \\
+    -quiet \\
+    -project LacEditor.xcodeproj \\
+    -scheme LacEditor \\
+    -configuration Debug \\
+    -destination 'platform=macOS' \\
+    -derivedDataPath .build/XcodeDerivedData \\
+    CODE_SIGNING_ALLOWED=NO \\
+    test
 
 print "[2/7] 发布门禁与静态分析"
 LACEDITOR_SKIP_TESTS=1 "$SCRIPT_DIR/verify-release.sh"

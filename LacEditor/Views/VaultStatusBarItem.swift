@@ -35,7 +35,7 @@ struct VaultStatusBarItem: View {
 
     private func label(_ status: VaultStatus) -> some View {
         HStack(spacing: 4) {
-            Image(systemName: status.symbolName).font(.system(size: 10))
+            Image(systemName: status.symbolName).font(.caption2)
             if !compact { Text(session.statusText).font(.subheadline).lineLimit(1) }
         }
         .foregroundStyle(status == .online ? Color.secondary : Color.primary)

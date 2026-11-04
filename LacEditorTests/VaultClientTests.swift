@@ -209,7 +209,7 @@ final class VaultClientTests: XCTestCase {
         XCTAssertEqual(VaultClient.encodeComponent("a.b"), "a.b")
         reply(200, ["status": "ok"])
         _ = try? await makeClient().resolveConflict(id: "x/../y", decision: "keep")
-        XCTAssertEqual(VaultStubProtocol.requests.last?.url?.path.contains("/conflicts/x%2F"), true)
+        XCTAssertEqual(VaultStubProtocol.requests.last?.url?.absoluteString.contains("/conflicts/x%2F"), true)
     }
 
     func testDescriptionHasNoPathOrCredentials() {
