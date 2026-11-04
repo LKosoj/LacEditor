@@ -27,6 +27,7 @@ final class MarkdownImageEditingTests: XCTestCase {
         window.contentView = scroll
         window.makeKeyAndOrderFront(nil)
         let id = UUID()
+        manager.preparePrimaryWindow(windowID: id, state: state)
         manager.register(windowID: id, state: state, window: window)
         coordinator.textView = view
         coordinator.foldLayoutManager = layout
@@ -34,7 +35,13 @@ final class MarkdownImageEditingTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.attachLiveTextProvider()
         coordinator.updateActivity(true)
+        // Headless AppKit fixtures may not make the test window key merely by
+        // ordering it front; the command requires an actually visible owner.
+        window.orderFrontRegardless()
         window.makeFirstResponder(view)
+        view.isEditable = true
+        // Keep the model's live-edit gate closed before issuing a command.
+        _ = document.synchronizeLiveText()
         defer { coordinator.updateActivity(false); manager.unregister(windowID: id); window.close() }
         view.setSelectedRange(NSRange(location: (source as NSString).length, length: 0))
         state.presentMarkdownResourceRoot(choose: { URL(fileURLWithPath: "/tmp/新 folder", isDirectory: true) })
@@ -45,7 +52,9 @@ final class MarkdownImageEditingTests: XCTestCase {
         try XCTUnwrap(view.undoManager).undo()
         XCTAssertEqual(view.string, source)
         state.presentMarkdownResourceRoot(choose: {
-            view.insertText("changed", replacementRange: view.selectedRange())
+            let range = view.selectedRange()
+            view.textStorage?.replaceCharacters(in: range, with: "changed")
+            view.didChangeText()
             return URL(fileURLWithPath: "/tmp/elsewhere", isDirectory: true)
         })
         XCTAssertTrue(view.string.hasSuffix("changed"))

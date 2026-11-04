@@ -138,6 +138,11 @@ final class MarkdownHTMLBlockProofTests: XCTestCase {
             container = NSTextContainer(containerSize: NSSize(width: 500, height: 800))
             layout.addTextContainer(container)
             view = LacTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 800), textContainer: container)
+            // Keep the live NSTextView content in sync with the standalone
+            // storage used by the fixture's layout manager.  Without this,
+            // presentation updates read an empty view string and media views
+            // are never installed in tests that reuse this fixture.
+            view.string = source
             scroll = NSScrollView(frame: view.frame)
             scroll.documentView = view
             window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
@@ -146,7 +151,9 @@ final class MarkdownHTMLBlockProofTests: XCTestCase {
             window.makeKeyAndOrderFront(nil)
             controller = MarkdownPresentationController(textView: view, layout: layout)
             view.setSelectedRange((source as NSString).range(of: marker))
-            controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { [unowned self] in revision })
+            controller.update(document: document, enabled: true, isActive: true, revision: 0,
+                              currentRevision: { [unowned self] in revision },
+                              textProvider: { [unowned self] in storage.string })
         }
 
         func close() { controller.cancel(); window.close() }
