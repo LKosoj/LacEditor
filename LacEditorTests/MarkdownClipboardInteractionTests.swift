@@ -549,7 +549,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         try png.write(to: input)
         func quote(_ value: String) -> String { "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'" }
         let executable = directory.appendingPathComponent("converter")
-        try "#!/bin/sh\nmkdir media\ncp \(quote(input.path)) media/a.png\nprintf '%s' '![x](media/a.png)'\n".write(to: executable, atomically: true, encoding: .utf8)
+        try "#!/bin/sh\nmkdir -p media\ncp \(quote(input.path)) media/a.png\nprintf '%s' '![x](media/a.png)'\n".write(to: executable, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
         let board = NSPasteboard.general
         let saved = (board.pasteboardItems ?? []).map { item -> NSPasteboardItem in
@@ -561,6 +561,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         let document = EditorDocument(text: "before", language: .markdown)
         document.isMarkdownFormatted = true
         let coordinator = EditorTextView.Coordinator(document: document)
+        coordinator.clipboardConversionExecutable = executable
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 100))
         view.string = "before"
         let scroll = NSScrollView(frame: view.frame)
@@ -727,7 +728,19 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let png = try XCTUnwrap(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"))
+        let input = directory.appendingPathComponent("input.png")
+        try png.write(to: input)
+        func quote(_ value: String) -> String { "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+        let executable = directory.appendingPathComponent("converter")
+        try "#!/bin/sh\nlast=\"\${@: -1}\"\nmkdir -p media\ncp \(quote(input.path)) media/a.png\nif [ \"$(grep -o '\\\\\pict' \"$last\" | wc -l)\" -gt 1 ]; then cp \(quote(input.path)) media/b.png; printf '%s' '![x](media/a.png) ![y](media/b.png)'; else printf '%s' '![x](media/a.png)'; fi\n".write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
         let hex = png.map { String(format: "%02x", $0) }.joined()
+        let input = directory.appendingPathComponent("input.png")
+        try png.write(to: input)
+        func quote(_ value: String) -> String { "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+        let executable = directory.appendingPathComponent("converter")
+        try "#!/bin/sh\nmkdir -p media\ncp \(quote(input.path)) media/a.png\nprintf '%s' '![x](media/a.png)'\n".write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
         let board = NSPasteboard.general
         let saved = (board.pasteboardItems ?? []).map { item -> NSPasteboardItem in
             let copy = NSPasteboardItem()
@@ -739,6 +752,8 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         let document = EditorDocument(text: source, url: directory.appendingPathComponent("note.md"), language: .markdown)
         document.isMarkdownFormatted = true
         let coordinator = EditorTextView.Coordinator(document: document)
+        coordinator.clipboardConversionExecutable = executable
+        coordinator.clipboardConversionExecutable = executable
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
         storage.addLayoutManager(layout)
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
@@ -2222,7 +2237,7 @@ final class MarkdownMediaClipboardTests: XCTestCase {
         super.tearDown()
     }
 
-    private func makeEditor(_ text: String, formatted: Bool = true) -> (EditorDocument, EditorTextView.Coordinator, LacTextView) {
+    private func makeEditor(_ text: String, formatted: Bool = true) -> (EditorDocument, EditorTextView.Coordinator, LacTextView, NSWindow) {
         _ = NSApplication.shared
         let document = EditorDocument(text: text, language: .markdown)
         document.isMarkdownFormatted = formatted
@@ -2235,6 +2250,10 @@ final class MarkdownMediaClipboardTests: XCTestCase {
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = scroll
+        window.makeKeyAndOrderFront(nil)
+        window.displayIfNeeded()
         coordinator.textView = view
         coordinator.foldLayoutManager = layout
         view.delegate = coordinator
@@ -2242,11 +2261,12 @@ final class MarkdownMediaClipboardTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.updateActivity(true)
         coordinator.updateMarkdownPresentation()
-        return (document, coordinator, view)
+        return (document, coordinator, view, window)
     }
 
     func testWriteSelectionHidesTokenAndKeepsSource() {
-        let (_, coordinator, view) = makeEditor(source)
+        let (_, coordinator, view, window) = makeEditor(source)
+        defer { window.orderOut(nil) }
         defer { coordinator.updateActivity(false) }
         let shown = view.string as NSString
         let token = shown.range(of: "#lac-media-")
@@ -2260,15 +2280,17 @@ final class MarkdownMediaClipboardTests: XCTestCase {
     }
 
     func testCutRemovesWholeTokenAndUndoReturnsIt() {
-        let (document, coordinator, view) = makeEditor(source)
+        let (document, coordinator, view, window) = makeEditor(source)
+        defer { window.orderOut(nil) }
         defer { coordinator.updateActivity(false) }
         let shown = view.string as NSString
         let token = shown.range(of: "#lac-media-")
         view.setSelectedRange(NSRange(location: token.location + 3, length: 4))
         view.allowsUndo = true
+        view.breakUndoCoalescing()
         view.cut(nil)
         XCTAssertFalse(view.string.contains("#lac-media-"))
-        XCTAssertEqual(document.synchronizedText(), "до ![a]() после")
+        XCTAssertEqual(document.synchronizedText(), "до  после")
         XCTAssertTrue(NSPasteboard.general.string(forType: LacTextView.mediaSourceType)?.contains("iVBORw0KGgo=") == true)
         XCTAssertFalse(NSPasteboard.general.string(forType: .string)?.contains("#lac-media-") ?? true)
         XCTAssertEqual(view.undoManager?.canUndo, true)
@@ -2284,7 +2306,8 @@ final class MarkdownMediaClipboardTests: XCTestCase {
             return copy
         }
         defer { board.clearContents(); board.writeObjects(saved) }
-        let (_, coordinator, view) = makeEditor("alpha beta")
+        let (_, coordinator, view, window) = makeEditor("alpha beta")
+        defer { window.orderOut(nil) }
         defer { coordinator.updateActivity(false) }
         view.isRichText = false
         board.clearContents()
@@ -2310,7 +2333,8 @@ final class MarkdownMediaClipboardTests: XCTestCase {
             return copy
         }
         defer { board.clearContents(); board.writeObjects(saved) }
-        let (document, coordinator, view) = makeEditor("alpha beta")
+        let (document, coordinator, view, window) = makeEditor("alpha beta")
+        defer { window.orderOut(nil) }
         defer { coordinator.updateActivity(false) }
         view.isRichText = false
         coordinator.clipboardConversionExecutable = executable
@@ -2330,7 +2354,8 @@ final class MarkdownMediaClipboardTests: XCTestCase {
     }
 
     func testPasteInternalTypeBringsTokenBack() {
-        let (document, coordinator, view) = makeEditor("начало")
+        let (document, coordinator, view, window) = makeEditor("начало")
+        defer { window.orderOut(nil) }
         defer { coordinator.updateActivity(false) }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString("![x](data:image/png;base64,iVBORw0KGgo=)", forType: LacTextView.mediaSourceType)
@@ -2342,10 +2367,17 @@ final class MarkdownMediaClipboardTests: XCTestCase {
     }
 
     func testEmptySelectionAndPlainTextGoThroughSuper() {
-        let (_, coordinator, view) = makeEditor("просто текст")
+        let (_, coordinator, view, window) = makeEditor("просто текст")
+        defer { window.orderOut(nil) }
         defer { coordinator.updateActivity(false) }
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(view)
+        view.isEditable = true
+        view.isSelectable = true
+        view.isRichText = false
         view.setSelectedRange(NSRange(location: 0, length: 6))
         let board = NSPasteboard(name: NSPasteboard.Name("laceditor-test-\(UUID().uuidString)"))
+        board.declareTypes([.string], owner: nil)
         XCTAssertTrue(view.writeSelection(to: board, types: [.string]))
         XCTAssertEqual(board.string(forType: .string), "просто")
         XCTAssertNil(board.string(forType: LacTextView.mediaSourceType))

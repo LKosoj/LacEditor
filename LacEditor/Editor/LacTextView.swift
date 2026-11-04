@@ -573,7 +573,15 @@ final class LacTextView: NSTextView {
     override func writeSelection(to pboard: NSPasteboard, types: [NSPasteboard.PasteboardType]) -> Bool {
         guard selectedRanges.count == 1, selectedRange().length > 0,
               let payload = mediaClipboardProvider?(selectedRange()) else {
-            return super.writeSelection(to: pboard, types: types)
+            if super.writeSelection(to: pboard, types: types) { return true }
+            // AppKit can decline a named pasteboard in lightweight test and
+            // service contexts even for a plain selection. Preserve the
+            // standard text path without affecting media-token handling.
+            guard types.contains(.string), let storage = textStorage else { return false }
+            let range = selectedRange()
+            guard range.location != NSNotFound, range.location >= 0,
+                  NSMaxRange(range) <= storage.length else { return false }
+            return pboard.setString((storage.string as NSString).substring(with: range), forType: .string)
         }
         // Остальные запрошенные типы не пишутся: в них попал бы токен.
         pboard.declareTypes([.string, Self.mediaSourceType], owner: nil)

@@ -1175,7 +1175,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
 
         // Selecting an audio/video block reveals its source even when the
         // controller has not yet published a separate revealed range.
-        if markdownMedia.contains(where: { $0.range == range }),
+        if markdownMedia.contains(where: { NSIntersectionRange($0.range, range).length > 0 }),
            let selection = textContainers.first?.textView?.selectedRange(),
            selection.location != NSNotFound,
            (selection.length > 0

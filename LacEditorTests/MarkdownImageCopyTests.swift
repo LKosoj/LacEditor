@@ -293,8 +293,12 @@ final class MarkdownImageCopyTests: XCTestCase {
         XCTAssertTrue(view.shouldChangeText(in: end, replacementString: "x"))
         view.textStorage?.replaceCharacters(in: end, with: "x")
         view.didChangeText()
+        document.synchronizeLiveText()
         await fulfillment(of: [stopped], timeout: 5)
         for _ in 0..<150 where document.statusMessage?.contains(partialFolder.path) != true {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        for _ in 0..<150 where !FileManager.default.fileExists(atPath: partialFolder.appendingPathComponent("a.png").path) {
             try await Task.sleep(for: .milliseconds(20))
         }
         XCTAssertEqual(view.string, mixed + "x")
@@ -444,6 +448,9 @@ final class MarkdownImageCopyTests: XCTestCase {
         defer { session.invalidateAndCancel() }
         state.moveAllMarkdownImages(choose: { folder }, session: session)
         for _ in 0..<150 where view.string == source { try await Task.sleep(for: .milliseconds(20)) }
+        for _ in 0..<150 where FileManager.default.fileExists(atPath: root.appendingPathComponent("a.png").path) || FileManager.default.fileExists(atPath: root.appendingPathComponent("b.png").path) {
+            try await Task.sleep(for: .milliseconds(20))
+        }
         XCTAssertEqual(view.string, "![a](out/a.png) ![b](out/b.png) ![remote](out/r.png)")
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("a.png").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("b.png").path))

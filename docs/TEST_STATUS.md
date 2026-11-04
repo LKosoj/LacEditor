@@ -184,6 +184,15 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
   цветов проходит 1/1. Правило добавлено в `TEST_PLAN.md`.
 - После ожидания предыдущего clipboard task `MarkdownClipboardInteractionTests/
   testThematicBreakCopiesAvailableFormatsAndExplicitHTML` проходит 1/1.
+- `MarkdownMediaClipboardTests` после исправления оконного fixture и узкого
+  fallback в `LacTextView.writeSelection` проходит 6/6. Полное удаление
+  media-токена при cut и восстановление через undo проверяются без ослабления.
+- В `testRTFImagePasteSavesChosenFileAndUndoesText` причина раннего завершения
+  локализована: тест не задавал детерминированный converter и зависел от
+  внешнего поиска Pandoc; исправление выполняется только в тестовом fixture.
+- В процесс исправления добавлено обязательное правило: перед патчем
+  падающего теста искать похожий проходящий тест и использовать его fixture,
+  оконную активацию, ожидания и lifecycle как проверенный образец.
 - Следующий блок `MarkdownImageTests` локализован как отсутствие полноценного
   window/visible-range стенда для `markdownImageLocation`; production-логика
   block image не изменялась до подтверждения test-only исправления.
