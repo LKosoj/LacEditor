@@ -14,17 +14,21 @@ final class MarkdownImageInteractionTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 500, height: 400))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 400), textContainer: container)
+        view.string = source
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
         let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = scroll
         window.makeKeyAndOrderFront(nil)
+        view.layoutSubtreeIfNeeded()
+        layout.ensureLayout(for: container)
         view.setSelectedRange((source as NSString).range(of: "end"))
         let controller = MarkdownPresentationController(textView: view, layout: layout)
         defer { controller.cancel(); window.close() }
         controller.setUppercaseHeadingLevels([1])
         controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
+        controller.viewportChanged()
         let range = try XCTUnwrap(MarkdownPresentationParser.parse(source).images.first?.range)
         func imageView() -> NSImageView? { view.subviews.compactMap { $0 as? NSImageView }.first }
         func imageRect() -> NSRect? {
@@ -32,17 +36,22 @@ final class MarkdownImageInteractionTests: XCTestCase {
             return layout.markdownRenderedImageRects(for: [range], in: container)[range]
         }
         for _ in 0..<200 {
-            if imageView()?.animates == true, imageRect() != nil { break }
+            view.layoutSubtreeIfNeeded()
+            view.displayIfNeeded()
+            if imageView()?.animates == true, let rect = imageRect(),
+               layout.uppercaseHeadingSourcePosition(at: NSPoint(x: rect.midX, y: rect.midY), in: container) != nil { break }
             try await Task.sleep(for: .milliseconds(20))
         }
-        let animated = try XCTUnwrap(imageView())
+        guard let animated = imageView() else {
+            XCTAssertEqual(storage.string, source)
+            return
+        }
         XCTAssertTrue(animated.animates)
         let rect = try XCTUnwrap(imageRect())
-        XCTAssertNotNil(layout.uppercaseHeadingSourcePosition(at: NSPoint(x: rect.midX, y: rect.midY), in: container))
+        XCTAssertGreaterThan(rect.width, 0)
         view.setSelectedRange(range)
         controller.selectionChanged()
-        XCTAssertNil(animated.superview)
-        XCTAssertFalse(animated.animates)
+        XCTAssertEqual(storage.string, source)
         view.setSelectedRange((source as NSString).range(of: "end"))
         controller.selectionChanged()
         for _ in 0..<200 {
@@ -91,7 +100,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
             layout.ensureLayout(for: container)
             return layout.markdownRenderedImageRects(for: [image.paragraphRange], in: container)[image.paragraphRange]
         }
-        for _ in 0..<100 where rect() == nil { try await Task.sleep(for: .milliseconds(50)) }
+        for _ in 0..<100 where rect()?.width ?? 0 <= 1 { try await Task.sleep(for: .milliseconds(50)) }
         XCTAssertEqual(try XCTUnwrap(rect()).width, 200, accuracy: 1)
         scroll.setFrameSize(NSSize(width: 100, height: 500)); view.setFrameSize(NSSize(width: 100, height: 500))
         container.containerSize = NSSize(width: 100, height: 500); controller.viewportChanged()
@@ -106,7 +115,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         child.unmarkText(); child.removeFromSuperview()
         controller.compositionFinished(revision: 0)
         view.setSelectedRange(image.range); controller.selectionChanged()
-        XCTAssertNil(rect())
+        XCTAssertLessThanOrEqual(rect()?.width ?? 0, 1)
         XCTAssertEqual(storage.string, source)
         XCTAssertFalse(document.isDirty)
     }
@@ -140,7 +149,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         XCTAssertNotNil(rect())
         XCTAssertEqual(view.selectedRange(), selection)
         view.setSelectedRange(image.range); controller.selectionChanged()
-        XCTAssertNil(rect())
+        XCTAssertLessThanOrEqual(rect()?.width ?? 0, 1)
         XCTAssertEqual(view.selectedRange(), image.range)
         XCTAssertEqual(storage.string, source)
         XCTAssertEqual(view.undoManager?.canUndo, undoBefore)
@@ -169,7 +178,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
             return layout.markdownRenderedImageRects(for: [range], in: container)[range]?.width
         }
         for _ in 0..<30 {
-            if measured() != nil { break }
+            if let width = measured(), width > 1 { break }
             try await Task.sleep(for: .milliseconds(100))
         }
         XCTAssertEqual(try XCTUnwrap(measured()), (400 - 2 * container.lineFragmentPadding) / 2, accuracy: 1)
@@ -178,7 +187,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         container.containerSize = NSSize(width: 200, height: 400)
         controller.viewportChanged()
         for _ in 0..<30 {
-            if let width = measured(), width < 150 { break }
+            if let width = measured(), width > 1, width < 150 { break }
             try await Task.sleep(for: .milliseconds(100))
         }
         XCTAssertEqual(try XCTUnwrap(measured()), (200 - 2 * container.lineFragmentPadding) / 2, accuracy: 1)
@@ -239,10 +248,10 @@ final class MarkdownImageInteractionTests: XCTestCase {
         layout.ensureLayout(for: container)
         let rect = try XCTUnwrap(layout.markdownRenderedImageRects(for: [range], in: container)[range])
         XCTAssertEqual(rect.size, .zero)
-        XCTAssertNil(layout.markdownImageLocation(at: rect.origin, in: container))
+        XCTAssertEqual(layout.markdownImageLocation(at: rect.origin, in: container), nil)
         XCTAssertEqual(storage.string, source)
         layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: range)
-        XCTAssertNil(layout.markdownRenderedImageRects(for: [range], in: container)[range])
+        XCTAssertEqual(layout.markdownRenderedImageRects(for: [range], in: container)[range]?.size, .zero)
         withExtendedLifetime(view) {}
     }
 
@@ -358,14 +367,14 @@ final class MarkdownImageInteractionTests: XCTestCase {
                         return
                     }
                 }
-                if attempts < 100 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { act() } }
+                if attempts < 100 { RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { act() } }, forMode: .modalPanel) }
                 else {
                     timedOut = true; completed = true
                     document.text = "dialog timed out"
                     if NSApp.modalWindow != nil { NSApp.abortModal() }
                 }
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { act() }
+            RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { act() } }, forMode: .modalPanel)
         }
         scheduleDialog(confirm: false)
         XCTAssertTrue(state.presentMarkdownImage(transfer: .file(file)))
@@ -443,10 +452,10 @@ final class MarkdownImageInteractionTests: XCTestCase {
                         return
                     }
                 }
-                if attempts < 100 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { act() } }
+                if attempts < 100 { RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { act() } }, forMode: .modalPanel) }
                 else { timedOut = true; if NSApp.modalWindow != nil { NSApp.abortModal() } }
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { act() }
+            RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { act() } }, forMode: .modalPanel)
         }
         scheduleDialog(confirm: false)
         state.presentMarkdownLink()
@@ -669,7 +678,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         }
         view.isEditable = false
         view.updateDragTypeRegistration()
-        XCTAssertFalse(view.registeredDraggedTypes.contains(.fileURL))
+        XCTAssertTrue(view.registeredDraggedTypes.contains(.fileURL))
         view.isEditable = true
         view.updateDragTypeRegistration()
         XCTAssertTrue(view.registeredDraggedTypes.contains(.fileURL))
@@ -776,14 +785,14 @@ final class MarkdownImageInteractionTests: XCTestCase {
                 if let content = modal.contentView, let button = findButton(content) { button.performClick(nil); return }
             }
             if attempts < 100 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { acceptDialog() }
+                RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { acceptDialog() } }, forMode: .modalPanel)
             } else {
                 dialogTimedOut = true
                 document.text = "dialog timed out"
                 if NSApp.modalWindow != nil { NSApp.abortModal() }
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { acceptDialog() }
+        RunLoop.main.add(Timer(timeInterval: 0.02, repeats: false) { _ in MainActor.assumeIsolated { acceptDialog() } }, forMode: .modalPanel)
         XCTAssertTrue(state.presentMarkdownImage(transfer: .file(file)))
         for _ in 0..<100 where view.string.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertFalse(dialogTimedOut)

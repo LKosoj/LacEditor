@@ -105,7 +105,16 @@ final class DocumentRecoveryStore: @unchecked Sendable {
             )
 
             let previousSessionID = try readMarker()?.sessionID
-            let recovered = try previousSessionID.map(loadReferences) ?? []
+            let recovered: [DocumentRecoveryReference]
+            do {
+                recovered = try previousSessionID.map(loadReferences) ?? []
+            } catch let error as NSError where error.domain == NSCocoaErrorDomain && (error.code == NSFileNoSuchFileError || error.code == NSFileReadNoSuchFileError) {
+                // A stale marker must not make the whole application
+                // unlaunchable.  The session directory may have been removed
+                // independently (for example, by cleanup or disk repair),
+                // while the marker itself remained behind.
+                recovered = []
+            }
             let sessionID = UUID()
             do {
                 try fileManager.createDirectory(
@@ -114,18 +123,26 @@ final class DocumentRecoveryStore: @unchecked Sendable {
                 )
 
                 // Copy recovered records before switching the marker.
+                var copiedRecovery: [DocumentRecoveryReference] = []
                 for snapshot in recovered {
-                    try copyLocked(snapshot, sessionID: sessionID)
+                    do {
+                        try copyLocked(snapshot, sessionID: sessionID)
+                        copiedRecovery.append(snapshot)
+                    } catch let error as NSError where error.domain == NSCocoaErrorDomain && (error.code == NSFileNoSuchFileError || error.code == NSFileReadNoSuchFileError) {
+                        // Keep restoring the other documents when one
+                        // recovery payload has disappeared.
+                        continue
+                    }
                 }
                 try writeMarker(SessionMarker(sessionID: sessionID))
+                currentSessionID = sessionID
+                removeSessionDirectories(except: sessionID)
+                return copiedRecovery.map { reference in
+                    DocumentRecoveryReference(snapshot: reference.snapshot, contentURL: sessionURL(for: sessionID).appendingPathComponent("\(reference.snapshot.documentID.uuidString.lowercased())-\(reference.snapshot.revision).utf8"))
+                }
             } catch {
                 try? fileManager.removeItem(at: sessionURL(for: sessionID))
                 throw error
-            }
-            currentSessionID = sessionID
-            removeSessionDirectories(except: sessionID)
-            return recovered.map { reference in
-                DocumentRecoveryReference(snapshot: reference.snapshot, contentURL: sessionURL(for: sessionID).appendingPathComponent("\(reference.snapshot.documentID.uuidString.lowercased())-\(reference.snapshot.revision).utf8"))
             }
         }
     }

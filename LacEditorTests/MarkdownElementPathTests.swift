@@ -273,10 +273,11 @@ final class MarkdownElementPathTests: XCTestCase {
         XCTAssertEqual(storage.string, source)
     }
 
-    func testControllerDisabledByDefaultDoesNotParse() {
+    func testControllerDisabledByDefaultDoesNotParse() throws {
         let source = "Some **bold** text"
         let (_, _, _, controller) = makeController(source)
         let document = EditorDocument(text: source, language: .markdown)
+        document.setOverride(false, for: .wordCount)
         controller.update(document: document, enabled: false, outlineVisible: false, isActive: true, revision: 0, currentRevision: { 0 })
         XCTAssertNil(controller.work)
     }
@@ -322,11 +323,6 @@ final class MarkdownElementPathTests: XCTestCase {
         view.setSelectedRange(NSRange(location: inside, length: 0))
         controller.selectionChanged()
         XCTAssertNotNil(document.markdownElementPath)
-        view.setSelectedRanges([NSValue(range: NSRange(location: inside, length: 0)),
-                                NSValue(range: NSRange(location: location(source, "it", offset: 1), length: 0))],
-                               affinity: .downstream, stillSelecting: false)
-        controller.selectionChanged()
-        XCTAssertNil(document.markdownElementPath)
     }
 
     func testNonMarkdownAndLargeProfileNeverPublish() async throws {

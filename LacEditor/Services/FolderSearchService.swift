@@ -340,6 +340,9 @@ enum FolderSearchService {
         let root = normalized(root)
         try checkCancellation(isCancelled)
         guard !query.isEmpty else { return Result(root: root, values: [], problems: []) }
+        if kind == .text, let options, options.usesRegex {
+            _ = try TextSearchService.regularExpression(query: query, options: options)
+        }
         var matches: [Match] = []
         var tagProblems: [Problem] = []
         let problems = try scan(root: root, openDocuments: openDocuments, markdownOnly: kind == .tags, include: include,

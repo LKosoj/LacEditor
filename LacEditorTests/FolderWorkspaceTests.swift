@@ -388,6 +388,9 @@ final class FolderWorkspaceTests: XCTestCase {
         let store = FolderWorkspaceStore()
         let task = try XCTUnwrap(store.setRoot(root))
         await task.value
+        for _ in 0..<100 where store.loading.contains(root) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
         XCTAssertEqual(store.entries[root], [])
         XCTAssertNil(store.errors[root])
         XCTAssertFalse(store.loading.contains(root))
@@ -401,6 +404,9 @@ final class FolderWorkspaceTests: XCTestCase {
         let store = FolderWorkspaceStore()
         let rootTask = try XCTUnwrap(store.setRoot(root))
         await rootTask.value
+        for _ in 0..<100 where store.loading.contains(root) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
         try FileManager.default.removeItem(at: child)
         let childTask = try XCTUnwrap(store.expand(child))
         await childTask.value
@@ -419,6 +425,7 @@ final class FolderWorkspaceTests: XCTestCase {
         let rootLoaded = expectation(description: "root loaded")
         let childLoaded = expectation(description: "child loaded")
         let refreshed = expectation(description: "new file")
+        refreshed.assertForOverFulfill = false
         let subscription = store.$entries.sink { entries in
             if entries[root]?.contains(where: { $0.url == child }) == true { rootLoaded.fulfill() }
             if entries[child] != nil { childLoaded.fulfill() }
@@ -447,8 +454,11 @@ final class FolderWorkspaceTests: XCTestCase {
         try FileManager.default.createDirectory(at: newRoot, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: base) }
         let oldStarted = expectation(description: "old started")
+        oldStarted.assertForOverFulfill = false
         let oldFinished = expectation(description: "old returned")
+        oldFinished.assertForOverFulfill = false
         let newLoaded = expectation(description: "new loaded")
+        newLoaded.assertForOverFulfill = false
         let release = DispatchSemaphore(value: 0)
         let store = FolderWorkspaceStore { _, url in
             if url == oldRoot {
@@ -509,6 +519,7 @@ final class FolderWorkspaceTests: XCTestCase {
         try FileManager.default.createDirectory(at: second, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: base) }
         let started = expectation(description: "first A started")
+        started.assertForOverFulfill = false
         let release = DispatchSemaphore(value: 0)
         let counter = FolderTestCounter()
         let store = FolderWorkspaceStore { _, url in
@@ -597,6 +608,7 @@ final class FolderWorkspaceTests: XCTestCase {
         XCTAssertNotNil(store.errors[child])
         XCTAssertNil(store.entries[child])
         let refreshed = expectation(description: "root sees symbolic link")
+        refreshed.assertForOverFulfill = false
         let subscription = store.$entries.sink { entries in
             if entries[root]?.contains(where: { $0.name == "parent" && $0.isSymbolicLink }) == true { refreshed.fulfill() }
         }

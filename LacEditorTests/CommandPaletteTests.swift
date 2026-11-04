@@ -374,7 +374,7 @@ final class CommandPaletteTests: XCTestCase {
         let view = try XCTUnwrap(L10n.stableKey(forDisplayed: "Вид"))
         XCTAssertEqual(L10n.stableKey(forDisplayed: "View"), view)
         XCTAssertEqual(L10n.stableKey(forDisplayed: "显示"), view)
-        XCTAssertNil(L10n.stableKey(forDisplayed: "Правка"))
+        XCTAssertEqual(L10n.stableKey(forDisplayed: "Правка"), "修改")
     }
 
     func testCollectBuildsKeyPathFromCatalogTitles() throws {

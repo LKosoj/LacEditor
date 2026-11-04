@@ -613,7 +613,8 @@ final class MarkdownPresentationController {
                 schedule(revision: revision)
             }
         } else if (activated || (work == nil && operation == nil)) &&
-                    (enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || elementPathEnabled || mathPairContext?.revision != revision) {
+                    (enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || elementPathEnabled ||
+                     (mathPairEnabled && mathPairContext?.revision != revision)) {
             schedule(revision: revision)
         }
     }
@@ -1248,6 +1249,7 @@ final class MarkdownPresentationController {
 
     func viewportChanged() {
         guard isActive, enabled, !hasMarkedText else { return }
+        ensureVisibleLayout()
         if !uppercaseHeadingLevels.isEmpty, let container = textView?.textContainer,
            layout?.uppercaseHeadingsNeedLayout(in: container) == true {
             clearUppercaseHeadings()
@@ -1794,6 +1796,7 @@ final class MarkdownPresentationController {
         pruneCodeHighlighting(keeping: result.codeBlocks)
         lastRevealedRange = revealedRange()
         layout?.setMarkdownPresentation(result, revealedRange: lastRevealedRange, inlineSelection: inlineSelection(), invalidating: visibleRange() ?? NSRange(location: 0, length: 0))
+        ensureVisibleLayout()
         if visibleRange() == nil { notifyGeometryChanged() }
         startEmojiResolution()
         applyVisible()
@@ -1936,6 +1939,7 @@ final class MarkdownPresentationController {
             rubyRendered.removeValue(forKey: range)
         }
         if touched.hasCode, let blocks = presentation?.codeBlocks { pruneCodeHighlighting(keeping: blocks) }
+        if touched.hasInserts { expandedDetails.removeAll() }
         // Вставок больше нет в разборе: обновление снимает их вью с экрана.
         if touched.hasInserts, let visible = visibleRange() {
             updateAudio(in: visible)
@@ -2065,7 +2069,17 @@ final class MarkdownPresentationController {
             }
             return NSIntersectionRange(selection, range).length > 0
         }
-        return nearby(presentation.images, selection, presentation, extent: { $0.paragraphRange }).contains { touches($0.isInline ? $0.range : $0.paragraphRange) }
+        let imageRevealedByUppercaseHeading = { (image: MarkdownImage) in
+            image.isInline && self.uppercaseHeadingLevels.contains(where: { level in
+                presentation.headings.contains { heading in
+                    heading.level == level && NSIntersectionRange(heading.range, image.range).length > 0
+                }
+            })
+        }
+        return nearby(presentation.images, selection, presentation, extent: { $0.paragraphRange }).contains {
+            let range = $0.isInline ? $0.range : $0.paragraphRange
+            return !imageRevealedByUppercaseHeading($0) && touches(range)
+        }
             || nearby(presentation.audioBlocks, selection, presentation, extent: { $0.range }).contains { touches($0.range) }
             || nearby(presentation.iframeBlocks, selection, presentation, extent: { $0.range }).contains { touches($0.range) }
             || nearby(presentation.detailsBlocks, selection, presentation, extent: { $0.range }).contains { touches($0.range) }
@@ -2088,6 +2102,12 @@ final class MarkdownPresentationController {
             low += 1
         }
         return result
+    }
+
+    private func ensureVisibleLayout() {
+        guard let textView, let layout, let container = textView.textContainer else { return }
+        let rect = textView.visibleRect.offsetBy(dx: -textView.textContainerOrigin.x, dy: -textView.textContainerOrigin.y)
+        layout.ensureLayout(forBoundingRect: rect, in: container)
     }
 
     private func visibleRange() -> NSRange? {

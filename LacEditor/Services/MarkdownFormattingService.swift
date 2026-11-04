@@ -194,7 +194,7 @@ enum MarkdownFormattingService {
                           cmark_node_get_type(parent) == CMARK_NODE_LIST,
                           let start = source.firstPosition(emptyContainer), start >= line.location,
                           let prefixes = MarkdownPresentationParser.listContainerPrefixes(emptyContainer, source: source, text: text),
-                          text.substring(with: NSRange(location: line.location, length: start - line.location)) == prefixes.source {
+                          text.substring(with: NSRange(location: line.location, length: start - line.location)).replacingOccurrences(of: "\r\n", with: "\n") == prefixes.source.replacingOccurrences(of: "\r\n", with: "\n") {
                     let suffix = text.substring(from: start)
                     let pattern = kind == "tasklist" ? #"^([-+*]|[0-9]{1,9}[.)])( {1,4})\[[ xX]\] $"# : #"^([-+*]|[0-9]{1,9}[.)])( {1,4})$"#
                     let expression = try! NSRegularExpression(pattern: pattern)
@@ -233,7 +233,7 @@ enum MarkdownFormattingService {
                                         length: (replacement as NSString).length - (leading as NSString).length)
             let probe = text.replacingCharacters(in: selection, with: replacement)
             let expectedLiteral = (expectedBody as String) + "\n"
-            guard let expected = formattingStructure(root, omitting: target, source: source, text: text) else { return (true, nil) }
+            let expected = formattingStructure(root, omitting: target, source: source, text: text)
             let verified = MarkdownMathExtension.withDocument(probe, strictMode: strictMode) { candidate, mathExtension, _ in
                 let candidateSource = MarkdownPresentationParser.Source(probe, root: candidate, looseHeadings: MarkdownMathExtension.looseHeadings(in: mathExtension), looseListRanges: MarkdownMathExtension.looseListRanges(in: mathExtension))
                 var formula: OpaquePointer?
@@ -247,6 +247,7 @@ enum MarkdownFormattingService {
                 }
                 find(candidate)
                 guard let formula else { return false }
+                guard let expected else { return true }
                 return formattingStructure(candidate, omitting: formula, source: candidateSource, text: probe as NSString) == expected
             }
             guard verified == true else { return (true, nil) }

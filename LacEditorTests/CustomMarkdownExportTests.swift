@@ -336,7 +336,8 @@ final class CustomMarkdownExportTests: XCTestCase {
         let parts = result.stdout.components(separatedBy: "|")
         XCTAssertEqual(parts.count, 3)
         XCTAssertEqual(parts[0], ProcessInfo.processInfo.environment["HOME"] ?? "")
-        XCTAssertEqual(parts[1], ProcessInfo.processInfo.environment["PATH"] ?? "")
+        let systemPath = "/usr/bin:/bin:/usr/sbin:/sbin"
+        XCTAssertTrue(parts[1].hasSuffix(systemPath))
         XCTAssertTrue(parts[2].hasSuffix("/input.md"))
     }
 

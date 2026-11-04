@@ -23,6 +23,7 @@ final class MarkdownAutoPairTests: XCTestCase {
         coordinator.foldLayoutManager = layout
         view.delegate = coordinator
         view.autoPairMarkdownEnabled = true
+        view.isEditable = true
         view.allowsUndo = true
         coordinator.installObservers(scrollView: scroll)
         coordinator.updateMathPairContextEnabled(true)
@@ -155,6 +156,7 @@ final class MarkdownAutoPairTests: XCTestCase {
         view.allowsUndo = true
         view.autoPairBracketsEnabled = true
         view.autoPairMarkdownEnabled = true
+        view.isEditable = true
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
         let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
@@ -166,6 +168,7 @@ final class MarkdownAutoPairTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
+        window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(view)
         let input = NSRange(location: NSNotFound, length: 0)
         func type(_ character: String, keyCode: UInt16, shift: Bool = false) throws {

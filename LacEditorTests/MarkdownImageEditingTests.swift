@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import XCTest
+import Yams
 @testable import LacEditor
 
 final class MarkdownImageEditingTests: XCTestCase {

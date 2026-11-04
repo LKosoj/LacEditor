@@ -40,7 +40,13 @@ enum CommandPaletteService {
             let title = path.isEmpty && index == 0 ? AppEnvironment.displayName : item.title
             guard isCandidate(item, title: title), !excluding(item) else { continue }
             if let submenu = item.submenu {
-                if submenu === NSApplication.shared.servicesMenu || submenu === NSApplication.shared.windowsMenu { continue }
+                if ["Services", "Window"].contains(item.title)
+                    || ["Services", "Window"].contains(submenu.title)
+                    || item.title == NSApplication.shared.servicesMenu?.title
+                    || item.title == NSApplication.shared.windowsMenu?.title
+                    || submenu === NSApplication.shared.servicesMenu || submenu === NSApplication.shared.windowsMenu
+                    || submenu.title == NSApplication.shared.servicesMenu?.title
+                    || submenu.title == NSApplication.shared.windowsMenu?.title { continue }
                 walk(submenu, path: path + [title], keyPath: keyPath + [L10n.stableKey(forDisplayed: title) ?? title], indexPath: indexPath + [index], excluding: excluding, into: &result)
             } else if item.action != nil {
                 result.append(PaletteCommand(path: path + [title], indexPath: indexPath + [index],
@@ -197,8 +203,12 @@ enum CommandPaletteService {
         guard let item = resolve(command, in: menu), let owner = item.menu else { return false }
         let index = owner.index(of: item)
         guard index >= 0 else { return false }
-        owner.performActionForItem(at: index)
-        return true
+        guard let action = item.action else { return false }
+        if let target = item.target as? NSObject, target.responds(to: action) {
+            _ = target.perform(action, with: item)
+            return true
+        }
+        return NSApp.sendAction(action, to: item.target, from: item)
     }
 
     /// Сам пункт палитры в списке не нужен.

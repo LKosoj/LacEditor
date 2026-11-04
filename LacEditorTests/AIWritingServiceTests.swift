@@ -117,6 +117,27 @@ private final class AITranslationURLProtocol: URLProtocol {
 }
 
 extension AIWritingServiceTests {
+    private func requestBody(_ request: URLRequest) throws -> [String: Any] {
+        let data: Data
+        if let body = request.httpBody {
+            data = body
+        } else {
+            let stream = try XCTUnwrap(request.httpBodyStream)
+            stream.open()
+            defer { stream.close() }
+            var result = Data()
+            var buffer = [UInt8](repeating: 0, count: 4_096)
+            while stream.hasBytesAvailable {
+                let count = stream.read(&buffer, maxLength: buffer.count)
+                if count < 0 { throw try XCTUnwrap(stream.streamError) }
+                if count == 0 { break }
+                result.append(buffer, count: count)
+            }
+            data = result
+        }
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
     func testTranslationSendsSelectedLanguageAndOriginalText() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [AITranslationURLProtocol.self]
@@ -129,7 +150,7 @@ extension AIWritingServiceTests {
             profile.modelID = "translation-model"
             profile.baseURL = "https://example.com/v1"
             AITranslationURLProtocol.handler = { request in
-                let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any])
+                let body = try self.requestBody(request)
                 XCTAssertEqual(body["model"] as? String, "translation-model")
                 let instruction: String
                 if api == .responses {
@@ -172,16 +193,7 @@ extension AIWritingServiceTests {
         profile.isEnabled = true
         var instructions: [String] = []
         AITranslationURLProtocol.handler = { request in
-            let stream = try XCTUnwrap(request.httpBodyStream)
-            stream.open(); defer { stream.close() }
-            var data = Data()
-            var buffer = [UInt8](repeating: 0, count: 4_096)
-            while stream.hasBytesAvailable {
-                let count = stream.read(&buffer, maxLength: buffer.count)
-                if count <= 0 { break }
-                data.append(buffer, count: count)
-            }
-            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let body = try self.requestBody(request)
             instructions.append(try XCTUnwrap(body["instructions"] as? String))
             let reply = replies[min(instructions.count, replies.count) - 1].replacingOccurrences(of: "MARKER", with: sentMarker)
             let json = try JSONSerialization.data(withJSONObject: ["replacement": reply, "report": ""])

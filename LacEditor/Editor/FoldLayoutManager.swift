@@ -1172,6 +1172,23 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     private func imageIsVisible(_ range: NSRange) -> Bool {
         guard textContainers.first?.textView?.hasMarkedText() != true else { return false }
         if let foldedRange, NSIntersectionRange(foldedRange, range).length > 0 { return false }
+
+        // An inline image covered by an uppercase-heading projection must be
+        // removed while that exact source image is selected.  The projection
+        // has no line-based reveal range of its own, so relying only on
+        // `markdownRevealedRange` would leave the animated subview visible
+        // after the editor switches back to source editing.
+        if uppercaseHeadingVisuals.keys.contains(where: { heading in
+            heading != range && range.location >= heading.location && NSMaxRange(range) <= NSMaxRange(heading)
+        }), let selection = textContainers.first?.textView?.selectedRange() {
+            let touchesSelection: Bool
+            if selection.length == 0 {
+                touchesSelection = selection.location >= range.location && selection.location <= NSMaxRange(range)
+            } else {
+                touchesSelection = NSIntersectionRange(selection, range).length > 0
+            }
+            if touchesSelection { return false }
+        }
         guard let revealed = markdownRevealedRange, touches(range, revealed) else { return true }
 
         // Only source-backed blocks are revealable.  In particular, an image
@@ -1415,6 +1432,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         var result: [NSRange: NSRect] = [:]
         for entry in markdownInlineImages where ranges.contains(entry.range) { result[entry.range] = inlineImageRect(entry, in: container) }
         for entry in markdownImages where ranges.contains(entry.range) { result[entry.range] = imageRect(entry, in: container, centered: true) }
+        for entry in markdownBlockImages where ranges.contains(entry.range) { result[entry.range] = imageRect(entry, in: container) }
         for (range, rect) in uppercaseAttachmentRects(in: container) where ranges.contains(range) { result[range] = rect }
         guard let text = textStorage?.mutableString else { return result }
         var cells: [NSRange: (MarkdownTableCell, NSRect, Set<NSRange>)] = [:]

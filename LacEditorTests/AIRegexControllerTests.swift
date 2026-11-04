@@ -3,7 +3,7 @@ import XCTest
 
 @MainActor
 final class AIRegexControllerTests: XCTestCase {
-    private static let goodResponse = #"{"pattern":"\\d+","caseSensitive":true,"explanation":"Числа"}"#
+    nonisolated private static let goodResponse = #"{"pattern":"\\d+","caseSensitive":true,"explanation":"Числа"}"#
     private static let goodResult = AIRegexBuilder.Result(pattern: #"\d+"#, caseSensitive: true, explanation: "Числа")
 
     private final class Box: @unchecked Sendable {

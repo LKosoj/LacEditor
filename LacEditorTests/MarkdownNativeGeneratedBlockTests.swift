@@ -1009,10 +1009,10 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
             return NSPoint(x: line.minX + container.lineFragmentPadding + 1, y: line.minY + 1)
         }
 
-        for _ in 0..<200 where layout.markdownImageLocation(at: imagePoint(for: original), in: container) == nil {
+        for _ in 0..<200 where layout.markdownImageLocation(at: imagePoint(for: original.range), in: container) == nil {
             try await Task.sleep(for: .milliseconds(100))
         }
-        XCTAssertEqual(layout.markdownImageLocation(at: imagePoint(for: original), in: container), original.range.location)
+        XCTAssertEqual(layout.markdownImageLocation(at: imagePoint(for: original.range), in: container), original.range.location)
 
         let edit = NSRange(location: NSMaxRange((source as NSString).range(of: "prefix wor")), length: 0)
         let inserted = "x"

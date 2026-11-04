@@ -458,7 +458,8 @@ final class FolderWorkspaceStore: ObservableObject {
                 let values = try child.resourceValues(forKeys: keys)
                 let link = values.isSymbolicLink == true
                 let directory = values.isDirectory == true && !link
-                return FolderWorkspaceEntry(url: URL(fileURLWithPath: child.path, isDirectory: directory), name: child.lastPathComponent,
+                let entryURL = url.appendingPathComponent(child.lastPathComponent, isDirectory: directory).standardizedFileURL
+                return FolderWorkspaceEntry(url: entryURL, name: child.lastPathComponent,
                                             isDirectory: directory, isSymbolicLink: link,
                                             creationDate: values.creationDate, modificationDate: values.contentModificationDate)
             }

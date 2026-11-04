@@ -84,6 +84,23 @@ final class FolderReplaceTests: XCTestCase {
             }
         }
     }
+
+    func testRegexReplaceSkipsDataAddress() throws {
+        let text = "cat ![a](data:image/png;base64,Y2F0Y2F0) cat"
+        XCTAssertEqual(try FolderReplaceService.edits(in: text, request: request("c(a)t", "$1", TextSearchService.Options(usesRegex: true))).count, 2)
+        XCTAssertEqual(try FolderReplaceService.edits(in: text, request: request("Y2F0", "x")).count, 0)
+    }
+
+    func testEditsRespectScope() throws {
+        let text = "cat | cat | cat"
+        let scope = NSRange(location: 6, length: 3)
+        let plain = try FolderReplaceService.edits(in: text, request: request("cat", "dog"), scope: scope)
+        XCTAssertEqual(plain.map(\.range), [scope])
+        let regex = try FolderReplaceService.edits(in: text, request: request("(c)at", "$1", TextSearchService.Options(usesRegex: true)), scope: scope)
+        XCTAssertEqual(regex.map(\.range), [scope])
+        XCTAssertEqual(regex.first?.replacement, "c")
+        XCTAssertEqual(try FolderReplaceService.edits(in: text, request: request("cat", "dog")).count, 3)
+    }
 }
 
 final class FolderReplaceDiskTests: XCTestCase {
@@ -358,22 +375,5 @@ final class FolderReplaceControllerTests: XCTestCase {
         let outcome = await manager.applyFolderReplace(.init(plan: plan, request: request))
         XCTAssertEqual(outcome, .skipped(.changed))
         XCTAssertEqual(document.synchronizedText(), "needle")
-    }
-
-    func testRegexReplaceSkipsDataAddress() throws {
-        let text = "cat ![a](data:image/png;base64,Y2F0Y2F0) cat"
-        XCTAssertEqual(try FolderReplaceService.edits(in: text, request: request("c(a)t", "$1", TextSearchService.Options(usesRegex: true))).count, 2)
-        XCTAssertEqual(try FolderReplaceService.edits(in: text, request: request("Y2F0", "x")).count, 0)
-    }
-
-    func testEditsRespectScope() throws {
-        let text = "cat | cat | cat"
-        let scope = NSRange(location: 6, length: 3)
-        let plain = try FolderReplaceService.edits(in: text, request: request("cat", "dog"), scope: scope)
-        XCTAssertEqual(plain.map(\.range), [scope])
-        let regex = try FolderReplaceService.edits(in: text, request: request("(c)at", "$1", TextSearchService.Options(usesRegex: true)), scope: scope)
-        XCTAssertEqual(regex.map(\.range), [scope])
-        XCTAssertEqual(regex.first?.replacement, "c")
-        XCTAssertEqual(try FolderReplaceService.edits(in: text, request: request("cat", "dog")).count, 3)
     }
 }

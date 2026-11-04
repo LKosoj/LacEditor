@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 60;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -234,167 +234,177 @@
 		D0160000000000000000000B /* AIAgentPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0160000000000000000000C /* AIAgentPreset.swift */; };
 		D01700000000000000000001 /* AIDictationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01700000000000000000002 /* AIDictationController.swift */; };
 		D01800000000000000000001 /* MarkdownRemoteImageDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01800000000000000000002 /* MarkdownRemoteImageDownloader.swift */; };
-		E111B868146326BE5A6C0D4A /* AppState+AIAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1320A3978947DFED0F742E6 /* AppState+AIAvailability.swift */; };
-		E1EF743FA51187DEEF7B04B9 /* AppState+CriticMarkup.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1C603C1CFF84ABBFD43D2C4 /* AppState+CriticMarkup.swift */; };
-		E1B0227689CE36E8532303CB /* AppState+Fountain.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F7517B146A31501D1432A8 /* AppState+Fountain.swift */; };
-		E1034D6A8B4775431950C72C /* AppState+Inspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1231BE1AC916B8E5AAB9B88 /* AppState+Inspector.swift */; };
-		E142F59F94E7AD0EA300358E /* AppState+MindMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A6A5AE5B4EE0BA23F0A195 /* AppState+MindMap.swift */; };
-		E1A2E9BDA44D0EB2DEC7AB25 /* AppState+SearchIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = E192876BD073A12D60B3985E /* AppState+SearchIndex.swift */; };
-		E1E01F6001FD7AE78D0E82C2 /* AppState+Snapshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = E193BE6EEA2D27D0F25B0BC3 /* AppState+Snapshots.swift */; };
-		E1B4052CEFFB87D336F01CEE /* AppState+Vault.swift in Sources */ = {isa = PBXBuildFile; fileRef = E115CC137FABF21DC994CD40 /* AppState+Vault.swift */; };
-		E1F717E10DB17DC3E6919CD7 /* AppState+VaultCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E6AA3E17D6019BC580CA1E /* AppState+VaultCapture.swift */; };
-		E11697A993B981C8FCCA01EC /* AppState+VaultConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1BEEC66B8950F374D192B12 /* AppState+VaultConnection.swift */; };
-		E10428842C56B3FE36F414FB /* AppState+VaultInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = E127841C9A21D4D50126A3BA /* AppState+VaultInspector.swift */; };
-		E1D9710AFBEFF8637884FA1C /* AppState+VaultPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1966DC8B7165B59FF4085E8 /* AppState+VaultPage.swift */; };
-		E1D3DE6B0D33E04D44D6C317 /* AppState+VaultSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E2468B1875A2F1E44328ED /* AppState+VaultSearch.swift */; };
-		E168AF518B203CD8B3146FCF /* AppState+VaultUpload.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1C9B7FE140FDF71A184C629 /* AppState+VaultUpload.swift */; };
-		E1347964F6C03B8B0E2271FF /* AppState+World.swift in Sources */ = {isa = PBXBuildFile; fileRef = E154EAA3E3BF45FBBE7C3CAE /* AppState+World.swift */; };
-		E1ECBE0B7069C4C25F3A86FD /* AppState+Writer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1419141A3B9594D16CCA041 /* AppState+Writer.swift */; };
-		E119B1A37122D686A3267FD2 /* AppState+WriterWindows.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1FA971C20FF1B64E6835428 /* AppState+WriterWindows.swift */; };
-		E143E035989841D93A7AE9C0 /* EditorTextView+VaultPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E13E7F5684221B87043E268D /* EditorTextView+VaultPage.swift */; };
-		E179B05EDD7A49BB44208579 /* MarkdownCalloutRender.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1EB044828FB2DC0D81EA6CA /* MarkdownCalloutRender.swift */; };
-		E149F80FE04017C02B778B3D /* MarkdownFolderNoteEmbedProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E124D4957D99020DD65434F4 /* MarkdownFolderNoteEmbedProvider.swift */; };
-		E102D0DD6CFC1E852F10E93E /* MarkdownNoteEmbed.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1438B0421C2AAB8ECD2D42E /* MarkdownNoteEmbed.swift */; };
-		E127EBCF18A3AA179B978DB8 /* MarkdownObsidianComment.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E5F404ECCECB8C713BBD2A /* MarkdownObsidianComment.swift */; };
-		E14E918772630E7F5AAAC989 /* SettingsNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1764B46EB44E86FA5AF4317 /* SettingsNavigator.swift */; };
-		E14059B641A91B18C9DBCC4A /* VaultAskModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A2F1F7AD04B108F66C5D5C /* VaultAskModel.swift */; };
-		E1F0969651793463261E1560 /* VaultAskView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1CDEC78D5349C55AE7DAC9E /* VaultAskView.swift */; };
-		E144F7D3946C10467D90A414 /* VaultCaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B3AC27795506D491C483B7 /* VaultCaptureController.swift */; };
-		E17BC829471A8EB016762D45 /* VaultCaptureDraftStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E104CBB15E7AABBDA8A6AC41 /* VaultCaptureDraftStore.swift */; };
-		E1A4C78D2BF18E3EEB3F5FEE /* VaultCaptureOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A792FC6593DE66EF1D441E /* VaultCaptureOverlay.swift */; };
-		E1604D089084D77F690CA139 /* VaultCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E17404C73DF32B104B74B0B0 /* VaultCatalog.swift */; };
-		E1785C60A96BB06F4E91D797 /* VaultClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1847247F46A0D61942983F1 /* VaultClient.swift */; };
-		E1297CD33084EBFE7EE7143E /* VaultConflictSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E15C789BADAF06354EC5C9B2 /* VaultConflictSelection.swift */; };
-		E1237F9444A88934CEBDBB00 /* VaultConflictSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E182A30604356C05B75BE3C4 /* VaultConflictSheet.swift */; };
-		E13B03B1F165450932320AA2 /* VaultConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10EA09764D244CE77B3B2A2 /* VaultConnection.swift */; };
-		E1C7B279A8112C3FD5285A54 /* VaultConnectionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1DB66CA5D0408CD39FD30FF /* VaultConnectionSheet.swift */; };
-		E132CB5F2366207717CEC0B5 /* VaultConnectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1CEAAA5BD9B031AB422527E /* VaultConnectionStore.swift */; };
-		E15A8CC0BC59968947DCF2DA /* VaultFrontmatterEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E19C82740612532F867417F9 /* VaultFrontmatterEditor.swift */; };
-		E17B4550D1C2D004BA828CAA /* VaultInspectorModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E19166D5B33A4E433E342D02 /* VaultInspectorModel.swift */; };
-		E13029ECF1FFC58B7AD059E7 /* VaultInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E122DCED829920DF35639F05 /* VaultInspectorView.swift */; };
-		E1E595DE7E7BB13CFA82A8A8 /* VaultLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = E17C5589E27BBE074A6E37B6 /* VaultLinks.swift */; };
-		E1994B9E7B7B8A34A459CFEF /* VaultMerge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18A2CDD9E9BC53A7C3FCEEB /* VaultMerge.swift */; };
-		E1AA5919F66F6DD1E59D9083 /* VaultNewerBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1906407BFF9DD9E3CC5B8E9 /* VaultNewerBanner.swift */; };
-		E170C7C0A78EA64533C330BF /* VaultNoteInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16B4DBB9BA3F31FF0478D83 /* VaultNoteInfo.swift */; };
-		E1214CE58331F9F583408F6E /* VaultOpeningOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = E12249C27CAA2DE06E592CFC /* VaultOpeningOverlay.swift */; };
-		E1C009389E01A89DA20A79CD /* VaultOwnerZone.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16F154316F10EDFD318A6C2 /* VaultOwnerZone.swift */; };
-		E18D517C1E3A52BB5351A828 /* VaultPageBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18D4236A5830D7D706BA737 /* VaultPageBanner.swift */; };
-		E1387622C9CCB320A74D848A /* VaultPageGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1C87D3B4B899DDAC75614A1 /* VaultPageGuard.swift */; };
-		E1290A27B5ECBF7000B68C73 /* VaultPath.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1FCC53495128B0830CE7111 /* VaultPath.swift */; };
-		E17C84D9363558E6079D0671 /* VaultPropertiesForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1117AB3FAA4011B6AEA69E5 /* VaultPropertiesForm.swift */; };
-		E1838C40B8B91ABC5E803B40 /* VaultQuickOpenPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E85FA77507EB71D8DB8043 /* VaultQuickOpenPanel.swift */; };
-		E1D10DD561E5266A2F5910EE /* VaultRequests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E13AADB53197615DFA523F3B /* VaultRequests.swift */; };
-		E17B61E2D6C1F5FE39A6A7B5 /* VaultRequestsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16F7CEA895A91558DB42249 /* VaultRequestsClient.swift */; };
-		E1E3D05FDFBE8A80D495269E /* VaultRequestsHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10805BA469A7FD639156718 /* VaultRequestsHub.swift */; };
-		E197647437D1A678E5AD99B7 /* VaultSearchController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E150C47394F68CA5F76CB339 /* VaultSearchController.swift */; };
-		E155367BD40814C2F4001A95 /* VaultSearchSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B467221D213F64E8E21881 /* VaultSearchSupport.swift */; };
-		E11EFF0BE4D3DD989DB3894D /* VaultSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E171A11323CDF76FBAA966BB /* VaultSearchView.swift */; };
-		E170E20AEDB972C8B585B0A9 /* VaultSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B332AF2500D2BBA4CD191D /* VaultSession.swift */; };
-		E1BE64FDB9A3101B2A027E92 /* VaultSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E17A3A2F47B7D7424AADA7B3 /* VaultSidebarView.swift */; };
-		E1095753C46B2164E8743A0E /* VaultSnippetLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E142C0824955B2E257F3777F /* VaultSnippetLocator.swift */; };
-		E10517702A1B90C9B40774FB /* VaultStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B032075F5247B195C54029 /* VaultStateStore.swift */; };
-		E145407F5CAAE0B2F1288A65 /* VaultStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E7B4D3D303281E04CC41AB /* VaultStatus.swift */; };
-		E1BDEDB0F5626FF0D8F954CB /* VaultStatusBarItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E147837FB27D62FCCA8908D3 /* VaultStatusBarItem.swift */; };
-		E1C30735D95B930600FAEB36 /* VaultSyncEngine+NoteInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1CFF813F4840ACF5DB56BD0 /* VaultSyncEngine+NoteInfo.swift */; };
-		E18DE53618B1179EBD7CFB8C /* VaultSyncEngine+Upload.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F98D0D80FAA97A6EC0064E /* VaultSyncEngine+Upload.swift */; };
-		E1DC6BDB8AE15B4AF96957C7 /* VaultSyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E044CC483923F7EB1D5F95 /* VaultSyncEngine.swift */; };
-		E1C6C7A36B5BBD7DD9BEAAA0 /* VaultSyncStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E19A3B2F6498E6072171C4BE /* VaultSyncStatusView.swift */; };
-		E1268ED61DA08D285F6BF6E3 /* VaultTabAccessory.swift in Sources */ = {isa = PBXBuildFile; fileRef = E11F89E906193134417B83E1 /* VaultTabAccessory.swift */; };
-		E106E7B7FCF20C15F92FDE3F /* VaultTunnel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1470DF460FDEE8ECAB66D56 /* VaultTunnel.swift */; };
-		E18B0517A437BFAEA724DD6A /* VaultUnsentSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A4AC518BCA730BEA20C593 /* VaultUnsentSummary.swift */; };
-		E1DBF4F6CCA95851CC4005A7 /* VaultUploadModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1DC7604A9B3C4ECEB1A06F8 /* VaultUploadModels.swift */; };
-		E1670DB0485D103440BF1D5B /* WindowManager+Vault.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1206419BEFC9CC8B59F2E24 /* WindowManager+Vault.swift */; };
-		E1EAAA732AF90459F631FE4C /* WindowManager+VaultUpload.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14DB11F063C51E2977DED84 /* WindowManager+VaultUpload.swift */; };
-		E1D3BD7757342818B580FD1B /* WindowManager+Writer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E147EC10639C280A6CDE2ADC /* WindowManager+Writer.swift */; };
-		E18572ACA5889E78056043B9 /* WriterAuxiliaryWindows.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1460AF24AE54BE2D2B5D709 /* WriterAuxiliaryWindows.swift */; };
-		E117E78EA7658C94E05521ED /* StyleMarks.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1C8EAFD85E4432B22CB9FE1 /* StyleMarks.swift */; };
-		E1DD2AED23A010EEE03EC46A /* AIAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1BDB26938649A60A6A64D0A /* AIAvailability.swift */; };
-		E165D00428AF6B068B64B722 /* AIHintStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E15E661F2F8D3FEE6A4EB7CE /* AIHintStore.swift */; };
-		E1367E615345BCC299111AB0 /* FountainLint.swift in Sources */ = {isa = PBXBuildFile; fileRef = E127C418B21A033AA7F87C38 /* FountainLint.swift */; };
-		E1562794CC3716AD48A734D8 /* InspectorSegment.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1DBE28ECFBC0E0FE39DC608 /* InspectorSegment.swift */; };
-		E17D2172A9ED91F71C69D6DB /* ManuscriptProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = E19432D10F521B63377DF736 /* ManuscriptProject.swift */; };
-		E15EB3378B88BBF2100AFC6F /* MindMapDocumentParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D79145414E543BECFAC4C2 /* MindMapDocumentParser.swift */; };
-		E15259B81D559DACE41CDF12 /* MindMapEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F66D76D062602D9845A9B0 /* MindMapEditor.swift */; };
-		E1CE6D14B4C68D5F0E6F562D /* MindMapLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14B6202A469C86D304AB07B /* MindMapLayout.swift */; };
-		E1818F2320157EF9ADF93F17 /* MindMapLinksBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14960301F27095F1702C802 /* MindMapLinksBuilder.swift */; };
-		E160481815B1CDEF0020AC9F /* MindMapModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1FC7E22E5590470E07CBC7C /* MindMapModel.swift */; };
-		E1884BB63A1F177F5031F715 /* MindMapProjectBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E137CD4B684C4EA890CA00D4 /* MindMapProjectBuilder.swift */; };
-		E15DC0739429DC9E2C63A437 /* MindMapSVGExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E19D7B649BDDDB87C378037D /* MindMapSVGExporter.swift */; };
-		E1AD13E25A6C4A08F684DA83 /* SceneSynopsisDrafter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B5BDDDB10907EE6758C671 /* SceneSynopsisDrafter.swift */; };
-		E15E97E8101E2D222FFE27C1 /* SnowballEnglishStemmer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18F72D3842429AC133B3274 /* SnowballEnglishStemmer.swift */; };
-		E11E29B1FD83D1CA267B274C /* SnowballRussianStemmer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E12875059A74673827B71AC6 /* SnowballRussianStemmer.swift */; };
-		E111440488A1C65FBAA5D768 /* StopWordLists.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1AED7593FD47587E2E894C8 /* StopWordLists.swift */; };
-		E11693E667D88ACF9ED560C2 /* StopWords.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1EB0AE0AD02BD0E5D6C743E /* StopWords.swift */; };
-		E1E9E9132CD1202B2E2798FF /* StoryCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E184AFFF669F11A51805A871 /* StoryCard.swift */; };
 		E100FBAFE975B1B4C25C4575 /* StoryCardHeaderEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E117823CF82784F07757DE80 /* StoryCardHeaderEditor.swift */; };
-		E1081FF6C8456DC010203AEC /* StoryCardMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = E15376772685B5162D12849C /* StoryCardMatcher.swift */; };
-		E1B948A7D0B2C2E4B484DC2C /* StyleCheckSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16F178B232BC3EF7F9322C1 /* StyleCheckSettings.swift */; };
-		E175B2FFA951737870CC8EC0 /* StyleFinding.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1DBD9237B7B5DD7274B732E /* StyleFinding.swift */; };
-		E190D0237D0306EBDAA6D7B6 /* StyleProseMask.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E5E5F4CF6BFD6FDB9BD86F /* StyleProseMask.swift */; };
+		E102D0DD6CFC1E852F10E93E /* MarkdownNoteEmbed.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1438B0421C2AAB8ECD2D42E /* MarkdownNoteEmbed.swift */; };
+		E1034D6A8B4775431950C72C /* AppState+Inspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1231BE1AC916B8E5AAB9B88 /* AppState+Inspector.swift */; };
 		E103E9C8FB1AC71F6BA5D238 /* TextSegmentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E132B84FB8F8111E480CF20D /* TextSegmentation.swift */; };
-		E16D5AFCA927DEFC04ED1943 /* WordNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D065BEFB4541B8D898F441 /* WordNormalizer.swift */; };
-		E1E1ACAAD089B6FA86849E63 /* WriterBoardModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E142C4294790F790AF94D780 /* WriterBoardModel.swift */; };
-		E1FDDB9A79CE8E38A421A76B /* WriterCombinedPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E19ED61B4DEF461557FD5527 /* WriterCombinedPage.swift */; };
-		E139CA1DA8246D8C97F2C00E /* AutosaveController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18B01E395E8977EC3016842 /* AutosaveController.swift */; };
-		E13B13A79922E15EB9501DF5 /* CriticMarkupPandoc.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1721EFA5B19316195917B66 /* CriticMarkupPandoc.swift */; };
-		E1D020F46640ED808402EAFF /* CriticMarkupRender.swift in Sources */ = {isa = PBXBuildFile; fileRef = E17AB0A36C48976CC911931D /* CriticMarkupRender.swift */; };
-		E19EC2D3C3C010B60A924FFC /* DictationHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E11ADD0842A3DE1D65CD8144 /* DictationHistoryStore.swift */; };
-		E15E95ADC63BAAF0258FBF10 /* DocumentSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E53CE703144900F0AAE691 /* DocumentSnapshotStore.swift */; };
+		E10428842C56B3FE36F414FB /* AppState+VaultInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = E127841C9A21D4D50126A3BA /* AppState+VaultInspector.swift */; };
+		E10517702A1B90C9B40774FB /* VaultStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B032075F5247B195C54029 /* VaultStateStore.swift */; };
+		E106E7B7FCF20C15F92FDE3F /* VaultTunnel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1470DF460FDEE8ECAB66D56 /* VaultTunnel.swift */; };
 		E1078A912F42B0FC0B290EAB /* FountainAdaptationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14AD993EAE7CCC6B2888BC3 /* FountainAdaptationService.swift */; };
-		E1358AD6037576D390E28E6F /* FountainExportController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E162442ABA0F798BCB8AD226 /* FountainExportController.swift */; };
-		E18ECC39681E79F8257867F8 /* FountainExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16B33FC93562075A3E07CF8 /* FountainExportService.swift */; };
-		E18C9876879212C04A6ED127 /* ManuscriptProjectAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = E15B1CCB4845DD5A20408F78 /* ManuscriptProjectAccess.swift */; };
-		E1748A30E118FAF3521B9664 /* ManuscriptProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D02E24C46056E72C789E9D /* ManuscriptProjectStore.swift */; };
-		E1A0E6CBB5C5F3F9757491FA /* ManuscriptWordCounter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18B881ED4AE5EE5EBC2E7A7 /* ManuscriptWordCounter.swift */; };
-		E10C78DFA20A7999CF515891 /* MindMapAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E11F9DE4E4B81A2147D3FAE1 /* MindMapAIService.swift */; };
-		E1B7B3DD2C2B5A9D89F7143D /* MindMapController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E104697D0EF9E97143BF411B /* MindMapController.swift */; };
-		E1D0E6DA7D7D545F010AA2F9 /* MindMapZoomRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E7F5468AFA1863C11D5654 /* MindMapZoomRouter.swift */; };
-		E11C0C43F8DCAF4C11C4CC9F /* SearchExpansionBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1AA9D256A965370BB9EF223 /* SearchExpansionBuilder.swift */; };
-		E1B68CFC34D759FBAA49E4A0 /* SearchHighlight.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D50C2493A7A115A7EC9499 /* SearchHighlight.swift */; };
-		E1D75307BEDC302F7CA3E41F /* SearchIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = E179EFB6065FFBE59A661D66 /* SearchIndex.swift */; };
-		E1ED4C10408BB5C6DA74ADAF /* SearchIndexChunker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1ABDB608B41F928CDE1115F /* SearchIndexChunker.swift */; };
-		E11FD416D21B3D70302A05A2 /* SearchIndexDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10B10E7E7D9C35B2356A586 /* SearchIndexDatabase.swift */; };
-		E15D863DCDC0BB537AD4BC46 /* SearchIndexRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E801A9CE8C99BEC478229A /* SearchIndexRegistry.swift */; };
-		E1BFE5F069EDB77865728F5E /* SearchIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14A88F2AAD36DE524D54140 /* SearchIndexer.swift */; };
-		E141EDBE1F67FB9EED53B912 /* SearchLiveDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1082289E7652FD0A6C6B557 /* SearchLiveDocument.swift */; };
-		E10909CC20A62D647FA882DB /* SearchQuery.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E4CDC680B3D6A1AB9031D5 /* SearchQuery.swift */; };
-		E1E025E160CD39329B35AE70 /* SearchTextNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E121CCF93DD285A881465A51 /* SearchTextNormalizer.swift */; };
-		E1719A0C4BA41A25CF4BC98A /* StoryCardAIController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16AE6505FF2A266EA7E0842 /* StoryCardAIController.swift */; };
-		E1F7B4466F397B7AF4BB237C /* StoryCardAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D22AFFD860DF6263299CA4 /* StoryCardAIService.swift */; };
-		E13CAB3C1D2C3E999FF5F7FB /* StoryCardCandidateFinder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A8F986FD323C602DF1975D /* StoryCardCandidateFinder.swift */; };
-		E1BFBF847FCEED8A3FC256F5 /* StoryCardCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1C506E05210A577276D195A /* StoryCardCatalog.swift */; };
-		E12B92D712ADC2B8D7571D79 /* StoryCardMentionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F8CC1B2C1680F94215991B /* StoryCardMentionService.swift */; };
-		E134C8AD739AB93839479130 /* StoryCardScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1216696C0303BAC01A3B4AF /* StoryCardScanner.swift */; };
-		E174FFC1A2E6ED5B5F9C1BEA /* StoryCardTemplates.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10D692D1F0FE6F4E74A9AFD /* StoryCardTemplates.swift */; };
-		E16A652990FA8D1815685054 /* StoryCardWorld.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1DD7AC7FB08527900F3F8F2 /* StoryCardWorld.swift */; };
-		E17EA330764B59D0DE8512A5 /* StyleCheckController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E123692DF0495E16771CDA74 /* StyleCheckController.swift */; };
-		E1884CE3F404FB200C40B872 /* StyleCheckService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E834C952C5CC92E2977025 /* StyleCheckService.swift */; };
-		E11C775D642210CC7D3204AF /* StyleReviewService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1246A4526CD3F169AAF71A9 /* StyleReviewService.swift */; };
-		E13E10BD66CFDA9F6FB9A922 /* WordSearchController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E17B857234764C6DEC0A1569 /* WordSearchController.swift */; };
-		E13AA5DC2561C2BE40CFF603 /* WriterBoardController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18399E0E306060458EE53D9 /* WriterBoardController.swift */; };
-		E159D0B71A9C0C0F31B855FF /* WriterCombinedViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E13E6C26A0A08A79ACC44A8E /* WriterCombinedViewController.swift */; };
-		E1DD423C38BA565AE3CD7317 /* WriterNodeTextLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10D42309D8F92C43518104F /* WriterNodeTextLoader.swift */; };
-		E1CDE31064A8126A5784DCB0 /* WriterProjectSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E13866F2B6AC3BAF0B2C25CC /* WriterProjectSession.swift */; };
-		E14C80C2FFFF037CE3A3D93E /* WriterSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E132B618DAD06F621D57C2B0 /* WriterSession.swift */; };
-		E182BCE7C678E4268391EC3B /* CriticMarkupExportAccessory.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14D2988CDFE4CDFD1FF3F02 /* CriticMarkupExportAccessory.swift */; };
-		E1D98794DF59A01F1AA1207A /* FountainExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A1687BBB0BD1C7B6126F31 /* FountainExportView.swift */; };
-		E173F34B093F2B1997CADA0F /* InspectorPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A6AA102F1D467996028CFF /* InspectorPanelView.swift */; };
-		E151B65B9135D1168D01E95A /* ManuscriptProjectWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10CA445D25BFF941F3E61AF /* ManuscriptProjectWizard.swift */; };
-		E18D3C98F1E38149D2B5F78B /* ManuscriptTreeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E17FDAC75646197891B20250 /* ManuscriptTreeView.swift */; };
-		E19AAE43CAC57DD679661992 /* MindMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E0EBEEEC925BD8CA9B6AD4 /* MindMapView.swift */; };
-		E18F4CCD4C67BDE38F74D486 /* SceneInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16ECF3A57B370EEAC24F17A /* SceneInspectorView.swift */; };
-		E15D2C545301C498C8495E6E /* SnapshotsSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1CE49680C5096D3F15EB2A8 /* SnapshotsSectionView.swift */; };
+		E1081FF6C8456DC010203AEC /* StoryCardMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = E15376772685B5162D12849C /* StoryCardMatcher.swift */; };
 		E108D0EB2324B9FCD7F7C6B8 /* StoryCardInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D06079BF097C68EF008582 /* StoryCardInspectorView.swift */; };
-		E10F40B74DFD8EDD2541C5D6 /* StoryCardMentionsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1982A062D487CF206B06D32 /* StoryCardMentionsSection.swift */; };
-		E134340791A7F7A2D5B281F2 /* StyleInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10E33D8D6DF7A15C2D262C9 /* StyleInspectorView.swift */; };
-		E17F1B2EBF5DF3A845F66911 /* WorldCandidatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1690D59F61197831F368038 /* WorldCandidatesView.swift */; };
-		E1CB80D89751746E181A0495 /* WorldSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E727CA274FBCB1C9AD1FB1 /* WorldSectionView.swift */; };
-		E1D43B0DAC38FD3F681C1096 /* WriterBoardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F99941F97700D1A0B1E50E /* WriterBoardView.swift */; };
-		E11F84FC59E777D62F522AD7 /* WriterCombinedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B2BB0FC48D53CC68933201 /* WriterCombinedView.swift */; };
-		E15E4DCDE1C18A926F4DAA2A /* WriterComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = E15320BD37D5C7E56C1EC464 /* WriterComponents.swift */; };
+		E10909CC20A62D647FA882DB /* SearchQuery.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E4CDC680B3D6A1AB9031D5 /* SearchQuery.swift */; };
+		E1095753C46B2164E8743A0E /* VaultSnippetLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E142C0824955B2E257F3777F /* VaultSnippetLocator.swift */; };
 		E10C73EACEF391B5511A7459 /* WriterProjectBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1AFF6B377BE2F472D1DADD9 /* WriterProjectBanner.swift */; };
+		E10C78DFA20A7999CF515891 /* MindMapAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E11F9DE4E4B81A2147D3FAE1 /* MindMapAIService.swift */; };
+		E10F40B74DFD8EDD2541C5D6 /* StoryCardMentionsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1982A062D487CF206B06D32 /* StoryCardMentionsSection.swift */; };
+		E111440488A1C65FBAA5D768 /* StopWordLists.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1AED7593FD47587E2E894C8 /* StopWordLists.swift */; };
+		E111B868146326BE5A6C0D4A /* AppState+AIAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1320A3978947DFED0F742E6 /* AppState+AIAvailability.swift */; };
+		E11693E667D88ACF9ED560C2 /* StopWords.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1EB0AE0AD02BD0E5D6C743E /* StopWords.swift */; };
+		E11697A993B981C8FCCA01EC /* AppState+VaultConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1BEEC66B8950F374D192B12 /* AppState+VaultConnection.swift */; };
+		E117E78EA7658C94E05521ED /* StyleMarks.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1C8EAFD85E4432B22CB9FE1 /* StyleMarks.swift */; };
+		E119B1A37122D686A3267FD2 /* AppState+WriterWindows.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1FA971C20FF1B64E6835428 /* AppState+WriterWindows.swift */; };
+		E11C0C43F8DCAF4C11C4CC9F /* SearchExpansionBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1AA9D256A965370BB9EF223 /* SearchExpansionBuilder.swift */; };
+		E11C775D642210CC7D3204AF /* StyleReviewService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1246A4526CD3F169AAF71A9 /* StyleReviewService.swift */; };
+		E11E29B1FD83D1CA267B274C /* SnowballRussianStemmer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E12875059A74673827B71AC6 /* SnowballRussianStemmer.swift */; };
+		E11EFF0BE4D3DD989DB3894D /* VaultSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E171A11323CDF76FBAA966BB /* VaultSearchView.swift */; };
+		E11F84FC59E777D62F522AD7 /* WriterCombinedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B2BB0FC48D53CC68933201 /* WriterCombinedView.swift */; };
+		E11FD416D21B3D70302A05A2 /* SearchIndexDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10B10E7E7D9C35B2356A586 /* SearchIndexDatabase.swift */; };
+		E1214CE58331F9F583408F6E /* VaultOpeningOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = E12249C27CAA2DE06E592CFC /* VaultOpeningOverlay.swift */; };
+		E1237F9444A88934CEBDBB00 /* VaultConflictSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E182A30604356C05B75BE3C4 /* VaultConflictSheet.swift */; };
+		E1268ED61DA08D285F6BF6E3 /* VaultTabAccessory.swift in Sources */ = {isa = PBXBuildFile; fileRef = E11F89E906193134417B83E1 /* VaultTabAccessory.swift */; };
+		E127EBCF18A3AA179B978DB8 /* MarkdownObsidianComment.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E5F404ECCECB8C713BBD2A /* MarkdownObsidianComment.swift */; };
+		E1290A27B5ECBF7000B68C73 /* VaultPath.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1FCC53495128B0830CE7111 /* VaultPath.swift */; };
+		E1297CD33084EBFE7EE7143E /* VaultConflictSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E15C789BADAF06354EC5C9B2 /* VaultConflictSelection.swift */; };
+		E12B92D712ADC2B8D7571D79 /* StoryCardMentionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F8CC1B2C1680F94215991B /* StoryCardMentionService.swift */; };
+		E13029ECF1FFC58B7AD059E7 /* VaultInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E122DCED829920DF35639F05 /* VaultInspectorView.swift */; };
+		E132CB5F2366207717CEC0B5 /* VaultConnectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1CEAAA5BD9B031AB422527E /* VaultConnectionStore.swift */; };
+		E134340791A7F7A2D5B281F2 /* StyleInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10E33D8D6DF7A15C2D262C9 /* StyleInspectorView.swift */; };
+		E1347964F6C03B8B0E2271FF /* AppState+World.swift in Sources */ = {isa = PBXBuildFile; fileRef = E154EAA3E3BF45FBBE7C3CAE /* AppState+World.swift */; };
+		E134C8AD739AB93839479130 /* StoryCardScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1216696C0303BAC01A3B4AF /* StoryCardScanner.swift */; };
+		E1358AD6037576D390E28E6F /* FountainExportController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E162442ABA0F798BCB8AD226 /* FountainExportController.swift */; };
+		E1367E615345BCC299111AB0 /* FountainLint.swift in Sources */ = {isa = PBXBuildFile; fileRef = E127C418B21A033AA7F87C38 /* FountainLint.swift */; };
+		E1387622C9CCB320A74D848A /* VaultPageGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1C87D3B4B899DDAC75614A1 /* VaultPageGuard.swift */; };
+		E139CA1DA8246D8C97F2C00E /* AutosaveController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18B01E395E8977EC3016842 /* AutosaveController.swift */; };
+		E13AA5DC2561C2BE40CFF603 /* WriterBoardController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18399E0E306060458EE53D9 /* WriterBoardController.swift */; };
+		E13B03B1F165450932320AA2 /* VaultConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10EA09764D244CE77B3B2A2 /* VaultConnection.swift */; };
+		E13B13A79922E15EB9501DF5 /* CriticMarkupPandoc.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1721EFA5B19316195917B66 /* CriticMarkupPandoc.swift */; };
+		E13CAB3C1D2C3E999FF5F7FB /* StoryCardCandidateFinder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A8F986FD323C602DF1975D /* StoryCardCandidateFinder.swift */; };
+		E13E10BD66CFDA9F6FB9A922 /* WordSearchController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E17B857234764C6DEC0A1569 /* WordSearchController.swift */; };
+		E14059B641A91B18C9DBCC4A /* VaultAskModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A2F1F7AD04B108F66C5D5C /* VaultAskModel.swift */; };
+		E141EDBE1F67FB9EED53B912 /* SearchLiveDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1082289E7652FD0A6C6B557 /* SearchLiveDocument.swift */; };
+		E142F59F94E7AD0EA300358E /* AppState+MindMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A6A5AE5B4EE0BA23F0A195 /* AppState+MindMap.swift */; };
+		E143E035989841D93A7AE9C0 /* EditorTextView+VaultPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E13E7F5684221B87043E268D /* EditorTextView+VaultPage.swift */; };
 		E144F7D14E3010A7C854FBA3 /* WriterTabAccessory.swift in Sources */ = {isa = PBXBuildFile; fileRef = E186114918DC8454C4D6484A /* WriterTabAccessory.swift */; };
+		E144F7D3946C10467D90A414 /* VaultCaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B3AC27795506D491C483B7 /* VaultCaptureController.swift */; };
+		E145407F5CAAE0B2F1288A65 /* VaultStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E7B4D3D303281E04CC41AB /* VaultStatus.swift */; };
+		E149F80FE04017C02B778B3D /* MarkdownFolderNoteEmbedProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E124D4957D99020DD65434F4 /* MarkdownFolderNoteEmbedProvider.swift */; };
+		E14C80C2FFFF037CE3A3D93E /* WriterSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E132B618DAD06F621D57C2B0 /* WriterSession.swift */; };
+		E14E918772630E7F5AAAC989 /* SettingsNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1764B46EB44E86FA5AF4317 /* SettingsNavigator.swift */; };
+		E151B65B9135D1168D01E95A /* ManuscriptProjectWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10CA445D25BFF941F3E61AF /* ManuscriptProjectWizard.swift */; };
+		E15259B81D559DACE41CDF12 /* MindMapEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F66D76D062602D9845A9B0 /* MindMapEditor.swift */; };
+		E155367BD40814C2F4001A95 /* VaultSearchSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B467221D213F64E8E21881 /* VaultSearchSupport.swift */; };
+		E1562794CC3716AD48A734D8 /* InspectorSegment.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1DBE28ECFBC0E0FE39DC608 /* InspectorSegment.swift */; };
+		E159D0B71A9C0C0F31B855FF /* WriterCombinedViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E13E6C26A0A08A79ACC44A8E /* WriterCombinedViewController.swift */; };
+		E15A8CC0BC59968947DCF2DA /* VaultFrontmatterEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E19C82740612532F867417F9 /* VaultFrontmatterEditor.swift */; };
+		E15D2C545301C498C8495E6E /* SnapshotsSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1CE49680C5096D3F15EB2A8 /* SnapshotsSectionView.swift */; };
+		E15D863DCDC0BB537AD4BC46 /* SearchIndexRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E801A9CE8C99BEC478229A /* SearchIndexRegistry.swift */; };
+		E15DC0739429DC9E2C63A437 /* MindMapSVGExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E19D7B649BDDDB87C378037D /* MindMapSVGExporter.swift */; };
+		E15E4DCDE1C18A926F4DAA2A /* WriterComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = E15320BD37D5C7E56C1EC464 /* WriterComponents.swift */; };
+		E15E95ADC63BAAF0258FBF10 /* DocumentSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E53CE703144900F0AAE691 /* DocumentSnapshotStore.swift */; };
+		E15E97E8101E2D222FFE27C1 /* SnowballEnglishStemmer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18F72D3842429AC133B3274 /* SnowballEnglishStemmer.swift */; };
+		E15EB3378B88BBF2100AFC6F /* MindMapDocumentParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D79145414E543BECFAC4C2 /* MindMapDocumentParser.swift */; };
+		E160481815B1CDEF0020AC9F /* MindMapModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1FC7E22E5590470E07CBC7C /* MindMapModel.swift */; };
+		E1604D089084D77F690CA139 /* VaultCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E17404C73DF32B104B74B0B0 /* VaultCatalog.swift */; };
+		E165D00428AF6B068B64B722 /* AIHintStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E15E661F2F8D3FEE6A4EB7CE /* AIHintStore.swift */; };
+		E1670DB0485D103440BF1D5B /* WindowManager+Vault.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1206419BEFC9CC8B59F2E24 /* WindowManager+Vault.swift */; };
+		E168AF518B203CD8B3146FCF /* AppState+VaultUpload.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1C9B7FE140FDF71A184C629 /* AppState+VaultUpload.swift */; };
+		E16A652990FA8D1815685054 /* StoryCardWorld.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1DD7AC7FB08527900F3F8F2 /* StoryCardWorld.swift */; };
+		E16D5AFCA927DEFC04ED1943 /* WordNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D065BEFB4541B8D898F441 /* WordNormalizer.swift */; };
+		E170C7C0A78EA64533C330BF /* VaultNoteInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16B4DBB9BA3F31FF0478D83 /* VaultNoteInfo.swift */; };
+		E170E20AEDB972C8B585B0A9 /* VaultSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B332AF2500D2BBA4CD191D /* VaultSession.swift */; };
+		E1719A0C4BA41A25CF4BC98A /* StoryCardAIController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16AE6505FF2A266EA7E0842 /* StoryCardAIController.swift */; };
+		E173F34B093F2B1997CADA0F /* InspectorPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A6AA102F1D467996028CFF /* InspectorPanelView.swift */; };
+		E1748A30E118FAF3521B9664 /* ManuscriptProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D02E24C46056E72C789E9D /* ManuscriptProjectStore.swift */; };
+		E174FFC1A2E6ED5B5F9C1BEA /* StoryCardTemplates.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10D692D1F0FE6F4E74A9AFD /* StoryCardTemplates.swift */; };
+		E175B2FFA951737870CC8EC0 /* StyleFinding.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1DBD9237B7B5DD7274B732E /* StyleFinding.swift */; };
+		E1785C60A96BB06F4E91D797 /* VaultClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1847247F46A0D61942983F1 /* VaultClient.swift */; };
+		E179B05EDD7A49BB44208579 /* MarkdownCalloutRender.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1EB044828FB2DC0D81EA6CA /* MarkdownCalloutRender.swift */; };
+		E17B4550D1C2D004BA828CAA /* VaultInspectorModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E19166D5B33A4E433E342D02 /* VaultInspectorModel.swift */; };
+		E17B61E2D6C1F5FE39A6A7B5 /* VaultRequestsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16F7CEA895A91558DB42249 /* VaultRequestsClient.swift */; };
+		E17BC829471A8EB016762D45 /* VaultCaptureDraftStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E104CBB15E7AABBDA8A6AC41 /* VaultCaptureDraftStore.swift */; };
+		E17C84D9363558E6079D0671 /* VaultPropertiesForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1117AB3FAA4011B6AEA69E5 /* VaultPropertiesForm.swift */; };
+		E17D2172A9ED91F71C69D6DB /* ManuscriptProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = E19432D10F521B63377DF736 /* ManuscriptProject.swift */; };
+		E17EA330764B59D0DE8512A5 /* StyleCheckController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E123692DF0495E16771CDA74 /* StyleCheckController.swift */; };
+		E17F1B2EBF5DF3A845F66911 /* WorldCandidatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1690D59F61197831F368038 /* WorldCandidatesView.swift */; };
+		E1818F2320157EF9ADF93F17 /* MindMapLinksBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14960301F27095F1702C802 /* MindMapLinksBuilder.swift */; };
+		E182BCE7C678E4268391EC3B /* CriticMarkupExportAccessory.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14D2988CDFE4CDFD1FF3F02 /* CriticMarkupExportAccessory.swift */; };
+		E1838C40B8B91ABC5E803B40 /* VaultQuickOpenPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E85FA77507EB71D8DB8043 /* VaultQuickOpenPanel.swift */; };
+		E18572ACA5889E78056043B9 /* WriterAuxiliaryWindows.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1460AF24AE54BE2D2B5D709 /* WriterAuxiliaryWindows.swift */; };
+		E1884BB63A1F177F5031F715 /* MindMapProjectBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E137CD4B684C4EA890CA00D4 /* MindMapProjectBuilder.swift */; };
+		E1884CE3F404FB200C40B872 /* StyleCheckService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E834C952C5CC92E2977025 /* StyleCheckService.swift */; };
+		E18B0517A437BFAEA724DD6A /* VaultUnsentSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A4AC518BCA730BEA20C593 /* VaultUnsentSummary.swift */; };
+		E18C9876879212C04A6ED127 /* ManuscriptProjectAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = E15B1CCB4845DD5A20408F78 /* ManuscriptProjectAccess.swift */; };
+		E18D3C98F1E38149D2B5F78B /* ManuscriptTreeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E17FDAC75646197891B20250 /* ManuscriptTreeView.swift */; };
+		E18D517C1E3A52BB5351A828 /* VaultPageBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18D4236A5830D7D706BA737 /* VaultPageBanner.swift */; };
+		E18DE53618B1179EBD7CFB8C /* VaultSyncEngine+Upload.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F98D0D80FAA97A6EC0064E /* VaultSyncEngine+Upload.swift */; };
+		E18ECC39681E79F8257867F8 /* FountainExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16B33FC93562075A3E07CF8 /* FountainExportService.swift */; };
+		E18F4CCD4C67BDE38F74D486 /* SceneInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16ECF3A57B370EEAC24F17A /* SceneInspectorView.swift */; };
+		E190D0237D0306EBDAA6D7B6 /* StyleProseMask.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E5E5F4CF6BFD6FDB9BD86F /* StyleProseMask.swift */; };
+		E197647437D1A678E5AD99B7 /* VaultSearchController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E150C47394F68CA5F76CB339 /* VaultSearchController.swift */; };
+		E1994B9E7B7B8A34A459CFEF /* VaultMerge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18A2CDD9E9BC53A7C3FCEEB /* VaultMerge.swift */; };
+		E19AAE43CAC57DD679661992 /* MindMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E0EBEEEC925BD8CA9B6AD4 /* MindMapView.swift */; };
+		E19EC2D3C3C010B60A924FFC /* DictationHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E11ADD0842A3DE1D65CD8144 /* DictationHistoryStore.swift */; };
+		E1A0E6CBB5C5F3F9757491FA /* ManuscriptWordCounter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18B881ED4AE5EE5EBC2E7A7 /* ManuscriptWordCounter.swift */; };
+		E1A2E9BDA44D0EB2DEC7AB25 /* AppState+SearchIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = E192876BD073A12D60B3985E /* AppState+SearchIndex.swift */; };
+		E1A4C78D2BF18E3EEB3F5FEE /* VaultCaptureOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A792FC6593DE66EF1D441E /* VaultCaptureOverlay.swift */; };
+		E1AA5919F66F6DD1E59D9083 /* VaultNewerBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1906407BFF9DD9E3CC5B8E9 /* VaultNewerBanner.swift */; };
+		E1AD13E25A6C4A08F684DA83 /* SceneSynopsisDrafter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B5BDDDB10907EE6758C671 /* SceneSynopsisDrafter.swift */; };
+		E1B0227689CE36E8532303CB /* AppState+Fountain.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F7517B146A31501D1432A8 /* AppState+Fountain.swift */; };
+		E1B4052CEFFB87D336F01CEE /* AppState+Vault.swift in Sources */ = {isa = PBXBuildFile; fileRef = E115CC137FABF21DC994CD40 /* AppState+Vault.swift */; };
+		E1B68CFC34D759FBAA49E4A0 /* SearchHighlight.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D50C2493A7A115A7EC9499 /* SearchHighlight.swift */; };
+		E1B7B3DD2C2B5A9D89F7143D /* MindMapController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E104697D0EF9E97143BF411B /* MindMapController.swift */; };
+		E1B948A7D0B2C2E4B484DC2C /* StyleCheckSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16F178B232BC3EF7F9322C1 /* StyleCheckSettings.swift */; };
+		E1BDEDB0F5626FF0D8F954CB /* VaultStatusBarItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E147837FB27D62FCCA8908D3 /* VaultStatusBarItem.swift */; };
+		E1BE64FDB9A3101B2A027E92 /* VaultSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E17A3A2F47B7D7424AADA7B3 /* VaultSidebarView.swift */; };
+		E1BFBF847FCEED8A3FC256F5 /* StoryCardCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1C506E05210A577276D195A /* StoryCardCatalog.swift */; };
+		E1BFE5F069EDB77865728F5E /* SearchIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14A88F2AAD36DE524D54140 /* SearchIndexer.swift */; };
+		E1C009389E01A89DA20A79CD /* VaultOwnerZone.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16F154316F10EDFD318A6C2 /* VaultOwnerZone.swift */; };
+		E1C30735D95B930600FAEB36 /* VaultSyncEngine+NoteInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1CFF813F4840ACF5DB56BD0 /* VaultSyncEngine+NoteInfo.swift */; };
+		E1C6C7A36B5BBD7DD9BEAAA0 /* VaultSyncStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E19A3B2F6498E6072171C4BE /* VaultSyncStatusView.swift */; };
+		E1C7B279A8112C3FD5285A54 /* VaultConnectionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1DB66CA5D0408CD39FD30FF /* VaultConnectionSheet.swift */; };
+		E1CB80D89751746E181A0495 /* WorldSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E727CA274FBCB1C9AD1FB1 /* WorldSectionView.swift */; };
+		E1CDE31064A8126A5784DCB0 /* WriterProjectSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E13866F2B6AC3BAF0B2C25CC /* WriterProjectSession.swift */; };
+		E1CE6D14B4C68D5F0E6F562D /* MindMapLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14B6202A469C86D304AB07B /* MindMapLayout.swift */; };
+		E1D020F46640ED808402EAFF /* CriticMarkupRender.swift in Sources */ = {isa = PBXBuildFile; fileRef = E17AB0A36C48976CC911931D /* CriticMarkupRender.swift */; };
+		E1D0E6DA7D7D545F010AA2F9 /* MindMapZoomRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E7F5468AFA1863C11D5654 /* MindMapZoomRouter.swift */; };
+		E1D10DD561E5266A2F5910EE /* VaultRequests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E13AADB53197615DFA523F3B /* VaultRequests.swift */; };
+		E1D3BD7757342818B580FD1B /* WindowManager+Writer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E147EC10639C280A6CDE2ADC /* WindowManager+Writer.swift */; };
+		E1D3DE6B0D33E04D44D6C317 /* AppState+VaultSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E2468B1875A2F1E44328ED /* AppState+VaultSearch.swift */; };
+		E1D43B0DAC38FD3F681C1096 /* WriterBoardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F99941F97700D1A0B1E50E /* WriterBoardView.swift */; };
+		E1D75307BEDC302F7CA3E41F /* SearchIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = E179EFB6065FFBE59A661D66 /* SearchIndex.swift */; };
+		E1D9710AFBEFF8637884FA1C /* AppState+VaultPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1966DC8B7165B59FF4085E8 /* AppState+VaultPage.swift */; };
+		E1D98794DF59A01F1AA1207A /* FountainExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A1687BBB0BD1C7B6126F31 /* FountainExportView.swift */; };
+		E1DBF4F6CCA95851CC4005A7 /* VaultUploadModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1DC7604A9B3C4ECEB1A06F8 /* VaultUploadModels.swift */; };
+		E1DC6BDB8AE15B4AF96957C7 /* VaultSyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E044CC483923F7EB1D5F95 /* VaultSyncEngine.swift */; };
+		E1DD2AED23A010EEE03EC46A /* AIAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1BDB26938649A60A6A64D0A /* AIAvailability.swift */; };
+		E1DD423C38BA565AE3CD7317 /* WriterNodeTextLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10D42309D8F92C43518104F /* WriterNodeTextLoader.swift */; };
+		E1E01F6001FD7AE78D0E82C2 /* AppState+Snapshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = E193BE6EEA2D27D0F25B0BC3 /* AppState+Snapshots.swift */; };
+		E1E025E160CD39329B35AE70 /* SearchTextNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E121CCF93DD285A881465A51 /* SearchTextNormalizer.swift */; };
+		E1E1ACAAD089B6FA86849E63 /* WriterBoardModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E142C4294790F790AF94D780 /* WriterBoardModel.swift */; };
+		E1E3D05FDFBE8A80D495269E /* VaultRequestsHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10805BA469A7FD639156718 /* VaultRequestsHub.swift */; };
+		E1E595DE7E7BB13CFA82A8A8 /* VaultLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = E17C5589E27BBE074A6E37B6 /* VaultLinks.swift */; };
+		E1E9E9132CD1202B2E2798FF /* StoryCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E184AFFF669F11A51805A871 /* StoryCard.swift */; };
+		E1EAAA732AF90459F631FE4C /* WindowManager+VaultUpload.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14DB11F063C51E2977DED84 /* WindowManager+VaultUpload.swift */; };
+		E1ECBE0B7069C4C25F3A86FD /* AppState+Writer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1419141A3B9594D16CCA041 /* AppState+Writer.swift */; };
+		E1ED4C10408BB5C6DA74ADAF /* SearchIndexChunker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1ABDB608B41F928CDE1115F /* SearchIndexChunker.swift */; };
+		E1EF743FA51187DEEF7B04B9 /* AppState+CriticMarkup.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1C603C1CFF84ABBFD43D2C4 /* AppState+CriticMarkup.swift */; };
+		E1F0969651793463261E1560 /* VaultAskView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1CDEC78D5349C55AE7DAC9E /* VaultAskView.swift */; };
+		E1F717E10DB17DC3E6919CD7 /* AppState+VaultCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E6AA3E17D6019BC580CA1E /* AppState+VaultCapture.swift */; };
+		E1F7B4466F397B7AF4BB237C /* StoryCardAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D22AFFD860DF6263299CA4 /* StoryCardAIService.swift */; };
+		E1FDDB9A79CE8E38A421A76B /* WriterCombinedPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E19ED61B4DEF461557FD5527 /* WriterCombinedPage.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		14A1571E309A70050055CB72 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A00000000000000000000500 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A00000000000000000000400;
+			remoteInfo = LacEditor;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		D00900000000000000000009 /* Embed Helper Tools */ = {
@@ -446,6 +456,7 @@
 		141E168A3097E78100079103 /* SnippetSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetSettingsView.swift; sourceTree = "<group>"; };
 		141E168C3097E7A400079103 /* LaceditRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaceditRequest.swift; sourceTree = "<group>"; };
 		141E168E3097EDDE00079103 /* lacedit */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; name = lacedit; path = Scripts/lacedit; sourceTree = "<group>"; };
+		14A1571A309A70050055CB72 /* LacEditorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LacEditorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		14E906EB309332F00019953B /* CMarkOpaquePointerCompatibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CMarkOpaquePointerCompatibility.swift; sourceTree = "<group>"; };
 		A00000000000000000000001 /* LacEditorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LacEditorApp.swift; sourceTree = "<group>"; };
 		A00000000000000000000002 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -641,169 +652,180 @@
 		D0160000000000000000000C /* AIAgentPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIAgentPreset.swift; path = Models/AIAgentPreset.swift; sourceTree = "<group>"; };
 		D01700000000000000000002 /* AIDictationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIDictationController.swift; path = Services/AIDictationController.swift; sourceTree = "<group>"; };
 		D01800000000000000000002 /* MarkdownRemoteImageDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRemoteImageDownloader.swift; sourceTree = "<group>"; };
-		E1320A3978947DFED0F742E6 /* AppState+AIAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+AIAvailability.swift"; sourceTree = "<group>"; };
-		E1C603C1CFF84ABBFD43D2C4 /* AppState+CriticMarkup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+CriticMarkup.swift"; sourceTree = "<group>"; };
-		E1F7517B146A31501D1432A8 /* AppState+Fountain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Fountain.swift"; sourceTree = "<group>"; };
+		E104697D0EF9E97143BF411B /* MindMapController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapController.swift; sourceTree = "<group>"; };
+		E104CBB15E7AABBDA8A6AC41 /* VaultCaptureDraftStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultCaptureDraftStore.swift; sourceTree = "<group>"; };
+		E10805BA469A7FD639156718 /* VaultRequestsHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultRequestsHub.swift; sourceTree = "<group>"; };
+		E1082289E7652FD0A6C6B557 /* SearchLiveDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchLiveDocument.swift; sourceTree = "<group>"; };
+		E10B10E7E7D9C35B2356A586 /* SearchIndexDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchIndexDatabase.swift; sourceTree = "<group>"; };
+		E10CA445D25BFF941F3E61AF /* ManuscriptProjectWizard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManuscriptProjectWizard.swift; sourceTree = "<group>"; };
+		E10D42309D8F92C43518104F /* WriterNodeTextLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterNodeTextLoader.swift; sourceTree = "<group>"; };
+		E10D692D1F0FE6F4E74A9AFD /* StoryCardTemplates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardTemplates.swift; sourceTree = "<group>"; };
+		E10E33D8D6DF7A15C2D262C9 /* StyleInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StyleInspectorView.swift; sourceTree = "<group>"; };
+		E10EA09764D244CE77B3B2A2 /* VaultConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultConnection.swift; sourceTree = "<group>"; };
+		E1117AB3FAA4011B6AEA69E5 /* VaultPropertiesForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultPropertiesForm.swift; sourceTree = "<group>"; };
+		E115CC137FABF21DC994CD40 /* AppState+Vault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Vault.swift"; sourceTree = "<group>"; };
+		E117823CF82784F07757DE80 /* StoryCardHeaderEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardHeaderEditor.swift; sourceTree = "<group>"; };
+		E11ADD0842A3DE1D65CD8144 /* DictationHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationHistoryStore.swift; sourceTree = "<group>"; };
+		E11F89E906193134417B83E1 /* VaultTabAccessory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultTabAccessory.swift; sourceTree = "<group>"; };
+		E11F9DE4E4B81A2147D3FAE1 /* MindMapAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapAIService.swift; sourceTree = "<group>"; };
+		E1206419BEFC9CC8B59F2E24 /* WindowManager+Vault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WindowManager+Vault.swift"; sourceTree = "<group>"; };
+		E1216696C0303BAC01A3B4AF /* StoryCardScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardScanner.swift; sourceTree = "<group>"; };
+		E121CCF93DD285A881465A51 /* SearchTextNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchTextNormalizer.swift; sourceTree = "<group>"; };
+		E12249C27CAA2DE06E592CFC /* VaultOpeningOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultOpeningOverlay.swift; sourceTree = "<group>"; };
+		E122DCED829920DF35639F05 /* VaultInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultInspectorView.swift; sourceTree = "<group>"; };
 		E1231BE1AC916B8E5AAB9B88 /* AppState+Inspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Inspector.swift"; sourceTree = "<group>"; };
-		E1A6A5AE5B4EE0BA23F0A195 /* AppState+MindMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+MindMap.swift"; sourceTree = "<group>"; };
+		E123692DF0495E16771CDA74 /* StyleCheckController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StyleCheckController.swift; sourceTree = "<group>"; };
+		E1246A4526CD3F169AAF71A9 /* StyleReviewService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StyleReviewService.swift; sourceTree = "<group>"; };
+		E124D4957D99020DD65434F4 /* MarkdownFolderNoteEmbedProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFolderNoteEmbedProvider.swift; sourceTree = "<group>"; };
+		E127841C9A21D4D50126A3BA /* AppState+VaultInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+VaultInspector.swift"; sourceTree = "<group>"; };
+		E127C418B21A033AA7F87C38 /* FountainLint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FountainLint.swift; sourceTree = "<group>"; };
+		E12875059A74673827B71AC6 /* SnowballRussianStemmer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnowballRussianStemmer.swift; sourceTree = "<group>"; };
+		E1320A3978947DFED0F742E6 /* AppState+AIAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+AIAvailability.swift"; sourceTree = "<group>"; };
+		E132B618DAD06F621D57C2B0 /* WriterSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterSession.swift; sourceTree = "<group>"; };
+		E132B84FB8F8111E480CF20D /* TextSegmentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextSegmentation.swift; sourceTree = "<group>"; };
+		E137CD4B684C4EA890CA00D4 /* MindMapProjectBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapProjectBuilder.swift; sourceTree = "<group>"; };
+		E13866F2B6AC3BAF0B2C25CC /* WriterProjectSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterProjectSession.swift; sourceTree = "<group>"; };
+		E13AADB53197615DFA523F3B /* VaultRequests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultRequests.swift; sourceTree = "<group>"; };
+		E13E6C26A0A08A79ACC44A8E /* WriterCombinedViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterCombinedViewController.swift; sourceTree = "<group>"; };
+		E13E7F5684221B87043E268D /* EditorTextView+VaultPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EditorTextView+VaultPage.swift"; sourceTree = "<group>"; };
+		E1419141A3B9594D16CCA041 /* AppState+Writer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Writer.swift"; sourceTree = "<group>"; };
+		E142C0824955B2E257F3777F /* VaultSnippetLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSnippetLocator.swift; sourceTree = "<group>"; };
+		E142C4294790F790AF94D780 /* WriterBoardModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterBoardModel.swift; sourceTree = "<group>"; };
+		E1438B0421C2AAB8ECD2D42E /* MarkdownNoteEmbed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownNoteEmbed.swift; sourceTree = "<group>"; };
+		E1460AF24AE54BE2D2B5D709 /* WriterAuxiliaryWindows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterAuxiliaryWindows.swift; sourceTree = "<group>"; };
+		E1470DF460FDEE8ECAB66D56 /* VaultTunnel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultTunnel.swift; sourceTree = "<group>"; };
+		E147837FB27D62FCCA8908D3 /* VaultStatusBarItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultStatusBarItem.swift; sourceTree = "<group>"; };
+		E147EC10639C280A6CDE2ADC /* WindowManager+Writer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WindowManager+Writer.swift"; sourceTree = "<group>"; };
+		E14960301F27095F1702C802 /* MindMapLinksBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapLinksBuilder.swift; sourceTree = "<group>"; };
+		E14A88F2AAD36DE524D54140 /* SearchIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchIndexer.swift; sourceTree = "<group>"; };
+		E14AD993EAE7CCC6B2888BC3 /* FountainAdaptationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FountainAdaptationService.swift; sourceTree = "<group>"; };
+		E14B6202A469C86D304AB07B /* MindMapLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapLayout.swift; sourceTree = "<group>"; };
+		E14D2988CDFE4CDFD1FF3F02 /* CriticMarkupExportAccessory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriticMarkupExportAccessory.swift; sourceTree = "<group>"; };
+		E14DB11F063C51E2977DED84 /* WindowManager+VaultUpload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WindowManager+VaultUpload.swift"; sourceTree = "<group>"; };
+		E150C47394F68CA5F76CB339 /* VaultSearchController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSearchController.swift; sourceTree = "<group>"; };
+		E15320BD37D5C7E56C1EC464 /* WriterComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterComponents.swift; sourceTree = "<group>"; };
+		E15376772685B5162D12849C /* StoryCardMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardMatcher.swift; sourceTree = "<group>"; };
+		E154EAA3E3BF45FBBE7C3CAE /* AppState+World.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+World.swift"; sourceTree = "<group>"; };
+		E15B1CCB4845DD5A20408F78 /* ManuscriptProjectAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManuscriptProjectAccess.swift; sourceTree = "<group>"; };
+		E15C789BADAF06354EC5C9B2 /* VaultConflictSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultConflictSelection.swift; sourceTree = "<group>"; };
+		E15E661F2F8D3FEE6A4EB7CE /* AIHintStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIHintStore.swift; sourceTree = "<group>"; };
+		E162442ABA0F798BCB8AD226 /* FountainExportController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FountainExportController.swift; sourceTree = "<group>"; };
+		E1690D59F61197831F368038 /* WorldCandidatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldCandidatesView.swift; sourceTree = "<group>"; };
+		E16AE6505FF2A266EA7E0842 /* StoryCardAIController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardAIController.swift; sourceTree = "<group>"; };
+		E16B33FC93562075A3E07CF8 /* FountainExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FountainExportService.swift; sourceTree = "<group>"; };
+		E16B4DBB9BA3F31FF0478D83 /* VaultNoteInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultNoteInfo.swift; sourceTree = "<group>"; };
+		E16ECF3A57B370EEAC24F17A /* SceneInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneInspectorView.swift; sourceTree = "<group>"; };
+		E16F154316F10EDFD318A6C2 /* VaultOwnerZone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultOwnerZone.swift; sourceTree = "<group>"; };
+		E16F178B232BC3EF7F9322C1 /* StyleCheckSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StyleCheckSettings.swift; sourceTree = "<group>"; };
+		E16F7CEA895A91558DB42249 /* VaultRequestsClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultRequestsClient.swift; sourceTree = "<group>"; };
+		E171A11323CDF76FBAA966BB /* VaultSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSearchView.swift; sourceTree = "<group>"; };
+		E1721EFA5B19316195917B66 /* CriticMarkupPandoc.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriticMarkupPandoc.swift; sourceTree = "<group>"; };
+		E17404C73DF32B104B74B0B0 /* VaultCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultCatalog.swift; sourceTree = "<group>"; };
+		E1764B46EB44E86FA5AF4317 /* SettingsNavigator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsNavigator.swift; sourceTree = "<group>"; };
+		E179EFB6065FFBE59A661D66 /* SearchIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchIndex.swift; sourceTree = "<group>"; };
+		E17A3A2F47B7D7424AADA7B3 /* VaultSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSidebarView.swift; sourceTree = "<group>"; };
+		E17AB0A36C48976CC911931D /* CriticMarkupRender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriticMarkupRender.swift; sourceTree = "<group>"; };
+		E17B857234764C6DEC0A1569 /* WordSearchController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordSearchController.swift; sourceTree = "<group>"; };
+		E17C5589E27BBE074A6E37B6 /* VaultLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultLinks.swift; sourceTree = "<group>"; };
+		E17FDAC75646197891B20250 /* ManuscriptTreeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManuscriptTreeView.swift; sourceTree = "<group>"; };
+		E182A30604356C05B75BE3C4 /* VaultConflictSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultConflictSheet.swift; sourceTree = "<group>"; };
+		E18399E0E306060458EE53D9 /* WriterBoardController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterBoardController.swift; sourceTree = "<group>"; };
+		E1847247F46A0D61942983F1 /* VaultClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultClient.swift; sourceTree = "<group>"; };
+		E184AFFF669F11A51805A871 /* StoryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCard.swift; sourceTree = "<group>"; };
+		E186114918DC8454C4D6484A /* WriterTabAccessory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterTabAccessory.swift; sourceTree = "<group>"; };
+		E18A2CDD9E9BC53A7C3FCEEB /* VaultMerge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultMerge.swift; sourceTree = "<group>"; };
+		E18B01E395E8977EC3016842 /* AutosaveController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutosaveController.swift; sourceTree = "<group>"; };
+		E18B881ED4AE5EE5EBC2E7A7 /* ManuscriptWordCounter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManuscriptWordCounter.swift; sourceTree = "<group>"; };
+		E18D4236A5830D7D706BA737 /* VaultPageBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultPageBanner.swift; sourceTree = "<group>"; };
+		E18F72D3842429AC133B3274 /* SnowballEnglishStemmer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnowballEnglishStemmer.swift; sourceTree = "<group>"; };
+		E1906407BFF9DD9E3CC5B8E9 /* VaultNewerBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultNewerBanner.swift; sourceTree = "<group>"; };
+		E19166D5B33A4E433E342D02 /* VaultInspectorModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultInspectorModel.swift; sourceTree = "<group>"; };
 		E192876BD073A12D60B3985E /* AppState+SearchIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+SearchIndex.swift"; sourceTree = "<group>"; };
 		E193BE6EEA2D27D0F25B0BC3 /* AppState+Snapshots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Snapshots.swift"; sourceTree = "<group>"; };
-		E115CC137FABF21DC994CD40 /* AppState+Vault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Vault.swift"; sourceTree = "<group>"; };
-		E1E6AA3E17D6019BC580CA1E /* AppState+VaultCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+VaultCapture.swift"; sourceTree = "<group>"; };
-		E1BEEC66B8950F374D192B12 /* AppState+VaultConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+VaultConnection.swift"; sourceTree = "<group>"; };
-		E127841C9A21D4D50126A3BA /* AppState+VaultInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+VaultInspector.swift"; sourceTree = "<group>"; };
-		E1966DC8B7165B59FF4085E8 /* AppState+VaultPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+VaultPage.swift"; sourceTree = "<group>"; };
-		E1E2468B1875A2F1E44328ED /* AppState+VaultSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+VaultSearch.swift"; sourceTree = "<group>"; };
-		E1C9B7FE140FDF71A184C629 /* AppState+VaultUpload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+VaultUpload.swift"; sourceTree = "<group>"; };
-		E154EAA3E3BF45FBBE7C3CAE /* AppState+World.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+World.swift"; sourceTree = "<group>"; };
-		E1419141A3B9594D16CCA041 /* AppState+Writer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Writer.swift"; sourceTree = "<group>"; };
-		E1FA971C20FF1B64E6835428 /* AppState+WriterWindows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+WriterWindows.swift"; sourceTree = "<group>"; };
-		E13E7F5684221B87043E268D /* EditorTextView+VaultPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EditorTextView+VaultPage.swift"; sourceTree = "<group>"; };
-		E1EB044828FB2DC0D81EA6CA /* MarkdownCalloutRender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownCalloutRender.swift; sourceTree = "<group>"; };
-		E124D4957D99020DD65434F4 /* MarkdownFolderNoteEmbedProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFolderNoteEmbedProvider.swift; sourceTree = "<group>"; };
-		E1438B0421C2AAB8ECD2D42E /* MarkdownNoteEmbed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownNoteEmbed.swift; sourceTree = "<group>"; };
-		E1E5F404ECCECB8C713BBD2A /* MarkdownObsidianComment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownObsidianComment.swift; sourceTree = "<group>"; };
-		E1764B46EB44E86FA5AF4317 /* SettingsNavigator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsNavigator.swift; sourceTree = "<group>"; };
-		E1A2F1F7AD04B108F66C5D5C /* VaultAskModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultAskModel.swift; sourceTree = "<group>"; };
-		E1CDEC78D5349C55AE7DAC9E /* VaultAskView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultAskView.swift; sourceTree = "<group>"; };
-		E1B3AC27795506D491C483B7 /* VaultCaptureController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultCaptureController.swift; sourceTree = "<group>"; };
-		E104CBB15E7AABBDA8A6AC41 /* VaultCaptureDraftStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultCaptureDraftStore.swift; sourceTree = "<group>"; };
-		E1A792FC6593DE66EF1D441E /* VaultCaptureOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultCaptureOverlay.swift; sourceTree = "<group>"; };
-		E17404C73DF32B104B74B0B0 /* VaultCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultCatalog.swift; sourceTree = "<group>"; };
-		E1847247F46A0D61942983F1 /* VaultClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultClient.swift; sourceTree = "<group>"; };
-		E15C789BADAF06354EC5C9B2 /* VaultConflictSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultConflictSelection.swift; sourceTree = "<group>"; };
-		E182A30604356C05B75BE3C4 /* VaultConflictSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultConflictSheet.swift; sourceTree = "<group>"; };
-		E10EA09764D244CE77B3B2A2 /* VaultConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultConnection.swift; sourceTree = "<group>"; };
-		E1DB66CA5D0408CD39FD30FF /* VaultConnectionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultConnectionSheet.swift; sourceTree = "<group>"; };
-		E1CEAAA5BD9B031AB422527E /* VaultConnectionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultConnectionStore.swift; sourceTree = "<group>"; };
-		E19C82740612532F867417F9 /* VaultFrontmatterEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultFrontmatterEditor.swift; sourceTree = "<group>"; };
-		E19166D5B33A4E433E342D02 /* VaultInspectorModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultInspectorModel.swift; sourceTree = "<group>"; };
-		E122DCED829920DF35639F05 /* VaultInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultInspectorView.swift; sourceTree = "<group>"; };
-		E17C5589E27BBE074A6E37B6 /* VaultLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultLinks.swift; sourceTree = "<group>"; };
-		E18A2CDD9E9BC53A7C3FCEEB /* VaultMerge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultMerge.swift; sourceTree = "<group>"; };
-		E1906407BFF9DD9E3CC5B8E9 /* VaultNewerBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultNewerBanner.swift; sourceTree = "<group>"; };
-		E16B4DBB9BA3F31FF0478D83 /* VaultNoteInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultNoteInfo.swift; sourceTree = "<group>"; };
-		E12249C27CAA2DE06E592CFC /* VaultOpeningOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultOpeningOverlay.swift; sourceTree = "<group>"; };
-		E16F154316F10EDFD318A6C2 /* VaultOwnerZone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultOwnerZone.swift; sourceTree = "<group>"; };
-		E18D4236A5830D7D706BA737 /* VaultPageBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultPageBanner.swift; sourceTree = "<group>"; };
-		E1C87D3B4B899DDAC75614A1 /* VaultPageGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultPageGuard.swift; sourceTree = "<group>"; };
-		E1FCC53495128B0830CE7111 /* VaultPath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultPath.swift; sourceTree = "<group>"; };
-		E1117AB3FAA4011B6AEA69E5 /* VaultPropertiesForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultPropertiesForm.swift; sourceTree = "<group>"; };
-		E1E85FA77507EB71D8DB8043 /* VaultQuickOpenPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultQuickOpenPanel.swift; sourceTree = "<group>"; };
-		E13AADB53197615DFA523F3B /* VaultRequests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultRequests.swift; sourceTree = "<group>"; };
-		E16F7CEA895A91558DB42249 /* VaultRequestsClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultRequestsClient.swift; sourceTree = "<group>"; };
-		E10805BA469A7FD639156718 /* VaultRequestsHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultRequestsHub.swift; sourceTree = "<group>"; };
-		E150C47394F68CA5F76CB339 /* VaultSearchController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSearchController.swift; sourceTree = "<group>"; };
-		E1B467221D213F64E8E21881 /* VaultSearchSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSearchSupport.swift; sourceTree = "<group>"; };
-		E171A11323CDF76FBAA966BB /* VaultSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSearchView.swift; sourceTree = "<group>"; };
-		E1B332AF2500D2BBA4CD191D /* VaultSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSession.swift; sourceTree = "<group>"; };
-		E17A3A2F47B7D7424AADA7B3 /* VaultSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSidebarView.swift; sourceTree = "<group>"; };
-		E142C0824955B2E257F3777F /* VaultSnippetLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSnippetLocator.swift; sourceTree = "<group>"; };
-		E1B032075F5247B195C54029 /* VaultStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultStateStore.swift; sourceTree = "<group>"; };
-		E1E7B4D3D303281E04CC41AB /* VaultStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultStatus.swift; sourceTree = "<group>"; };
-		E147837FB27D62FCCA8908D3 /* VaultStatusBarItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultStatusBarItem.swift; sourceTree = "<group>"; };
-		E1CFF813F4840ACF5DB56BD0 /* VaultSyncEngine+NoteInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VaultSyncEngine+NoteInfo.swift"; sourceTree = "<group>"; };
-		E1F98D0D80FAA97A6EC0064E /* VaultSyncEngine+Upload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VaultSyncEngine+Upload.swift"; sourceTree = "<group>"; };
-		E1E044CC483923F7EB1D5F95 /* VaultSyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSyncEngine.swift; sourceTree = "<group>"; };
-		E19A3B2F6498E6072171C4BE /* VaultSyncStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSyncStatusView.swift; sourceTree = "<group>"; };
-		E11F89E906193134417B83E1 /* VaultTabAccessory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultTabAccessory.swift; sourceTree = "<group>"; };
-		E1470DF460FDEE8ECAB66D56 /* VaultTunnel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultTunnel.swift; sourceTree = "<group>"; };
-		E1A4AC518BCA730BEA20C593 /* VaultUnsentSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultUnsentSummary.swift; sourceTree = "<group>"; };
-		E1DC7604A9B3C4ECEB1A06F8 /* VaultUploadModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultUploadModels.swift; sourceTree = "<group>"; };
-		E1206419BEFC9CC8B59F2E24 /* WindowManager+Vault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WindowManager+Vault.swift"; sourceTree = "<group>"; };
-		E14DB11F063C51E2977DED84 /* WindowManager+VaultUpload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WindowManager+VaultUpload.swift"; sourceTree = "<group>"; };
-		E147EC10639C280A6CDE2ADC /* WindowManager+Writer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WindowManager+Writer.swift"; sourceTree = "<group>"; };
-		E1460AF24AE54BE2D2B5D709 /* WriterAuxiliaryWindows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterAuxiliaryWindows.swift; sourceTree = "<group>"; };
-		E1C8EAFD85E4432B22CB9FE1 /* StyleMarks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StyleMarks.swift; sourceTree = "<group>"; };
-		E1BDB26938649A60A6A64D0A /* AIAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIAvailability.swift; sourceTree = "<group>"; };
-		E15E661F2F8D3FEE6A4EB7CE /* AIHintStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIHintStore.swift; sourceTree = "<group>"; };
-		E127C418B21A033AA7F87C38 /* FountainLint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FountainLint.swift; sourceTree = "<group>"; };
-		E1DBE28ECFBC0E0FE39DC608 /* InspectorSegment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorSegment.swift; sourceTree = "<group>"; };
 		E19432D10F521B63377DF736 /* ManuscriptProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManuscriptProject.swift; sourceTree = "<group>"; };
-		E1D79145414E543BECFAC4C2 /* MindMapDocumentParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapDocumentParser.swift; sourceTree = "<group>"; };
-		E1F66D76D062602D9845A9B0 /* MindMapEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapEditor.swift; sourceTree = "<group>"; };
-		E14B6202A469C86D304AB07B /* MindMapLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapLayout.swift; sourceTree = "<group>"; };
-		E14960301F27095F1702C802 /* MindMapLinksBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapLinksBuilder.swift; sourceTree = "<group>"; };
-		E1FC7E22E5590470E07CBC7C /* MindMapModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapModel.swift; sourceTree = "<group>"; };
-		E137CD4B684C4EA890CA00D4 /* MindMapProjectBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapProjectBuilder.swift; sourceTree = "<group>"; };
-		E19D7B649BDDDB87C378037D /* MindMapSVGExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapSVGExporter.swift; sourceTree = "<group>"; };
-		E1B5BDDDB10907EE6758C671 /* SceneSynopsisDrafter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneSynopsisDrafter.swift; sourceTree = "<group>"; };
-		E18F72D3842429AC133B3274 /* SnowballEnglishStemmer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnowballEnglishStemmer.swift; sourceTree = "<group>"; };
-		E12875059A74673827B71AC6 /* SnowballRussianStemmer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnowballRussianStemmer.swift; sourceTree = "<group>"; };
-		E1AED7593FD47587E2E894C8 /* StopWordLists.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StopWordLists.swift; sourceTree = "<group>"; };
-		E1EB0AE0AD02BD0E5D6C743E /* StopWords.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StopWords.swift; sourceTree = "<group>"; };
-		E184AFFF669F11A51805A871 /* StoryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCard.swift; sourceTree = "<group>"; };
-		E117823CF82784F07757DE80 /* StoryCardHeaderEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardHeaderEditor.swift; sourceTree = "<group>"; };
-		E15376772685B5162D12849C /* StoryCardMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardMatcher.swift; sourceTree = "<group>"; };
-		E16F178B232BC3EF7F9322C1 /* StyleCheckSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StyleCheckSettings.swift; sourceTree = "<group>"; };
-		E1DBD9237B7B5DD7274B732E /* StyleFinding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StyleFinding.swift; sourceTree = "<group>"; };
-		E1E5E5F4CF6BFD6FDB9BD86F /* StyleProseMask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StyleProseMask.swift; sourceTree = "<group>"; };
-		E132B84FB8F8111E480CF20D /* TextSegmentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextSegmentation.swift; sourceTree = "<group>"; };
-		E1D065BEFB4541B8D898F441 /* WordNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordNormalizer.swift; sourceTree = "<group>"; };
-		E142C4294790F790AF94D780 /* WriterBoardModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterBoardModel.swift; sourceTree = "<group>"; };
-		E19ED61B4DEF461557FD5527 /* WriterCombinedPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterCombinedPage.swift; sourceTree = "<group>"; };
-		E18B01E395E8977EC3016842 /* AutosaveController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutosaveController.swift; sourceTree = "<group>"; };
-		E1721EFA5B19316195917B66 /* CriticMarkupPandoc.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriticMarkupPandoc.swift; sourceTree = "<group>"; };
-		E17AB0A36C48976CC911931D /* CriticMarkupRender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriticMarkupRender.swift; sourceTree = "<group>"; };
-		E11ADD0842A3DE1D65CD8144 /* DictationHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationHistoryStore.swift; sourceTree = "<group>"; };
-		E1E53CE703144900F0AAE691 /* DocumentSnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentSnapshotStore.swift; sourceTree = "<group>"; };
-		E14AD993EAE7CCC6B2888BC3 /* FountainAdaptationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FountainAdaptationService.swift; sourceTree = "<group>"; };
-		E162442ABA0F798BCB8AD226 /* FountainExportController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FountainExportController.swift; sourceTree = "<group>"; };
-		E16B33FC93562075A3E07CF8 /* FountainExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FountainExportService.swift; sourceTree = "<group>"; };
-		E15B1CCB4845DD5A20408F78 /* ManuscriptProjectAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManuscriptProjectAccess.swift; sourceTree = "<group>"; };
-		E1D02E24C46056E72C789E9D /* ManuscriptProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManuscriptProjectStore.swift; sourceTree = "<group>"; };
-		E18B881ED4AE5EE5EBC2E7A7 /* ManuscriptWordCounter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManuscriptWordCounter.swift; sourceTree = "<group>"; };
-		E11F9DE4E4B81A2147D3FAE1 /* MindMapAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapAIService.swift; sourceTree = "<group>"; };
-		E104697D0EF9E97143BF411B /* MindMapController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapController.swift; sourceTree = "<group>"; };
-		E1E7F5468AFA1863C11D5654 /* MindMapZoomRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapZoomRouter.swift; sourceTree = "<group>"; };
-		E1AA9D256A965370BB9EF223 /* SearchExpansionBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchExpansionBuilder.swift; sourceTree = "<group>"; };
-		E1D50C2493A7A115A7EC9499 /* SearchHighlight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchHighlight.swift; sourceTree = "<group>"; };
-		E179EFB6065FFBE59A661D66 /* SearchIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchIndex.swift; sourceTree = "<group>"; };
-		E1ABDB608B41F928CDE1115F /* SearchIndexChunker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchIndexChunker.swift; sourceTree = "<group>"; };
-		E10B10E7E7D9C35B2356A586 /* SearchIndexDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchIndexDatabase.swift; sourceTree = "<group>"; };
-		E1E801A9CE8C99BEC478229A /* SearchIndexRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchIndexRegistry.swift; sourceTree = "<group>"; };
-		E14A88F2AAD36DE524D54140 /* SearchIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchIndexer.swift; sourceTree = "<group>"; };
-		E1082289E7652FD0A6C6B557 /* SearchLiveDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchLiveDocument.swift; sourceTree = "<group>"; };
-		E1E4CDC680B3D6A1AB9031D5 /* SearchQuery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchQuery.swift; sourceTree = "<group>"; };
-		E121CCF93DD285A881465A51 /* SearchTextNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchTextNormalizer.swift; sourceTree = "<group>"; };
-		E16AE6505FF2A266EA7E0842 /* StoryCardAIController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardAIController.swift; sourceTree = "<group>"; };
-		E1D22AFFD860DF6263299CA4 /* StoryCardAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardAIService.swift; sourceTree = "<group>"; };
-		E1A8F986FD323C602DF1975D /* StoryCardCandidateFinder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardCandidateFinder.swift; sourceTree = "<group>"; };
-		E1C506E05210A577276D195A /* StoryCardCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardCatalog.swift; sourceTree = "<group>"; };
-		E1F8CC1B2C1680F94215991B /* StoryCardMentionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardMentionService.swift; sourceTree = "<group>"; };
-		E1216696C0303BAC01A3B4AF /* StoryCardScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardScanner.swift; sourceTree = "<group>"; };
-		E10D692D1F0FE6F4E74A9AFD /* StoryCardTemplates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardTemplates.swift; sourceTree = "<group>"; };
-		E1DD7AC7FB08527900F3F8F2 /* StoryCardWorld.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardWorld.swift; sourceTree = "<group>"; };
-		E123692DF0495E16771CDA74 /* StyleCheckController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StyleCheckController.swift; sourceTree = "<group>"; };
-		E1E834C952C5CC92E2977025 /* StyleCheckService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StyleCheckService.swift; sourceTree = "<group>"; };
-		E1246A4526CD3F169AAF71A9 /* StyleReviewService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StyleReviewService.swift; sourceTree = "<group>"; };
-		E17B857234764C6DEC0A1569 /* WordSearchController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordSearchController.swift; sourceTree = "<group>"; };
-		E18399E0E306060458EE53D9 /* WriterBoardController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterBoardController.swift; sourceTree = "<group>"; };
-		E13E6C26A0A08A79ACC44A8E /* WriterCombinedViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterCombinedViewController.swift; sourceTree = "<group>"; };
-		E10D42309D8F92C43518104F /* WriterNodeTextLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterNodeTextLoader.swift; sourceTree = "<group>"; };
-		E13866F2B6AC3BAF0B2C25CC /* WriterProjectSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterProjectSession.swift; sourceTree = "<group>"; };
-		E132B618DAD06F621D57C2B0 /* WriterSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterSession.swift; sourceTree = "<group>"; };
-		E14D2988CDFE4CDFD1FF3F02 /* CriticMarkupExportAccessory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriticMarkupExportAccessory.swift; sourceTree = "<group>"; };
-		E1A1687BBB0BD1C7B6126F31 /* FountainExportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FountainExportView.swift; sourceTree = "<group>"; };
-		E1A6AA102F1D467996028CFF /* InspectorPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorPanelView.swift; sourceTree = "<group>"; };
-		E10CA445D25BFF941F3E61AF /* ManuscriptProjectWizard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManuscriptProjectWizard.swift; sourceTree = "<group>"; };
-		E17FDAC75646197891B20250 /* ManuscriptTreeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManuscriptTreeView.swift; sourceTree = "<group>"; };
-		E1E0EBEEEC925BD8CA9B6AD4 /* MindMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapView.swift; sourceTree = "<group>"; };
-		E16ECF3A57B370EEAC24F17A /* SceneInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneInspectorView.swift; sourceTree = "<group>"; };
-		E1CE49680C5096D3F15EB2A8 /* SnapshotsSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotsSectionView.swift; sourceTree = "<group>"; };
-		E1D06079BF097C68EF008582 /* StoryCardInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardInspectorView.swift; sourceTree = "<group>"; };
+		E1966DC8B7165B59FF4085E8 /* AppState+VaultPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+VaultPage.swift"; sourceTree = "<group>"; };
 		E1982A062D487CF206B06D32 /* StoryCardMentionsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardMentionsSection.swift; sourceTree = "<group>"; };
-		E10E33D8D6DF7A15C2D262C9 /* StyleInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StyleInspectorView.swift; sourceTree = "<group>"; };
-		E1690D59F61197831F368038 /* WorldCandidatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldCandidatesView.swift; sourceTree = "<group>"; };
-		E1E727CA274FBCB1C9AD1FB1 /* WorldSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldSectionView.swift; sourceTree = "<group>"; };
-		E1F99941F97700D1A0B1E50E /* WriterBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterBoardView.swift; sourceTree = "<group>"; };
-		E1B2BB0FC48D53CC68933201 /* WriterCombinedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterCombinedView.swift; sourceTree = "<group>"; };
-		E15320BD37D5C7E56C1EC464 /* WriterComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterComponents.swift; sourceTree = "<group>"; };
+		E19A3B2F6498E6072171C4BE /* VaultSyncStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSyncStatusView.swift; sourceTree = "<group>"; };
+		E19C82740612532F867417F9 /* VaultFrontmatterEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultFrontmatterEditor.swift; sourceTree = "<group>"; };
+		E19D7B649BDDDB87C378037D /* MindMapSVGExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapSVGExporter.swift; sourceTree = "<group>"; };
+		E19ED61B4DEF461557FD5527 /* WriterCombinedPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterCombinedPage.swift; sourceTree = "<group>"; };
+		E1A1687BBB0BD1C7B6126F31 /* FountainExportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FountainExportView.swift; sourceTree = "<group>"; };
+		E1A2F1F7AD04B108F66C5D5C /* VaultAskModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultAskModel.swift; sourceTree = "<group>"; };
+		E1A4AC518BCA730BEA20C593 /* VaultUnsentSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultUnsentSummary.swift; sourceTree = "<group>"; };
+		E1A6A5AE5B4EE0BA23F0A195 /* AppState+MindMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+MindMap.swift"; sourceTree = "<group>"; };
+		E1A6AA102F1D467996028CFF /* InspectorPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorPanelView.swift; sourceTree = "<group>"; };
+		E1A792FC6593DE66EF1D441E /* VaultCaptureOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultCaptureOverlay.swift; sourceTree = "<group>"; };
+		E1A8F986FD323C602DF1975D /* StoryCardCandidateFinder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardCandidateFinder.swift; sourceTree = "<group>"; };
+		E1AA9D256A965370BB9EF223 /* SearchExpansionBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchExpansionBuilder.swift; sourceTree = "<group>"; };
+		E1ABDB608B41F928CDE1115F /* SearchIndexChunker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchIndexChunker.swift; sourceTree = "<group>"; };
+		E1AED7593FD47587E2E894C8 /* StopWordLists.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StopWordLists.swift; sourceTree = "<group>"; };
 		E1AFF6B377BE2F472D1DADD9 /* WriterProjectBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterProjectBanner.swift; sourceTree = "<group>"; };
-		E186114918DC8454C4D6484A /* WriterTabAccessory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterTabAccessory.swift; sourceTree = "<group>"; };
+		E1B032075F5247B195C54029 /* VaultStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultStateStore.swift; sourceTree = "<group>"; };
+		E1B2BB0FC48D53CC68933201 /* WriterCombinedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterCombinedView.swift; sourceTree = "<group>"; };
+		E1B332AF2500D2BBA4CD191D /* VaultSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSession.swift; sourceTree = "<group>"; };
+		E1B3AC27795506D491C483B7 /* VaultCaptureController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultCaptureController.swift; sourceTree = "<group>"; };
+		E1B467221D213F64E8E21881 /* VaultSearchSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSearchSupport.swift; sourceTree = "<group>"; };
+		E1B5BDDDB10907EE6758C671 /* SceneSynopsisDrafter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneSynopsisDrafter.swift; sourceTree = "<group>"; };
+		E1BDB26938649A60A6A64D0A /* AIAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIAvailability.swift; sourceTree = "<group>"; };
+		E1BEEC66B8950F374D192B12 /* AppState+VaultConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+VaultConnection.swift"; sourceTree = "<group>"; };
+		E1C506E05210A577276D195A /* StoryCardCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardCatalog.swift; sourceTree = "<group>"; };
+		E1C603C1CFF84ABBFD43D2C4 /* AppState+CriticMarkup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+CriticMarkup.swift"; sourceTree = "<group>"; };
+		E1C87D3B4B899DDAC75614A1 /* VaultPageGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultPageGuard.swift; sourceTree = "<group>"; };
+		E1C8EAFD85E4432B22CB9FE1 /* StyleMarks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StyleMarks.swift; sourceTree = "<group>"; };
+		E1C9B7FE140FDF71A184C629 /* AppState+VaultUpload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+VaultUpload.swift"; sourceTree = "<group>"; };
+		E1CDEC78D5349C55AE7DAC9E /* VaultAskView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultAskView.swift; sourceTree = "<group>"; };
+		E1CE49680C5096D3F15EB2A8 /* SnapshotsSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotsSectionView.swift; sourceTree = "<group>"; };
+		E1CEAAA5BD9B031AB422527E /* VaultConnectionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultConnectionStore.swift; sourceTree = "<group>"; };
+		E1CFF813F4840ACF5DB56BD0 /* VaultSyncEngine+NoteInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VaultSyncEngine+NoteInfo.swift"; sourceTree = "<group>"; };
+		E1D02E24C46056E72C789E9D /* ManuscriptProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManuscriptProjectStore.swift; sourceTree = "<group>"; };
+		E1D06079BF097C68EF008582 /* StoryCardInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardInspectorView.swift; sourceTree = "<group>"; };
+		E1D065BEFB4541B8D898F441 /* WordNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordNormalizer.swift; sourceTree = "<group>"; };
+		E1D22AFFD860DF6263299CA4 /* StoryCardAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardAIService.swift; sourceTree = "<group>"; };
+		E1D50C2493A7A115A7EC9499 /* SearchHighlight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchHighlight.swift; sourceTree = "<group>"; };
+		E1D79145414E543BECFAC4C2 /* MindMapDocumentParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapDocumentParser.swift; sourceTree = "<group>"; };
+		E1DB66CA5D0408CD39FD30FF /* VaultConnectionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultConnectionSheet.swift; sourceTree = "<group>"; };
+		E1DBD9237B7B5DD7274B732E /* StyleFinding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StyleFinding.swift; sourceTree = "<group>"; };
+		E1DBE28ECFBC0E0FE39DC608 /* InspectorSegment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorSegment.swift; sourceTree = "<group>"; };
+		E1DC7604A9B3C4ECEB1A06F8 /* VaultUploadModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultUploadModels.swift; sourceTree = "<group>"; };
+		E1DD7AC7FB08527900F3F8F2 /* StoryCardWorld.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardWorld.swift; sourceTree = "<group>"; };
+		E1E044CC483923F7EB1D5F95 /* VaultSyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSyncEngine.swift; sourceTree = "<group>"; };
+		E1E0EBEEEC925BD8CA9B6AD4 /* MindMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapView.swift; sourceTree = "<group>"; };
+		E1E2468B1875A2F1E44328ED /* AppState+VaultSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+VaultSearch.swift"; sourceTree = "<group>"; };
+		E1E4CDC680B3D6A1AB9031D5 /* SearchQuery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchQuery.swift; sourceTree = "<group>"; };
+		E1E53CE703144900F0AAE691 /* DocumentSnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentSnapshotStore.swift; sourceTree = "<group>"; };
+		E1E5E5F4CF6BFD6FDB9BD86F /* StyleProseMask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StyleProseMask.swift; sourceTree = "<group>"; };
+		E1E5F404ECCECB8C713BBD2A /* MarkdownObsidianComment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownObsidianComment.swift; sourceTree = "<group>"; };
+		E1E6AA3E17D6019BC580CA1E /* AppState+VaultCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+VaultCapture.swift"; sourceTree = "<group>"; };
+		E1E727CA274FBCB1C9AD1FB1 /* WorldSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldSectionView.swift; sourceTree = "<group>"; };
+		E1E7B4D3D303281E04CC41AB /* VaultStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultStatus.swift; sourceTree = "<group>"; };
+		E1E7F5468AFA1863C11D5654 /* MindMapZoomRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapZoomRouter.swift; sourceTree = "<group>"; };
+		E1E801A9CE8C99BEC478229A /* SearchIndexRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchIndexRegistry.swift; sourceTree = "<group>"; };
+		E1E834C952C5CC92E2977025 /* StyleCheckService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StyleCheckService.swift; sourceTree = "<group>"; };
+		E1E85FA77507EB71D8DB8043 /* VaultQuickOpenPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultQuickOpenPanel.swift; sourceTree = "<group>"; };
+		E1EB044828FB2DC0D81EA6CA /* MarkdownCalloutRender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownCalloutRender.swift; sourceTree = "<group>"; };
+		E1EB0AE0AD02BD0E5D6C743E /* StopWords.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StopWords.swift; sourceTree = "<group>"; };
+		E1F66D76D062602D9845A9B0 /* MindMapEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapEditor.swift; sourceTree = "<group>"; };
+		E1F7517B146A31501D1432A8 /* AppState+Fountain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Fountain.swift"; sourceTree = "<group>"; };
+		E1F8CC1B2C1680F94215991B /* StoryCardMentionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryCardMentionService.swift; sourceTree = "<group>"; };
+		E1F98D0D80FAA97A6EC0064E /* VaultSyncEngine+Upload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VaultSyncEngine+Upload.swift"; sourceTree = "<group>"; };
+		E1F99941F97700D1A0B1E50E /* WriterBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriterBoardView.swift; sourceTree = "<group>"; };
+		E1FA971C20FF1B64E6835428 /* AppState+WriterWindows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+WriterWindows.swift"; sourceTree = "<group>"; };
+		E1FC7E22E5590470E07CBC7C /* MindMapModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MindMapModel.swift; sourceTree = "<group>"; };
+		E1FCC53495128B0830CE7111 /* VaultPath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultPath.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		14A1571B309A70050055CB72 /* LacEditorTests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = LacEditorTests; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
 /* Begin PBXFrameworksBuildPhase section */
+		14A15717309A70050055CB72 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A00000000000000000000201 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -853,6 +875,7 @@
 				141E168E3097EDDE00079103 /* lacedit */,
 				A00000000000000000000901 /* Config/UIExperiment.xcconfig */,
 				A00000000000000000000301 /* LacEditor */,
+				14A1571B309A70050055CB72 /* LacEditorTests */,
 				A00000000000000000000309 /* Frameworks */,
 				A0000000000000000000030A /* Products */,
 				14E906EA309332670019953B /* Recovered References */,
@@ -1291,6 +1314,7 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000020 /* LacEditor.app */,
+				14A1571A309A70050055CB72 /* LacEditorTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -1298,6 +1322,29 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		14A15719309A70050055CB72 /* LacEditorTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 14A15723309A70050055CB72 /* Build configuration list for PBXNativeTarget "LacEditorTests" */;
+			buildPhases = (
+				14A15716309A70050055CB72 /* Sources */,
+				14A15717309A70050055CB72 /* Frameworks */,
+				14A15718309A70050055CB72 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				14A1571F309A70050055CB72 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				14A1571B309A70050055CB72 /* LacEditorTests */,
+			);
+			name = LacEditorTests;
+			packageProductDependencies = (
+			);
+			productName = LacEditorTests;
+			productReference = 14A1571A309A70050055CB72 /* LacEditorTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		A00000000000000000000400 /* LacEditor */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A00000000000000000000701 /* Build configuration list for PBXNativeTarget "LacEditor" */;
@@ -1343,9 +1390,13 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1600;
+				LastSwiftUpdateCheck = 2720;
 				LastUpgradeCheck = 2720;
 				TargetAttributes = {
+					14A15719309A70050055CB72 = {
+						CreatedOnToolsVersion = 27.2;
+						TestTargetID = A00000000000000000000400;
+					};
 					A00000000000000000000400 = {
 						CreatedOnToolsVersion = 16.0;
 					};
@@ -1384,11 +1435,19 @@
 			projectRoot = "";
 			targets = (
 				A00000000000000000000400 /* LacEditor */,
+				14A15719309A70050055CB72 /* LacEditorTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		14A15718309A70050055CB72 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A00000000000000000000202 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1434,6 +1493,13 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		14A15716309A70050055CB72 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A00000000000000000000200 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1789,6 +1855,14 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		14A1571F309A70050055CB72 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A00000000000000000000400 /* LacEditor */;
+			targetProxy = 14A1571E309A70050055CB72 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin PBXVariantGroup section */
 		A00000000000000000000038 /* Localizable.strings */ = {
 			isa = PBXVariantGroup;
@@ -1813,6 +1887,151 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		14A15720309A70050055CB72 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 3VG5RQZK28;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.6;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.koslaceditor.development.LacEditorTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LacEditor.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/LacEditor";
+				XROS_DEPLOYMENT_TARGET = 27.2;
+			};
+			name = Debug;
+		};
+		14A15721309A70050055CB72 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 3VG5RQZK28;
+				ENABLE_NS_ASSERTIONS = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.6;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.koslaceditor.development.LacEditorTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LacEditor.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/LacEditor";
+				XROS_DEPLOYMENT_TARGET = 27.2;
+			};
+			name = Release;
+		};
+		14A15722309A70050055CB72 /* Experimental */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 3VG5RQZK28;
+				ENABLE_NS_ASSERTIONS = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.6;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.koslaceditor.development.LacEditorTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LacEditor.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/LacEditor";
+				XROS_DEPLOYMENT_TARGET = 27.2;
+			};
+			name = Experimental;
+		};
 		A00000000000000000000600 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1957,11 +2176,13 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				AUTOMATION_APPLE_EVENTS = NO;
 				CLANG_ENABLE_OBJC_WEAK = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 81;
 				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 3VG5RQZK28;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
@@ -1975,7 +2196,7 @@
 				INFOPLIST_FILE = "Config/Info-Development.plist";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHighResolutionCapable = YES;
-				LACEDITOR_DEVELOPMENT_NAME = "LacEditor 开发版";
+				LACEDITOR_DEVELOPMENT_NAME = "LacEditor TEST";
 				LACEDITOR_RELEASE_STAGE = "";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
@@ -2003,12 +2224,14 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				AUTOMATION_APPLE_EVENTS = NO;
 				CLANG_ENABLE_OBJC_WEAK = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 81;
 				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 3VG5RQZK28;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
@@ -2052,10 +2275,12 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				AUTOMATION_APPLE_EVENTS = NO;
 				CLANG_ENABLE_OBJC_WEAK = YES;
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 81;
 				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 3VG5RQZK28;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
@@ -2065,6 +2290,8 @@
 				ENABLE_RESOURCE_ACCESS_LOCATION = YES;
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				INFOPLIST_KEY_NSHighResolutionCapable = YES;
+				LACEDITOR_DEVELOPMENT_NAME = "LacEditor Experiment";
 				MARKETING_VERSION = 1.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.koslaceditor.ui-experiment";
 				PRODUCT_NAME = LacEditor;
@@ -2081,6 +2308,16 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		14A15723309A70050055CB72 /* Build configuration list for PBXNativeTarget "LacEditorTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				14A15720309A70050055CB72 /* Debug */,
+				14A15721309A70050055CB72 /* Release */,
+				14A15722309A70050055CB72 /* Experimental */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		A00000000000000000000700 /* Build configuration list for PBXProject "LacEditor" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

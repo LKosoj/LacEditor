@@ -253,7 +253,7 @@ enum ListContinuationService {
         while position > 0 {
             let previous = markdownLine(in: text, at: position - 1)
             let raw = text.substring(with: previous) as NSString
-            guard raw.hasPrefix(quote) else { return false }
+            guard quote.isEmpty || raw.hasPrefix(quote) else { return false }
             let offset = (quote as NSString).length
             var end = offset
             while end < raw.length && (raw.character(at: end) == 32 || raw.character(at: end) == 9) { end += 1 }
@@ -293,7 +293,7 @@ enum ListContinuationService {
         while end < text.length {
             let next = markdownLine(in: text, at: end)
             let nextRaw = text.substring(with: next) as NSString
-            guard nextRaw.hasPrefix(quote) else {
+            guard quote.isEmpty || nextRaw.hasPrefix(quote) else {
                 if quote.isEmpty { break }
                 return nil
             }

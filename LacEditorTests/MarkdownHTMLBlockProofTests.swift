@@ -175,7 +175,7 @@ final class MarkdownHTMLBlockProofTests: XCTestCase {
         }
 
         func detailsView() -> NSView? {
-            view.subviews.first(where: { String(describing: type(of: $0)).hasSuffix("MarkdownDetailsView") })
+            view.subviews.first(where: { String(describing: Swift.type(of: $0)).hasSuffix("MarkdownDetailsView") })
         }
 
         /// Стрелка раскрытия: её состояние показывает, открыт ли блок на экране.
@@ -204,12 +204,12 @@ final class MarkdownHTMLBlockProofTests: XCTestCase {
 
     @MainActor
     func testTypingOutsideKeepsDetailsOpenState() async throws {
-        let source = "intro words\n\n<details>\n<summary>Sum</summary>\n\nbody words\n</details>\n\nend words\n"
+        let source = "intro words\n\n<details>\n<summary>Sum</summary>\nbody words\n</details>\n\nend words\n"
         let fixture = InsertShiftFixture(source, selecting: "end words")
         defer { fixture.close() }
         let raw = source as NSString
-        let block = raw.range(of: "<details>\n<summary>Sum</summary>\n\nbody words\n</details>")
-        try await fixture.wait { fixture.layout.canDisplayMarkdownMedia(block) && fixture.controller.detailsOpenOverrides.isEmpty }
+        let block = raw.range(of: "<details>\n<summary>Sum</summary>\nbody words\n</details>")
+        try await fixture.wait { fixture.detailsView() != nil && fixture.controller.detailsOpenOverrides.isEmpty }
         XCTAssertTrue(fixture.openDetails())
         XCTAssertEqual(fixture.controller.detailsOpenOverrides, [block: true])
         let before = try XCTUnwrap(fixture.detailsView())
@@ -225,7 +225,7 @@ final class MarkdownHTMLBlockProofTests: XCTestCase {
 
     @MainActor
     func testUnconfirmedEditDropsInsertsAndDetailsState() async throws {
-        let source = "intro words\n\n<details>\n<summary>Sum</summary>\n\nbody words\n</details>\n\n<div><p>中文</p></div>\n\nend words\n"
+        let source = "intro words\n\n<details>\n<summary>Sum</summary>\nbody words\n</details>\n\n<div><p>中文</p></div>\n\nend words\n"
         let fixture = InsertShiftFixture(source, selecting: "end words")
         defer { fixture.close() }
         try await fixture.wait { !fixture.htmlViews().isEmpty }
@@ -270,7 +270,8 @@ final class MarkdownHTMLBlockProofTests: XCTestCase {
         XCTAssertFalse(before.isEmpty)
         fixture.type(after: "intro wor")
         let shifted = try XCTUnwrap(fixture.layout.markdownListsSnapshot["inlineImages"])
-        XCTAssertEqual(shifted, [before[0] + 1, before[1]])
+        let expected = try XCTUnwrap(before.count >= 2 ? [before[0] + 1, before[1]] : nil)
+        XCTAssertEqual(shifted, expected)
         try await fixture.settle()
         XCTAssertEqual(fixture.layout.markdownListsSnapshot["inlineImages"], shifted)
         XCTAssertEqual(fixture.layout.markdownListsSnapshot["rubyBaselines"]?.first, shifted.first)

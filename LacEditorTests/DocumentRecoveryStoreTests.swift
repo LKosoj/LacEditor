@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import XCTest
 @testable import LacEditor
@@ -290,7 +291,7 @@ final class DocumentRecoveryStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testWindowManagerBuildsDirtyDocumentThatRequiresExplicitSave() throws {
+    func testWindowManagerBuildsDirtyDocumentThatRequiresExplicitSave() async throws {
         let directory = makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let recoveryURL = directory.appendingPathComponent("Recovery")
@@ -307,6 +308,16 @@ final class DocumentRecoveryStoreTests: XCTestCase {
         let relaunchedStore = DocumentRecoveryStore(rootURL: recoveryURL)
         let manager = WindowManager(recoveryStore: relaunchedStore)
         let document = try XCTUnwrap(manager.takeRecoveredDocuments().first)
+        _ = NSApplication.shared
+        let state = AppState(initialDocument: document, recentFiles: manager.recentFiles, preferences: manager.preferences, recoveryStore: relaunchedStore)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        manager.register(windowID: UUID(), state: state, window: window)
+        defer { window.delegate = nil; window.close() }
+        for _ in 0..<100 where document.ioState == .opening {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(document.ioState, .idle)
         XCTAssertEqual(document.id, documentID)
         XCTAssertEqual(document.text, "unsaved text")
         XCTAssertTrue(document.isDirty)

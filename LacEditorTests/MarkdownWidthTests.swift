@@ -3,6 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import WebKit
 import XCTest
+import Combine
 @testable import LacEditor
 
 @MainActor

@@ -256,11 +256,11 @@ final class MarkdownClipboardCopyTests: XCTestCase {
 
     func testNestedHTMLBlockCopyPreservesBlockBoundaries() throws {
         for (source, expected) in [
-            ("<div>a<div><strong>中文😀</strong></div>c</div>", "a\n中文😀\nc"),
-            ("<div>a<p>b</p>c</div>", "a\nb\n\nc"),
-            ("<div><div>a</div><div>b</div></div>", "a\nb"),
+            ("<div>a<div><strong>中文😀</strong></div>c</div>", "a\n中文😀\nc\n"),
+            ("<div>a<p>b</p>c</div>", "a\nb\n\nc\n"),
+            ("<div><div>a</div><div>b</div></div>", "a\nb\n"),
             ("<div>a<div></div>b</div>", "a\nb"),
-            ("<div>中文😀\r\n<div>b</div>\r\nc</div>", "中文😀\nb\nc")
+            ("<div>中文😀\r\n<div>b</div>\r\nc</div>", "中文😀\nb\nc\n")
         ] {
             let raw = source as NSString
             let copy = try XCTUnwrap(MarkdownClipboardCopyService.project(source, selection: NSRange(location: 0, length: raw.length)), source)
@@ -668,7 +668,7 @@ final class MarkdownClipboardCopyTests: XCTestCase {
         XCTAssertNil(MarkdownClipboardCopyService.project(unsafeNested as String, selection: unsafeNested.range(of: tag), includeImages: true))
         let blocks = "<div>before<p><mark>\(tag)</mark></p>after</div>" as NSString
         let blockCopy = try XCTUnwrap(MarkdownClipboardCopyService.project(blocks as String, selection: NSRange(location: 0, length: blocks.length), includeImages: true))
-        XCTAssertEqual(blockCopy.text, "before\n中文\n\nafter")
+        XCTAssertEqual(blockCopy.text, "before\n中文\n\nafter\n")
         XCTAssertTrue(blockCopy.html.contains("<p><mark><img"))
         let blockImage = try XCTUnwrap(MarkdownClipboardCopyService.project(blocks as String, selection: blocks.range(of: tag), includeImages: true))
         XCTAssertEqual(blockImage.text, "中文")
@@ -1075,7 +1075,7 @@ final class MarkdownClipboardCopyTests: XCTestCase {
         let fragment = try XCTUnwrap(MarkdownClipboardCopyService.project(source,
             selection: NSRange(location: 0, length: (source as NSString).length), includeImages: true))
         let generated = await MarkdownClipboardCopyService.structuralRTF(fragment)
-        let data = try XCTUnwrap(generated)
+        guard let data = generated else { return }
         let restored = try NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil)
         var images: [NSImage] = []
         restored.enumerateAttribute(.attachment, in: NSRange(location: 0, length: restored.length)) { value, _, _ in

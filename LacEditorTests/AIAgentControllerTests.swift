@@ -918,8 +918,9 @@ final class AIAgentControllerTests: XCTestCase {
             for catalog in catalogs { XCTAssertTrue(catalog.contains("\"\(key)\" ="), key) }
             for catalog in catalogs.dropFirst() {
                 let line = catalog.components(separatedBy: "\n").first { $0.hasPrefix("\"\(key)\" =") } ?? ""
-                XCTAssertEqual(line.components(separatedBy: "%lld").count, key.components(separatedBy: "%lld").count, key)
-                XCTAssertEqual(line.components(separatedBy: "%@").count, key.components(separatedBy: "%@").count, key)
+                let value = line.components(separatedBy: "\" = \"").dropFirst().joined(separator: "\" = \"")
+                XCTAssertEqual(value.components(separatedBy: "%lld").count, key.components(separatedBy: "%lld").count, key)
+                XCTAssertEqual(value.components(separatedBy: "%@").count, key.components(separatedBy: "%@").count, key)
             }
         }
         for catalog in catalogs {

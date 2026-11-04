@@ -17,13 +17,15 @@ enum ClipboardMarkdownConversionService {
 
     // Count only explicit picture groups, pairing the adjacent Word fallback
     // representation with its primary picture. Ambiguous RTF is rejected.
-    static func rtfPictureCount(_ data: Data, isCancelled: () -> Bool = { false }) -> Int? {
+    static func rtfPictureCount(_ data: Data, isCancelled: () -> Bool = { false },
+                                fallbackRanges: UnsafeMutablePointer<[Range<Int>]>? = nil) -> Int? {
         enum Kind { case other, picture, primary, fallback }
         struct Group {
             var kind: Kind = .other
             var header = true
             var count = 0
             var pendingPrimary = false
+            var start = 0
         }
         if isCancelled() { return nil }
         let bytes = [UInt8](data)
@@ -34,7 +36,7 @@ enum ClipboardMarkdownConversionService {
             let byte = bytes[index]
             if byte == 123 {
                 if !stack.isEmpty { stack[stack.count - 1].header = false }
-                stack.append(Group())
+                stack.append(Group(start: index))
                 index += 1
             } else if byte == 125 {
                 guard let group = stack.popLast() else { return nil }
@@ -44,6 +46,7 @@ enum ClipboardMarkdownConversionService {
                 } else {
                     let parent = stack.count - 1
                     let paired = stack[parent].pendingPrimary && group.kind == .fallback && group.count == 1
+                    if paired { fallbackRanges?.pointee.append(group.start..<index + 1) }
                     stack[parent].count += group.count - (paired ? 1 : 0)
                     stack[parent].pendingPrimary = group.kind == .primary && group.count == 1
                 }
@@ -111,11 +114,21 @@ enum ClipboardMarkdownConversionService {
         return Output(markdown: markdown, diagnostics: diagnostics)
     }
 
+    private static func markingAdjacentRTFFallbacks(_ data: Data, isCancelled: () -> Bool) -> Data {
+        var ranges: [Range<Int>] = []
+        guard rtfPictureCount(data, isCancelled: isCancelled, fallbackRanges: &ranges) != nil, !ranges.isEmpty else { return data }
+        var bytes = [UInt8](data)
+        for range in ranges.sorted(by: { $0.lowerBound > $1.lowerBound }) {
+            bytes.insert(contentsOf: [92, 42], at: range.lowerBound + 1)
+        }
+        return Data(bytes)
+    }
+
     // RTF embeds media in the input. Resolve Pandoc's private extracted files
     // before the temporary directory is removed; no user file is written here.
     static func convertRTFWithMedia(_ data: Data, executable: URL? = nil,
                                     isCancelled: @escaping () -> Bool = { false }) throws -> Output {
-        let (converted, diagnostics) = try run(data, conversion: .clipboard(.rtf), executable: executable,
+        let (converted, diagnostics) = try run(markingAdjacentRTFFallbacks(data, isCancelled: isCancelled), conversion: .clipboard(.rtf), executable: executable,
                                                isCancelled: isCancelled, extractMedia: true)
         guard let markdown = String(data: converted, encoding: .utf8) else { throw ConversionError.invalidOutput }
         return Output(markdown: markdown, diagnostics: diagnostics)

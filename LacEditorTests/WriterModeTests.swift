@@ -152,7 +152,7 @@ final class WriterModeTests: XCTestCase {
         let session = try XCTUnwrap(fixture.state.writerSession)
         let group = try XCTUnwrap(fixture.state.createGroup(parent: nil, after: nil))
         XCTAssertEqual(session.projectStore.project?.node(id: group)?.kind, .group)
-        XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("old.md")), "keep")
+        XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("old.md"), encoding: .utf8), "keep")
         fixture.state.toggleManuscriptInclude(group)
         XCTAssertEqual(session.projectStore.project?.node(id: group)?.include, false)
     }

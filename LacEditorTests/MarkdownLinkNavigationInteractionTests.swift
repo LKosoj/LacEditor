@@ -58,8 +58,22 @@ final class MarkdownLinkNavigationInteractionTests: XCTestCase {
         let rect = layout.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
         let point = NSPoint(x: rect.midX + editor.textContainerOrigin.x, y: rect.midY + editor.textContainerOrigin.y)
         let event = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: editor.convert(point, to: nil),
-            modifierFlags: command ? .command : [], timestamp: 0, windowNumber: editor.window?.windowNumber ?? 0,
+            modifierFlags: command ? .command : [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: editor.window?.windowNumber ?? 0,
             context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+        let up = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseUp, location: editor.convert(point, to: nil),
+            modifierFlags: command ? .command : [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: editor.window?.windowNumber ?? 0,
+            context: nil, eventNumber: 1, clickCount: 1, pressure: 0))
+        let trackingMode = CFRunLoopMode(rawValue: RunLoop.Mode.eventTracking.rawValue as CFString)
+        let trackingObserver = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, false, 0) { _, _ in
+            NSApp.postEvent(up, atStart: false)
+        }
+        if let trackingObserver { CFRunLoopAddObserver(CFRunLoopGetMain(), trackingObserver, trackingMode) }
+        defer {
+            if let trackingObserver {
+                CFRunLoopRemoveObserver(CFRunLoopGetMain(), trackingObserver, trackingMode)
+                CFRunLoopObserverInvalidate(trackingObserver)
+            }
+        }
         editor.mouseDown(with: event)
     }
 
@@ -138,8 +152,22 @@ final class MarkdownLinkNavigationInteractionTests: XCTestCase {
         let point = NSPoint(x: line.minX + container.lineFragmentPadding + width * 0.25 + view.textContainerOrigin.x,
                             y: line.minY + font.ascender * 0.5 + view.textContainerOrigin.y)
         let event = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: view.convert(point, to: nil),
-            modifierFlags: .command, timestamp: 0, windowNumber: fixture.window.windowNumber,
+            modifierFlags: .command, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: fixture.window.windowNumber,
             context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+        let up = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseUp, location: view.convert(point, to: nil),
+            modifierFlags: .command, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: fixture.window.windowNumber,
+            context: nil, eventNumber: 1, clickCount: 1, pressure: 0))
+        let trackingMode = CFRunLoopMode(rawValue: RunLoop.Mode.eventTracking.rawValue as CFString)
+        let trackingObserver = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, false, 0) { _, _ in
+            NSApp.postEvent(up, atStart: false)
+        }
+        if let trackingObserver { CFRunLoopAddObserver(CFRunLoopGetMain(), trackingObserver, trackingMode) }
+        defer {
+            if let trackingObserver {
+                CFRunLoopRemoveObserver(CFRunLoopGetMain(), trackingObserver, trackingMode)
+                CFRunLoopObserverInvalidate(trackingObserver)
+            }
+        }
         view.mouseDown(with: event)
         let target = try XCTUnwrap(parsed.headings.last)
         for _ in 0..<100 {

@@ -85,7 +85,11 @@ enum MarkdownClipboardCopyService {
             .replacingOccurrences(of: "<input type=\"checkbox\" disabled>", with: "☐")
         let remoteImages = try? NSRegularExpression(pattern: "(<img src=\")https?://[^\"]*(\")", options: .caseInsensitive)
         let safeBody = remoteImages?.stringByReplacingMatches(in: body, range: NSRange(location: 0, length: (body as NSString).length), withTemplate: "$1data:,$2") ?? body
-        let html = "<!doctype html><html><head><meta charset=\"utf-8\"></head><body>" + safeBody + "</body></html>"
+        let quoteCSS = (0..<maximumQuoteDepth).map { index in
+            let depth = index + 1
+            return String(repeating: "blockquote ", count: depth) + "{ margin-left: \(40 * depth)px; }"
+        }.joined()
+        let html = "<!doctype html><html><head><meta charset=\"utf-8\"><style>" + quoteCSS + "</style></head><body>" + safeBody + "</body></html>"
         guard let (attributed, _) = try? await NSAttributedString.fromHTML(Data(html.utf8)), !Task.isCancelled else { return nil }
         guard let data = try? attributed.data(from: NSRange(location: 0, length: attributed.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]),
               let restored = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) else { return nil }
@@ -862,7 +866,7 @@ enum MarkdownClipboardCopyService {
                 if isCode && spelling as String != literal {
                     var ticks = 0
                     while ticks < spelling.length && spelling.character(at: ticks) == 96 { ticks += 1 }
-                    guard ticks > 0, ticks * 2 <= spelling.length,
+                    guard ticks * 2 <= spelling.length,
                           (0..<ticks).allSatisfy({ spelling.character(at: spelling.length - 1 - $0) == 96 }) else { invalid = true; return }
                     var body = NSRange(location: ticks, length: spelling.length - ticks * 2)
                     func normalizeCode(_ text: String) -> String {
@@ -899,6 +903,9 @@ enum MarkdownClipboardCopyService {
                         mappedRange = mapped
                         mappedValue = selected.0
                     }
+                } else if spelling as String == literal + "  ",
+                          cmark_node_next(node).map({ cmark_node_get_type($0) == CMARK_NODE_LINEBREAK }) == true {
+                    content = NSRange(location: range.location, length: (literal as NSString).length)
                 } else if spelling as String != literal {
                     if selection.location <= range.location && NSMaxRange(selection) >= NSMaxRange(range) {
                         guard MarkdownInlineTextProjection.pieces(spelling: spelling, literal: literal, sourceOffset: range.location,
@@ -1275,7 +1282,7 @@ enum MarkdownClipboardCopyService {
                 covered.append(range)
                 let preceding = lastEnd ?? selection.location
                 if !insideTable && range.location > preceding { appendBreaks(in: NSIntersectionRange(selection, NSRange(location: preceding, length: range.location - preceding))) }
-                var pendingBreak = 0, emitted = false
+                var pendingBreak = 0, emitted = false, trailingEmptyContainer = false
                 var blockStack: [(String, Int, Bool)] = [], visibleCount = 0
                 for (_, tag, gapIndex, imageIndex) in events {
                     if Task.isCancelled { invalid = true; return true }
@@ -1289,6 +1296,7 @@ enum MarkdownClipboardCopyService {
                             if included { html += "<" + tag.1 + ">" }
                         } else {
                             guard let block = blockStack.popLast(), block.0 == tag.1 else { invalid = true; return true }
+                            if !blockStack.isEmpty { trailingEmptyContainer = visibleCount == block.1 }
                             if emitted { pendingBreak = max(pendingBreak, tag.1 == "p" && visibleCount > block.1 ? 2 : 1) }
                             if block.2 { html += "</" + tag.1 + ">" }
                         }
@@ -1331,6 +1339,12 @@ enum MarkdownClipboardCopyService {
                                  preserveSelectedSpaces: result.hasPrefix(" ") || result.hasSuffix(" "))
                         }
                     }
+                }
+                let hasInlineStyle = confirmed.values.contains { $0.inlineStyle != nil }
+                if pendingBreak > 0, emitted, !trailingEmptyContainer, !hasInlineStyle, NSMaxRange(selection) == NSMaxRange(range) {
+                    let breaks = String(repeating: "\n", count: pendingBreak)
+                    output += breaks
+                    record(breaks, kind: .lineBreak)
                 }
                 lastEnd = min(NSMaxRange(range), NSMaxRange(selection))
                 hasStructuralOutput = true
@@ -1511,7 +1525,7 @@ enum MarkdownClipboardCopyService {
                           }) else { return false }
                     lastVisible = (gaps.count - 1, NSMaxRange(last))
                 }
-                if !gaps.isEmpty && (firstVisible == nil || lastVisible == nil) { return false }
+                if !gaps.isEmpty && confirmedImageRanges.isEmpty && (firstVisible == nil || lastVisible == nil) { return false }
                 let images = (htmlImages[node] ?? []).sorted { $0.0.location < $1.0.location }
                 var events: [(NSRange, Int?, Int?)] = gaps.enumerated().map { ($0.element, $0.offset, nil) }
                 events += images.enumerated().map { ($0.element.0, nil, $0.offset) }
@@ -1688,7 +1702,10 @@ enum MarkdownClipboardCopyService {
                             if let value = source.tableCellPositions(cell, isCancelled: { Task.isCancelled }) { cellPositions[cell] = value }
                             else { invalidCells.insert(cell) }
                         }
-                        guard let value = cellPositions[cell] else { invalid = true; return }
+                        guard let value = cellPositions[cell] else {
+                            if mayIntersectSelection(node) { invalid = true }
+                            return
+                        }
                         positions = value
                     } else { positions = nil }
                     let pairCandidates = MarkdownPresentationParser.inlineHTMLPairs(in: node, confirmed: confirmedHTMLNodes,
@@ -1826,7 +1843,9 @@ enum MarkdownClipboardCopyService {
                             guard let literal = cmark_node_get_literal(current), let range = nodeRange(current),
                                   NSMaxRange(range) <= raw.length else { return false }
                             let spelling = raw.substring(with: range), value = String(cString: literal)
-                            if spelling != value && MarkdownInlineTextProjection.pieces(spelling: spelling as NSString, literal: value,
+                            if cmark_node_parent(node) == root, source.referencePrefix(node) != nil, spelling.contains("\t") { return false }
+                            let hardBreak = spelling == value + "  " && cmark_node_next(current).map { cmark_node_get_type($0) == CMARK_NODE_LINEBREAK } == true
+                            if !hardBreak, spelling != value && MarkdownInlineTextProjection.pieces(spelling: spelling as NSString, literal: value,
                                 sourceOffset: range.location, isCancelled: { Task.isCancelled }) == nil { return false }
                         }
                         var child = cmark_node_first_child(current)
@@ -2039,13 +2058,13 @@ enum MarkdownClipboardCopyService {
                     lastEnd = whole ? min(NSMaxRange(block.range), NSMaxRange(selection)) : parts.last.map { $0.0.length > 0 ? NSMaxRange($0.0) : selection.location + selection.length }
                     return
                 case "list":
-                    guard let listRange = nodeRange(node) else { invalid = true; return }
+                    guard let listRange = nodeRange(node) ?? source.fenceRange(node) else { invalid = true; return }
                     guard NSIntersectionRange(listRange, selection).length > 0 else { return }
                     if insideTable { invalid = true; return }
                     let wholeList = selection.location <= listRange.location && NSMaxRange(selection) >= NSMaxRange(listRange)
                     var items: [(OpaquePointer, Int)] = [], current = cmark_node_first_child(node), index = 0
                     while let item = current {
-                        guard let range = source.range(item) else { invalid = true; return }
+                        guard let range = source.range(item) ?? source.fenceRange(item) else { invalid = true; return }
                         if wholeList || NSIntersectionRange(range, selection).length > 0 { items.append((item, index)) }
                         current = cmark_node_next(item)
                         index += 1
@@ -2071,7 +2090,7 @@ enum MarkdownClipboardCopyService {
                             output += ordered ? "\(start + item.1). " : "• "
                             html += "<li>"
                             record("", kind: .listItemStart)
-                            if let range = source.range(item.0) { lastEnd = max(range.location, selection.location) }
+                            if let range = source.range(item.0) ?? source.fenceRange(item.0) { lastEnd = max(range.location, selection.location) }
                             if let name = cmark_node_get_type_string(item.0), String(cString: name) == "tasklist" {
                                 let checked = cmark_gfm_extensions_get_tasklist_item_checked(item.0)
                                 output += checked ? "☑ " : "☐ "
@@ -2278,11 +2297,31 @@ enum MarkdownClipboardCopyService {
                     }
                     if let (range, address, display) = htmlImages[node]?.first,
                        selection.location <= range.location, NSMaxRange(selection) >= NSMaxRange(range),
-                       type == "html_inline" || selection == range {
+                       type == "html_inline" {
                         covered.append(range)
                         emitImage(range: range, address: address, alt: display.alt,
                                   title: display.title ?? "", css: display.sizing.css, style: style)
                         return
+                    }
+                    if type == "html_block", let blockRange = nodeRange(node),
+                       let images = htmlImages[node], images.count == 1,
+                       let (range, address, display) = images.first,
+                       selection.location <= range.location, NSMaxRange(selection) >= NSMaxRange(range),
+                       MarkdownPresentationParser.containerHTMLPrefixes(node, range: blockRange, source: source, sourceText: raw,
+                                                                         isCancelled: { Task.isCancelled }) != nil {
+                        var context = MarkdownImageUploadService.HTMLContext()
+                        var tags: [(NSRange, String, Bool)] = []
+                        if context.consume(source: raw, range: blockRange, isCancelled: { Task.isCancelled },
+                                           confirmedTag: { tags.append(($0, $1, $2)) }),
+                           tags.count == 3,
+                           tags[0].1 == "div", !tags[0].2,
+                           tags[1].1 == "img", !tags[1].2, tags[1].0 == range,
+                           tags[2].1 == "div", tags[2].2 {
+                            covered.append(range)
+                            emitImage(range: range, address: address, alt: display.alt,
+                                      title: display.title ?? "", css: display.sizing.css, style: style)
+                            return
+                        }
                     }
                     if type == "html_block", let range = nodeRange(node), NSIntersectionRange(range, selection).length > 0,
                        emitNestedHTMLBlock(node, range: range, style: style) || emitHTMLBlock(node, range: range, style: style) { return }
@@ -2317,7 +2356,7 @@ enum MarkdownClipboardCopyService {
                     return
                 default: break
                 }
-                if (type == "item" || type == "tasklist"), let range = nodeRange(node) {
+                if (type == "item" || type == "tasklist"), let range = nodeRange(node) ?? source.fenceRange(node) {
                     guard NSIntersectionRange(range, selection).length > 0 else { return }
                     visitContainerChildren(range, skipInitialMarker: true)
                 } else if type == "paragraph" {
@@ -2450,7 +2489,7 @@ enum MarkdownClipboardCopyService {
             if let lastEnd, lastEnd < NSMaxRange(selection) {
                 appendBreaks(in: NSRange(location: lastEnd, length: NSMaxRange(selection) - lastEnd))
             }
-            if lastEnd == nil, raw.substring(with: selection).allSatisfy({ $0 == "\r" || $0 == "\n" }) {
+            if lastEnd == nil, raw.substring(with: selection).utf16.allSatisfy({ $0 == 13 || $0 == 10 }) {
                 appendBreaks(in: selection)
             }
             guard !invalid, (mathImages.isEmpty || mathContextValid), !output.isEmpty || hasStructuralOutput else { return nil }

@@ -93,7 +93,7 @@ final class ManuscriptProjectTests: XCTestCase {
         let store = ManuscriptProjectStore(rootURL: root)
         try store.createProject(title: "T", language: nil, files: ["b.md", "a.md"])
         XCTAssertEqual(store.project?.nodes.compactMap(\.path), ["b.md", "a.md"])
-        XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("a.md")), "aa")
+        XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("a.md"), encoding: .utf8), "aa")
         XCTAssertThrowsError(try store.createProject(title: "T", language: nil, files: []))
     }
 

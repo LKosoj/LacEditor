@@ -4,7 +4,7 @@ import XCTest
 
 @MainActor
 final class MarkdownMediaIntegrationTests: XCTestCase {
-    private struct Editor {
+    @MainActor private struct Editor {
         let document: EditorDocument
         let coordinator: EditorTextView.Coordinator
         let view: LacTextView

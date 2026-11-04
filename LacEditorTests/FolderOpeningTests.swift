@@ -217,6 +217,7 @@ final class FolderOpeningTests: XCTestCase {
         defer { fixture.close() }
         XCTAssertNil(fixture.state.folderWorkspace.rootURL)
         let opened = expectation(description: "queued file opens without default folder")
+        opened.assertForOverFulfill = false
         let subscription = fixture.state.$selectedDocumentID.sink { id in
             if fixture.state.documents.first(where: { $0.id == id })?.url == file { opened.fulfill() }
         }

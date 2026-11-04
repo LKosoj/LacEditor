@@ -1,5 +1,6 @@
 import AppKit
 import XCTest
+import Combine
 @testable import LacEditor
 
 @MainActor

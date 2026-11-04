@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import XCTest
+import WebKit
 @testable import LacEditor
 
 private final class RemotePreviewURLProtocol: URLProtocol {

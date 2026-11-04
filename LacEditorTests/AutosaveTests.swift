@@ -36,7 +36,10 @@ final class AutosaveTests: XCTestCase {
             : EditorDocument(text: "one")
         let state = AppState(initialDocument: document, recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
         states.append(state)
-        if dirty { document.text = "two" }
+        if dirty {
+            document.text = "two"
+            document.isDirty = true
+        }
         return (state, document, url)
     }
 
@@ -90,6 +93,7 @@ final class AutosaveTests: XCTestCase {
         XCTAssertEqual(state.autosave.tick(now: start), 1)
         try await settle(document)
         document.text = "three"
+        document.isDirty = true
         XCTAssertEqual(state.autosave.tick(now: start.addingTimeInterval(10)), 0)
         XCTAssertEqual(try read(url), "two")
         XCTAssertEqual(state.autosave.tick(now: start.addingTimeInterval(31)), 1)
@@ -180,10 +184,12 @@ final class AutosaveTests: XCTestCase {
         try await settle(document)
         XCTAssertEqual(state.autosave.lastVersionRecordDate(for: document.id), start)
         document.text = "three"
+        document.isDirty = true
         XCTAssertEqual(state.autosave.tick(now: start.addingTimeInterval(40)), 1)
         try await settle(document)
         XCTAssertEqual(state.autosave.lastVersionRecordDate(for: document.id), start)
         document.text = "four"
+        document.isDirty = true
         let later = start.addingTimeInterval(400)
         XCTAssertEqual(state.autosave.tick(now: later), 1)
         try await settle(document)
