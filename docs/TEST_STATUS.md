@@ -267,3 +267,20 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
   попаданием по изображению. После этого `testLoadedImageIsRetainedAfterScrollingFarPastViewport`
   проходит; cursor/source-range тест всё ещё падает и требует отдельного
   разбора selection lifecycle.
+
+- После сравнения с проходящими image-тестами исправлен hit-test блочного
+  Markdown-изображения: для маленьких (1×1) data-image точка в строке теперь
+  проверяется по line fragment, а не только по физическому размеру картинки.
+  Одновременно сохранено изображение при входе курсора в его source token.
+  Сборка успешна; `MarkdownImageTests` дал 9/14 passed, 5 падений.
+- Для `ImageShiftFixture` добавлен `textProvider`, чтобы контроллер разбирал
+  фактический `NSTextStorage`, который изменяет fixture, а не пустую строку
+  `NSTextView`. Это устранило ошибку стенда, но пять ready/pending lifecycle
+  тестов всё ещё падают; следующий шаг — исправление переноса cache/pending
+  в `MarkdownPresentationController`, затем targeted-прогон.
+- Попытка переносить `loadedImageRanges`, ширину и animated view при смене
+  placement в `reconcileMediaCache` не устранила пять падений (класс остаётся
+  9/14); при этом pending-сценарий изменился с отмены запроса на отсутствие
+  отмены, но всё ещё создаёт второй запрос. Изменение оставлено как
+  подтверждённо направленное, требуется разобрать lifecycle `setMarkdownPresentation`/
+  `shiftPresentation`, который очищает snapshot сразу после beforeEdit.

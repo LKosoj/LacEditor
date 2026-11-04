@@ -178,6 +178,7 @@ final class MarkdownPresentationController {
     /// Диапазон хранится отдельно как placement и меняется при редактировании.
     private struct ImageCacheKey: Hashable {
         let source: String
+        let alt: String
         let sizing: String?
         let isInline: Bool
     }
@@ -1538,7 +1539,7 @@ final class MarkdownPresentationController {
     }
 
     private func imageCacheKey(for image: MarkdownImage) -> ImageCacheKey {
-        ImageCacheKey(source: image.url, sizing: image.sizing?.css, isInline: image.isInline)
+        ImageCacheKey(source: image.url, alt: image.alt, sizing: image.sizing?.css, isInline: image.isInline)
     }
 
     /// Диапазон — только текущее placement. Асинхронная работа живёт дольше одной
@@ -1579,14 +1580,14 @@ final class MarkdownPresentationController {
             let targets = newImages[key, default: []].sorted { $0.range.location < $1.range.location }
             let sources = images.sorted { $0.range.location < $1.range.location }
             for (source, target) in zip(sources, targets) where placement(source) != placement(target) {
-                // Не переносим флаг loaded в новый диапазон: после adopt новый
-                // placement восстановит изображение из identity-кэша без старой
-                // геометрии и без краткого показа исходного текста.
-                loadedImageRanges.remove(placement(source))
-                imagePresentationWidths.removeValue(forKey: placement(source))
-                if let view = animatedImages.removeValue(forKey: placement(source)) {
-                    view.animates = false
-                    view.removeFromSuperview()
+                let oldPlacement = placement(source)
+                let newPlacement = placement(target)
+                if loadedImageRanges.remove(oldPlacement) != nil { loadedImageRanges.insert(newPlacement) }
+                if let width = imagePresentationWidths.removeValue(forKey: oldPlacement) {
+                    imagePresentationWidths[newPlacement] = width
+                }
+                if let view = animatedImages.removeValue(forKey: oldPlacement) {
+                    animatedImages[newPlacement] = view
                 }
             }
             if sources.count > targets.count {
@@ -1598,8 +1599,15 @@ final class MarkdownPresentationController {
                         view.animates = false
                         view.removeFromSuperview()
                     }
-                    if source.isInline { layout?.removeMarkdownInlineImage(for: source.range) }
-                    else { layout?.setMarkdownImage(nil, for: source.paragraphRange) }
+                    if source.isInline {
+                        layout?.removeMarkdownInlineImage(for: source.range)
+                    } else {
+                        // The presentation stores block placement by paragraph,
+                        // while the layout may still retain the token range from
+                        // the previous parse. Clear both coordinates on divergence.
+                        layout?.setMarkdownImage(nil, for: source.paragraphRange)
+                        layout?.setMarkdownImage(nil, for: source.range)
+                    }
                 }
             }
         }
@@ -1801,6 +1809,11 @@ final class MarkdownPresentationController {
             if let kept = presentation { reconcileMediaCache(from: kept, to: result) }
             presentationKept = false
             if let visible = visibleRange() { restoreStyles(in: visible) }
+        } else {
+            // A parse not associated with a confirmed edit may diverge from
+            // the previous presentation. Do not leave rendered media attached
+            // to source ranges that the new result no longer contains.
+            clearReady()
         }
         let keptSpans = presentation?.spans
         adopt(result)
@@ -3846,11 +3859,6 @@ final class MarkdownPresentationController {
                 loadedImageRanges.insert(key)
                 continue
             }
-            // Reserve the media placement before starting an asynchronous load.
-            // Without a placeholder FoldLayoutManager draws the full source line
-            // during the cache miss, which looks like the image is раскрывается
-            // while scrolling. The real resource replaces this placeholder.
-            installImagePlaceholder(for: image, key: key, layout: layout)
             if let url = URL(string: image.url), ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil {
                 guard remoteImageJobs[key] == nil else { continue }
                 let token = UUID(), generation = self.generation, baseURL = document.url

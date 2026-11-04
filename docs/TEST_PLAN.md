@@ -128,8 +128,9 @@ macOS: 0 ошибок, 0 предупреждений, 0 пропусков GUI-
   `TextCompareController`, `MarkdownBacklinks`, `FileVersion`,
   `MarkdownReadableText`, `MarkdownTableEditing`, `SemanticFont`, `UIPolishK`,
   часть `MarkdownPresentationParser`.
-- [x] Итог: настоящих падений нет; остаются только падения из-за Linux
-  (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF).
+- [ ] Итоговый чистый прогон ещё не достигнут: на Mac остаются пять падений
+  lifecycle-тестов изображений (ready/pending cache). Linux-only список не
+  считать объяснением этих Mac-падений.
 
 Осталось:
 
@@ -150,3 +151,12 @@ macOS: 0 ошибок, 0 предупреждений, 0 пропусков GUI-
   реальной доставки ввода проходят в `LacEditorUITests` (2/2).
 - Develop/Debug build: 0 ошибок, 0 предупреждений.
 - Повторная пачка успешных классов: 132/132.
+- `MarkdownImageTests`: после исправления hit-test и fixture — 9/14 проходят;
+  падают `testReadyImageStaysUnderShiftedKeyAndIsNotReloadedAfterParse`,
+  `testStructuralEditOutsideKeepsReadyImage`,
+  `testSecondKeyBeforeParseKeepsReadyImage`,
+  `testDivergentParseDropsReadyImage` и
+  `testPendingRemoteImageSurvivesShiftAndInstallsOnce`.
+- Правило диагностики: перед исправлением каждого падения сверять fixture,
+  lifecycle и ожидания с похожим проходящим тестом; полный прогон запускать
+  только после устранения известных падений и дожидаться его завершения.

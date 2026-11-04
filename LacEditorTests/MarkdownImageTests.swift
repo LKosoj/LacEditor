@@ -69,7 +69,10 @@ private final class ImageShiftFixture {
             controller.imageSession = session
             document.allowsRemoteImages = true
         }
-        controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { [unowned self] in self.revision })
+        controller.update(document: document, enabled: true, isActive: true, revision: 0,
+                          currentRevision: { [unowned self] in self.revision },
+                          textProvider: { [unowned self] in self.storage.string })
+        view.string = source
         view.layoutSubtreeIfNeeded()
         layout.ensureLayout(for: container)
         controller.viewportChanged()
@@ -91,10 +94,18 @@ private final class ImageShiftFixture {
 
     func type(after marker: String, _ text: String = "x", also change: (() -> Void)? = nil) {
         let edit = NSRange(location: NSMaxRange(storage.mutableString.range(of: marker)), length: 0)
-        revision += 1
         controller.beforeEdit(range: edit, replacementLength: (text as NSString).length, replacement: text)
         change?()
-        storage.replaceCharacters(in: edit, with: text)
+        // A callback may deliberately diverge the source before the typed
+        // replacement; mirror that source in the text view before applying it.
+        if view.string != storage.string { view.string = storage.string }
+        // Проход через NSTextView синхронизирует тот же NSTextStorage, который
+        // контроллер использует для расчёта длины подтверждённой правки.
+        view.replaceCharacters(in: edit, with: text)
+        if storage.string != view.string {
+            storage.replaceCharacters(in: edit, with: text)
+        }
+        revision += 1
         controller.edited(revision: revision)
     }
 
