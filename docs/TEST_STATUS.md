@@ -171,3 +171,12 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
 - Уточнён чек-лист `TEST_PLAN.md`: выполненным считается только auto-pair UI-
   перенос 2/2; перенос smart quote/emoji/math/formatting пока не отмечается
   выполненным, поскольку в UI-target нет доступных идентификаторов.
+- `MarkdownImageInteractionTests.testVerticalListHTMLImagePercentageUsesPhysicalWidth`:
+  placeholder теперь резервирует размер с учётом HTML percentage sizing до
+  загрузки изображения; targeted-тест проходит.
+- Полный bundle `/private/tmp/lac-result.xcresult` найден, но извлечение имён
+  `not-run`/`skipped` заблокировано `xcresulttool` ошибкой прав каталога
+  `TestReport`; без имён статус не дополнялся выдуманными причинами.
+- Следующий блок `MarkdownImageTests` локализован как отсутствие полноценного
+  window/visible-range стенда для `markdownImageLocation`; production-логика
+  block image не изменялась до подтверждения test-only исправления.

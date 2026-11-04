@@ -605,7 +605,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         let sourceID = UUID(), otherID = UUID()
         manager.register(windowID: sourceID, state: sourceState, window: sourceWindow)
         manager.register(windowID: otherID, state: otherState, window: otherWindow)
-        defer { manager.unregister(windowID: otherID); sourceWindow.close(); otherWindow.close() }
+        defer { manager.unregister(windowID: otherID); manager.unregister(windowID: sourceID); sourceWindow.close(); otherWindow.close() }
         manager.activate(windowID: otherID)
         let notice = ClipboardSavedImagesNotice(documentID: source.id, message: "/tmp/image.png")
         await MainActor.run {

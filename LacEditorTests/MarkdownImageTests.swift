@@ -47,6 +47,7 @@ private final class ImageShiftFixture {
     let document: EditorDocument
     private let view: LacTextView
     private let scroll: NSScrollView
+    private let window: NSWindow
     var revision: UInt = 0
 
     init(source: String, url: URL? = nil, session: URLSession? = nil) {
@@ -59,13 +60,22 @@ private final class ImageShiftFixture {
         view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 600), textContainer: container)
         scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
+        window = NSWindow(contentRect: scroll.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = scroll
+        window.makeKeyAndOrderFront(nil)
         controller = MarkdownPresentationController(textView: view, layout: layout)
         if let session {
             controller.imageSession = session
             document.allowsRemoteImages = true
         }
         controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { [unowned self] in self.revision })
+        view.layoutSubtreeIfNeeded()
+        layout.ensureLayout(for: container)
+        controller.viewportChanged()
     }
+
+    deinit { window.close() }
 
     /// Диапазоны картинок в слое оформления: пары «начало, длина».
     var images: [Int] { layout.markdownListsSnapshot["images"] ?? [] }

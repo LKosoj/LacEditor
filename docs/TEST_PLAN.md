@@ -77,7 +77,7 @@ macOS: 0 ошибок, 0 предупреждений, 0 пропусков GUI-
 - [x] Исправить fast-path ревизии и закрыть `MarkdownFootnoteTests`.
 - [x] Закрыть `ManuscriptServiceTests`.
 - [x] Закрыть `MarkdownElementPathTests`.
-- [x] Устранить два падения `MarkdownAutoPairTests`: синтетические оконные
+- [ ] Устранить два падения `MarkdownAutoPairTests`: синтетические оконные
   сценарии удалены из unit-target, а доставка пользовательского ввода вынесена
   в UI-target; production fallback и `skip` не используются.
 - [ ] Перенести оставшиеся проблемные UI-сценарии в `LacEditorUITests`;
