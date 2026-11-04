@@ -172,6 +172,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         var range: NSRange
         var owner: NSRange
         let inline: Bool
+        let codeBlock: Bool
     }
     private var markdownMarkers: [MarkdownMarker] = []
     private var markdownMarkerEnds: [Int] = []
@@ -1491,16 +1492,32 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
 
     override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
         let visible = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
-        var drawableRanges = [glyphsToShow]
+        var drawableRanges = [visible]
         var markerIndex = upperBound(max(visible.location, NSMaxRange(visible) - 1), count: markdownMarkers.count) { markdownMarkers[$0].range.location }
         while markerIndex > 0 {
             markerIndex -= 1
-            if markdownMarkerEnds[markerIndex] <= visible.location { break }
+            if markdownMarkerEnds[markerIndex] < visible.location { break }
             let marker = markdownMarkers[markerIndex]
-            guard NSIntersectionRange(marker.range, visible).length > 0, isMarkdownMarkerHidden(at: marker.range.location),
+            guard isMarkdownMarkerHidden(at: marker.range.location),
                   temporaryAttribute(.backgroundColor, atCharacterIndex: marker.range.location, effectiveRange: nil) != nil
                     || textStorage?.attribute(.backgroundColor, at: marker.range.location, effectiveRange: nil) != nil else { continue }
-            let hidden = NSIntersectionRange(glyphRange(forCharacterRange: marker.range, actualCharacterRange: nil), glyphsToShow)
+            var hidden = marker.range
+            if marker.codeBlock, marker.range.location > marker.owner.location, let storage = textStorage {
+                hidden = NSUnionRange(hidden, storage.mutableString.lineRange(for: NSRange(location: marker.range.location, length: 0)))
+            }
+            let previous = marker.range.location - 1
+            if previous >= 0, marker.range.location == marker.owner.location, let storage = textStorage {
+                let unit = storage.mutableString.character(at: previous)
+                let hasBackground = temporaryAttribute(.backgroundColor, atCharacterIndex: previous, effectiveRange: nil) != nil
+                    || storage.attribute(.backgroundColor, at: previous, effectiveRange: nil) != nil
+                if !hasBackground, unit == 32 || unit == 9 || unit == 10 || unit == 13 {
+                    hidden = NSUnionRange(hidden, NSRange(location: previous, length: 1))
+                    if unit == 10, previous > 0, storage.mutableString.character(at: previous - 1) == 13 {
+                        hidden = NSUnionRange(hidden, NSRange(location: previous - 1, length: 1))
+                    }
+                }
+            }
+            hidden = NSIntersectionRange(hidden, visible)
             guard hidden.length > 0 else { continue }
             drawableRanges = drawableRanges.flatMap { candidate -> [NSRange] in
                 let intersection = NSIntersectionRange(candidate, hidden)
@@ -1515,8 +1532,9 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
                 return result
             }
         }
-        for range in drawableRanges where range.length > 0 {
-            super.drawBackground(forGlyphRange: range, at: origin)
+        for characters in drawableRanges where characters.length > 0 {
+            let range = NSIntersectionRange(glyphRange(forCharacterRange: characters, actualCharacterRange: nil), glyphsToShow)
+            if range.length > 0 { super.drawBackground(forGlyphRange: range, at: origin) }
         }
         guard let container = textContainers.first else { return }
         for entry in markdownInlineImages where NSIntersectionRange(entry.range, visible).length > 0 {
@@ -1865,7 +1883,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             case .strong, .emphasis, .strikethrough, .code, .keyboard, .link, .highlight, .subscriptText, .superscriptText, .underline, .inlineStyle: inline = true
             default: inline = false
             }
-            return span.markerRanges.map { MarkdownMarker(range: $0, owner: span.range, inline: inline) }
+            return span.markerRanges.map { MarkdownMarker(range: $0, owner: span.range, inline: inline, codeBlock: span.kind == .codeBlock) }
         }.sorted { $0.range.location < $1.range.location }
         var end = 0
         markdownMarkerEnds = markdownMarkers.map { marker in
