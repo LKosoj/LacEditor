@@ -969,14 +969,14 @@ final class MarkdownPresentationController {
                 if let replacement, let edit = presentationAfterEdit(range: range, replacement: replacement, replacementLength: replacementLength) {
                     lastRevealedRange = lastRevealedRange.flatMap { shifted([$0]).first }
                     shiftPresentation(edit)
-                    keptEdit = (currentRevision?() ?? 0, (textView?.textStorage?.length ?? 0) - range.length + replacementLength,
+                    keptEdit = ((currentRevision?() ?? 0) &+ 1, (textView?.textStorage?.length ?? 0) - range.length + replacementLength,
                                 NSRange(location: range.location, length: replacementLength))
                     deferredReadyClear = true
                 } else if replacement != nil, let edit = localEdit(range: range, replacementLength: replacementLength) {
                     lastRevealedRange = lastRevealedRange.flatMap { shifted([$0]).first }
                     shiftAroundEdit(edit)
                     // Длина вставки нулевая: чужой стиль на такую правку не переносится (`matchInsertedStyle`).
-                    keptEdit = (currentRevision?() ?? 0, (textView?.textStorage?.length ?? 0) - range.length + replacementLength,
+                    keptEdit = ((currentRevision?() ?? 0) &+ 1, (textView?.textStorage?.length ?? 0) - range.length + replacementLength,
                                 NSRange(location: range.location, length: 0))
                     deferredReadyClear = true
                 } else {

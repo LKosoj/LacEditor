@@ -28,6 +28,7 @@ final class MarkdownAutoPairTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.updateMathPairContextEnabled(true)
         coordinator.updateActivity(true)
+        view.isEditable = true
         defer { coordinator.updateActivity(false); window.close() }
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(view)
@@ -36,15 +37,15 @@ final class MarkdownAutoPairTests: XCTestCase {
         XCTAssertEqual(view.mathPairAllowed?(view.selectedRange()), true)
         let letter = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
             windowNumber: window.windowNumber, context: nil, characters: "x", charactersIgnoringModifiers: "x", isARepeat: false, keyCode: 7))
-        view.keyDown(with: letter)
+        window.sendEvent(letter)
         XCTAssertEqual(view.string, "hellox")
         XCTAssertEqual(view.mathPairAllowed?(view.selectedRange()), true)
         let event = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.shift], timestamp: 0,
             windowNumber: window.windowNumber, context: nil, characters: "$", charactersIgnoringModifiers: "$", isARepeat: false, keyCode: 21))
-        view.keyDown(with: event)
+        window.sendEvent(event)
         XCTAssertEqual(view.string, "hellox$$")
         XCTAssertEqual(view.selectedRange().location, 7)
-        view.keyDown(with: event)
+        window.sendEvent(event)
         XCTAssertEqual(view.string, "hellox$$")
         XCTAssertEqual(view.selectedRange().location, 8)
         try XCTUnwrap(view.undoManager).undo()
@@ -52,7 +53,7 @@ final class MarkdownAutoPairTests: XCTestCase {
         view.setSelectedRange(NSRange(location: 6, length: 0))
         for _ in 0..<200 where view.mathPairAllowed?(view.selectedRange()) != true { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertEqual(view.mathPairAllowed?(view.selectedRange()), true)
-        view.keyDown(with: event)
+        window.sendEvent(event)
         XCTAssertEqual(view.string, "hellox$$")
         view.deleteBackward(nil)
         XCTAssertEqual(view.string, "hellox")
@@ -176,7 +177,7 @@ final class MarkdownAutoPairTests: XCTestCase {
                 modifierFlags: shift ? [.shift] : [], timestamp: 0, windowNumber: window.windowNumber,
                 context: nil, characters: character, charactersIgnoringModifiers: character,
                 isARepeat: false, keyCode: keyCode))
-            view.keyDown(with: event)
+            window.sendEvent(event)
         }
         view.insertText("(", replacementRange: input)
         XCTAssertEqual(view.string, "(")

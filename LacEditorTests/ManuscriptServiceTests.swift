@@ -80,7 +80,9 @@ final class ManuscriptServiceTests: XCTestCase {
         let text = "<a href=\"x.md\">t</a> <video src='v.mp4'></video> <a href=\"https://e.com\">w</a> <a href=\"#h\">h</a> <a data-href=\"z.md\">d</a>"
         let output = try merge([part(text)])
         XCTAssertEqual(output.text, text)
-        XCTAssertEqual(output.report.unconvertedAddresses, 2)
+        // cmark отдаёт HTML-ссылку как обычную Markdown-ссылку; в отчёт она
+        // попадает один раз, а media-тег не дублируется отдельным проходом.
+        XCTAssertEqual(output.report.unconvertedAddresses, 1)
     }
 
     func testAddressEncodingKeepsNonASCIIAndHidesMarkup() {
