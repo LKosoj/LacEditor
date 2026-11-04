@@ -1676,6 +1676,34 @@ final class MarkdownLayoutTests: XCTestCase {
         withExtendedLifetime(scroll) {}
     }
 
+    func testLineNumberSkipsCollapsedParagraphSeparator() throws {
+        _ = NSApplication.shared
+        let source = "first\n\nnext"
+        let (storage, layout, container) = makeLayout(source)
+        let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 400), textContainer: container)
+        let scroll = NSScrollView(frame: view.frame)
+        scroll.documentView = view
+        let parsed = MarkdownPresentationParser.parse(source)
+        let separator = try XCTUnwrap(parsed.paragraphs.first?.separatorAfter)
+        let next = (source as NSString).range(of: "next")
+        func lineRect(_ range: NSRange) -> NSRect {
+            let glyph = layout.glyphIndexForCharacter(at: range.location)
+            return layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        }
+        layout.markdownParagraphSpacing = 12
+        layout.setMarkdownPresentation(parsed, revealedRange: nil)
+        layout.ensureLayout(for: container)
+        let collapsedRect = lineRect(separator)
+        XCTAssertLessThan(collapsedRect.height, 1)
+        XCTAssertFalse(LineNumberGeometry.shouldDrawLabel(in: collapsedRect, orientation: .verticalRuler))
+        XCTAssertTrue(LineNumberGeometry.shouldDrawLabel(in: lineRect(next), orientation: .verticalRuler))
+        layout.setMarkdownPresentation(nil, revealedRange: nil)
+        layout.ensureLayout(for: container)
+        XCTAssertTrue(LineNumberGeometry.shouldDrawLabel(in: lineRect(separator), orientation: .verticalRuler))
+        XCTAssertEqual(storage.string, source)
+        withExtendedLifetime(scroll) {}
+    }
+
     func testParagraphSpacingRestoresSourceModeThroughController() async throws {
         _ = NSApplication.shared
         let source = "first\n\nnext"

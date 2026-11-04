@@ -63,6 +63,11 @@ enum LineNumberGeometry {
         NSPoint(x: floor(lineRect.midX - labelSize.width / 2), y: floor((rulerHeight - labelSize.height) / 2))
     }
 
+    static func shouldDrawLabel(in lineRect: NSRect, orientation: NSRulerView.Orientation) -> Bool {
+        let extent = orientation == .horizontalRuler ? lineRect.width : lineRect.height
+        return extent >= 1
+    }
+
     static func selectionRange(
         from firstLine: NSRange,
         to lastLine: NSRange
@@ -439,6 +444,7 @@ final class LineNumberRulerView: NSRulerView {
         isActive: Bool,
         clippingTo drawingRect: NSRect
     ) {
+        guard LineNumberGeometry.shouldDrawLabel(in: lineRect, orientation: orientation) else { return }
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: isActive ? NSColor.labelColor : NSColor.lacMutedText
