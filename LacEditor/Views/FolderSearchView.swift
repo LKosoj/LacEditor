@@ -36,7 +36,7 @@ struct FolderSearchView: View {
                 if controller.mode == .text {
                     TextField(L10n.tr("文件过滤，例如 *.md, !build"), text: $controller.fileMask)
                         .disabled(controller.replaceState == .applying)
-                        .help(L10n.tr("用逗号分隔。* 匹配任意字符，** 可跨文件夹，? 匹配一个字符，以 ! 开头表示排除。"))
+                        .stableHelp(L10n.tr("用逗号分隔。* 匹配任意字符，** 可跨文件夹，? 匹配一个字符，以 ! 开头表示排除。"))
                         .accessibilityLabel(L10n.tr("文件过滤")).accessibilityIdentifier("folderSearch.fileMask")
                         .onSubmit { controller.start() }
                     replaceControls
@@ -69,7 +69,7 @@ extension FolderSearchView {
                 ProgressView().controlSize(.small)
                 Button { appState.aiRegex.cancel() } label: { Image(systemName: "xmark.circle") }
                     .buttonStyle(.borderless)
-                    .help(L10n.tr("取消生成"))
+                    .stableHelp(L10n.tr("取消生成"))
                     .accessibilityLabel(L10n.tr("取消生成"))
                     .accessibilityIdentifier("folderSearch.aiRegex.cancel")
             } else {
@@ -83,7 +83,7 @@ extension FolderSearchView {
                 } label: { Image(systemName: "sparkles") }
                     .buttonStyle(.borderless)
                     .disabled(controller.query.isEmpty || controller.replaceState != .idle || appState.aiRegex.isWorking)
-                    .help(L10n.tr("把查找框里的描述交给 AI 生成正则表达式；只发送这段描述，不发送文档内容"))
+                    .stableHelp(L10n.tr("把查找框里的描述交给 AI 生成正则表达式；只发送这段描述，不发送文档内容"))
                     .accessibilityLabel(L10n.tr("用 AI 生成正则表达式"))
                     .accessibilityIdentifier("folderSearch.aiRegex")
             }
@@ -94,11 +94,11 @@ extension FolderSearchView {
     var replaceControls: some View {
         let isBusy = controller.replaceState != .idle
         HStack {
-            Toggle("Aa", isOn: $controller.caseSensitive).help(L10n.tr("区分大小写"))
+            Toggle("Aa", isOn: $controller.caseSensitive).stableHelp(L10n.tr("区分大小写"))
                 .accessibilityLabel(L10n.tr("区分大小写")).accessibilityIdentifier("folderSearch.case")
-            Toggle(".*", isOn: $controller.usesRegex).help(L10n.tr("正则表达式"))
+            Toggle(".*", isOn: $controller.usesRegex).stableHelp(L10n.tr("正则表达式"))
                 .accessibilityLabel(L10n.tr("正则表达式")).accessibilityIdentifier("folderSearch.regex")
-            Toggle("ab", isOn: $controller.wholeWord).help(L10n.tr("全字匹配"))
+            Toggle("ab", isOn: $controller.wholeWord).stableHelp(L10n.tr("全字匹配"))
                 .accessibilityLabel(L10n.tr("全字匹配")).accessibilityIdentifier("folderSearch.word")
             Spacer()
             extractMenu
@@ -139,7 +139,7 @@ extension FolderSearchView {
             Button(L10n.tr("匹配内容")) { controller.extract(.match) }
             Button(L10n.tr("按模板提取")) { controller.extract(.template) }
                 .disabled(!controller.isReplaceEnabled || controller.replacement.isEmpty)
-                .help(L10n.tr("使用“替换为”中的模板，例如 $1"))
+                .stableHelp(L10n.tr("使用“替换为”中的模板，例如 $1"))
             Button(L10n.tr("匹配所在的行")) { controller.extract(.line) }
             Button(L10n.tr("不含匹配的行")) { controller.extract(.withoutMatch) }
         } label: {
@@ -148,7 +148,7 @@ extension FolderSearchView {
         .menuStyle(.borderlessButton).fixedSize()
         .disabled(controller.query.isEmpty || controller.isWorking || controller.isExtracting
                   || controller.replaceState != .idle || controller.root == nil)
-        .help(L10n.tr("提取")).accessibilityLabel(L10n.tr("提取")).accessibilityIdentifier("folderSearch.extract")
+        .stableHelp(L10n.tr("提取")).accessibilityLabel(L10n.tr("提取")).accessibilityIdentifier("folderSearch.extract")
     }
 
     private func extractionText(_ note: FolderSearchController.ExtractionNote) -> String {
@@ -366,7 +366,7 @@ struct WordSearchPanel: View {
                     Image(systemName: "ellipsis.circle")
                 }
                 .menuStyle(.borderlessButton).fixedSize()
-                .help(L10n.tr("索引")).accessibilityLabel(L10n.tr("索引"))
+                .stableHelp(L10n.tr("索引")).accessibilityLabel(L10n.tr("索引"))
                 .accessibilityIdentifier("folderSearch.words.menu")
             }
             if !aiAvailable {

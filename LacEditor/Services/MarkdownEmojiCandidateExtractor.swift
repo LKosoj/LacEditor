@@ -119,7 +119,7 @@ enum MarkdownEmojiCandidateExtractor {
                 flushSmartRun()
                 return
             }
-            // Accept only HTML siblings already confirmed as a simple underline pair.
+            // Accept only HTML siblings already confirmed as a simple underline or anchor pair.
             var htmlNodes: [OpaquePointer] = []
             var probe = cmark_node_first_child(UnsafeMutablePointer<cmark_node>(node)).map { OpaquePointer($0) }
             while let item = probe {
@@ -130,7 +130,11 @@ enum MarkdownEmojiCandidateExtractor {
             var suppressChildren = suppress
             if !htmlNodes.isEmpty {
                 let pairs = MarkdownPresentationParser.underlines(in: node, source: source, text: text, isCancelled: isCancelled)
-                let confirmed = Set(pairs.flatMap { [$0.0, $0.1] })
+                let links = withoutActuallyEscaping(isCancelled) { check in
+                    MarkdownPresentationParser.inlineHTMLPairs(in: node, confirmed: Set(htmlNodes), source: source, text: text,
+                                                               isCancelled: check).filter { $0.kind == .link }
+                }
+                let confirmed = Set(pairs.flatMap { [$0.0, $0.1] } + links.flatMap { [$0.opening, $0.closing] })
                 if isCancelled() { return }
                 if !htmlNodes.allSatisfy({ confirmed.contains($0) }) { suppressChildren = true }
             }

@@ -28,6 +28,10 @@ enum MarkdownWikiLinkExtractor {
                 if isCancelled() { return [] }
                 guard text.character(at: index) == 91, text.character(at: index + 1) == 91 else { index += 1; continue }
                 if index > 0, text.character(at: index - 1) == 33 { index += 2; continue }
+                // `\[[` — первая скобка экранирована: проекция отдаёт её как видимый символ без `\`.
+                var slashes = 0
+                while index - slashes > 0, text.character(at: index - slashes - 1) == 92 { slashes += 1 }
+                if slashes % 2 != 0 { index += 1; continue }
                 var close = index + 2
                 var found = false
                 while close + 1 < end {

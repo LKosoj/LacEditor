@@ -40,7 +40,7 @@ final class CriticMarkupExportAccessory: NSObject {
             if option == .tracked, !formatSupportsTracked {
                 let warning = L10n.tr("此格式不支持修订，将保留原始标记")
                 let note = NSTextField(labelWithString: warning)
-                note.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+                note.font = NSFont.preferredFont(forTextStyle: .subheadline)
                 note.textColor = .secondaryLabelColor
                 stack.addArrangedSubview(note)
                 button.setAccessibilityLabel(optionTitle + ". " + warning)

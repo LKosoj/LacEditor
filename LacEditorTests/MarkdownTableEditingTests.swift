@@ -94,7 +94,8 @@ final class MarkdownTableEditingTests: XCTestCase {
         for newline in ["\n", "\r\n"] {
             let table = ["|   |   |", "| --- | --- |", "|   |   |"].joined(separator: newline)
             let cases: [(String, Int, String)] = [
-                ("", 0, table),
+                // В пустом документе нет образца окончания строки, поэтому используется "\n".
+                ("", 0, ["|   |   |", "| --- | --- |", "|   |   |"].joined(separator: "\n")),
                 (newline + "after", 0, table + newline + newline + "after"),
                 ("before" + newline, (("before" + newline) as NSString).length, "before" + newline + newline + table),
                 ("before" + newline + newline + "after", (("before" + newline) as NSString).length, "before" + newline + newline + table + newline + newline + "after")

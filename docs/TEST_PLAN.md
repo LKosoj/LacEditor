@@ -48,7 +48,42 @@ macOS: 0 ошибок, 0 предупреждений, 0 пропусков GUI-
 - [ ] Проверить 0 предупреждений и выполнить `git diff --check`.
 - [ ] Обновить итоговый статус и отметить цель выполненной.
 
-## Текущее состояние
+## Linux-стенд (2026-11-04)
+
+Тесты без AppKit/AppState собираются и запускаются на сервере стендом
+`/home/claude-bot/tools/lac-writer-check` (`run-tests.sh`, подробности — в
+`docs/TEST_STATUS.md` и `docs/agents/testing.md`). Стенд не заменяет прогон на Mac.
+
+Сделано:
+
+- [x] Стенд подключён ко всем тестам без AppKit/AppState: 1873 теста, 1 пропуск
+  (`FileVersionServiceTests`, том без хранилища версий).
+- [x] Исправлен код: таблица имён узлов Swift в `TreeSitterGenericBackend`
+  (`SyntaxParser.swift`), экранирование `\[[` в wiki-ссылках, граница длины в
+  `MarkdownReadableText`, `stableHelp` в `FolderSearchView`,
+  `CriticMarkupExportAccessory`, `on*`-атрибуты у изображения в
+  `MarkdownHTMLMediaService`, эмодзи внутри подтверждённой `<a href>`.
+- [x] `MarkdownPresentationParser`: колонка продолжения пункта задачи, таблица в
+  `tasklist`, незакрытый fenced-блок, табуляция в заголовке оглавления, жёсткий
+  перенос `\` (отставание строк cmark), табуляция в префиксе цитаты/списка.
+- [x] Исправлены ошибочные ожидания тестов (без ослабления проверок):
+  `TextCompareController`, `MarkdownBacklinks`, `FileVersion`,
+  `MarkdownReadableText`, `MarkdownTableEditing`, `SemanticFont`, `UIPolishK`,
+  часть `MarkdownPresentationParser`.
+- [x] Итог: настоящих падений нет; остаются только падения из-за Linux
+  (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF).
+
+Осталось:
+
+- [ ] Собрать на Mac и прогнать изменённые классы, прежде всего
+  `MarkdownPresentationParserTests`, `MarkdownEmojiCandidate*`,
+  `MarkdownHTMLMedia*`, `SyntaxParser`/Tree-sitter, `FolderSearchView`.
+- [ ] Проверить на Mac тесты, которые на Linux не запускаются: AppKit/AppState,
+  JavaScriptCore, Keychain, `FocusSentenceTests` (`.bySentences`) и тесты из
+  `linux-only-failures.txt`.
+- [ ] Затем выполнить общий итоговый прогон из чек-листа выше.
+
+## Текущее состояние (Mac)
 
 - `MarkdownElementPathTests`: 22/22.
 - `MarkdownFootnoteTests`: 9/9.

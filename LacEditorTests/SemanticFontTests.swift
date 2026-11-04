@@ -12,6 +12,7 @@ final class SemanticFontTests: XCTestCase {
             ".font(.system(size: 14, weight: .medium))"      // значок в плитке 28x28
         ],
         "SettingsView.swift": ["section.symbol).font(.system(size: 14))"],            // значок в рамке шириной 20
+        "VaultStatusBarItem.swift": ["Image(systemName: status.symbolName).font(.system(size: 10))"], // значок состояния хранилища
         "LacEditorDesign.swift": [".font(.system(size: 18, weight: .medium))"]        // значок в плитке 40x40
     ]
 

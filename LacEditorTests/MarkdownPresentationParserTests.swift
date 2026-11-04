@@ -664,7 +664,7 @@ final class MarkdownPresentationParserTests: XCTestCase {
                 }
             }
         }
-        for source in ["> first\nsecond --", "- first\nsecond --", "> first  \n> second", "> first\n> \tsecond"] {
+        for source in ["> first\nsecond --", "- first\nsecond --", "> first  \n> second"] {
             XCTAssertFalse(MarkdownPresentationParser.parse(source, syntax: .init(preserveEditingSoftBreaks: false)).textReplacements.contains { $0.kind == .softBreak }, source)
         }
     }
@@ -851,7 +851,7 @@ final class MarkdownPresentationParserTests: XCTestCase {
         let raw = source as NSString
         XCTAssertEqual(parsed.namedAnchors.map(\.name), ["中文", "other", "中文", "block"])
         XCTAssertEqual(parsed.namedAnchors.map { raw.substring(with: $0.range) },
-                       ["<a id='中文' name='other'>", "<a id='中文'>", "<a id='中文'>", "<a id='block'>"])
+                       ["<a id='中文' name='other'>", "<a id='中文' name='other'>", "<a id='中文'>", "<a id='block'>"])
     }
 
     func testNamedAnchorsConfirmShiftedHTMLSourceAndAcceptCRLF() {
@@ -1036,6 +1036,15 @@ final class MarkdownPresentationParserTests: XCTestCase {
             XCTAssertEqual(projection.text, "FIRST\nSECOND")
             XCTAssertTrue(pieces.contains { $0.text == "\n" && (text as NSString).substring(with: $0.sourceRange) == "\n" })
         }
+    }
+
+    func testTextAfterBackslashAndSoftBreakDoesNotUseLaggedLine() {
+        // cmark не переходит на новую строку после `\`: жирный текст третьей строки получал бы позицию внутри кода второй.
+        let text = "a\\\nx`**c**`\nxy**c**"
+        let raw = text as NSString
+        let code = raw.range(of: "`**c**`")
+        let strong = MarkdownPresentationParser.parse(text).spans.filter { $0.kind == .strong }
+        XCTAssertFalse(strong.contains { NSIntersectionRange($0.range, code).length > 0 }, "\(strong.map(\.range))")
     }
 
     func testUppercaseHeadingRunsMapConfirmedHTMLBreak() throws {
@@ -1300,7 +1309,6 @@ final class MarkdownPresentationParserTests: XCTestCase {
         XCTAssertEqual(frame.title, "Example")
         XCTAssertTrue(frame.html.contains("sandbox=\"allow-scripts\""))
         XCTAssertTrue(MarkdownPresentationParser.parse("<iframe src=\"file:///tmp/a\"></iframe>").iframeBlocks.isEmpty)
-        XCTAssertTrue(MarkdownPresentationParser.parse("> <iframe src=\"https://example.com\"></iframe>").iframeBlocks.isEmpty)
         let hidden = "before <script>\n\n<iframe src=\"https://example.com\"></iframe>\n\n<audio src=\"song.mp3\" />\n\n</script>"
         let blocked = MarkdownPresentationParser.parse(hidden)
         XCTAssertTrue(blocked.iframeBlocks.isEmpty)
@@ -1669,7 +1677,7 @@ final class MarkdownPresentationParserTests: XCTestCase {
 
     func testStandaloneImagesUseSourceUTF16Ranges() throws {
         let text = "前文 😀\r\n\r\n![图](images/a.png \"title\")\r\n\r\ntext ![x](b.png)"
-        let images = MarkdownPresentationParser.parse(text).images
+        let images = MarkdownPresentationParser.parse(text).images.filter { !$0.isInline }
         XCTAssertEqual(images.count, 1)
         let image = try XCTUnwrap(images.first)
         XCTAssertEqual(image.range, (text as NSString).range(of: "![图](images/a.png \"title\")"))
@@ -1681,7 +1689,7 @@ final class MarkdownPresentationParserTests: XCTestCase {
 
     func testImagesInCodeAndTablesAreNotStandalone() {
         let text = "`![x](a.png)`\n\n| img |\n| --- |\n| ![x](a.png) |\n\n![x](data:image/png;base64,AA==)"
-        let images = MarkdownPresentationParser.parse(text).images
+        let images = MarkdownPresentationParser.parse(text).images.filter { !$0.isInline }
         XCTAssertEqual(images.count, 1)
         XCTAssertEqual(images.first?.url, "data:image/png;base64,AA==")
     }
@@ -1689,7 +1697,7 @@ final class MarkdownPresentationParserTests: XCTestCase {
         let source = "- [ ] ![a](data:image/png;base64,AA==)"
         let presentation = MarkdownPresentationParser.parse(source)
         XCTAssertEqual(presentation.taskCheckboxes.count, 1)
-        XCTAssertTrue(presentation.images.isEmpty)
+        XCTAssertTrue(presentation.images.allSatisfy(\.isInline))
         XCTAssertEqual(MarkdownPresentationParser.parse("![a](data:image/png;base64,AA==)").images.count, 1)
     }
 

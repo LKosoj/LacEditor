@@ -2069,7 +2069,8 @@ enum MarkdownHTMLMediaService {
             let document = try SwiftSoup.parseBodyFragment(confirmedTag)
             guard let body = document.body(), body.children().size() == 1,
                   body.ownText().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                  let image = body.children().first(), image.tagName() == "img", image.hasAttr("src") else { return nil }
+                  let image = body.children().first(), image.tagName() == "img", image.hasAttr("src"),
+                  !(image.getAttributes()?.asList() ?? []).contains(where: { $0.getKey().lowercased().hasPrefix("on") }) else { return nil }
             let source = try image.attr("src")
             guard !source.isEmpty else { return nil }
             return DisplayImage(source: source, alt: try image.attr("alt"),

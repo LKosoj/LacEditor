@@ -300,6 +300,13 @@ enum MarkdownPresentationParser {
         return (prefixes.source, prefixes.continuation)
     }
 
+    // Табуляция в начале строки или сразу после маркера контейнера частично входит в его отступ: такая строка остаётся исходником.
+    private static func wholeContainerTabs(_ text: NSString, _ prefix: NSRange) -> Bool {
+        (prefix.location..<NSMaxRange(prefix)).allSatisfy { position in
+            text.character(at: position) != 9 || (position > prefix.location && [9, 32].contains(text.character(at: position - 1)))
+        }
+    }
+
     static func listContainerPrefixes(_ item: OpaquePointer, source: Source, text: NSString) -> (source: String, continuation: String)? {
         guard cmark_node_get_type(item) == CMARK_NODE_ITEM else { return nil }
         return containerPrefixes(item, source: source, text: text)
@@ -1206,7 +1213,7 @@ enum MarkdownPresentationParser {
                 case "text", "code":
                     if let literal = cmark_node_get_literal(current) {
                         let start = result.length
-                        result.append(String(cString: literal))
+                        result.append(String(cString: literal).replacingOccurrences(of: "\t", with: " "))
                         for (offset, candidate) in emojiByNode[current] ?? [] {
                             emoji.append(.init(range: NSRange(location: start + offset, length: candidate.range.length), name: candidate.name))
                         }
@@ -1316,9 +1323,13 @@ enum MarkdownPresentationParser {
                                        styles: styles, attachment: .formula))
             }
             if type == "text" || type == "code" {
-                guard let range = source.range(current), range.location >= 0, range.length > 0,
+                guard var range = source.range(current), range.location >= 0, range.length > 0,
                       range.location <= text.length, range.length <= text.length - range.location,
                       let pointer = cmark_node_get_literal(current) else { return false }
+                // Перед жёстким переносом из пробелов cmark включает их в диапазон текста, но не в literal.
+                if type == "text", let next = cmark_node_next(current), cmark_node_get_type(next) == CMARK_NODE_LINEBREAK {
+                    while range.length > 0 && text.character(at: NSMaxRange(range) - 1) == 32 { range.length -= 1 }
+                }
                 let literal = String(cString: pointer), spelling = text.substring(with: range)
                 let pieces: [MarkdownReadableText.Piece]
                 if type == "code" {
@@ -1915,7 +1926,13 @@ enum MarkdownPresentationParser {
                       sourceText.substring(with: range) == String(cString: literal), !isCancelled() else { return nil }
                 let firstLine = sourceText.lineRange(for: NSRange(location: marker, length: 0))
                 guard range.location >= marker, range.location < NSMaxRange(firstLine) else { return nil }
-                let initial = Array(sourceText.substring(with: NSRange(location: firstLine.location, length: range.location - firstLine.location)).utf16)
+                // Отметка задачи входит в содержимое пункта: колонка продолжения считается от «[».
+                var contentStart = range.location
+                if cmark_node_get_type_string(item).map({ String(cString: $0) }) == "tasklist", let checkbox = source.taskCheckbox(item),
+                   checkbox.markerRange.location >= marker, checkbox.markerRange.location < range.location {
+                    contentStart = checkbox.markerRange.location
+                }
+                let initial = Array(sourceText.substring(with: NSRange(location: firstLine.location, length: contentStart - firstLine.location)).utf16)
                 guard initial.allSatisfy({ $0 < 128 }), !isCancelled() else { return nil }
                 let column = initial.reduce(0) { value, unit in unit == 9 ? (value / 4 + 1) * 4 : value + 1 }
                 var quoteEnd = initial.lastIndex(of: 62).map { $0 + 1 } ?? 0
@@ -2330,7 +2347,7 @@ enum MarkdownPresentationParser {
                 while let current = parent, let name = cmark_node_get_type_string(current) {
                     switch String(cString: name) {
                     case "block_quote": quotes += 1
-                    case "item", "list": nestedList = true
+                    case "item", "tasklist", "list": nestedList = true
                     case "document": break
                     default: supported = false
                     }
@@ -2673,7 +2690,7 @@ enum MarkdownPresentationParser {
                     span = MarkdownPresentationSpan(range: range, kind: .quote, markerRanges: source.quoteMarkers(range))
                 case "code_block" where cmark_node_get_syntax_extension(node) != mathExtension:
                     span = MarkdownPresentationSpan(range: confirmedCodeBlock?.range ?? range, kind: .codeBlock,
-                                                    markerRanges: confirmedCodeBlock?.fenceMarkers ?? source.fenceMarkers(range))
+                                                    markerRanges: confirmedCodeBlock.map { $0.isClosed ? $0.fenceMarkers : [] } ?? source.fenceMarkers(range))
                 default: break
                 }
                 if let span { spans.append(span) }
@@ -2992,7 +3009,8 @@ enum MarkdownPresentationParser {
                 cursor += 1
                 if newline == 13 && cursor < after.location && sourceText.character(at: cursor) == 10 { cursor += 1 }
                 let tail = NSRange(location: cursor, length: after.location - cursor)
-                if sourceText.substring(with: tail).utf16.elementsEqual(prefix.source.utf16) {
+                if sourceText.substring(with: tail).utf16.elementsEqual(prefix.source.utf16),
+                   cmark_node_parent(paragraph).map { cmark_node_get_type($0) == CMARK_NODE_DOCUMENT } == true || wholeContainerTabs(sourceText, tail) {
                     return NSRange(location: NSMaxRange(before), length: after.location - NSMaxRange(before))
                 }
             }
@@ -3055,6 +3073,7 @@ enum MarkdownPresentationParser {
                 }
                 if invalidTab || (topLevel && prefixHasTab) { continue }
                 if prefixHasTab {
+                    guard wholeContainerTabs(sourceText, NSRange(location: line.location, length: first - line.location)) else { continue }
                     guard cmark_node_get_start_line(node) == cmark_node_get_end_line(node),
                           let pointer = cmark_node_get_string_content(node) else { continue }
                     var retained = String(cString: pointer)
@@ -3086,7 +3105,7 @@ enum MarkdownPresentationParser {
                 guard proven, cursor == last else { continue }
                 if !topLevel, cmark_node_get_start_line(node) == cmark_node_get_end_line(node),
                    let container = cmark_node_parent(parent) {
-                    var markerEnd: Int?
+                    var markerEnd: Int?, columnStart = line.location
                     if cmark_node_get_type(parent) == CMARK_NODE_BLOCK_QUOTE {
                         var ancestor: OpaquePointer? = container
                         while let current = ancestor, cmark_node_get_type(current) == CMARK_NODE_BLOCK_QUOTE {
@@ -3115,7 +3134,8 @@ enum MarkdownPresentationParser {
                                 (cmark_node_get_type_string(current).map({ String(cString: $0) == "tasklist" }) == true || source.taskCheckbox(current) != nil) { valid = false; break }
                             ancestor = cmark_node_parent(current)
                         }
-                        if valid && ancestor != nil { markerEnd = NSMaxRange(checkbox.markerRange) }
+                        // Отступ после отметки задачи считается от маркера пункта: отступ контейнера не сдвигает tab stop.
+                        if valid && ancestor != nil { markerEnd = NSMaxRange(checkbox.markerRange); columnStart = start }
                     } else if cmark_node_get_type(parent) == CMARK_NODE_ITEM,
                               cmark_node_get_type(container) == CMARK_NODE_LIST,
                               let start = source.firstPosition(parent), start >= line.location, start < first,
@@ -3146,14 +3166,14 @@ enum MarkdownPresentationParser {
                        sourceText.character(at: markerEnd) == 32,
                        (markerEnd..<first).allSatisfy({ sourceText.character(at: $0) == 32 || (prefixHasTab && sourceText.character(at: $0) == 9) }),
                        first - markerEnd > 1 {
-                        var column = 0, cursor = line.location
+                        var column = 0, cursor = columnStart
                         while cursor < first {
                             let unit = sourceText.character(at: cursor)
                             column = unit == 9 ? (column / 4 + 1) * 4 : column + 1
                             cursor += 1
                         }
                         var markerColumn = 0
-                        for index in line.location..<markerEnd {
+                        for index in columnStart..<markerEnd {
                             let unit = sourceText.character(at: index)
                             markerColumn = unit == 9 ? (markerColumn / 4 + 1) * 4 : markerColumn + 1
                         }
@@ -3424,6 +3444,7 @@ enum MarkdownPresentationParser {
         private var paragraphRetainedStarts: [OpaquePointer: [Int: Int]] = [:]
         private var referencePrefixes: [OpaquePointer: NSRange] = [:]
         private var possibleReferenceNodes: Set<OpaquePointer> = []
+        private var laggedNodes: Set<OpaquePointer> = []
 
         init(_ text: String, root: OpaquePointer? = nil, textOrigins: [MarkdownTextSourceCapture.Origin] = [], looseHeadings: [OpaquePointer: Int] = [:], looseListRanges: [OpaquePointer: NSRange] = [:], interruptIndexing: Bool = false, isCancelled: () -> Bool = { false }) {
             self.looseHeadings = looseHeadings
@@ -3486,16 +3507,52 @@ enum MarkdownPresentationParser {
             }
         }
 
+        // После переноса `\` cmark не увеличивает номер строки (handle_backslash), а следующий обычный перенос
+        // сбрасывает столбец: позиции дальше выглядят правдоподобно, но отстают на число таких переносов.
+        // Перенос `\` узнаётся по тому, что следующий узел остался на той же строке; отставшие узлы остаются без диапазона.
+        private mutating func markLaggedNodes(_ blocks: Set<OpaquePointer>, isCancelled: () -> Bool) {
+            for block in blocks {
+                var lag = 0, sinceReset = 0, pendingBreak = false
+                var line = Int(cmark_node_get_start_line(block))
+                var pending: [OpaquePointer] = []
+                var child = cmark_node_first_child(block)
+                while let current = child { pending.append(current); child = cmark_node_next(current) }
+                pending.reverse()
+                while let node = pending.popLast() {
+                    if isCancelled() { return }
+                    var nested: [OpaquePointer] = [], item = cmark_node_first_child(node)
+                    while let current = item { nested.append(current); item = cmark_node_next(current) }
+                    pending.append(contentsOf: nested.reversed())
+                    let type = cmark_node_get_type(node)
+                    if type == CMARK_NODE_LINEBREAK { pendingBreak = true; continue }
+                    let start = Int(cmark_node_get_start_line(node))
+                    guard type != CMARK_NODE_SOFTBREAK, start > 0 else { continue }
+                    if pendingBreak && start == line { lag += 1; sinceReset += 1 }
+                    else if start != line { sinceReset = 0 }
+                    pendingBreak = false
+                    line = start
+                    if lag > sinceReset { laggedNodes.insert(node) }
+                }
+            }
+        }
+
         // cmark removes leading reference definitions but keeps the old paragraph
         // line number. Recover only a complete, position-verified retained buffer.
         private mutating func recoverReferenceParagraphs(_ root: OpaquePointer, text: NSString, isCancelled: () -> Bool) {
-            var nodes = [root]
+            var nodes = [root], breakBlocks: Set<OpaquePointer> = []
+            defer { markLaggedNodes(breakBlocks, isCancelled: isCancelled) }
             while let node = nodes.popLast() {
                 if isCancelled() { return }
                 var descendant = cmark_node_first_child(node)
                 while let current = descendant {
                     if isCancelled() { return }
                     nodes.append(current); descendant = cmark_node_next(current)
+                }
+                if cmark_node_get_type(node) == CMARK_NODE_LINEBREAK {
+                    var block = cmark_node_parent(node)
+                    while let current = block, cmark_node_get_type(current) != CMARK_NODE_PARAGRAPH,
+                          cmark_node_get_type(current) != CMARK_NODE_HEADING { block = cmark_node_parent(current) }
+                    if let block { breakBlocks.insert(block) }
                 }
                 guard cmark_node_get_type(node) == CMARK_NODE_PARAGRAPH else { continue }
                 let column = Int(cmark_node_get_start_column(node))
@@ -3580,7 +3637,7 @@ enum MarkdownPresentationParser {
                     }
                     let candidate = last - lines.count + 1
                     guard candidate > first else { continue }
-                    var matches = true
+                    var matches = true, ambiguousTab = false
                     for (offset, line) in lines.enumerated() {
                         if isCancelled() { return }
                         let physical = candidate + offset
@@ -3600,6 +3657,10 @@ enum MarkdownPresentationParser {
                                 }
                             }
                             if !matches || quotes != quoteDepth { matches = false; break }
+                            // Табуляция внутри текста после частично поглощённой табуляции префикса: колонки cmark неоднозначны.
+                            if retained[line].contains(9), (lineStarts[physical]..<startByte).contains(where: { index in
+                                bytes[index] == 9 && (index == lineStarts[physical] || (bytes[index - 1] != 9 && bytes[index - 1] != 32))
+                            }) { ambiguousTab = true }
                         }
                         columnShifts[physical] = startByte - lineStarts[physical] - (column - 1)
                         for index in line {
@@ -3609,6 +3670,17 @@ enum MarkdownPresentationParser {
                         if !matches { break }
                     }
                     guard matches else { continue }
+                    if ambiguousTab {
+                        // Строки абзаца сдвинуты, но позиции не подтверждены: узлы остаются без диапазона.
+                        var pending = [node]
+                        while let current = pending.popLast() {
+                            if isCancelled() { return }
+                            paragraphLineShifts[current] = candidate - first
+                            var child = cmark_node_first_child(current)
+                            while let next = child { pending.append(next); child = cmark_node_next(next) }
+                        }
+                        continue
+                    }
                     actualLine = candidate
                     prefixByteStart = lineStarts[first] + column - 1
                 }
@@ -4050,6 +4122,7 @@ enum MarkdownPresentationParser {
 
         func linkRange(_ node: OpaquePointer, tableCell: OpaquePointer?, tablePositions: TableCellPositions? = nil) -> NSRange? {
             if let recovered = recoveredRanges[node] { return recovered }
+            if laggedNodes.contains(node) { return nil }
             if let child = cmark_node_first_child(node), cmark_node_next(child) == nil,
                cmark_node_get_type(child) == CMARK_NODE_TEXT,
                cmark_node_get_start_line(node) == cmark_node_get_start_line(child),
@@ -4250,6 +4323,7 @@ enum MarkdownPresentationParser {
         func range(_ node: OpaquePointer) -> NSRange? {
             if let recovered = recoveredRanges[node] { return recovered }
             if paragraphLineShifts[node] != nil && referencePrefixes[node] == nil { return nil }
+            if laggedNodes.contains(node) { return nil }
             let first = Int(cmark_node_get_start_line(node)) - 1
             var last = Int(cmark_node_get_end_line(node)) - 1
             let startColumn = Int(cmark_node_get_start_column(node))
@@ -4260,19 +4334,24 @@ enum MarkdownPresentationParser {
             }
             guard first >= 0, last >= first, last < lineStarts.count,
                   startColumn > 0, endColumn > 0,
-                  !lineHasTab[first...last].contains(true) else { return nil }
+                  !lineHasTab[first...last].contains(true) ||
+                    (first == last && lineStarts[last] + endColumn <= lineEnds[last] &&
+                     !bytes[lineStarts[last]..<(lineStarts[last] + endColumn)].contains(9)) else { return nil }
             var start = lineStarts[first] + startColumn - 1
             var end = lineStarts[last] + endColumn
             if first == last, start > lineEnds[first] || end > lineEnds[last] {
                 var ancestor = cmark_node_parent(node)
-                while let current = ancestor, cmark_node_get_type(current) != CMARK_NODE_PARAGRAPH {
+                while let current = ancestor, cmark_node_get_type(current) != CMARK_NODE_PARAGRAPH,
+                      cmark_node_get_type(current) != CMARK_NODE_HEADING {
                     ancestor = cmark_node_parent(current)
                 }
                 guard let paragraph = ancestor else { return nil }
-                var hasCode = false
+                var hasCode = false, hasBreak = false
                 var child = cmark_node_first_child(paragraph)
                 while let current = child {
-                    if cmark_node_get_type(current) == CMARK_NODE_CODE { hasCode = true; break }
+                    if cmark_node_get_type(current) == CMARK_NODE_CODE { hasCode = true }
+                    // После переноса `\` cmark не переходит на следующую строку (handle_backslash): позиция считается от прежней.
+                    if cmark_node_get_type(current) == CMARK_NODE_LINEBREAK { hasBreak = true }
                     child = cmark_node_next(current)
                 }
                 var quoted = false
@@ -4281,17 +4360,20 @@ enum MarkdownPresentationParser {
                     if cmark_node_get_type(parent) == CMARK_NODE_BLOCK_QUOTE { quoted = true; break }
                     container = parent
                 }
-                guard (hasCode && !quoted) || cmark_node_get_type(node) == CMARK_NODE_IMAGE else { return nil }
+                guard ((hasCode || hasBreak) && !quoted) || cmark_node_get_type(node) == CMARK_NODE_IMAGE else { return nil }
                 last = Int(cmark_node_get_end_line(paragraph)) - 1
-                guard last >= first, last < lineStarts.count else { return nil }
+                let paragraphFirst = Int(cmark_node_get_start_line(paragraph)) - 1
+                guard last >= first, last < lineStarts.count, paragraphFirst >= 0, paragraphFirst <= first else { return nil }
                 guard let paragraphContent = cmark_node_get_string_content(paragraph) else { return nil }
                 let retainedLines = String(cString: paragraphContent).components(separatedBy: "\n")
+                // У заголовка с подчёркиванием последняя строка — само подчёркивание, его нет в содержимом.
+                if hasBreak { last = min(last, paragraphFirst + retainedLines.count - 1) }
                 func sourceByte(_ position: Int) -> Int? {
                     var shift = 0
                     for line in first..<last {
                         let next = line + 1
-                        guard next - first < retainedLines.count else { return nil }
-                        let retained = retainedLines[next - first]
+                        guard next - paragraphFirst < retainedLines.count else { return nil }
+                        let retained = retainedLines[next - paragraphFirst]
                         let contentStart = lineEnds[next] - retained.utf8.count
                         let retainedBytes = Array(retained.utf8)
                         guard contentStart >= lineStarts[next], contentStart <= lineEnds[next],
@@ -4305,6 +4387,11 @@ enum MarkdownPresentationParser {
                 guard let mappedStart = sourceByte(start), let mappedEnd = sourceByte(end) else { return nil }
                 start = mappedStart
                 end = mappedEnd
+                if hasBreak, !hasCode {
+                    guard let line = lineStarts.lastIndex(where: { $0 < end }), line >= first, line <= last,
+                          lineStarts[line] <= start else { return nil }
+                    last = line
+                }
             }
             guard start >= lineStarts[first],
                   end >= lineStarts[last], end <= lineEnds[last], end >= start,
@@ -4314,6 +4401,14 @@ enum MarkdownPresentationParser {
 
         func editingTextRange(_ node: OpaquePointer) -> NSRange? {
             guard !possibleReferenceNodes.contains(node) || recoveredRanges[node] != nil else { return nil }
+            // Пробелы абзаца после удалённого определения ссылки с табуляцией не подтверждаются для правки.
+            if possibleReferenceNodes.contains(node) {
+                var paragraph: OpaquePointer? = node
+                while let current = paragraph, cmark_node_get_type(current) != CMARK_NODE_PARAGRAPH { paragraph = cmark_node_parent(current) }
+                guard let paragraph else { return nil }
+                let first = Int(cmark_node_get_start_line(paragraph)) - 1, last = Int(cmark_node_get_end_line(paragraph)) - 1
+                guard first >= 0, last >= first, last < lineHasTab.count, !lineHasTab[first...last].contains(true) else { return nil }
+            }
             return range(node)
         }
 

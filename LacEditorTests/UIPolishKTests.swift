@@ -38,7 +38,10 @@ final class UIPolishKTests: XCTestCase {
     func testClearButtonDoesNotBypassQueryObserver() throws {
         let text = try source("Views/FindReplaceView.swift")
         XCTAssertTrue(text.contains("state.query = \"\""))
-        XCTAssertTrue(text.contains(".onChange(of: state.query) { queryOptionsChanged() }"))
+        // Наблюдатель запроса может делать и другое (AI-регулярка), но обязан вызывать queryOptionsChanged().
+        let observer = try XCTUnwrap(text.range(of: ".onChange(of: state.query) {"))
+        let next = text.range(of: ".onChange(", range: observer.upperBound..<text.endIndex)?.lowerBound ?? text.endIndex
+        XCTAssertTrue(text[observer.upperBound..<next].contains("queryOptionsChanged()"))
     }
 
     func testAcceptAllUsesSingleParameterizedKey() throws {

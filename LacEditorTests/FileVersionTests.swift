@@ -214,7 +214,8 @@ final class VersionHistoryControllerTests: XCTestCase {
     func testInitialSelectionSelectsSnapshot() async {
         let first = snapshotInfo("A", 0), second = snapshotInfo("B", 10)
         let box = SnapshotBox([first, second], [first.id: "a\n", second.id: "b\n"])
-        let controller = makeSnapshotController(document: EditorDocument(text: "current\n", url: url), box: box)
+        let document = EditorDocument(text: "current\n", url: url)
+        let controller = makeSnapshotController(document: document, box: box)
         controller.initialSelection = first.id
         controller.start()
         await settle(controller)

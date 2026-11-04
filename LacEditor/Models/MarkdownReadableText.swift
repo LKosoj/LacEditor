@@ -61,7 +61,7 @@ struct MarkdownReadableText: Sendable {
             guard let selection else { result += fragment.text; continue }
             let range = fragment.sourceRange
             if range.length == 0 {
-                if selection.location <= range.location && range.location < NSMaxRange(selection) { result += fragment.text }
+                if selection.location < range.location && range.location < NSMaxRange(selection) { result += fragment.text }
                 continue
             }
             let part = NSIntersectionRange(range, selection)

@@ -697,6 +697,15 @@ struct TreeSitterGenericBackend: SyntaxParserBackend {
         return result
     }
 
+    private static let swiftKeywords: Set<String> = [
+        "let", "var", "func", "return", "if", "else", "guard", "switch", "case", "default", "for", "in", "while",
+        "repeat", "break", "continue", "fallthrough", "import", "struct", "class", "enum", "protocol", "extension",
+        "init", "deinit", "throw", "throws", "rethrows", "try", "catch", "do", "async", "await", "as", "is", "where",
+        "typealias", "associatedtype", "static", "private", "fileprivate", "internal", "public", "open", "final",
+        "override", "mutating", "nonmutating", "inout", "some", "any", "defer", "subscript", "get", "set", "willset",
+        "didset", "lazy", "weak", "unowned", "convenience", "required", "nonisolated", "actor", "self", "super"
+    ]
+
     private static func tokenKind(for nodeType: String, language: EditorLanguage) -> SyntaxHighlighter.TokenKind? {
         let type = nodeType.lowercased()
         if type.contains("comment") { return .comment }
@@ -719,6 +728,12 @@ struct TreeSitterGenericBackend: SyntaxParserBackend {
         }
         if ["identifier", "variable_name", "variable", "constant", "constant_name", "name"].contains(type) {
             return .variable
+        }
+        // Грамматика Swift называет узлы иначе: без этой таблицы код Swift оставался без подсветки.
+        if language == .swift {
+            if swiftKeywords.contains(type) { return .keyword }
+            if type == "simple_identifier" { return .variable }
+            if ["integer_literal", "real_literal", "hex_literal", "oct_literal", "bin_literal"].contains(type) { return .number }
         }
         if type == "operator" || type.hasSuffix("_operator") { return .punctuation }
         if language == .yaml && (type.contains("scalar") || type.contains("anchor") || type.contains("tag")) { return .variable }

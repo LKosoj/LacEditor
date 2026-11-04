@@ -7,6 +7,15 @@ final class TextCompareControllerTests: XCTestCase {
         TextCompareSource(id: id, name: id, isUnsaved: unsaved, load: load)
     }
 
+    /// Контроллер держит документ слабой ссылкой, поэтому тест хранит его до конца.
+    private var documents: [EditorDocument] = []
+
+    private func retained(_ text: String) -> EditorDocument {
+        let document = EditorDocument(text: text)
+        documents.append(document)
+        return document
+    }
+
     private func text(_ id: String, _ value: String) -> TextCompareSource {
         source(id) { value }
     }
@@ -27,7 +36,7 @@ final class TextCompareControllerTests: XCTestCase {
     }
 
     func testIdenticalTextsGiveEmptyResult() async {
-        let controller = TextCompareController(document: EditorDocument(text: "same\n"), candidates: [text("a", "same\n")])
+        let controller = TextCompareController(document: retained("same\n"), candidates: [text("a", "same\n")])
         controller.select("a")
         await settle(controller)
         XCTAssertTrue(controller.hasResult)
@@ -35,14 +44,14 @@ final class TextCompareControllerTests: XCTestCase {
     }
 
     func testCRLFAgainstLFDiffersOnEveryLine() async {
-        let controller = TextCompareController(document: EditorDocument(text: "a\nb\n"), candidates: [text("a", "a\r\nb\r\n")])
+        let controller = TextCompareController(document: retained("a\nb\n"), candidates: [text("a", "a\r\nb\r\n")])
         controller.select("a")
         await settle(controller)
         XCTAssertEqual(controller.changes.count, 4)
     }
 
     func testRepeatedLinesGiveMinimalChanges() async {
-        let controller = TextCompareController(document: EditorDocument(text: "a\nb\n"), candidates: [text("a", "a\na\nb\n")])
+        let controller = TextCompareController(document: retained("a\nb\n"), candidates: [text("a", "a\na\nb\n")])
         controller.select("a")
         await settle(controller)
         XCTAssertEqual(controller.changes.map(\.kind), [.removed])
@@ -50,7 +59,7 @@ final class TextCompareControllerTests: XCTestCase {
 
     func testLateResultAfterCancelIsIgnored() async {
         let slow = source("slow") { try await Task.sleep(nanoseconds: 100_000_000); return "old\n" }
-        let controller = TextCompareController(document: EditorDocument(text: "current\n"), candidates: [slow])
+        let controller = TextCompareController(document: retained("current\n"), candidates: [slow])
         controller.select("slow")
         controller.cancel()
         try? await Task.sleep(nanoseconds: 200_000_000)
@@ -60,7 +69,7 @@ final class TextCompareControllerTests: XCTestCase {
 
     func testOnlyLastSelectionIsApplied() async {
         let slow = source("slow") { try await Task.sleep(nanoseconds: 100_000_000); return "slow\n" }
-        let controller = TextCompareController(document: EditorDocument(text: "current\n"), candidates: [slow, text("fast", "fast\n")])
+        let controller = TextCompareController(document: retained("current\n"), candidates: [slow, text("fast", "fast\n")])
         controller.select("slow")
         controller.select("fast")
         await settle(controller)
@@ -90,7 +99,7 @@ final class TextCompareControllerTests: XCTestCase {
         final class Counter: @unchecked Sendable { var value = 0 }
         let counter = Counter()
         let counted = source("a") { counter.value += 1; return "old\n" }
-        let controller = TextCompareController(document: EditorDocument(text: "current\n"), candidates: [counted])
+        let controller = TextCompareController(document: retained("current\n"), candidates: [counted])
         controller.select("a")
         await settle(controller)
         controller.refresh()
@@ -106,7 +115,7 @@ final class TextCompareControllerTests: XCTestCase {
         ]
         for (error, expected) in cases {
             let failing = source("a") { throw error }
-            let controller = TextCompareController(document: EditorDocument(text: "current\n"), candidates: [failing])
+            let controller = TextCompareController(document: retained("current\n"), candidates: [failing])
             controller.select("a")
             await settle(controller)
             XCTAssertEqual(controller.message, expected)
@@ -117,7 +126,7 @@ final class TextCompareControllerTests: XCTestCase {
 
     func testChooseFileUsesReturnedSourceAndNilKeepsState() async {
         var next: TextCompareSource? = text("file", "old\n")
-        let controller = TextCompareController(document: EditorDocument(text: "current\n"), candidates: [], chooseFile: { next })
+        let controller = TextCompareController(document: retained("current\n"), candidates: [], chooseFile: { next })
         XCTAssertTrue(controller.canChooseFile)
         controller.chooseFileTapped()
         await settle(controller)
@@ -131,7 +140,7 @@ final class TextCompareControllerTests: XCTestCase {
     }
 
     func testInitialSourceStartsComparison() async {
-        let controller = TextCompareController(document: EditorDocument(text: "current\n"), candidates: [], initial: text("disk", "disk\n"))
+        let controller = TextCompareController(document: retained("current\n"), candidates: [], initial: text("disk", "disk\n"))
         XCTAssertFalse(controller.canChooseFile)
         controller.start()
         await settle(controller)

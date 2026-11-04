@@ -122,7 +122,8 @@ final class MarkdownReadableTextTests: XCTestCase {
     }
 
     func testLongInlineDelimiterKeepsBodyWithoutRepeatedRangeCopies() throws {
-        let ticks = String(repeating: "`", count: 2048)
+        // Длиннее 80 обратных кавычек cmark не считает разделителем кода (MAXBACKTICKS).
+        let ticks = String(repeating: "`", count: 80)
         let body = String(repeating: "中a", count: 4096)
         let source = ticks + body + ticks
         XCTAssertEqual(try projection(source).text()?.trimmingCharacters(in: .whitespacesAndNewlines), body)

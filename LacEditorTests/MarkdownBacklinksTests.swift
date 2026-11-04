@@ -177,7 +177,8 @@ final class MarkdownBacklinksControllerTests: XCTestCase {
         try "[a](b.md)".write(to: source, atomically: true, encoding: .utf8)
         var revealed = false
         let subject = controller(reveal: { _, _ in revealed = true; return true })
-        subject.update(root: root, document: EditorDocument(text: "", url: target, language: .markdown), isActive: true)
+        let document = EditorDocument(text: "", url: target, language: .markdown)
+        subject.update(root: root, document: document, isActive: true)
         subject.refreshNow()
         try await waitUntil { subject.state == .loaded }
         let match = try XCTUnwrap(subject.matches.first)

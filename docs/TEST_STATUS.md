@@ -40,6 +40,23 @@
 `MarkdownFormattingServiceTests` (44/44), `AutosaveTests` (16/16) и крупные
 пачки AI/Markdown/Clipboard тестов.
 
+## Linux-стенд `lac-writer-check` (2026-11-04)
+
+Тесты без AppKit/AppState собираются на Linux стендом `/home/claude-bot/tools/lac-writer-check`
+(Swift 6.0.3, OpenCombine, tree-sitter из `Vendor/`). Прогон `run-tests.sh`: 1873 теста,
+1 пропуск (`FileVersionServiceTests`, том без хранилища версий), падения только
+Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как один `Character`)
+настоящих падений нет.
+
+Исправлены: жёсткий перенос `\` в заголовке (cmark не переводит позицию на новую строку,
+текст после него и после следующих мягких переносов получает чужую строку — такие узлы
+теперь остаются исходником), эмодзи внутри подтверждённой HTML-ссылки `<a href>` и пять
+случаев табуляции в префиксе цитаты или списка (код приведён к тестам: частично
+поглощённая маркером табуляция оставляет строку исходником).
+
+Классы с AppKit/AppState, JavaScriptCore, Keychain и `.bySentences` (`FocusSentenceTests`)
+на Linux не запускаются.
+
 ## Что осталось расследовать
 
 1. `MarkdownAutoPairTests`: `LacTextView.keyDown` в оконном тестовом стенде не
