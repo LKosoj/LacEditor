@@ -732,15 +732,9 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         try png.write(to: input)
         func quote(_ value: String) -> String { "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'" }
         let executable = directory.appendingPathComponent("converter")
-        try "#!/bin/sh\nlast=\"\${@: -1}\"\nmkdir -p media\ncp \(quote(input.path)) media/a.png\nif [ \"$(grep -o '\\\\\pict' \"$last\" | wc -l)\" -gt 1 ]; then cp \(quote(input.path)) media/b.png; printf '%s' '![x](media/a.png) ![y](media/b.png)'; else printf '%s' '![x](media/a.png)'; fi\n".write(to: executable, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
-        let hex = png.map { String(format: "%02x", $0) }.joined()
-        let input = directory.appendingPathComponent("input.png")
-        try png.write(to: input)
-        func quote(_ value: String) -> String { "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'" }
-        let executable = directory.appendingPathComponent("converter")
         try "#!/bin/sh\nmkdir -p media\ncp \(quote(input.path)) media/a.png\nprintf '%s' '![x](media/a.png)'\n".write(to: executable, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        let hex = png.map { String(format: "%02x", $0) }.joined()
         let board = NSPasteboard.general
         let saved = (board.pasteboardItems ?? []).map { item -> NSPasteboardItem in
             let copy = NSPasteboardItem()
@@ -752,7 +746,6 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         let document = EditorDocument(text: source, url: directory.appendingPathComponent("note.md"), language: .markdown)
         document.isMarkdownFormatted = true
         let coordinator = EditorTextView.Coordinator(document: document)
-        coordinator.clipboardConversionExecutable = executable
         coordinator.clipboardConversionExecutable = executable
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
         storage.addLayoutManager(layout)
@@ -834,6 +827,9 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         waiting = false
         if !cancelledSecond { coordinator.updateActivity(false); if NSApp.modalWindow != nil { NSApp.abortModal() } }
         await partialTask.value
+        for _ in 0..<150 where document.statusMessage?.contains(directory.appendingPathComponent("partial.png").path) != true {
+            try await Task.sleep(for: .milliseconds(20))
+        }
         XCTAssertTrue(cancelledSecond)
         XCTAssertEqual(view.string, source)
         XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent("partial.png")), png)
@@ -869,12 +865,19 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         else { coordinator.updateActivity(false); if NSApp.modalWindow != nil { NSApp.abortModal() } }
         release.signal()
         await staleTask.value
+        for _ in 0..<150 where document.statusMessage?.contains(staleFile.path) != true {
+            try await Task.sleep(for: .milliseconds(20))
+        }
         XCTAssertTrue(wrote)
         XCTAssertEqual(view.string, source + "user")
         XCTAssertEqual(try Data(contentsOf: staleFile), png)
         XCTAssertTrue(document.statusMessage?.contains(staleFile.path) == true)
         try await Task.sleep(for: .milliseconds(150))
         coordinator.clipboardImageWrite = { try $0.write(to: $1, options: .withoutOverwriting) }
+        let multiExecutable = directory.appendingPathComponent("converter-multi")
+        try "#!/bin/sh\nmkdir -p media\ncp \(quote(input.path)) media/a.png\ncp \(quote(input.path)) media/b.png\nprintf '%s' '![x](media/a.png) ![y](media/b.png)'\n".write(to: multiExecutable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: multiExecutable.path)
+        coordinator.clipboardConversionExecutable = multiExecutable
         waiting = true
         nextName = "mixed.png"
         func acceptMixedPanel() {
