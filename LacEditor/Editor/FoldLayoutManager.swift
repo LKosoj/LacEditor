@@ -1173,6 +1173,17 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         guard textContainers.first?.textView?.hasMarkedText() != true else { return false }
         if let foldedRange, NSIntersectionRange(foldedRange, range).length > 0 { return false }
 
+        // Selecting an audio/video block reveals its source even when the
+        // controller has not yet published a separate revealed range.
+        if markdownMedia.contains(where: { $0.range == range }),
+           let selection = textContainers.first?.textView?.selectedRange(),
+           selection.location != NSNotFound,
+           (selection.length > 0
+            ? NSIntersectionRange(selection, range).length > 0
+            : NSLocationInRange(selection.location, range)) {
+            return false
+        }
+
         // An inline image covered by an uppercase-heading projection must be
         // removed while that exact source image is selected.  The projection
         // has no line-based reveal range of its own, so relying only on
