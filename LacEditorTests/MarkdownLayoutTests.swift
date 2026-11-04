@@ -2919,6 +2919,117 @@ final class MarkdownLayoutTests: XCTestCase {
         XCTAssertEqual(storage.string, source)
     }
 
+    func testHiddenClosingFenceDoesNotPaintBackground() throws {
+        _ = NSApplication.shared
+        for closingFence in ["```", " ```  ", "```\t"] {
+            let source = "```json\n{\"ok\":true}\n\(closingFence)\n\nnext\n", raw = source as NSString
+            let (storage, layout, container) = makeLayout(source)
+            layout.allowsNonContiguousLayout = true
+            let parsed = MarkdownPresentationParser.parse(source)
+            layout.setMarkdownPresentation(parsed, revealedRange: nil)
+            for span in parsed.spans where span.kind == .codeBlock {
+                layout.addTemporaryAttribute(.backgroundColor, value: NSColor.lightGray.withAlphaComponent(0.12), forCharacterRange: span.range)
+            }
+            layout.ensureLayout(for: container)
+            let marker = try XCTUnwrap(parsed.codeBlocks.first?.fenceMarkers.last)
+            XCTAssertTrue(layout.isMarkdownMarkerHidden(at: marker.location))
+            let glyph = layout.glyphIndexForCharacter(at: NSMaxRange(marker))
+            let line = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let size = NSSize(width: container.containerSize.width, height: ceil(layout.usedRect(for: container).height))
+            for start in 0..<raw.length {
+                for length in 1...(raw.length - start) {
+                    let image = NSImage(size: size, flipped: true) { _ in
+                        layout.drawBackground(forGlyphRange: NSRange(location: start, length: length), at: .zero)
+                        return true
+                    }
+                    let bitmap = try XCTUnwrap(image.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:)))
+                    for x in stride(from: Int(line.minX), to: Int(line.maxX), by: 20) {
+                        let alpha = try XCTUnwrap(bitmap.colorAt(x: x, y: Int(line.midY))).alphaComponent
+                        if alpha > 0.01 {
+                            XCTFail("Background at x=\(x), glyph range: \(start), \(length), fence: \(closingFence)")
+                            return
+                        }
+                    }
+                }
+            }
+            XCTAssertEqual(storage.string, source)
+        }
+    }
+
+    func testHiddenInlineCodeMarkerDoesNotEraseLastLetterBackground() throws {
+        _ = NSApplication.shared
+        let source = "`kind`: `scroll_region`.\n", raw = source as NSString
+        let (storage, layout, container) = makeLayout(source)
+        let parsed = MarkdownPresentationParser.parse(source)
+        layout.setMarkdownPresentation(parsed, revealedRange: nil)
+        for span in parsed.spans where span.kind == .code {
+            layout.addTemporaryAttribute(.backgroundColor, value: NSColor.lightGray.withAlphaComponent(0.12), forCharacterRange: span.range)
+        }
+        layout.ensureLayout(for: container)
+        let content = raw.range(of: "kind")
+        let lastLetter = NSRange(location: NSMaxRange(content) - 1, length: 1)
+        let rect = layout.boundingRect(forGlyphRange: layout.glyphRange(forCharacterRange: lastLetter, actualCharacterRange: nil), in: container)
+        let size = NSSize(width: container.containerSize.width, height: ceil(layout.usedRect(for: container).height))
+        let image = NSImage(size: size, flipped: true) { _ in
+            layout.drawBackground(forGlyphRange: layout.glyphRange(for: container), at: .zero)
+            return true
+        }
+        let bitmap = try XCTUnwrap(image.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:)))
+        let alpha = try XCTUnwrap(bitmap.colorAt(x: Int(rect.midX), y: Int(rect.midY))).alphaComponent
+        XCTAssertGreaterThan(alpha, 0.1)
+        XCTAssertEqual(storage.string, source)
+    }
+
+    func testOpeningCodeMarkerPreservesPrecedingBackground() throws {
+        _ = NSApplication.shared
+        let source = "> before `kind`\n"
+        let (storage, layout, container) = makeLayout(source)
+        let parsed = MarkdownPresentationParser.parse(source)
+        layout.setMarkdownPresentation(parsed, revealedRange: nil)
+        for span in parsed.spans where span.kind == .quote {
+            layout.addTemporaryAttribute(.backgroundColor, value: NSColor.systemGreen.withAlphaComponent(0.12), forCharacterRange: span.range)
+        }
+        for span in parsed.spans where span.kind == .code {
+            layout.addTemporaryAttribute(.backgroundColor, value: NSColor.lightGray.withAlphaComponent(0.12), forCharacterRange: span.range)
+        }
+        layout.ensureLayout(for: container)
+        let inline = try XCTUnwrap(parsed.spans.first { $0.kind == .code })
+        let space = NSRange(location: inline.range.location - 1, length: 1)
+        let rect = layout.boundingRect(forGlyphRange: layout.glyphRange(forCharacterRange: space, actualCharacterRange: nil), in: container)
+        let size = NSSize(width: container.containerSize.width, height: ceil(layout.usedRect(for: container).height))
+        let image = NSImage(size: size, flipped: true) { _ in
+            layout.drawBackground(forGlyphRange: layout.glyphRange(for: container), at: .zero)
+            return true
+        }
+        let bitmap = try XCTUnwrap(image.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:)))
+        let alpha = try XCTUnwrap(bitmap.colorAt(x: Int(rect.midX), y: Int(rect.midY))).alphaComponent
+        XCTAssertGreaterThan(alpha, 0.1)
+        XCTAssertEqual(storage.string, source)
+    }
+
+    func testQuoteContinuationKeepsVisibleBackground() throws {
+        _ = NSApplication.shared
+        let source = "> first\n> second\n", raw = source as NSString
+        let (storage, layout, container) = makeLayout(source)
+        let parsed = MarkdownPresentationParser.parse(source)
+        layout.setMarkdownPresentation(parsed, revealedRange: nil)
+        for span in parsed.spans where span.kind == .quote {
+            layout.addTemporaryAttribute(.backgroundColor, value: NSColor.systemGreen.withAlphaComponent(0.12), forCharacterRange: span.range)
+        }
+        layout.ensureLayout(for: container)
+        let content = raw.range(of: "second")
+        let rect = layout.boundingRect(forGlyphRange: layout.glyphRange(forCharacterRange: content, actualCharacterRange: nil), in: container)
+        let size = NSSize(width: container.containerSize.width, height: ceil(layout.usedRect(for: container).height))
+        let image = NSImage(size: size, flipped: true) { _ in
+            layout.drawBackground(forGlyphRange: layout.glyphRange(for: container), at: .zero)
+            return true
+        }
+        let bitmap = try XCTUnwrap(image.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:)))
+        let alpha = try XCTUnwrap(bitmap.colorAt(x: Int(rect.midX), y: Int(rect.midY))).alphaComponent
+        XCTAssertGreaterThan(alpha, 0.1)
+        XCTAssertEqual(storage.string, source)
+    }
+
     func testHighlightBackgroundRestoresAfterSourceMode() async throws {
         _ = NSApplication.shared
         let source = "==中文😀==\n\nnext"
