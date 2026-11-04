@@ -1502,6 +1502,12 @@ final class AppState: ObservableObject {
         return saveAs(document, encoding: document.fileEncoding, completion: nil)
     }
 
+    func copySelectedDocumentPath(to pasteboard: NSPasteboard = .general) {
+        guard let path = selectedDocument?.url?.path else { return }
+        pasteboard.clearContents()
+        pasteboard.setString(path, forType: .string)
+    }
+
     private func saveAs(
         _ document: EditorDocument,
         encoding: String.Encoding,

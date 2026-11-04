@@ -242,6 +242,8 @@ struct LacEditorCommands: Commands {
                 .disabled(appState?.canShowVersionHistory != true)
             Button(L10n.tr("比较文本…")) { appState?.presentTextCompare() }
                 .disabled(appState?.canShowTextCompare != true)
+            Button(L10n.tr("复制路径")) { appState?.copySelectedDocumentPath() }
+                .disabled(appState?.selectedDocument?.url == nil)
             Button(L10n.tr("制作快照…")) { appState?.makeSnapshot() }
                 .keyboardShortcut("s", modifiers: [.command, .control])
                 .disabled(appState?.canMakeSnapshot != true)

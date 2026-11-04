@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import LacEditor
 
@@ -72,6 +73,32 @@ final class UIPolishFTests: XCTestCase {
         XCTAssertTrue(text.contains("(\"k\", modifiers: [.command, .shift])"))
         XCTAssertTrue(text.contains("(\"x\", modifiers: [.command, .shift])"))
         XCTAssertTrue(text.contains("modifiers: [.command, .option])"))
+    }
+
+    @MainActor
+    func testCopySelectedDocumentPathCommand() throws {
+        let suite = "UIPolishFTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let board = NSPasteboard(name: NSPasteboard.Name(UUID().uuidString))
+        defer { board.releaseGlobally() }
+        let url = URL(fileURLWithPath: "/tmp/LacEditor path/документ.md")
+        let state = AppState(initialDocument: EditorDocument(text: "text", url: url),
+                             recentFiles: RecentFilesStore(defaults: defaults),
+                             preferences: AppPreferences(defaults: defaults))
+        state.copySelectedDocumentPath(to: board)
+        XCTAssertEqual(board.string(forType: .string), url.path)
+
+        let unsavedState = AppState(initialDocument: EditorDocument(text: "draft"),
+                                    recentFiles: RecentFilesStore(defaults: defaults),
+                                    preferences: AppPreferences(defaults: defaults))
+        board.setString("unchanged", forType: .string)
+        unsavedState.copySelectedDocumentPath(to: board)
+        XCTAssertEqual(board.string(forType: .string), "unchanged")
+
+        let commands = try source("App/LacEditorCommands.swift")
+        XCTAssertTrue(commands.contains("Button(L10n.tr(\"复制路径\")) { appState?.copySelectedDocumentPath() }"))
+        XCTAssertTrue(commands.contains(".disabled(appState?.selectedDocument?.url == nil)"))
     }
 
     func testHelpMenuOpensProjectPage() throws {
