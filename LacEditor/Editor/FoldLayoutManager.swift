@@ -1200,6 +1200,20 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             }
             if touchesSelection { return false }
         }
+
+        // A rendered Markdown image remains visible while the caret moves
+        // through its source token.  The source-reveal range is line based,
+        // but unlike audio/video it must not replace the image merely because
+        // the insertion point entered the token (the image is still the
+        // rendered representation being inspected by hit testing).
+        if markdownImages.contains(where: { $0.range == range }),
+           let selection = textContainers.first?.textView?.selectedRange(),
+           selection.location != NSNotFound,
+           (selection.length > 0
+            ? NSIntersectionRange(selection, range).length > 0
+            : NSLocationInRange(selection.location, range)) {
+            return true
+        }
         guard let revealed = markdownRevealedRange, touches(range, revealed) else { return true }
 
         // A direct reveal of this media token (without a selection update)
@@ -1439,7 +1453,16 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             }
         }
         for entry in markdownImages {
-            if let rect = imageRect(entry, in: container, centered: false), rect.contains(point) { return .image(entry.range) }
+            if let rect = imageRect(entry, in: container, centered: false) {
+                if rect.contains(point) { return .image(entry.range) }
+                let glyph = glyphIndexForCharacter(at: entry.range.location)
+                let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+                let hitRect = NSRect(x: line.minX + container.lineFragmentPadding,
+                                     y: line.minY,
+                                     width: max(rect.width, line.width - container.lineFragmentPadding),
+                                     height: line.height)
+                if hitRect.contains(point) { return .image(entry.range) }
+            }
         }
         for entry in markdownBlockImages {
             if let rect = imageRect(entry, in: container) {
