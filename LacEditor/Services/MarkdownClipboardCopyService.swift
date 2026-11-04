@@ -1044,7 +1044,12 @@ enum MarkdownClipboardCopyService {
                 html += fragment
                 covered.append(media.range)
                 hasStructuralOutput = true
-                hasUnverifiedHTMLBlocks = true
+                // Confirmed standalone images have a safe structural RTF
+                // representation; opaque media/HTML blocks must still reject
+                // RTF to avoid advertising lossy rich clipboard data.
+                if !value.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("<img") {
+                    hasUnverifiedHTMLBlocks = true
+                }
                 lastEnd = NSMaxRange(media.range)
             }
             func detailsText(_ html: String) -> String? {
