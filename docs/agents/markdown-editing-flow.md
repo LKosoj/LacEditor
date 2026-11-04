@@ -261,6 +261,8 @@ Claude и Grok проверили текущую архитектуру. Пра�
 
 ### Этап 0. Baseline и контрольные сценарии на macOS
 
+Основной baseline теперь — этап 0 в [`docs/markdown-editor-plan.md`](../markdown-editor-plan.md); сценарии ниже входят в него.
+
 1. Снять baseline до оптимизаций: formatted OFF/ON, один документ без media, с локальными/удалёнными/data URI-картинками, с Mermaid/flow/sequence; курсор в начале, середине и конце; короткий и длинный документ.
 2. Разделить конец документа и середину длинного документа: цена сдвига хвоста у них различается.
 3. Записать signpost вокруг `shouldChangeText`, `beforeEdit`, `canShift`, `shiftPresentation`, `shiftAroundEdit`, `removeTouched`, `install`, `applyVisible`, `shouldGenerateGlyphs`, `ensureLayout`, `updateNSView`, media jobs и diagram jobs.
