@@ -1430,14 +1430,28 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     func markdownRenderedHit(at point: NSPoint, in container: NSTextContainer) -> MarkdownRenderedHit? {
         for entry in markdownInlineImages {
             if isCoveredByUppercaseHeading(entry.range) { continue }
-            if let rect = inlineImageRect(entry, in: container), rect.contains(point) { return .inlineImage(entry.range) }
+            if let rect = inlineImageRect(entry, in: container) {
+                if rect.contains(point) { return .inlineImage(entry.range) }
+                let glyph = glyphIndexForCharacter(at: entry.range.location)
+                let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+                let hitRect = NSRect(x: rect.minX, y: line.minY, width: rect.width, height: line.height)
+                if hitRect.contains(point) { return .inlineImage(entry.range) }
+            }
         }
         for entry in markdownImages {
-            if let rect = imageRect(entry, in: container, centered: true), rect.contains(point) { return .image(entry.range) }
+            if let rect = imageRect(entry, in: container, centered: false), rect.contains(point) { return .image(entry.range) }
         }
         for entry in markdownBlockImages {
-            if let rect = imageRect(entry, in: container), rect.contains(point) {
-                return markdownDiagramRanges.contains(entry.range) ? .diagram(entry.range) : .blockImage(entry.range)
+            if let rect = imageRect(entry, in: container) {
+                if rect.contains(point) {
+                    return markdownDiagramRanges.contains(entry.range) ? .diagram(entry.range) : .blockImage(entry.range)
+                }
+                let glyph = glyphIndexForCharacter(at: entry.range.location)
+                let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+                let hitRect = NSRect(x: rect.minX, y: line.minY, width: rect.width, height: line.height)
+                if hitRect.contains(point) {
+                    return markdownDiagramRanges.contains(entry.range) ? .diagram(entry.range) : .blockImage(entry.range)
+                }
             }
         }
         return nil

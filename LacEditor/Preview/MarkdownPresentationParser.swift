@@ -2440,7 +2440,9 @@ enum MarkdownPresentationParser {
                 while end > start && [9, 10, 12, 13, 32].contains(Int(literal.character(at: end - 1))) { end -= 1 }
                 let standalone = tags.count == 1 && tags[0] == NSRange(location: start, length: end - start) &&
                     end >= start + 2 && literal.character(at: end - 2) == 47 && literal.character(at: end - 1) == 62
-                if !standalone, let media = MarkdownHTMLMediaService.embeddedMedia(in: literal as String) {
+                let hasFallback = (literal as String).range(of: "<br", options: .caseInsensitive) != nil
+                    || (literal as String).range(of: "<source", options: .caseInsensitive) != nil
+                if !standalone, hasFallback, let media = MarkdownHTMLMediaService.embeddedMedia(in: literal as String) {
                     audioBlocks.append(MarkdownAudioBlock(range: range, media: media))
                 }
             }
@@ -2704,6 +2706,30 @@ enum MarkdownPresentationParser {
             }
         }
         visit(root, inUnsupportedContainer: false, listDepth: 0)
+        // cmark treats these incomplete media blocks as inline HTML, so the
+        // paired collector cannot observe a closing media tag.  Recognize the
+        // two deliberately narrow fallback forms at a line start instead.
+        if !isCancelled() {
+            let pattern = #"(?m)(?:^|\n)(<(?:audio|video)\b[^>]*>[^<]*(?:<br\s*/>|<source\b[^>]*?/>)\s*)"#
+            if let expression = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) {
+                let full = NSRange(location: 0, length: sourceText.length)
+                expression.enumerateMatches(in: text, options: [], range: full) { match, _, _ in
+                    guard let match, !isCancelled(), match.numberOfRanges > 1 else { return }
+                    let range = match.range(at: 1)
+                    guard !audioBlocks.contains(where: { $0.range == range }) else { return }
+                    let raw = sourceText.substring(with: range)
+                    let normalized: String
+                    if raw.lowercased().hasPrefix("<audio") {
+                        guard let end = raw.firstIndex(of: ">") else { return }
+                        normalized = String(raw[..<end]) + " />"
+                    } else {
+                        normalized = raw + "</video>"
+                    }
+                    guard let media = MarkdownHTMLMediaService.embeddedMedia(in: normalized) else { return }
+                    audioBlocks.append(MarkdownAudioBlock(range: range, media: media))
+                }
+            }
+        }
         if !twitterCandidates.isEmpty && !isCancelled() {
             let accepted = MarkdownHTMLMediaService.provenTwitter(root: root, mathExtension: mathExtension, options: options,
                 text: sourceText, candidates: twitterCandidates.map(\.proof), isCancelled: isCancelled)

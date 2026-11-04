@@ -4013,7 +4013,9 @@ final class MarkdownPresentationController {
             let installed = layout.setMarkdownInlineImage(value, for: image.range)
             imageLoadDidComplete?(image.range, installed)
             guard installed else { return }
-        } else { layout.setMarkdownImage(value, for: image.paragraphRange) }
+        } else {
+            layout.setMarkdownImage(value, for: image.paragraphRange)
+        }
         loadedImageRanges.insert(key)
         if image.sizing != nil, let width = imageWidth(for: image) { imagePresentationWidths[key] = width }
         imageCache[imageCacheKey(for: image)] = CachedImage(image: source, animated: animated,

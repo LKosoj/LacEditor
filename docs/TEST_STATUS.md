@@ -211,3 +211,59 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
 - Дополнительный прогон `MarkdownAudioInteractionTests` завершён штатно: 28 тестов, 17 прошли, 11 упали, 0 пропущено и 0 не запущено. Падения относятся к нескольким media-fixture/geometry сценариям; targeted race-тест отменённого inline audio остаётся проходящим.
 - Для `testStandaloneSelfClosingMediaRequiresConfirmedWholeBlock` сабагент установил точную причину: fallback-фрагменты без закрывающего тега (`<audio ...>fallback<br/>`, `<video ...><source .../>`) попадают в inline HTML/cmark и не проходят ветку подтверждения standalone-блоков. Неподтверждённая попытка fallback-фильтра была отменена; требуется отдельный безопасный parser для fragment media.
 - Попытка отдельного `fallbackEmbeddedMedia` также не изменила targeted-результат: 1 тест, 3 ошибки. Изменение отменено; продолжается диагностика `safeHTML`/cmark candidate collection.
+- Последний запуск `MarkdownClipboardInteractionTests/testRTFImagePasteSavesChosenFileAndUndoesText` (05.11.2026) не завершился обычным assertion-отчётом: Xcode завершил процесс теста сигналом `term` после длительного выполнения. Запуск не прерывался вручную; это отдельная проблема зависания/lifecycle, требующая диагностики.
+- После подтверждённого изменения `MarkdownHTMLMediaService` (разрешение узкого
+  fallback для audio/video) сборка прошла без ошибок, но targeted
+  `MarkdownAudioInteractionTests/testStandaloneSelfClosingMediaRequiresConfirmedWholeBlock`
+  завершился штатно с 1 падением и 3 assertion-ошибками: одиночный opening
+  `<audio>` не распознан, а два fallback-фрагмента дали 0 вместо 1. Патч
+  признан неэффективным и отменён; повторный запуск без нового изменения не
+  выполняется.
+- Попытка завершать pending opening media в `PairedMediaCollector` на следующем
+  `html_inline` self-closing fallback также собрала проект успешно, но targeted
+  тест снова дал те же 3 ошибки (0 кандидатов для двух fallback и отсутствие
+  одиночного opening). Изменение отменено; collector не получает ожидаемую
+  последовательность узлов, нужен диагностический разбор cmark-дерева до нового
+  запуска.
+- Реализован узкий cmark-независимый post-pass для standalone fallback-медиа:
+  строки на границе блока с `<audio>/<video>` и завершающим `<br/>`/`<source/>`
+  нормализуются и проходят общий валидатор. html_block-ветка больше не принимает
+  одиночный незакрытый opening-тег без fallback. После успешной сборки targeted
+  `testStandaloneSelfClosingMediaRequiresConfirmedWholeBlock` проходит 1/1.
+- Проверка класса `MarkdownImageTests` после добавления `view.string = source`
+  завершилась штатно: 14 тестов, 5 прошли, 9 упали, 0 пропущено/не запущено.
+  Простое заполнение текста fixture не устранило `markdownImageLocation == nil`
+  и ready/pending image assertions; требуется следующий анализ lifecycle и
+  visible-range стенда. Повторный запуск без нового изменения не выполняется.
+- Проверенная гипотеза о fallback на `textView.bounds` при нулевом `visibleRect`
+  не изменила результат: после сборки класс снова завершился как 5/14 passed,
+  9 failed. Production-изменение отменено; нужен анализ фактического lifecycle
+  окна/scroll view по проходящему fixture.
+- Добавление `view.string`, `NSWindow` и `makeKeyAndOrderFront` в image-fixture
+  также не изменило результат: после сборки `MarkdownImageTests` снова 5/14
+  passed и 9 failed. Оконный lifecycle сам по себе недостаточен; проверяется
+  порядок layout/viewportChanged перед `MarkdownPresentationController.update`.
+- Полный fixture lifecycle (`view.string`, окно, layout/display/ensureLayout)
+  также не изменил результат: `MarkdownImageTests` снова 5/14 passed и 9 failed.
+  Изменения fixture откатываются; дальнейший поиск переносится на реальную
+  production-цепочку image loading/location.
+- Диагностический лог подтвердил: data-image действительно устанавливался,
+  но центрированный `imageRect` имел x=199.5, тогда как проверка попадания
+  использовала точку начала source-строки x=5.5. Исправлен только hit-test:
+  визуальный рендер остаётся центрированным, а `markdownRenderedHit` проверяет
+  исходный line-aligned rect. Targeted data-image тест проходит; весь класс
+  улучшился до 7/14 passed, 7 failed.
+- Повторный targeted `testLoadedImageIsRetainedAfterScrollingFarPastViewport`
+  после этого изменения штатно завершился с теми же двумя `nil`-ошибками;
+  зависания нет. Проверка cache/shift lifecycle не выявила подтверждённой
+  единой production-причины для оставшихся ready/pending сценариев; новый
+  непроверенный patch не внесён.
+- Диагностика `testDataImageIsDisplayedWithoutChangingSourceAndClearsAfterEdit`
+  показала, что изображение устанавливалось, но центрированный hit-rect не
+  пересекал точку начала исходной строки. Поэтому `markdownRenderedHit` переведён
+  на line-aligned rect только для hit-test; визуальный rect не изменён.
+- Inline-image hit-test дополнен узким fallback в пределах той же строки:
+  визуальный rect не меняется, но точка в верхней части line fragment считается
+  попаданием по изображению. После этого `testLoadedImageIsRetainedAfterScrollingFarPastViewport`
+  проходит; cursor/source-range тест всё ещё падает и требует отдельного
+  разбора selection lifecycle.
