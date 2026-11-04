@@ -745,6 +745,8 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         let source = "before "
         let document = EditorDocument(text: source, url: directory.appendingPathComponent("note.md"), language: .markdown)
         document.isMarkdownFormatted = true
+        let manager = WindowManager()
+        let appState = AppState(initialDocument: document, recentFiles: manager.recentFiles, preferences: manager.preferences)
         let coordinator = EditorTextView.Coordinator(document: document)
         coordinator.clipboardConversionExecutable = executable
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
@@ -758,6 +760,8 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = scroll
+        let windowID = UUID()
+        manager.register(windowID: windowID, state: appState, window: window)
         coordinator.textView = view
         coordinator.foldLayoutManager = layout
         view.delegate = coordinator
@@ -765,10 +769,24 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         coordinator.attachLiveTextProvider()
         coordinator.updateActivity(true)
         window.makeKeyAndOrderFront(nil)
+        manager.activate(windowID: windowID)
         window.makeFirstResponder(view)
+        view.isEditable = true
+        view.isSelectable = true
+        view.isHidden = false
+        scroll.isHidden = false
+        view.frame = NSRect(x: 0, y: 0, width: 400, height: 200)
+        scroll.frame = NSRect(x: 0, y: 0, width: 400, height: 200)
+        view.string = source
+        window.displayIfNeeded()
+        window.contentView?.layoutSubtreeIfNeeded()
+        scroll.layoutSubtreeIfNeeded()
+        view.layoutSubtreeIfNeeded()
+        layout.ensureLayout(for: container)
+        XCTAssertEqual(view.string, source)
         var waiting = true, sawPanel = false
         var nextName = "chosen.png"
-        defer { waiting = false; coordinator.updateActivity(false); if NSApp.modalWindow != nil { NSApp.abortModal() }; window.close() }
+        defer { waiting = false; coordinator.updateActivity(false); manager.unregister(windowID: windowID); if NSApp.modalWindow != nil { NSApp.abortModal() }; window.close() }
         coordinator.clipboardSavePanelPrepare = { panel in
             panel.directoryURL = directory
             panel.nameFieldStringValue = nextName
@@ -817,6 +835,10 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
             }
             RunLoop.main.add(Timer(timeInterval: 0.05, repeats: false) { _ in MainActor.assumeIsolated { selectThenCancel() } }, forMode: .modalPanel)
         }
+        let multiExecutable = directory.appendingPathComponent("converter-multi")
+        try "#!/bin/sh\nmkdir -p media\ncp \(quote(input.path)) media/a.png\ncp \(quote(input.path)) media/b.png\nprintf '%s\\n' '![x](media/a.png)' '![y](media/b.png)'\n".write(to: multiExecutable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: multiExecutable.path)
+        coordinator.clipboardConversionExecutable = multiExecutable
         board.clearContents()
         board.setData(Data("{\\rtf1\\ansi {\\pict\\pngblip \(hex)} {\\pict\\pngblip \(hex)}}".utf8), forType: .rtf)
         view.setSelectedRange(NSRange(location: (source as NSString).length, length: 0))
@@ -852,6 +874,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
             RunLoop.main.add(Timer(timeInterval: 0.05, repeats: false) { _ in MainActor.assumeIsolated { acceptStalePanel() } }, forMode: .modalPanel)
         }
         let staleFile = directory.appendingPathComponent("stale.png")
+        coordinator.clipboardConversionExecutable = executable
         board.clearContents()
         board.setData(Data("{\\rtf1\\ansi {\\pict\\pngblip \(hex)}}".utf8), forType: .rtf)
         view.setSelectedRange(NSRange(location: (source as NSString).length, length: 0))
@@ -874,10 +897,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         XCTAssertTrue(document.statusMessage?.contains(staleFile.path) == true)
         try await Task.sleep(for: .milliseconds(150))
         coordinator.clipboardImageWrite = { try $0.write(to: $1, options: .withoutOverwriting) }
-        let multiExecutable = directory.appendingPathComponent("converter-multi")
-        try "#!/bin/sh\nmkdir -p media\ncp \(quote(input.path)) media/a.png\ncp \(quote(input.path)) media/b.png\nprintf '%s' '![x](media/a.png) ![y](media/b.png)'\n".write(to: multiExecutable, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: multiExecutable.path)
-        coordinator.clipboardConversionExecutable = multiExecutable
+        coordinator.clipboardConversionExecutable = PandocExportService.findPandoc()
         waiting = true
         nextName = "mixed.png"
         func acceptMixedPanel() {

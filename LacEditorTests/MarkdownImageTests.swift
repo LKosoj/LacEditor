@@ -169,6 +169,7 @@ final class MarkdownImageTests: XCTestCase {
         let controller = MarkdownPresentationController(textView: view, layout: layout)
         var revision: UInt = 0
         controller.update(document: document, enabled: true, isActive: true, revision: revision, currentRevision: { revision })
+        controller.viewportChanged()
         let range = (source as NSString).range(of: "![图](data:")
         func point() -> NSPoint {
             layout.ensureLayout(for: container)

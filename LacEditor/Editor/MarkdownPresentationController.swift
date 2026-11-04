@@ -1215,6 +1215,16 @@ final class MarkdownPresentationController {
 
     func selectionChanged() {
         refreshElementPath()
+        if let selection = textView?.selectedRange(), selection.location != NSNotFound,
+           let layout {
+            for range in Array(audioViews.keys) where NSIntersectionRange(range, selection).length > 0 || NSLocationInRange(selection.location, range) {
+                if let view = audioViews.removeValue(forKey: range) {
+                    releaseMediaView(view)
+                    view.removeFromSuperview()
+                }
+                clearMediaGeometry(range, layout: layout)
+            }
+        }
         if isActive, mathPairEnabled, !enabled, !outlineVisible, !readableEnabled, !emojiCompletionEnabled,
            !hasMarkedText, currentRevision?() == revision, let context = mathPairContext,
            let active = context.active, let selection = textView?.selectedRange(),
@@ -1226,7 +1236,13 @@ final class MarkdownPresentationController {
         if let visible = visibleRange() { loadVisibleDiagrams(in: visible) }
         layout?.updateMarkdownInlineSelection(inlineSelection())
         let range = revealedRange()
-        guard range != lastRevealedRange else { return }
+        if range == lastRevealedRange {
+            // Selection can move inside the same revealed line while a
+            // pending audio probe finishes. Reconcile media views anyway so
+            // a player cannot reappear after source selection.
+            if let visible = visibleRange() { updateAudio(in: visible); updateIframes(in: visible) }
+            return
+        }
         lastRevealedRange = range
         layout?.updateMarkdownRevealedRange(range)
         if headingNumbering {
@@ -2123,8 +2139,12 @@ final class MarkdownPresentationController {
     }
 
     private func characterRange(in rect: NSRect) -> NSRange? {
-        guard let textView, let storage = textView.textStorage, let layout,
-              let container = textView.textContainer, storage.length > 0 else { return nil }
+        guard let textView, let layout, let container = textView.textContainer else { return nil }
+        // Keep visibility calculation resilient while a TextKit view is being
+        // attached: the layout manager may already own the populated storage
+        // before NSTextView publishes it through `textStorage`.
+        let candidate = (textView.textStorage?.length ?? 0) > 0 ? textView.textStorage : layout.textStorage
+        guard let storage = candidate, storage.length > 0 else { return nil }
         let glyphs = layout.glyphRange(
             forBoundingRectWithoutAdditionalLayout: rect,
             in: container
@@ -2964,8 +2984,12 @@ final class MarkdownPresentationController {
     private func updateAudio(in visible: NSRange) {
         guard !hasMarkedText, enabled, isActive, let presentation, let document,
               let layout, let textView, let container = textView.textContainer else { return }
+        let selection = textView.selectedRange()
         let blocks = presentation.audioBlocks.filter {
-            NSIntersectionRange($0.range, visible).length > 0 && layout.canDisplayMarkdownMedia($0.range)
+            NSIntersectionRange($0.range, visible).length > 0 &&
+            NSIntersectionRange($0.range, selection).length == 0 &&
+            !NSLocationInRange(selection.location, $0.range) &&
+            layout.canDisplayMarkdownMedia($0.range)
         }
         let ranges = Set(blocks.map(\.range))
         for range in Array(audioViews.keys) where !ranges.contains(range) {
@@ -3028,6 +3052,8 @@ final class MarkdownPresentationController {
                       self.currentRevision?() == revision, document.url == baseURL,
                       !self.hasMarkedText, self.presentation?.audioBlocks.contains(block) == true,
                       let visible = self.visibleRange(), NSIntersectionRange(block.range, visible).length > 0,
+                      let selection = self.textView?.selectedRange(), selection.location == NSNotFound ||
+                        (NSIntersectionRange(block.range, selection).length == 0 && !NSLocationInRange(selection.location, block.range)),
                       let layout = self.layout, layout.canDisplayMarkdownMedia(block.range),
                       let textView = self.textView, let container = textView.textContainer else { return }
                 self.audioCompleted.insert(block.range)
@@ -3061,6 +3087,13 @@ final class MarkdownPresentationController {
                     textView.window?.makeFirstResponder(textView)
                     return true
                 }])
+                // The asset check may finish after the user enters the source
+                // range. Do not install a player for media that is no longer
+                // displayable; selectionChanged will keep the source visible.
+                guard layout.canDisplayMarkdownMedia(block.range) else {
+                    view.removeFromSuperview()
+                    return
+                }
                 self.audioViews[block.range] = view
                 if let rect = self.mediaRect(for: block.range, size: NSSize(width: width, height: height), inline: block.isInline, layout: layout, container: container) {
                     textView.addSubview(view)

@@ -193,6 +193,18 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
 - В процесс исправления добавлено обязательное правило: перед патчем
   падающего теста искать похожий проходящий тест и использовать его fixture,
   оконную активацию, ожидания и lifecycle как проверенный образец.
+- После нескольких неудачных проходов выполнена проверка официальной
+  документации AppKit через Xcode DocumentationSearch: `NSTextView.writeSelection`
+  требует объявленных типов pasteboard и делегирует запись по каждому типу;
+  `NSPasteboard.setString` также требует предварительный `declareTypes`.
+  Эти рекомендации сверены с fallback в `LacTextView` и тестовым fixture.
 - Следующий блок `MarkdownImageTests` локализован как отсутствие полноценного
   window/visible-range стенда для `markdownImageLocation`; production-логика
   block image не изменялась до подтверждения test-only исправления.
+### Последний адресный проход (2026-11-04)
+
+- `MarkdownColorsTests.testNativeColorsAndResetPreserveTextTypingAndUndoWithEitherSyntaxSetting` проходит после принудительного `ensureLayout` перед проверкой временных атрибутов.
+- `MarkdownAudioInteractionTests.testCancelledInlineAudioDoesNotInstallLatePlayer` проходит после проверки текущего выделения перед установкой поздно завершившегося аудиоплеера и повторной синхронизации media cleanup в `selectionChanged`.
+- Для оставшихся падений изображения перед исправлением сопоставляются проходящие тесты и общий fixture; предыдущая попытка синхронизации отдельного `NSTextStorage` не устранила кластер, поэтому решение не считается найденным. После двух безуспешных самостоятельных проходов следующий шаг — Xcode DocumentationSearch/официальная документация Apple и интернет-поиск с фиксацией результата.
+- Выполнены оба обязательных внешних шага: Xcode DocumentationSearch и поиск официальной документации Apple по TextKit 1 (`NSTextView(textContainer:)`, `NSTextStorage.addLayoutManager`, `NSLayoutManager.textStorage`). Найденная рекомендация проверена в fixture; она не устранила падения, поэтому продолжается анализ lifecycle `MarkdownPresentationController`.
+- Последний адресный запуск `MarkdownImageTests/testDataImageIsDisplayedWithoutChangingSourceAndClearsAfterEdit` завершился штатно за 6,2 с, но с двумя одинаковыми падениями: `markdownImageLocation` вернул `nil` вместо позиции 8 на строках 193 и 203. Это подтверждено логом stdio; тест не зависает и не пропускается.
