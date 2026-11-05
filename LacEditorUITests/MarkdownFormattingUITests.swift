@@ -26,7 +26,7 @@ final class MarkdownFormattingUITests: XCTestCase {
         defer { app.terminate() }
         editor.typeText("hello ")
         editor.typeText("$$")
-        XCTAssertTrue((editor.value as? String)?.contains("hello$$") == true)
+        XCTAssertTrue((editor.value as? String)?.contains("hello $$") == true)
     }
 
     func testSmartQuoteAtEmptyDocumentUsesCheckingAndOneUndo() {

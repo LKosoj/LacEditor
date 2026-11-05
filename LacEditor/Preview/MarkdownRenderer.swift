@@ -497,6 +497,17 @@ enum MarkdownRenderer {
             .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
     }
 
+    // cmark-gfm table cells reject CUSTOM_INLINE children but accept ATTRIBUTE,
+    // whose HTML renderer emits nothing, so a failed attach retries inside one.
+    // Returns the node that now sits in the tree: the original or its wrapper.
+    private static func attachingInline(_ node: UnsafeMutablePointer<cmark_node>, _ attach: (UnsafeMutablePointer<cmark_node>) -> Int32) -> UnsafeMutablePointer<cmark_node>? {
+        if attach(node) != 0 { return node }
+        guard cmark_node_get_type(node) == CMARK_NODE_CUSTOM_INLINE, let wrapper = cmark_node_new(CMARK_NODE_ATTRIBUTE) else { return nil }
+        if cmark_node_append_child(wrapper, node) != 0 && attach(wrapper) != 0 { return wrapper }
+        cmark_node_unlink(node); cmark_node_free(wrapper)
+        return nil
+    }
+
     private static func tokenClassCode(_ kind: SyntaxHighlighter.TokenKind) -> UInt8 {
         switch kind {
         case .keyword, .markup, .selector, .heading: return 1
@@ -588,6 +599,7 @@ enum MarkdownRenderer {
             var mediaCollector = MarkdownPresentationParser.PairedMediaCollector()
             var standaloneMediaCandidates: [(node: OpaquePointer, range: NSRange, media: MarkdownHTMLMediaService.StandaloneMedia)] = []
             var mediaTemplateDepth = 0
+            var lastMediaNode: OpaquePointer?
             var pageBreakCandidates: [(node: OpaquePointer, range: NSRange, offset: Int, style: String)] = []
             var detailsCandidates: [(node: OpaquePointer, range: NSRange, offset: Int, summary: String, body: String)] = []
             var richDetailsCandidates: [(range: NSRange, proof: MarkdownHTMLMediaService.HTMLBlockCandidate)] = []
@@ -666,7 +678,17 @@ enum MarkdownRenderer {
                         if let pointer = cmark_node_get_type_string(current), ["image", "table", "footnote_definition"].contains(String(cString: pointer)) { return }
                         ancestor = cmark_node_parent(current)
                     }
+                    // Разорванный на строки открывающий audio/video общий обход не подтверждает. Если абзац из одного такого тега
+                    // стоит прямо перед html_block, тег проверяется как в редакторе и передаётся сборщику перед блоком для объединения.
+                    if outsideTemplate, cmark_node_get_type(node) == CMARK_NODE_HTML_BLOCK, let paragraph = cmark_node_previous(node),
+                       cmark_node_get_type(paragraph) == CMARK_NODE_PARAGRAPH, let opening = cmark_node_first_child(paragraph),
+                       cmark_node_next(opening) == nil, opening != lastMediaNode, let pointer = cmark_node_get_literal(opening),
+                       let tag = MarkdownPresentationParser.multilineMediaOpening(opening, source: mappedSource, sourceText: markdown as NSString, isCancelled: { Task.isCancelled }) {
+                        let name = String(cString: pointer).lowercased().hasPrefix("<audio") ? "audio" : "video"
+                        mediaCollector.consume(node: opening, range: tag.range, tags: [(tag.range, name, false)], sourceText: markdown as NSString, isCancelled: { Task.isCancelled })
+                    }
                     mediaCollector.consume(node: node, range: range, tags: eligible, sourceText: markdown as NSString, isCancelled: { Task.isCancelled })
+                    lastMediaNode = node
                 },
                 root: document, sourceMapping: mappedSource)) ?? [] : []
             let pageBreaks = MarkdownHTMLMediaService.provenPageBreaks(root: document, mathExtension: extensionNode, options: options,
@@ -699,8 +721,18 @@ enum MarkdownRenderer {
             var twitterBlocks: [OpaquePointer: MarkdownHTMLMediaService.TwitterWidget] = [:]
             for index in acceptedTwitter { if Task.isCancelled { break }; twitterBlocks[twitterCandidates[index].proof.node] = twitterCandidates[index].proof.widget }
             let mediaCandidates = mediaCollector.candidates
+            // Как в редакторе: на время DOM-проверки literal разорванного тега переносится в начало следующего html_block.
+            var originalLiterals: [(OpaquePointer, String)] = []
+            for merge in mediaCandidates.isEmpty ? [] : mediaCollector.merges {
+                for (node, literal) in [(merge.inline, ""), (merge.block, merge.literal)] {
+                    guard let pointer = cmark_node_get_literal(node) else { continue }
+                    originalLiterals.append((node, String(cString: pointer)))
+                    _ = literal.withCString { cmark_node_set_literal(node, $0) }
+                }
+            }
             let acceptedMedia = MarkdownHTMLMediaService.provenMediaIndices(root: document, mathExtension: extensionNode, options: options,
                 text: markdown as NSString, candidates: mediaCandidates.map(\.proof), isCancelled: { Task.isCancelled })
+            for (node, literal) in originalLiterals.reversed() { _ = literal.withCString { cmark_node_set_literal(node, $0) } }
             let selectedMedia: [(proof: MarkdownHTMLMediaService.MediaProofCandidate, range: NSRange, isInline: Bool)] = acceptedMedia.map { mediaCandidates[$0] }
             let orderedMedia = selectedMedia.sorted { lhs, rhs in
                 if lhs.range.location == rhs.range.location {
@@ -737,6 +769,20 @@ enum MarkdownRenderer {
                     inlineMediaOpenings[proof.openingNode] = (media, proof.closingNode)
                 } else if proof.openingNode != proof.closingNode, case .frame(let frame) = proof.expected {
                     inlineFrameOpenings[proof.openingNode] = (frame, proof.closingNode)
+                }
+            }
+            // Смещения в объединённом блоке считаются от начала разорванного тега. Если подтверждено само объединение,
+            // абзац с тегом убирается, а literal тега выводится в начале блока; иначе смещения возвращаются к literal блока.
+            var mergedMediaOpenings: [OpaquePointer: String] = [:]
+            for merge in mediaCollector.merges {
+                if Task.isCancelled { break }
+                guard let entries = provedMediaBlocks[merge.block], let pointer = cmark_node_get_literal(merge.block) else { continue }
+                let shift = (merge.literal as NSString).length - (String(cString: pointer) as NSString).length
+                if entries.contains(where: { $0.0 < shift }), let paragraph = cmark_node_parent(merge.inline) {
+                    mergedMediaOpenings[merge.block] = (merge.literal as NSString).substring(to: shift)
+                    cmark_node_unlink(paragraph); detachedFrameNodes.append(paragraph)
+                } else {
+                    provedMediaBlocks[merge.block] = entries.map { ($0.0 - shift, $0.1 - shift, $0.2, $0.3) }
                 }
             }
             func insideMedia(_ range: NSRange) -> Bool {
@@ -857,11 +903,12 @@ enum MarkdownRenderer {
             func frameHTML(_ frame: MarkdownHTMLMediaService.EmbeddedFrame) -> String {
                 includeHTMLMedia ? MarkdownHTMLMediaService.iframeHTML(frame) : MarkdownHTMLMediaService.iframeFallbackHTML(frame)
             }
+            // Объединённые с разорванным тегом блоки якоря не размечают: их смещения считаются не по literal блока.
             let (headingIDs, omittedNamedHTML, blockedStyles) = installTableOfContents(in: document, markdown: markdown, source: mappedSource, mathExtension: extensionNode, options: options, mathInline: inlineByNode,
                 emojiLocations: emojiLocations, emojiCandidates: emojiCandidates, emojiValues: emojiValues,
                 resolveLocalImages: resolveLocalImages, documentURL: documentURL, includeHeadingNumbers: includeHeadingNumbers,
                 imageMarkersByNode: &provedHTMLBlocks, mediaMarkersByNode: &provedMediaBlocks,
-                unprovedImageBlocks: unprovedHTMLImageBlocks, confirmedInline: &confirmedInline, detachedNodes: &detachedFrameNodes, markRemote: markRemote, resolveMedia: resolvedMedia,
+                unprovedImageBlocks: unprovedHTMLImageBlocks.union(mergedMediaOpenings.keys), confirmedInline: &confirmedInline, detachedNodes: &detachedFrameNodes, markRemote: markRemote, resolveMedia: resolvedMedia,
                 preserveRawHTML: preserveRawHTMLBlocks, includeSourcePositions: includeSourcePositions)
             var formulas: [MarkdownRenderedMath] = []
             var diagrams: [MarkdownRenderedDiagram] = []
@@ -1022,7 +1069,7 @@ enum MarkdownRenderer {
                             }
                             let marker = "<!--" + rawHTMLBlocks.prefix! + "X" + String(rawHTMLBlocks.values.count) + "-->"
                             guard marker.withCString({ cmark_node_set_on_enter(replacement, $0) }) != 0,
-                                  cmark_node_insert_before(current, replacement) != 0 else {
+                                  attachingInline(replacement, { cmark_node_insert_before(current, $0) }) != nil else {
                                 cmark_node_free(replacement); rawHTMLBlocks.failed = true; return
                             }
                             let after = cmark_node_next(last)
@@ -1044,7 +1091,7 @@ enum MarkdownRenderer {
                         }
                         let marker = "<!--" + rawHTMLBlocks.prefix! + "X" + String(rawHTMLBlocks.values.count) + "-->"
                         let configured = marker.withCString { cmark_node_set_on_enter(replacement, $0) }
-                        guard configured != 0, cmark_node_insert_before(current, replacement) != 0 else {
+                        guard configured != 0, attachingInline(replacement, { cmark_node_insert_before(current, $0) }) != nil else {
                             cmark_node_free(replacement); rawHTMLBlocks.failed = true; return
                         }
                         rawHTMLBlocks.values.append((marker, original))
@@ -1083,9 +1130,15 @@ enum MarkdownRenderer {
                             }
                         }
                         let mediaEntries = provedMediaBlocks[current] ?? []
+                        if let opening = mergedMediaOpenings[current] {
+                            // Перевод строки после тега берётся из исходника, как у неразорванного блока.
+                            let text = markdown as NSString, line = text.lineRange(for: NSRange(location: range.location, length: 0)).location
+                            let crlf = line >= 2 && text.substring(with: NSRange(location: line - 2, length: 2)) == "\r\n"
+                            original.insert(crlf ? String(opening.dropLast()) + "\r\n" : opening, at: 0)
+                        }
                         if !mediaEntries.isEmpty {
                             guard let pointer = cmark_node_get_literal(current) else { cmark_node_free(replacement); rawHTMLBlocks.failed = true; return }
-                            let literal = String(cString: pointer) as NSString
+                            let literal = ((mergedMediaOpenings[current] ?? "") + String(cString: pointer)) as NSString
                             let endpoints = mediaEntries.flatMap { [$0.0, $0.1] }.sorted()
                             var mapped: [Int: Int] = [:], sourceOffset = 0, literalOffset = 0, endpoint = 0
                             while literalOffset < literal.length && sourceOffset < original.length {
@@ -1235,12 +1288,12 @@ enum MarkdownRenderer {
                         if nodes.last == closing, let replacement = cmark_node_new(CMARK_NODE_CUSTOM_INLINE) {
                             let html = addingSourcePosition(to: frameHTML(frame), for: current)
                             let configured = html.withCString { cmark_node_set_on_enter(replacement, $0) }
-                            if configured != 0 && cmark_node_insert_before(current, replacement) != 0 {
+                            if configured != 0, let inserted = attachingInline(replacement, { cmark_node_insert_before(current, $0) }) {
                                 for item in nodes {
                                     if Task.isCancelled { return }
                                     cmark_node_unlink(item); detachedFrameNodes.append(item)
                                 }
-                                child = cmark_node_next(replacement).map(OpaquePointer.init)
+                                child = cmark_node_next(inserted).map(OpaquePointer.init)
                                 continue
                             }
                             cmark_node_free(replacement)
@@ -1254,11 +1307,11 @@ enum MarkdownRenderer {
                             let startHTML = addingSourcePosition(to: html, for: current)
                             let start = startHTML.withCString { cmark_node_set_on_enter(openingReplacement, $0) }
                             let end = "</\(tag)>".withCString { cmark_node_set_on_enter(closingReplacement, $0) }
-                            if start != 0, end != 0, cmark_node_insert_before(current, openingReplacement) != 0 {
-                                if cmark_node_insert_before(closing, closingReplacement) != 0 {
+                            if start != 0, end != 0, let openingInserted = attachingInline(openingReplacement, { cmark_node_insert_before(current, $0) }) {
+                                if attachingInline(closingReplacement, { cmark_node_insert_before(closing, $0) }) != nil {
                                     cmark_node_unlink(current); cmark_node_free(current)
                                     cmark_node_unlink(closing); cmark_node_free(closing)
-                                    child = cmark_node_next(openingReplacement).map(OpaquePointer.init)
+                                    child = cmark_node_next(openingInserted).map(OpaquePointer.init)
                                     continue
                                 }
                                 cmark_node_unlink(openingReplacement)
@@ -1290,6 +1343,7 @@ enum MarkdownRenderer {
                        let pointer = cmark_node_get_literal(current) {
                         let entries = provedHTMLBlocks[current] ?? []
                         let mediaEntries = provedMediaBlocks[current] ?? []
+                        let opening = mergedMediaOpenings[current] ?? "", openingLength = (opening as NSString).length
                         var markers: [String: MarkdownHTMLMediaService.ExportImageMarker] = [:]
                         var mediaMarkers: [String: MarkdownHTMLMediaService.ProvenMedia] = [:]
                         var insertions: [(Int, String)] = []
@@ -1300,16 +1354,16 @@ enum MarkdownRenderer {
                         }
                         for (offset, marker, expected) in entries {
                             if Task.isCancelled { return }
-                            insertions.append((offset, "<!--\(marker)-->"))
+                            insertions.append((offset + openingLength, "<!--\(marker)-->"))
                             markers[marker] = expected
                         }
                         for (open, _, marker, _) in mediaEntries { insertions.append((open, "<!--\(marker)O-->")) }
                         if let merged = mergeMarkerInsertions(insertions),
-                           let block = MarkdownHTMLMediaService.insertingMarkers(in: String(cString: pointer), insertions: merged, isCancelled: { Task.isCancelled }),
+                           let block = MarkdownHTMLMediaService.insertingMarkers(in: opening + String(cString: pointer), insertions: merged, isCancelled: { Task.isCancelled }),
                            let rendered = MarkdownHTMLMediaService.exportBlock(block, isCancelled: { Task.isCancelled }, imageMarkers: markers,
                                mediaMarkers: mediaMarkers, imageOnly: true, resolveMedia: resolvedMedia,
                                fallbackSource: mappedSource.range(current).flatMap { range in
-                                   MarkdownHTMLMediaService.htmlBlockTagOffsets(current, range: range, tags: [], sourceText: markdown as NSString, isCancelled: { Task.isCancelled }) == nil ? nil : String(cString: pointer)
+                                   MarkdownHTMLMediaService.htmlBlockTagOffsets(current, range: range, tags: [], sourceText: markdown as NSString, isCancelled: { Task.isCancelled }) == nil ? nil : opening + String(cString: pointer)
                                }, resolveImage: { resolvedImage($0) }),
                            let replacement = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) {
                             let html = addingSourcePosition(to: rendered.html, for: current)
@@ -1329,7 +1383,7 @@ enum MarkdownRenderer {
                         html += ">"
                         let configuredHTML = addingSourcePosition(to: html, for: current)
                         let configured = configuredHTML.withCString { cmark_node_set_on_enter(replacement, $0) }
-                        if configured != 0 && cmark_node_insert_before(current, replacement) != 0 {
+                        if configured != 0 && attachingInline(replacement, { cmark_node_insert_before(current, $0) }) != nil {
                             cmark_node_unlink(current); cmark_node_free(current)
                         } else { cmark_node_free(replacement) }
                         child = next
@@ -1392,7 +1446,7 @@ enum MarkdownRenderer {
                            let html = confirmedInline[range], let replacement = cmark_node_new(CMARK_NODE_CUSTOM_INLINE) {
                             let configuredHTML = addingSourcePosition(to: html, for: current)
                             let configured = configuredHTML.withCString { cmark_node_set_on_enter(replacement, $0) }
-                            if configured != 0 && cmark_node_insert_before(current, replacement) != 0 {
+                            if configured != 0 && attachingInline(replacement, { cmark_node_insert_before(current, $0) }) != nil {
                                 cmark_node_unlink(current); cmark_node_free(current)
                             } else { cmark_node_free(replacement); omittedHTML = true }
                             child = next
@@ -1421,7 +1475,7 @@ enum MarkdownRenderer {
                             let kind = cmark_node_get_type(current) == CMARK_NODE_HTML_BLOCK ? CMARK_NODE_CUSTOM_BLOCK : CMARK_NODE_CUSTOM_INLINE
                             if let replacement = cmark_node_new(kind) {
                                 let configured = html.withCString { cmark_node_set_on_enter(replacement, $0) }
-                                if configured != 0 && cmark_node_insert_before(current, replacement) != 0 {
+                                if configured != 0 && attachingInline(replacement, { cmark_node_insert_before(current, $0) }) != nil {
                                     cmark_node_unlink(current); cmark_node_free(current)
                                 } else { cmark_node_free(replacement); omittedHTML = true }
                             } else { omittedHTML = true }
@@ -2277,7 +2331,7 @@ enum MarkdownRenderer {
         for original in (preserveRawHTML ? [] : tableBreaks) {
             guard let node = cmark_node_new(CMARK_NODE_CUSTOM_INLINE) else { continue }
             let configured = "<br>".withCString { cmark_node_set_on_enter(node, $0) }
-            guard configured != 0, cmark_node_replace(original, node) != 0 else { cmark_node_free(node); continue }
+            guard configured != 0, attachingInline(node, { cmark_node_replace(original, $0) }) != nil else { cmark_node_free(node); continue }
             cmark_node_free(original)
         }
         var styledRubyNodes = Set<OpaquePointer>()
@@ -2330,10 +2384,10 @@ enum MarkdownRenderer {
             }
             let startOK = openingHTML.withCString { cmark_node_set_on_enter(start, $0) }
             let endOK = "</\(tag)>".withCString { cmark_node_set_on_enter(end, $0) }
-            guard startOK != 0, endOK != 0, cmark_node_replace(opening, start) != 0 else {
+            guard startOK != 0, endOK != 0, attachingInline(start, { cmark_node_replace(opening, $0) }) != nil else {
                 cmark_node_free(start); cmark_node_free(end); continue
             }
-            guard cmark_node_replace(closing, end) != 0 else {
+            guard attachingInline(end, { cmark_node_replace(closing, $0) }) != nil else {
                 _ = cmark_node_replace(start, opening)
                 cmark_node_free(start); cmark_node_free(end)
                 continue

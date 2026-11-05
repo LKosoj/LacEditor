@@ -172,6 +172,11 @@ final class MarkdownImageInteractionTests: XCTestCase {
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 400), textContainer: container)
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
+        let window = NSWindow(contentRect: scroll.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = scroll
+        defer { window.close() }
+        window.makeKeyAndOrderFront(nil)
         view.setSelectedRange(NSRange(location: (source as NSString).length, length: 0))
         let controller = MarkdownPresentationController(textView: view, layout: layout)
         defer { controller.cancel() }

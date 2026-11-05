@@ -596,7 +596,7 @@ final class MarkdownPresentationTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(steps, 3)
     }
 
-    private static let insertSource = "Intro words\n\n```mermaid\ngraph TD; A-->B\n```\n\nBetween words\n\n<audio src=\"a.mp3\" controls></audio>\n\nAudio tail words\n\n<iframe src=\"https://example.invalid\" width=\"50%\" height=\"60\"></iframe>\n\nFrame tail words\n\n<details>\n<summary>Sum</summary>\n\nbody words\n</details>\n\nDetails tail words\n\n<div>\nraw html\n</div>\n\nHtml tail words\n\nRuby <ruby>漢字<rt>kanji</rt></ruby> end\n\nTail words\n"
+    private static let insertSource = "Intro words\n\n```mermaid\ngraph TD; A-->B\n```\n\nBetween words\n\n<audio src=\"a.mp3\" controls></audio>\n\nAudio tail words\n\n<iframe src=\"https://example.invalid\" width=\"50%\" height=\"60\"></iframe>\n\nFrame tail words\n\n<details>\n<summary>Sum</summary>\nbody words\n</details>\n\nDetails tail words\n\n<div>\nraw html\n</div>\n\nHtml tail words\n\nRuby <ruby>漢字<rt>kanji</rt></ruby> end\n\nTail words\n"
 
     func testShiftMovesDiagramsAndInsertsLikeReparse() {
         let source = Self.insertSource
@@ -761,14 +761,15 @@ final class MarkdownPresentationTests: XCTestCase {
         XCTAssertGreaterThan(assertAcceptedEditsMatchReparse(source), 0)
     }
 
-    func testRubyInsideTableKeepsOldPath() {
+    func testRubyInsideTableStaysSourceAndKeepsFastPath() {
+        // Ruby в ячейке таблицы не распознаётся и остаётся исходником, поэтому быстрый путь не закрывает.
         let source = "Intro words\n\n| a | b |\n|---|---|\n| <ruby>漢字<rt>kanji</rt></ruby> | 2 |\n\nTail words\n"
         let raw = source as NSString
         var presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
         presentation.prepareForEditing()
-        XCTAssertFalse(presentation.ruby.isEmpty)
+        XCTAssertTrue(presentation.ruby.isEmpty)
         let edit = NSRange(location: NSMaxRange(raw.range(of: "Intro wor")), length: 0)
-        XCTAssertNil(presentation.shiftedForTextEdit(edit, replacementLength: 1, textLength: raw.length))
+        XCTAssertNotNil(presentation.shiftedForTextEdit(edit, replacementLength: 1, textLength: raw.length))
         // Ruby вне таблицы при таблице в документе быстрый путь не закрывает.
         let outside = "Intro words\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nRuby <ruby>漢字<rt>kanji</rt></ruby> end\n\nTail words\n"
         let rawOutside = outside as NSString
@@ -832,7 +833,7 @@ final class MarkdownPresentationTests: XCTestCase {
             let length = (insert as NSString).length
             var presentation = parsedForShift(source)
             let change = MarkdownTextEdit(range: edit, replacementLength: length, textLength: raw.length)
-            guard presentation.canShift(change) else { continue }
+            guard MarkdownPresentation.allowsTypingEdit(in: raw, range: edit, replacement: insert), presentation.canShift(change) else { continue }
             checked += 1
             presentation.shift(change)
             let reparsed = parsedForShift(raw.replacingCharacters(in: edit, with: insert))
@@ -937,7 +938,7 @@ final class MarkdownPresentationTests: XCTestCase {
                 let edit = NSRange(location: NSMaxRange(found), length: 0)
                 var presentation = parsedForShift(source)
                 let change = MarkdownTextEdit(range: edit, replacementLength: 1, textLength: raw.length)
-                guard presentation.canShift(change) else { continue }
+                guard MarkdownPresentation.allowsTypingEdit(in: raw, range: edit, replacement: "x"), presentation.canShift(change) else { continue }
                 checked += 1
                 presentation.shift(change)
                 assertSameLists(presentation, parsedForShift(raw.replacingCharacters(in: edit, with: "x")), "\(marker) \(source)")
@@ -1045,7 +1046,8 @@ final class MarkdownPresentationTests: XCTestCase {
             text = text.replacingCharacters(in: edit, with: insert) as NSString
             assertSameLists(presentation, parsedForShift(text as String), marker)
         }
-        XCTAssertGreaterThanOrEqual(applied, 4)
+        // «and more» (вплотную к `[^b]`) и «Первая» (тело определения) отклоняются по правилам сноски.
+        XCTAssertGreaterThanOrEqual(applied, 3)
     }
 
     private static let tableSource = "Intro words\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nbetween text\n\n> quote above\n>\n> | q1 | q2 |\n> |----|----|\n> | x  | y  |\n\n| c | d |\n|---|---|\n| 3 | 4 |\n\ntail words\n"
@@ -1099,7 +1101,8 @@ final class MarkdownPresentationTests: XCTestCase {
         XCTAssertFalse(parsedForShift(source).canShift(MarkdownTextEdit(range: edit, replacementLength: 1, textLength: raw.length)))
     }
 
-    func testReplacingTableChecksOnlyNewTableCells() throws {
+    // Формулы, эмодзи и картинки в ячейках таблиц сдвигаются вместе с таблицей и быстрый путь не закрывают.
+    func testReplacingTableWithMathCellsKeepsFastPath() throws {
         let plain = "| a | b |\n|---|---|\n| 1 | 2 |\n"
         let withMath = "| $x$ | b |\n|---|---|\n| 1 | 2 |\n"
         let original = parsedForShift(plain)
@@ -1110,12 +1113,12 @@ final class MarkdownPresentationTests: XCTestCase {
         XCTAssertTrue(kept.isReadyForShift)
         var replaced = original.replacingTable(try XCTUnwrap(parsedForShift(withMath).tables.first), oldTable: oldRange, edit: edit, replacementLength: 3)
         replaced.prepareForEditing()
-        XCTAssertFalse(replaced.isReadyForShift)
+        XCTAssertTrue(replaced.isReadyForShift)
     }
 
-    func testPreparedPresentationRejectsMathEmojiImageTables() {
+    func testPreparedPresentationAcceptsMathEmojiImageTables() {
         for cell in ["$x$", ":smile:", "![a](b.png)"] {
-            XCTAssertFalse(parsedForShift("| \(cell) | b |\n|---|---|\n| 1 | 2 |\n").isReadyForShift, cell)
+            XCTAssertTrue(parsedForShift("| \(cell) | b |\n|---|---|\n| 1 | 2 |\n").isReadyForShift, cell)
         }
         XCTAssertTrue(parsedForShift("| a | b |\n|---|---|\n| 1 | 2 |\n").isReadyForShift)
     }

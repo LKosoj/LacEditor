@@ -153,7 +153,7 @@ extension EditorTextView {
         private var pendingHighlightRanges = DirtyRangeAccumulator()
         private var lastSyntaxEdit: DocumentEditDelta?
         private var emojiCompletionTask: Task<Void, Never>?
-        var emojiCompletions: @Sendable (String) -> [String]? = { try? EmojiShortcodeResolver.completions(prefix: $0) }
+        var emojiCompletions: @Sendable (String) -> [String]? = { try? EmojiShortcodeResolver.popularCompletions(prefix: $0) }
         var emojiCompletionDidFinish: (() -> Void)?
         private var emojiCompletionID = UUID()
         private(set) var emojiCompletionRequested = false

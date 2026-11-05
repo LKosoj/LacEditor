@@ -14,6 +14,26 @@ final class EmojiShortcodeResolverTests: XCTestCase {
         XCTAssertTrue(try EmojiShortcodeResolver.completions(prefix: "not_a_real_emoji").isEmpty)
     }
 
+    func testPopularCompletionsAreLimitedAndRanked() throws {
+        let all = try EmojiShortcodeResolver.popularCompletions(prefix: "")
+        XCTAssertEqual(all.count, 20)
+        XCTAssertEqual(Array(all.prefix(4)), ["joy", "heart", "rofl", "+1"])
+        let smiles = try EmojiShortcodeResolver.popularCompletions(prefix: "smi")
+        XCTAssertTrue(smiles.contains("smile"))
+        XCTAssertLessThanOrEqual(smiles.count, 20)
+        XCTAssertTrue(smiles.allSatisfy { $0.hasPrefix("smi") })
+        XCTAssertEqual(try EmojiShortcodeResolver.popularCompletions(prefix: "hear").first, "heart")
+        XCTAssertTrue(try EmojiShortcodeResolver.popularCompletions(prefix: "not_a_real_emoji").isEmpty)
+    }
+
+    func testContainsShortcodeFindsOnlyKnownNames() {
+        XCTAssertTrue(EmojiShortcodeResolver.containsShortcode(":smile:"))
+        XCTAssertTrue(EmojiShortcodeResolver.containsShortcode("a :+1: b"))
+        XCTAssertFalse(EmojiShortcodeResolver.containsShortcode("10:30:00"))
+        XCTAssertFalse(EmojiShortcodeResolver.containsShortcode(":not_a_real_emoji:"))
+        XCTAssertFalse(EmojiShortcodeResolver.containsShortcode("smile:"))
+    }
+
     func testEmptyInvalidAndCancelledInput() throws {
         XCTAssertTrue(try EmojiShortcodeResolver.resolve([]).isEmpty)
         for name in ["", "a b", "a:b", "中文", "a\nb", "a]b"] {

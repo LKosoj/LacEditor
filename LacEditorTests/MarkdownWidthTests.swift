@@ -97,8 +97,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: SmallCapsHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, SmallCapsHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let ready = await waitFor { coordinator.textView != nil }
         XCTAssertTrue(ready)
@@ -151,8 +150,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let ready = await waitFor { coordinator.textView != nil }
         XCTAssertTrue(ready)
@@ -201,8 +199,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView)
         let first = (source as NSString).range(of: "First")
@@ -238,8 +235,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView)
         window.makeFirstResponder(view)
@@ -283,8 +279,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView), layout = try XCTUnwrap(coordinator.foldLayoutManager)
         let container = try XCTUnwrap(view.textContainer)
@@ -351,8 +346,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView), layout = try XCTUnwrap(coordinator.foldLayoutManager)
         let container = try XCTUnwrap(view.textContainer), range = raw.range(of: markup)
@@ -421,8 +415,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView), layout = try XCTUnwrap(coordinator.foldLayoutManager)
         let container = try XCTUnwrap(view.textContainer), tab = raw.range(of: "\t"), bold = raw.range(of: "**中文\ttext**")
@@ -458,8 +451,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView), layout = try XCTUnwrap(coordinator.foldLayoutManager)
         let container = try XCTUnwrap(view.textContainer), tab = raw.range(of: "\t"), strong = raw.range(of: "<strong>中文\ttext</strong>")
@@ -490,8 +482,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView), layout = try XCTUnwrap(coordinator.foldLayoutManager)
         let marked = raw.range(of: "**<u>中文</u>**")
@@ -524,8 +515,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView), layout = try XCTUnwrap(coordinator.foldLayoutManager)
         let container = try XCTUnwrap(view.textContainer), range = raw.range(of: markup)
@@ -558,8 +548,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView), layout = try XCTUnwrap(coordinator.foldLayoutManager)
         let container = try XCTUnwrap(view.textContainer), raw = source as NSString, image = raw.range(of: markup)
@@ -590,8 +579,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView), layout = try XCTUnwrap(coordinator.foldLayoutManager)
         let container = try XCTUnwrap(view.textContainer), edge = NSRange(location: 6, length: 3)
@@ -629,8 +617,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView), layout = try XCTUnwrap(coordinator.foldLayoutManager)
         let container = try XCTUnwrap(view.textContainer), text = raw.range(of: "中文😀"), marker = raw.range(of: "<span")
@@ -660,8 +647,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView), layout = try XCTUnwrap(coordinator.foldLayoutManager)
         let raw = source as NSString, marker = raw.range(of: "**hidden**").location
@@ -697,8 +683,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView), layout = try XCTUnwrap(coordinator.foldLayoutManager)
         let container = try XCTUnwrap(view.textContainer)
@@ -740,8 +725,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView), layout = try XCTUnwrap(coordinator.foldLayoutManager)
         let container = try XCTUnwrap(view.textContainer)
@@ -819,8 +803,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView), layout = try XCTUnwrap(coordinator.foldLayoutManager)
         window.makeFirstResponder(view)
@@ -865,8 +848,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView), layout = try XCTUnwrap(coordinator.foldLayoutManager)
         let container = try XCTUnwrap(view.textContainer)
@@ -957,8 +939,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView)
         view.setSelectedRange(NSRange(location: 2, length: 0))
@@ -1068,8 +1049,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let ready = await waitFor { coordinator.markdownVerticalWriting }
         XCTAssertTrue(ready)
@@ -1181,8 +1161,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView)
         let location = (view.string as NSString).range(of: "end").location
@@ -1223,8 +1202,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView)
         let scroll = try XCTUnwrap(coordinator.scrollView)
@@ -1254,8 +1232,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView)
         let cell = try XCTUnwrap(MarkdownPresentationParser.parse(view.string).tables.first?.rows.last?.cells.first)
@@ -1312,8 +1289,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let ready = await waitFor { coordinator.foldLayoutManager?.markdownRightToLeft == true }
         XCTAssertTrue(ready)
@@ -1352,8 +1328,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let ready = await waitFor { coordinator.textView != nil }
         XCTAssertTrue(ready)
@@ -1394,8 +1369,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let ready = await waitFor { coordinator.strikeCompletedTasks && coordinator.textView != nil }
         XCTAssertTrue(ready)
@@ -1436,8 +1410,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let ready = await waitFor { coordinator.editorLigatures == 0 }
         XCTAssertTrue(ready)
@@ -1485,8 +1458,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 250), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); window.close() }
-        window.contentViewController = NSHostingController(rootView: LigatureHost(document: document, sessions: sessions, preferences: preferences))
-        window.makeKeyAndOrderFront(nil)
+        show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let ready = await waitFor { coordinator.editorLigatures == 2 }
         XCTAssertTrue(ready)
@@ -1515,8 +1487,22 @@ final class MarkdownWidthTests: XCTestCase {
         XCTAssertFalse(document.isDirty)
     }
 
+    // Assigning contentViewController resizes the window to the hosting view's
+    // ideal size; restore the requested content size and lay the editor out explicitly.
+    private func show(_ window: NSWindow, _ rootView: some View) {
+        let size = window.contentLayoutRect.size
+        window.contentViewController = NSHostingController(rootView: rootView)
+        window.setContentSize(size)
+        window.contentViewController?.view.frame = NSRect(origin: .zero, size: size)
+        window.contentViewController?.view.autoresizingMask = [.width, .height]
+        window.contentViewController?.view.isHidden = false
+        window.makeKeyAndOrderFront(nil)
+        window.displayIfNeeded()
+        window.contentView?.layoutSubtreeIfNeeded()
+    }
+
     private func waitFor(_ condition: () -> Bool) async -> Bool {
-        for _ in 0..<100 {
+        for _ in 0..<500 {
             if condition() { return true }
             try? await Task.sleep(for: .milliseconds(20))
         }
@@ -1531,8 +1517,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 400), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); document.cancelMetricsRefresh(); window.close() }
-        window.contentViewController = NSHostingController(rootView: Host(document: document, sessions: sessions, options: options))
-        window.makeKeyAndOrderFront(nil)
+        show(window, Host(document: document, sessions: sessions, options: options))
         let coordinator = sessions.coordinator(for: document)
         let ready = await waitFor { coordinator.textView?.textContainer?.containerSize.width == 300 }
         XCTAssertTrue(ready)
@@ -1567,8 +1552,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); document.cancelMetricsRefresh(); window.close() }
-        window.contentViewController = NSHostingController(rootView: Host(document: document, sessions: sessions, options: options))
-        window.makeKeyAndOrderFront(nil)
+        show(window, Host(document: document, sessions: sessions, options: options))
         let coordinator = sessions.coordinator(for: document)
         let ready = await waitFor { coordinator.textView?.textContainer?.containerSize.width == 300 }
         XCTAssertTrue(ready)
@@ -1596,8 +1580,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); document.cancelMetricsRefresh(); window.close() }
-        window.contentViewController = NSHostingController(rootView: Host(document: document, sessions: sessions, options: options))
-        window.makeKeyAndOrderFront(nil)
+        show(window, Host(document: document, sessions: sessions, options: options))
         let coordinator = sessions.coordinator(for: document)
         let ready = await waitFor { coordinator.textView != nil && coordinator.foldLayoutManager != nil }
         XCTAssertTrue(ready)
@@ -1697,8 +1680,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 400), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); document.cancelMetricsRefresh(); window.close() }
-        window.contentViewController = NSHostingController(rootView: Host(document: document, sessions: sessions, options: options))
-        window.makeKeyAndOrderFront(nil)
+        show(window, Host(document: document, sessions: sessions, options: options))
         let coordinator = sessions.coordinator(for: document)
         let ready = await waitFor { (coordinator.textView?.textContainer?.containerSize.width ?? 0) > 600 }
         XCTAssertTrue(ready)
@@ -1742,8 +1724,7 @@ final class MarkdownWidthTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { sessions.coordinator(for: document).updateActivity(false); document.cancelMetricsRefresh(); window.close() }
-        window.contentViewController = NSHostingController(rootView: Host(document: document, sessions: sessions, options: options))
-        window.makeKeyAndOrderFront(nil)
+        show(window, Host(document: document, sessions: sessions, options: options))
         let coordinator = sessions.coordinator(for: document)
         let range = (source as NSString).range(of: "one")
         let ready = await waitFor {

@@ -414,3 +414,76 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
 `MarkdownImageInteractionTests` (`testVirtualCell*DialogCancelAndConfirm`,
 `testChosenFileRunsRealImageDialogAndInsertsSource`) без `preparePrimaryWindow`
 — кандидаты на проверку или перенос в `LacEditorUITests`.
+
+### Разбор `docs/FAILING_TESTS_2026-11-05.md` (2026-11-05, Linux)
+
+Тесты на Mac не запускались. Сабагенты разобрали классы из списка по коду,
+истории и копиям Linux-стендов; все изменённые файлы проходят
+`swiftc -frontend -parse` и `git diff --check`.
+
+- Схемы `LacEditor` и `LacEditor UI Experiment`: параллельный запуск
+  оставлен (`parallelizable = "YES"`) по решению пользователя. Возможная
+  причина случайных падений GUI-тестов — окно неактивной копии приложения не
+  становится key window; вариант разделения описан в `docs/agents/testing.md`.
+- Production: `selectionTouchesOpaqueMedia` больше не считает формулы
+  непрозрачными (строки появились в 35d6b15 без теста). Курсор внутри формулы
+  снова раскрывает исходник, как ждут тесты формул в тексте, списке и цитате.
+- `MarkdownWidthTests`: helper `show(_:_:)` возвращает окну размер после
+  назначения `NSHostingController` (SwiftUI сжимал окно почти до нуля),
+  `waitFor` — 10 с.
+- `MarkdownClipboardInteractionTests`: тестовые `converter`/`converter-html` и
+  ограниченный опрос панели сохранения ещё в двух тестах.
+- `MarkdownImageInteractionTests`, `MarkdownMediaIntegrationTests`: тестам
+  без окна добавлено окно (без него нет `undoManager` и физической ширины).
+- `MarkdownPresentationTests` (4 из 7): details без пустой строки после
+  summary; проверка `allowsTypingEdit` перед `canShift`, как в редакторе;
+  цепочка сносок — 3 сдвига, а не 4 (см. `testShiftRejectsFootnoteBodyAndMarkerEdits`).
+- `MarkdownRendererTests` (3): `<pre>` с `tabindex`/`aria-label`, экранированный
+  `&gt;` префикса цитаты, неизвестный тип выноски рисуется как выноска.
+- `PandocImportTests`/`PandocExportTests`: ожидания под встроенный Pandoc 3.13
+  (одиночный RST-заголовок уходит в `title`, `&quot;`, `\texttt`, textile
+  `h1(#id).`, `--fail-if-warnings` без ошибки при пустой переменной).
+- `FolderOpeningTests`, `WindowAndSessionTests`: `abortModal` вместо
+  `stopModal` из таймера; `NativeTabsTests`, `UIAuditTests`: окна закрываются
+  в `defer`; `MarkdownFormattingUITests`: ожидание `"hello $$"`.
+
+Исправлено после решения пользователя (проверено на копиях Linux-стендов):
+- `MarkdownRenderer`: ячейка таблицы cmark-gfm не принимает CUSTOM_INLINE;
+  при неудачной вставке узел кладётся в прозрачный `CMARK_NODE_ATTRIBUTE`
+  (`attachingInline`). Проходят 3 теста таблиц, новых падений нет.
+- `MarkdownHTMLMediaService.provenRuby`: ruby с именем известного эмодзи в
+  основе или подписи не подтверждается (`EmojiShortcodeResolver.containsShortcode`)
+  и остаётся исходником (`testUnsupportedRubyKeepsProvenSource`, `MarkdownRubyOutputTests`).
+- `MarkdownPresentationParser`: разорванный на строки `<audio`/`<video` в
+  цитате или пункте распознаётся как один блок
+  (`testQuoteAndListMediaUseConfirmedContainerLines`; `MarkdownPresentationParserTests` 103/103).
+- Тесты ячеек таблиц приведены к `markdown-editor.md`:
+  `testPreparedPresentationAcceptsMathEmojiImageTables`,
+  `testReplacingTableWithMathCellsKeepsFastPath`,
+  `testRubyInsideTableStaysSourceAndKeepsFastPath` (стенд: 55/55).
+- Подсказки эмодзи: не больше 20, по популярности (`popularCompletions`).
+- `PandocExportService.prepare`: `--strip-comments` и `strip-comments: true`
+  профиля теперь действуют — после проверки настроек блоки перечитываются с
+  флагом, метаданные первого прохода сохраняются
+  (`testDefaultsFileIsCheckedBeforeConversionAndPreservesDestination`; стенд
+  Pandoc 3.13: падения 6 → 5, оставшиеся — известные «только Linux» и
+  `PandocImportTests.testImportPanelTypesExistForDeclaredExtensions`).
+  `CustomMarkdownExportService` не проверялся.
+- Новый тест `MarkdownMediaIntegrationTests.testDataImageIsAnchorInSourceModeAndImageInFormattedMode`:
+  data:-картинка в исходном режиме — якорь-подпись (глифы токена) и после
+  правки, в оформленном — показанная картинка. Только `swiftc -parse`.
+
+- `MarkdownRenderer`: разорванный `<audio`/`<video` собирается в один элемент
+  и в предпросмотре/PDF, и в экспорте HTML (раньше «raw HTML omitted» и ошибка
+  экспорта для цитаты и списка). Новые тесты
+  `testMultilineMediaOpeningRendersLikeSingleLineTag`,
+  `testMultilineMediaOpeningWithoutProofStaysUnconfirmed`; стенд
+  `MarkdownRendererTests`: 100 тестов, падают те же 12, что до правки.
+  Оформленное копирование такой тег не собирает.
+
+Без лога xcresult с Mac не локализованы: `MarkdownPDFExportTests` (13),
+`MarkdownPreviewTests` (4), `MarkdownRubyRenderServiceTests` (1, CoreText),
+8 медиа-тестов `MarkdownRendererTests` (на 53299db падали так же),
+`MarkdownLayoutTests`, `UIExperimentTests`, `WritingModesTests` и одиночные
+падения из списка. В `MarkdownPDFExportTests` после таймаута 30 с задача
+экспорта не отменяется, поздний `fulfill`/`XCTFail` может попасть в соседний тест.

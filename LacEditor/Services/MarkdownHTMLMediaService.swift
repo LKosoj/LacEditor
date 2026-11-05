@@ -1765,7 +1765,9 @@ enum MarkdownHTMLMediaService {
             var accepted = Set<Int>()
             for (index, candidate) in candidates.enumerated() {
                 if isCancelled() { return [] }
-                guard !duplicates.contains(index), let opening = openings[index], let closing = closings[index],
+                // A shortcode inside ruby would be shown differently by emoji rendering, so such ruby stays source.
+                guard !EmojiShortcodeResolver.containsShortcode(candidate.base), !EmojiShortcodeResolver.containsShortcode(candidate.reading),
+                      !duplicates.contains(index), let opening = openings[index], let closing = closings[index],
                       let ruby = opening.nextSibling() as? Element, ruby.tagName() == "ruby", closing.previousSibling() === ruby,
                       ruby.getAttributes()?.asList().isEmpty != false else { continue }
                 var ancestor = ruby.parent(), inert = false

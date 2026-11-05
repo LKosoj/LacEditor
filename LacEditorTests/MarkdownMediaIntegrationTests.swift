@@ -86,8 +86,13 @@ final class MarkdownMediaIntegrationTests: XCTestCase {
     func testDeletionTouchingTokenRemovesWholeTokenWithOneUndo() {
         let source = sources[0]
         let editor = makeEditor(source)
-        defer { editor.coordinator.updateActivity(false) }
+        // Без окна у NSTextView нет undoManager: отмену даёт окно, как в `FoldTaskTests.testSourceModeKeepsMediaTokensAndUndo`.
+        let window = NSWindow(contentRect: editor.view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = editor.scroll
+        defer { editor.coordinator.updateActivity(false); window.close() }
         editor.view.allowsUndo = true
+        XCTAssertNotNil(editor.view.undoManager)
         let span = try! XCTUnwrap(editor.document.mediaTable.spans(in: editor.shown).first)
         let tokenRange = NSRange(location: span.displayStart, length: span.displayLength)
         let before = editor.shown as String
@@ -98,6 +103,58 @@ final class MarkdownMediaIntegrationTests: XCTestCase {
         editor.view.undoManager?.undo()
         XCTAssertEqual(editor.shown as String, before)
         XCTAssertEqual(editor.document.synchronizedText(), source)
+    }
+
+    /// Изображение data: в исходном режиме свёрнуто в якорь-подпись и остаётся им после правки; оформленный режим показывает картинку.
+    func testDataImageIsAnchorInSourceModeAndImageInFormattedMode() async throws {
+        let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+        let source = "before\n\n![image](data:image/png;base64,\(png))\n\nafter"
+        let editor = makeEditor(source, formatted: false)
+        defer { editor.coordinator.updateActivity(false) }
+        // Подпись ставит EditorTextView.makeNSView; стенд без SwiftUI ставит её сам.
+        editor.coordinator.installMediaLabel()
+        editor.view.setSelectedRange(NSRange(location: 0, length: 0))
+        let layout = try XCTUnwrap(editor.view.layoutManager as? FoldLayoutManager)
+        let container = try XCTUnwrap(editor.view.textContainer)
+
+        // Якорь: первый глиф токена рисует подпись, остальные скрыты.
+        func assertAnchor(_ message: String) throws {
+            XCTAssertTrue(editor.shown.contains("#lac-media-"), message)
+            XCTAssertFalse(editor.shown.contains(png), message)
+            let span = try XCTUnwrap(editor.document.mediaTable.spans(in: editor.shown).first, message)
+            let tokenRange = NSRange(location: span.displayStart, length: span.displayLength)
+            layout.invalidateGlyphs(forCharacterRange: NSRange(location: 0, length: editor.shown.length), changeInLength: 0, actualCharacterRange: nil)
+            let glyphs = layout.glyphRange(forCharacterRange: tokenRange, actualCharacterRange: nil)
+            XCTAssertEqual(glyphs.length, tokenRange.length, message)
+            XCTAssertEqual(layout.propertyForGlyph(at: glyphs.location), .controlCharacter, message)
+            for glyph in glyphs.location + 1..<NSMaxRange(glyphs) {
+                XCTAssertEqual(layout.propertyForGlyph(at: glyph), .null, message)
+            }
+        }
+
+        try assertAnchor("после открытия")
+        XCTAssertTrue(editor.edit(NSRange(location: editor.shown.length, length: 0), "x"))
+        editor.coordinator.updateMarkdownPresentation()
+        try assertAnchor("после правки")
+        XCTAssertEqual(editor.document.synchronizedText(), source + "x")
+
+        editor.document.isMarkdownFormatted = true
+        editor.coordinator.updateMarkdownPresentation()
+        let image = editor.shown.range(of: "![image](")
+        func point() -> NSPoint {
+            layout.ensureLayout(for: container)
+            let rect = layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: image.location), effectiveRange: nil)
+            return NSPoint(x: rect.minX + container.lineFragmentPadding + 0.5, y: rect.minY + 0.5)
+        }
+        for _ in 0..<30 {
+            if layout.markdownImageLocation(at: point(), in: container) != nil { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertEqual(layout.markdownImageLocation(at: point(), in: container), image.location)
+        // В хранилище по-прежнему токен, а не байты картинки.
+        XCTAssertTrue(editor.shown.contains("#lac-media-"))
+        XCTAssertFalse(editor.shown.contains(png))
+        XCTAssertEqual(editor.document.synchronizedText(), source + "x")
     }
 
     func testPasteWithRealDataBecomesTokenAndKnownTokenStays() {
@@ -223,7 +280,11 @@ final class MarkdownMediaIntegrationTests: XCTestCase {
     func testLanguageSwitchRestoresFileTextAndTokensReturn() {
         let source = sources[1]
         let editor = makeEditor(source)
-        defer { editor.coordinator.updateActivity(false) }
+        // Без окна у NSTextView нет undoManager, и проверки canUndo получали бы nil.
+        let window = NSWindow(contentRect: editor.view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = editor.scroll
+        defer { editor.coordinator.updateActivity(false); window.close() }
         XCTAssertTrue(editor.shown.contains("#lac-media-"))
         editor.view.allowsUndo = true
         XCTAssertTrue(editor.edit(NSRange(location: editor.shown.length, length: 0), "x"))

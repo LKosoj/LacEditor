@@ -2072,8 +2072,8 @@ final class MarkdownPresentationController {
         guard selection.location <= text.length else { return nil }
         // Непрозрачные медиа не редактируются внутри оформленного редактора.
         // Раскрытие всей строки здесь временно показывало их полный Markdown
-        // перед установкой ресурса. Диаграммы намеренно не входят в этот список:
-        // при попадании курсора внутрь диаграммы они должны перейти в текстовый вид.
+        // перед установкой ресурса. Диаграммы и формулы намеренно не входят в этот список:
+        // при попадании курсора внутрь них они должны перейти в текстовый вид.
         if selectionTouchesOpaqueMedia(selection) { return nil }
         let length = min(selection.length, text.length - selection.location)
         let line = text.lineRange(for: NSRange(location: selection.location, length: length))
@@ -2132,8 +2132,6 @@ final class MarkdownPresentationController {
             || nearby(presentation.iframeBlocks, selection, presentation, extent: { $0.range }).contains { touches($0.range) }
             || nearby(presentation.detailsBlocks, selection, presentation, extent: { $0.range }).contains { touches($0.range) }
             || nearby(presentation.htmlBlocks, selection, presentation, extent: { $0.range }).contains { touches($0.range) }
-            || nearby(presentation.formulas, selection, presentation, extent: { $0.range }).contains { touches($0.range) }
-            || nearby(presentation.inlineFormulas, selection, presentation, extent: { $0.range }).contains { touches($0.range) }
     }
 
     private func intersecting(_ range: NSRange) -> [MarkdownPresentationSpan] {

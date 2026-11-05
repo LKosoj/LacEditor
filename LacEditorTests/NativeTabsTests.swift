@@ -607,6 +607,9 @@ final class NativeTabsTests: XCTestCase {
         let second = manager.openNativeTab(from: first)
         try await Task.sleep(for: .milliseconds(300))
         let secondWindow = try XCTUnwrap(second.hostWindow)
+        defer {
+            for member in Set((firstWindow.tabGroup?.windows ?? []) + [firstWindow, secondWindow]) { member.delegate = nil; member.close() }
+        }
         XCTAssertEqual(firstWindow.tabGroup?.windows.count, 2)
         XCTAssertEqual(first.documents.count, 1)
         XCTAssertEqual(second.documents.count, 1)

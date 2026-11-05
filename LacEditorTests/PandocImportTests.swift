@@ -109,7 +109,7 @@ final class PandocImportTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let latex = "\\section{Heading}\n中文 😀 \\href{https://example.com}{Link}\n"
-        let rst = "Heading\n=======\n\n中文 😀 `Link <https://example.com>`_\n\n+---+---+\n| A | B |\n+===+===+\n| 1 | 2 |\n+---+---+\n"
+        let rst = "Intro\n\nHeading\n=======\n\n中文 😀 `Link <https://example.com>`_\n\n+---+---+\n| A | B |\n+===+===+\n| 1 | 2 |\n+---+---+\n"
         let fixtures: [(String, String, Bool)] = [
             ("tex", latex, false), ("latex", latex, false), ("ltx", latex, false), ("rst", rst, true), ("rest", rst, true),
             ("org", "* Heading\n\n中文 😀 [[https://example.com][Link]]\n\n| A | B |\n|---+---|\n| 1 | 2 |\n", true),

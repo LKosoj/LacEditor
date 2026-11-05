@@ -214,6 +214,53 @@ enum MarkdownPresentationParser {
         return (line, original, String(decoding: prefix, as: UTF16.self), nested)
     }
 
+    private static func containerProofNode(_ node: OpaquePointer, isCancelled: () -> Bool) -> OpaquePointer? {
+        var current = node
+        while let parent = cmark_node_parent(current) {
+            if isCancelled() { return nil }
+            let kind = cmark_node_get_type(parent)
+            if kind == CMARK_NODE_DOCUMENT || kind == CMARK_NODE_BLOCK_QUOTE || kind == CMARK_NODE_ITEM || kind == CMARK_NODE_LIST { return current }
+            guard let name = cmark_node_get_type_string(parent),
+                  ["paragraph", "heading", "strong", "emph", "link", "strikethrough"].contains(String(cString: name)) else { return nil }
+            current = parent
+        }
+        return nil
+    }
+
+    // Открывающий тег audio/video, разорванный на строки: cmark даёт html_inline без точных позиций конца.
+    // Первая строка literal доходит до конца строки исходника, следующие начинаются после доказанного префикса контейнера.
+    static func multilineMediaOpening(_ node: OpaquePointer, source: Source, sourceText: NSString,
+                                      isCancelled: () -> Bool) -> (range: NSRange, prefixes: [NSRange])? {
+        guard cmark_node_get_type(node) == CMARK_NODE_HTML_INLINE, let pointer = cmark_node_get_literal(node) else { return nil }
+        let literal = String(cString: pointer)
+        let lowered = literal.lowercased()
+        guard lowered.contains("\n"), let start = source.firstPosition(node), let proofNode = containerProofNode(node, isCancelled: isCancelled),
+              ["<audio", "<video"].contains(where: { name in
+                  lowered.hasPrefix(name) && lowered.dropFirst(name.count).first.map({ [" ", "\t", "\n"].contains($0) }) == true
+              }) else { return nil }
+        let parts = literal.components(separatedBy: "\n")
+        var cursor = start, end = start, prefixes: [NSRange] = []
+        for (index, part) in parts.enumerated() {
+            if isCancelled() { return nil }
+            guard cursor < sourceText.length else { return nil }
+            let line = sourceText.lineRange(for: NSRange(location: cursor, length: 0))
+            var contentEnd = NSMaxRange(line)
+            while contentEnd > line.location && [10, 13].contains(Int(sourceText.character(at: contentEnd - 1))) { contentEnd -= 1 }
+            var content = cursor
+            if index > 0 {
+                while content < contentEnd && [9, 32, 62].contains(Int(sourceText.character(at: content))) { content += 1 }
+                guard fencePrefixes(proofNode, source: source, text: sourceText, position: content) != nil else { return nil }
+                if content > line.location { prefixes.append(NSRange(location: line.location, length: content - line.location)) }
+            }
+            let length = (part as NSString).length
+            guard content + length <= contentEnd, index == parts.count - 1 || content + length == contentEnd,
+                  sourceText.substring(with: NSRange(location: content, length: length)).utf16.elementsEqual(part.utf16) else { return nil }
+            end = content + length
+            cursor = NSMaxRange(line)
+        }
+        return (NSRange(location: start, length: end - start), prefixes)
+    }
+
     static func containerHTMLPrefixes(_ node: OpaquePointer, range: NSRange, source: Source, sourceText: NSString, isCancelled: () -> Bool) -> [NSRange]? {
         guard let literalPointer = cmark_node_get_literal(node), range.length > 0,
               NSMaxRange(range) <= sourceText.length else { return nil }
@@ -1382,6 +1429,9 @@ enum MarkdownPresentationParser {
     struct PairedMediaCollector {
         private var pending: [(name: String, node: OpaquePointer, parent: OpaquePointer, tag: NSRange, offset: Int)] = []
         private(set) var candidates: [(proof: MarkdownHTMLMediaService.MediaProofCandidate, range: NSRange, isInline: Bool)] = []
+        /// Абзац из одного разорванного на строки открывающего тега и следующий html_block проверяются в DOM как один блок:
+        /// на время проверки literal тега переносится в начало literal блока, смещения тегов блока считаются по объединённому literal.
+        private(set) var merges: [(inline: OpaquePointer, block: OpaquePointer, literal: String)] = []
 
         mutating func cancelPending() { pending.removeAll() }
 
@@ -1389,15 +1439,29 @@ enum MarkdownPresentationParser {
                               sourceText: NSString, isCancelled: () -> Bool) {
             guard let parent = cmark_node_parent(node), let typePointer = cmark_node_get_type_string(node), !tags.isEmpty else { return }
             let type = String(cString: typePointer)
-            if let first = pending.first, first.parent != parent { pending.removeAll() }
+            var shift = 0, merged: String?
+            if let first = pending.first, first.parent != parent {
+                if type == "html_block", pending.count == 1, cmark_node_get_type(first.node) == CMARK_NODE_HTML_INLINE,
+                   cmark_node_first_child(first.parent) == first.node, cmark_node_next(first.node) == nil,
+                   cmark_node_get_type(first.parent) == CMARK_NODE_PARAGRAPH, cmark_node_next(first.parent) == node,
+                   let opening = cmark_node_get_literal(first.node), String(cString: opening).contains("\n"),
+                   let block = cmark_node_get_literal(node) {
+                    let literal = String(cString: opening) + "\n"
+                    let combined = literal + String(cString: block)
+                    shift = (literal as NSString).length
+                    merged = combined
+                    pending[0] = (name: first.name, node: node, parent: parent, tag: first.tag, offset: 0)
+                    merges.append((first.node, node, combined))
+                } else { pending.removeAll() }
+            }
             let parentType = cmark_node_get_type_string(parent).map { String(cString: $0) }
             let supportedParent = type == "html_block" || ["paragraph", "heading", "strong", "emph", "strikethrough", "link"].contains(parentType ?? "")
             let positions = tags.flatMap { [$0.0, NSRange(location: NSMaxRange($0.0) - 1, length: 1)] }.sorted { $0.location < $1.location }
             let offsets = type == "html_block" ? MarkdownHTMLMediaService.htmlBlockTagOffsets(node, range: range, tags: positions, sourceText: sourceText, isCancelled: isCancelled) : nil
             for (tag, name, closing) in tags {
                 if isCancelled() { return }
-                guard supportedParent, let start = type == "html_block" ? offsets?[tag.location] : 0,
-                      let last = type == "html_block" ? offsets?[NSMaxRange(tag) - 1] : tag.length - 1 else { pending.removeAll(); continue }
+                guard supportedParent, let start = type == "html_block" ? offsets?[tag.location].map({ $0 + shift }) : 0,
+                      let last = type == "html_block" ? offsets?[NSMaxRange(tag) - 1].map({ $0 + shift }) : tag.length - 1 else { pending.removeAll(); continue }
                 let opening = (name: name, node: node, parent: parent, tag: tag, offset: start)
                 if !closing && name != "embed" {
                     pending.append(opening)
@@ -1416,7 +1480,7 @@ enum MarkdownPresentationParser {
                 var isInline = true
                 if type == "html_block" {
                     guard let pointer = cmark_node_get_literal(node) else { continue }
-                    let literal = String(cString: pointer) as NSString
+                    let literal = (merged ?? String(cString: pointer)) as NSString
                     guard pending.offset <= last, last < literal.length else { continue }
                     html = literal.substring(with: NSRange(location: pending.offset, length: last - pending.offset + 1))
                     let before = NSRange(location: 0, length: pending.offset)
@@ -1966,16 +2030,10 @@ enum MarkdownPresentationParser {
             return false
         }
         func containerProofNode(_ node: OpaquePointer) -> OpaquePointer? {
-            var current = node
-            while let parent = cmark_node_parent(current) {
-                if isCancelled() { return nil }
-                let kind = cmark_node_get_type(parent)
-                if kind == CMARK_NODE_DOCUMENT || kind == CMARK_NODE_BLOCK_QUOTE || kind == CMARK_NODE_ITEM || kind == CMARK_NODE_LIST { return current }
-                guard let name = cmark_node_get_type_string(parent),
-                      ["paragraph", "heading", "strong", "emph", "link", "strikethrough"].contains(String(cString: name)) else { return nil }
-                current = parent
-            }
-            return nil
+            MarkdownPresentationParser.containerProofNode(node, isCancelled: isCancelled)
+        }
+        func multilineMediaOpening(_ node: OpaquePointer) -> (range: NSRange, prefixes: [NSRange])? {
+            MarkdownPresentationParser.multilineMediaOpening(node, source: source, sourceText: sourceText, isCancelled: isCancelled)
         }
         func scriptGapPrefixes(before node: OpaquePointer, range: NSRange) -> [NSRange]? {
             guard !scriptGapUnproven, let opening = scriptOpeningNode, lastHTMLRangeEnd <= range.location else { return nil }
@@ -2161,6 +2219,7 @@ enum MarkdownPresentationParser {
                     if tag.hasPrefix("<kbd") || tag.hasPrefix("</kbd") || isSpanOpening(tag) || tag == "</span>" { htmlKeyboardTableIndices.insert(tables.count - 1) }
                 }
                 let range: NSRange?
+                var multilinePrefixes: [NSRange]?
                 if let cell {
                     let positions: Source.TableCellPositions?
                     if let cached = linkCellPositions[cell] { positions = cached }
@@ -2169,10 +2228,13 @@ enum MarkdownPresentationParser {
                         linkCellPositions[cell] = .some(positions)
                     }
                     range = positions.flatMap { source.tableInlineRange(node, positions: $0) }
+                } else if let opening = multilineMediaOpening(node) {
+                    range = opening.range
+                    multilinePrefixes = opening.prefixes
                 } else { range = plainMultilineNodes.contains(node) ? plainMultilineRanges[node] : source.range(node) }
                 if nodeType == CMARK_NODE_HTML_INLINE { allInlineHTML.append((node, range)) }
                 var confirmed = range.map { htmlSourceMatches(node, range: $0, text: sourceText, isCancelled: isCancelled) } ?? false
-                if !confirmed, type == "html_block", let range, let prefixes = containerHTMLPrefixes(node, range: range, source: source, sourceText: sourceText, isCancelled: isCancelled) {
+                if !confirmed, let range, let prefixes = multilinePrefixes ?? (type == "html_block" ? containerHTMLPrefixes(node, range: range, source: source, sourceText: sourceText, isCancelled: isCancelled) : nil) {
                     if htmlContextText == nil { htmlContextText = NSMutableString(string: sourceText as String) }
                     for prefix in prefixes { htmlContextText?.replaceCharacters(in: prefix, with: String(repeating: " ", count: prefix.length)) }
                     confirmed = true
@@ -2800,6 +2862,15 @@ enum MarkdownPresentationParser {
         }
         let pairedMedia = mediaCollector.candidates
         if !pairedMedia.isEmpty && !isCancelled() {
+            var originalLiterals: [(OpaquePointer, String)] = []
+            for merge in mediaCollector.merges {
+                for (node, literal) in [(merge.inline, ""), (merge.block, merge.literal)] {
+                    guard let pointer = cmark_node_get_literal(node) else { continue }
+                    originalLiterals.append((node, String(cString: pointer)))
+                    _ = literal.withCString { cmark_node_set_literal(node, $0) }
+                }
+            }
+            defer { for (node, literal) in originalLiterals.reversed() { _ = literal.withCString { cmark_node_set_literal(node, $0) } } }
             let accepted = MarkdownHTMLMediaService.provenMediaIndices(root: root, mathExtension: mathExtension, options: options,
                 text: sourceText, candidates: pairedMedia.map(\.proof), isCancelled: isCancelled)
             let selected: [(proof: MarkdownHTMLMediaService.MediaProofCandidate, range: NSRange, isInline: Bool)] = accepted.map { pairedMedia[$0] }

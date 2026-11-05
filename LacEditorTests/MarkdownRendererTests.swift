@@ -893,6 +893,42 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertEqual(page.body.components(separatedBy: "<source").count - 1, 0)
     }
 
+    func testMultilineMediaOpeningRendersLikeSingleLineTag() {
+        let pairs = [("> <video controls\r\n> width='50%'>\r\n> <source src='movie>file.mp4'>\r\n> </video>\r\n",
+                      "> <video controls width='50%'>\r\n> <source src='movie>file.mp4'>\r\n> </video>\r\n"),
+                     ("- <audio\n  controls>\n  <source src='sound.mp3'>\n  </audio>\n",
+                      "- <audio controls>\n  <source src='sound.mp3'>\n  </audio>\n"),
+                     ("<video controls\nwidth='50%'>\n<source src='movie.mp4'>\n</video>\n",
+                      "<video controls width='50%'>\n<source src='movie.mp4'>\n</video>\n")]
+        for (split, single) in pairs {
+            let preview = MarkdownRenderer.renderPage(split, darkMode: false, resolveLocalImages: true)
+            XCTAssertEqual(preview.body, MarkdownRenderer.renderPage(single, darkMode: false, resolveLocalImages: true).body, split)
+            XCTAssertTrue(preview.body.contains("<source"), split)
+            XCTAssertFalse(preview.body.contains("raw HTML omitted"), split)
+            let raw = MarkdownRenderer.renderPage(split, darkMode: false, includeHTMLMedia: true, forExport: true, preserveRawHTMLBlocks: true)
+            let expected = MarkdownRenderer.renderPage(single, darkMode: false, includeHTMLMedia: true, forExport: true, preserveRawHTMLBlocks: true)
+            XCTAssertFalse(raw.rawHTMLBlockProofFailed, split)
+            XCTAssertEqual(raw.rawHTMLBlocks.map(\.html), expected.rawHTMLBlocks.map(\.html), split)
+            XCTAssertEqual(raw.rawHTMLBlocks.count, 1, split)
+        }
+        XCTAssertEqual(MarkdownRenderer.renderPage(pairs[0].0, darkMode: false, includeHTMLMedia: true, forExport: true,
+            preserveRawHTMLBlocks: true).rawHTMLBlocks.first?.html, "<video controls width=\"50%\">\r\n<source src=\"data:,\">\r\n</video>")
+    }
+
+    func testMultilineMediaOpeningWithoutProofStaysUnconfirmed() {
+        for source in ["> <video controls\r\nwidth='50%'>\r\n> <source src='movie.mp4'>\r\n> </video>\r\n",
+                       "> before <video controls\r\n> width='50%'>\r\n> <source src='movie.mp4'>\r\n> </video>\r\n",
+                       "<template>\n\n<video controls\nwidth='50%'>\n<source src='movie.mp4'>\n</video>\n\n</template>\n",
+                       "before <script>\n\n<video controls\nwidth='50%'>\n<source src='movie.mp4'>\n</video>\n\n</script>\n",
+                       "> <script>\n> <video controls\n> width='50%'>\n> <source src='movie.mp4'>\n> </video>\n> </script>\n"] {
+            let preview = MarkdownRenderer.renderPage(source, darkMode: false, resolveLocalImages: true)
+            XCTAssertFalse(preview.body.contains("<video"), source)
+            XCTAssertFalse(preview.body.contains("<source"), source)
+            let raw = MarkdownRenderer.renderPage(source, darkMode: false, includeHTMLMedia: true, forExport: true, preserveRawHTMLBlocks: true)
+            XCTAssertFalse(raw.rawHTMLBlocks.contains { $0.html.contains("<video") }, source)
+        }
+    }
+
     func testPlainHTMLUsesCanonicalRecognizedWidgets() {
         let twitter = "<blockquote class='twitter-tweet'><p>Sunsets 中文</p><a href='https://x.com/Interior/status/463440424141459456'>Post</a></blockquote>\n<script async src='https://platform.twitter.com/widgets.js'></script>"
         let svg = "<svg xmlns='http://www.w3.org/2000/svg' width='40' height='20'><rect width='40' height='20'/></svg>"
@@ -1069,27 +1105,29 @@ final class MarkdownRendererTests: XCTestCase {
     }
 
     func testUnsupportedMultilineStylePreservesProvenSource() {
+        let pre = "<pre tabindex=\"0\" aria-label=\"\(L10n.tr("代码块，可横向滚动"))\">"
         for newline in ["\n", "\r\n"] {
             let paragraph = "before <span style='position:fixed'>中文  \\" + newline + "second</span> after"
             let source = paragraph + newline + newline + "neighbor"
             for plain in [false, true] {
                 let page = MarkdownRenderer.renderPage(source, darkMode: false, includeHTMLMedia: plain, resolveLocalImages: !plain)
-                XCTAssertTrue(page.body.contains("<pre>before &lt;span style='position:fixed'&gt;中文  \\" + newline + "second&lt;/span&gt; after</pre>"), source)
+                XCTAssertTrue(page.body.contains(pre + "before &lt;span style='position:fixed'&gt;中文  \\" + newline + "second&lt;/span&gt; after</pre>"), source)
                 XCTAssertTrue(page.body.contains("neighbor"))
                 XCTAssertEqual(source, paragraph + newline + newline + "neighbor")
             }
         }
         let ambiguous = "[id]: /url\t\"title\"\n[<span style='position:fixed'>x\nend</span>\n\nneighbor"
         let page = MarkdownRenderer.renderPage(ambiguous, darkMode: false, resolveLocalImages: true)
-        XCTAssertFalse(page.body.contains("<pre>[&lt;span"))
+        XCTAssertFalse(page.body.contains(pre + "[&lt;span"))
         XCTAssertTrue(page.body.contains("neighbor"))
     }
 
     func testUnsupportedMultilineStyleInQuoteAndListKeepsPrefixes() {
+        let pre = "<pre tabindex=\"0\" aria-label=\"\(L10n.tr("代码块，可横向滚动"))\">"
         for (first, continuation) in [(" > ", " > "), ("- ", "  "), ("> - ", ">   ")] {
             for newline in ["\n", "\r\n"] {
                 let source = first + "before <span style='position:fixed'>中文" + newline + continuation + "second</span> after" + newline + newline + "neighbor"
-                let expected = "<pre>before &lt;span style='position:fixed'&gt;中文" + newline + continuation + "second&lt;/span&gt; after</pre>"
+                let expected = pre + "before &lt;span style='position:fixed'&gt;中文" + newline + continuation.replacingOccurrences(of: ">", with: "&gt;") + "second&lt;/span&gt; after</pre>"
                 let page = MarkdownRenderer.renderPage(source, darkMode: false, resolveLocalImages: true)
                 XCTAssertTrue(page.body.contains(expected), source)
                 XCTAssertTrue(page.body.contains("neighbor"))
@@ -1099,16 +1137,16 @@ final class MarkdownRendererTests: XCTestCase {
             for ending in ["\n", "\r\n"] {
                 let lazy = first + "before <span style='position:fixed'>中文😀" + ending + "second</span> after"
                 let page = MarkdownRenderer.renderPage(lazy, darkMode: false, resolveLocalImages: true)
-                XCTAssertTrue(page.body.contains("<pre>before &lt;span style='position:fixed'&gt;中文😀" + ending + "second&lt;/span&gt; after</pre>"), lazy)
+                XCTAssertTrue(page.body.contains(pre + "before &lt;span style='position:fixed'&gt;中文😀" + ending + "second&lt;/span&gt; after</pre>"), lazy)
             }
         }
         let transformed = "> - before <span style='position:fixed'>x\r\na &amp; -- \\*b\\*</span> after"
         let transformedPage = MarkdownRenderer.renderPage(transformed, darkMode: false, resolveLocalImages: true)
-        XCTAssertTrue(transformedPage.body.contains("<pre>before &lt;span style='position:fixed'&gt;x\r\na &amp;amp; -- \\*b\\*&lt;/span&gt; after</pre>"))
+        XCTAssertTrue(transformedPage.body.contains(pre + "before &lt;span style='position:fixed'&gt;x\r\na &amp;amp; -- \\*b\\*&lt;/span&gt; after</pre>"))
         let tabbed = "> before <span style='position:fixed'>x\n>\tsecond</span> after"
-        XCTAssertFalse(MarkdownRenderer.renderPage(tabbed, darkMode: false, resolveLocalImages: true).body.contains("<pre>before &lt;span"))
+        XCTAssertFalse(MarkdownRenderer.renderPage(tabbed, darkMode: false, resolveLocalImages: true).body.contains(pre + "before &lt;span"))
         let reference = "> [id]: /url\n> before <span style='position:fixed'>x\nsecond</span> after"
-        XCTAssertFalse(MarkdownRenderer.renderPage(reference, darkMode: false, resolveLocalImages: true).body.contains("<pre>before &lt;span"))
+        XCTAssertFalse(MarkdownRenderer.renderPage(reference, darkMode: false, resolveLocalImages: true).body.contains(pre + "before &lt;span"))
     }
 
     func testUnsupportedInlineStyleDoesNotFetchImage() async throws {
@@ -1396,7 +1434,8 @@ final class MarkdownRendererTests: XCTestCase {
         }
         let unknown = MarkdownRenderer.renderPage("> [!UNKNOWN]\n> content", darkMode: false).body
         XCTAssertFalse(unknown.contains("<aside"))
-        XCTAssertTrue(unknown.contains("[!UNKNOWN]"))
+        XCTAssertTrue(unknown.contains("lac-callout-note lac-callout-custom"))
+        XCTAssertTrue(unknown.contains("<span class=\"lac-callout-label\">UNKNOWN</span>"))
     }
     func testSimpleFrontMatterIsOmittedWithoutChangingLaterContent() {
         let source = "---\r\ntitle: 中文😀\r\n---\r\n\r\n# Heading\r\n\r\n<script>bad()</script>"

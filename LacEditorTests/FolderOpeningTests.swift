@@ -363,7 +363,8 @@ final class FolderOpeningTests: XCTestCase {
             MainActor.assumeIsolated {
                 if let alertWindow = NSApp.modalWindow {
                     sawConfirmation = true
-                    NSApp.stopModal(withCode: .alertSecondButtonReturn)
+                    // Из таймера stopModal срабатывает только со следующим событием; abortModal завершает сеанс сразу (ответ — отмена).
+                    NSApp.abortModal()
                     alertWindow.orderOut(nil)
                 }
             }

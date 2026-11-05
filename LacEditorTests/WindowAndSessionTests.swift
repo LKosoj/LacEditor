@@ -176,7 +176,8 @@ final class WindowAndSessionTests: XCTestCase {
         let dismissModal = Task { @MainActor in
             for _ in 0..<100 {
                 if let modal = NSApp.modalWindow {
-                    NSApp.stopModal()
+                    // Из Task/таймера stopModal срабатывает только со следующим событием; abortModal завершает сеанс сразу.
+                    NSApp.abortModal()
                     modal.orderOut(nil)
                     return
                 }

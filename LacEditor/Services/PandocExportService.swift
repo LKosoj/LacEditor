@@ -770,10 +770,10 @@ enum PandocExportService {
     }
 
     static func prepareDefaults(arguments: [String], source: URL?, temporary: URL, profile: MarkdownExportProfile,
-                                isCancelled: () -> Bool) throws -> (arguments: [String], environment: [String: String], embedsResources: Bool) {
+                                isCancelled: () -> Bool) throws -> (arguments: [String], environment: [String: String], embedsResources: Bool, stripsComments: Bool) {
         let manager = FileManager.default
         var options = arguments
-        var embedResources = false, selfContained = false
+        var embedResources = false, selfContained = false, stripComments = false
         var defaultsEnvironment: [String: String] = [:]
         var optionIndex = 0, defaultsIndex = 0
         let workingDirectory = source?.deletingLastPathComponent() ?? temporary
@@ -895,6 +895,9 @@ enum PandocExportService {
             if let value = mapping["self-contained"], value.tag == Tag(.bool), let scalar = value.scalar?.string {
                 selfContained = scalar.lowercased() == "true"
             }
+            if let value = mapping["strip-comments"], value.tag == Tag(.bool), let scalar = value.scalar?.string {
+                stripComments = scalar.lowercased() == "true"
+            }
             if let dataDirectory { commandDataDirectory = dataDirectory }
             root.mapping = mapping
             let copy = temporary.appendingPathComponent("defaults-\(defaultsIndex).yaml")
@@ -908,6 +911,8 @@ enum PandocExportService {
             if argument == "--embed-resources=false" { embedResources = false }
             if argument == "--self-contained" || argument == "--self-contained=true" { selfContained = true }
             if argument == "--self-contained=false" { selfContained = false }
+            if argument == "--strip-comments" || argument == "--strip-comments=true" { stripComments = true }
+            if argument == "--strip-comments=false" { stripComments = false }
             if argument.hasPrefix("--data-dir=") {
                 commandDataDirectory = URL(fileURLWithPath: String(argument.dropFirst("--data-dir=".count)), relativeTo: workingDirectory).standardizedFileURL
             } else if argument == "--data-dir", optionIndex + 1 < options.count {
@@ -931,7 +936,7 @@ enum PandocExportService {
             }
             optionIndex += 1
         }
-        return (options, defaultsEnvironment, embedResources || selfContained)
+        return (options, defaultsEnvironment, embedResources || selfContained, stripComments)
     }
 
     // Two Pandoc passes use the same snapshot. The first exposes YAML metadata;
@@ -1006,7 +1011,7 @@ enum PandocExportService {
             return diagnostics
         }
         let readerFormat = "--from=gfm+yaml_metadata_block-tex_math_dollars" + ((syntax.smartPunctuation ?? true) ? "+smart" : "-smart") + (syntax.preserveExportSoftBreaks == true ? "+hard_line_breaks" : "-hard_line_breaks")
-        let firstDiagnostics = try run([readerFormat, "--to=json", "--output", ast.path, "--", input.path])
+        var firstDiagnostics = try run([readerFormat, "--to=json", "--output", ast.path, "--", input.path])
         var rootedDiagnostics = ""
         guard var tree = try JSONSerialization.jsonObject(with: Data(contentsOf: ast)) as? [String: Any],
               var metadata = tree["meta"] as? [String: Any] else { throw PandocExportError.invalidConfiguration(L10n.tr("Pandoc 元数据无效")) }
@@ -1097,6 +1102,21 @@ enum PandocExportService {
               (profile.epubCoverPath == nil && profile.epubTOCDepth == nil) || ["epub", "epub2", "epub3"].contains(selectedWriter) else {
             throw PandocExportError.invalidConfiguration(L10n.tr("参数与输出格式不匹配"))
         }
+        // `--strip-comments` действует только при чтении Markdown, а параметры известны лишь после
+        // первого прохода: блоки перечитываются с этим флагом, метаданные первого прохода сохраняются.
+        let readerArguments = defaults.stripsComments ? [readerFormat, "--strip-comments"] : [readerFormat]
+        if readerArguments.count > 1 {
+            firstDiagnostics = try run(readerArguments + ["--to=json", "--output", ast.path, "--", input.path])
+            guard var strippedTree = try JSONSerialization.jsonObject(with: Data(contentsOf: ast)) as? [String: Any] else {
+                throw PandocExportError.invalidConfiguration(L10n.tr("Pandoc 元数据无效"))
+            }
+            try installTOCMarkers(in: &strippedTree)
+            guard let blocks = strippedTree["blocks"] as? [[String: Any]] else { throw PandocExportError.invalidConfiguration(L10n.tr("Pandoc 元数据无效")) }
+            tree["blocks"] = blocks
+            if ["docx", "odt", "rtf", "fb2", "pptx", "epub", "epub2", "epub3"].contains(htmlWriter) {
+                tree["blocks"] = try resolveRootImages(in: ["blocks": blocks], text: original, document: source, isCancelled: isCancelled)["blocks"]
+            }
+        }
         var textareaValues: [(String, String)] = []
         var mediaFragments: [MediaFragment] = []
         if ["html", "htm", "html4", "html5"].contains(selectedWriter.lowercased()),
@@ -1109,7 +1129,7 @@ enum PandocExportService {
             textareaValues = protected.1
             if protected.0 != markedText {
                 try protected.0.write(to: input, atomically: true, encoding: .utf8)
-                rootedDiagnostics = try run([readerFormat, "--to=json", "--output", ast.path, "--", input.path])
+                rootedDiagnostics = try run(readerArguments + ["--to=json", "--output", ast.path, "--", input.path])
                 guard var rootedTree = try JSONSerialization.jsonObject(with: Data(contentsOf: ast)) as? [String: Any] else {
                     throw PandocExportError.invalidConfiguration(L10n.tr("Pandoc 元数据无效"))
                 }

@@ -91,6 +91,7 @@ final class UIAuditTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 200),
             styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = host
+        defer { window.close() }
         host.layoutSubtreeIfNeeded()
         try await Task.sleep(for: .milliseconds(50))
         let textView = try XCTUnwrap(store.coordinator(for: document).textView)

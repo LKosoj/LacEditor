@@ -627,6 +627,12 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let png = try XCTUnwrap(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"))
+        let input = directory.appendingPathComponent("input.png")
+        try png.write(to: input)
+        func quote(_ value: String) -> String { "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+        let executable = directory.appendingPathComponent("converter")
+        try "#!/bin/sh\nmkdir -p media\ncp \(quote(input.path)) media/a.png\nprintf '%s' '![x](media/a.png)'\n".write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
         let board = NSPasteboard.general
         let saved = (board.pasteboardItems ?? []).map { item -> NSPasteboardItem in
             let copy = NSPasteboardItem()
@@ -649,6 +655,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         weakDocument = document
         var state: AppState? = AppState(initialDocument: try XCTUnwrap(document), recentFiles: manager.recentFiles, preferences: manager.preferences)
         var coordinator: EditorTextView.Coordinator? = EditorTextView.Coordinator(document: try XCTUnwrap(document))
+        coordinator?.clipboardConversionExecutable = executable
         let storage = NSTextStorage(string: "before"), layout = FoldLayoutManager()
         storage.addLayoutManager(layout)
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
@@ -677,6 +684,8 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         }
         var waiting = true
         defer { waiting = false }
+        // Таймеры панели работают только в модальном цикле: ожидание теста внутри runModal не выполняется, поэтому лимит нужен здесь.
+        var panelPolls = 0, panelTimedOut = false
         coordinator?.clipboardSavePanelPrepare = { panel in
             panel.directoryURL = directory
             panel.nameFieldStringValue = "released.png"
@@ -686,6 +695,12 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
             if let panel = NSApp.modalWindow as? NSSavePanel,
                panel.url?.path.hasSuffix(directory.appendingPathComponent("released.png").path) == true {
                 NSApp.stopModal(withCode: .OK)
+                return
+            }
+            panelPolls += 1
+            if panelPolls > 250 {
+                panelTimedOut = true
+                if NSApp.modalWindow != nil { NSApp.abortModal() }
                 return
             }
             RunLoop.main.add(Timer(timeInterval: 0.05, repeats: false) { _ in MainActor.assumeIsolated { acceptPanel() } }, forMode: .modalPanel)
@@ -716,6 +731,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         XCTAssertNil(weakDocument)
         release.signal()
         await task.value
+        XCTAssertFalse(panelTimedOut)
         XCTAssertTrue(wrote)
         XCTAssertEqual(try Data(contentsOf: output), png)
         XCTAssertTrue(target.statusMessage?.hasPrefix("existing\n") == true)
@@ -953,6 +969,19 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         _ = NSApplication.shared
         let png = try XCTUnwrap(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"))
         let rtf = Data("{\\rtf1\\ansi before {\\pict\\pngblip \(png.map { String(format: "%02x", $0) }.joined())} after}".utf8)
+        // Свой converter вместо Pandoc из приложения: панель сохранения не зависит от наличия Pandoc в сборке.
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let input = directory.appendingPathComponent("input.png")
+        try png.write(to: input)
+        func quote(_ value: String) -> String { "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+        let executable = directory.appendingPathComponent("converter")
+        try "#!/bin/sh\nmkdir -p media\ncp \(quote(input.path)) media/a.png\nprintf '%s' 'before ![x](media/a.png) after'\n".write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        let htmlExecutable = directory.appendingPathComponent("converter-html")
+        try "#!/bin/sh\nprintf '%s' 'before ![x](data:image/png;base64,\(png.base64EncodedString())) after'\n".write(to: htmlExecutable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: htmlExecutable.path)
         let board = NSPasteboard.general
         let saved = (board.pasteboardItems ?? []).map { item -> NSPasteboardItem in
             let copy = NSPasteboardItem()
@@ -964,6 +993,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         let document = EditorDocument(text: source, language: .markdown)
         document.isMarkdownFormatted = true
         let coordinator = EditorTextView.Coordinator(document: document)
+        coordinator.clipboardConversionExecutable = executable
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
         storage.addLayoutManager(layout)
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
@@ -998,6 +1028,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         XCTAssertFalse(document.isDirty)
         didCancel = false
         waiting = true
+        coordinator.clipboardConversionExecutable = htmlExecutable
         board.clearContents()
         board.setString("<p>before <img src='data:image/png;base64,\(png.base64EncodedString())' alt='x'> after</p>", forType: .html)
         cancelPanel()

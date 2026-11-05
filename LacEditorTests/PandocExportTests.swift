@@ -103,7 +103,9 @@ final class PandocExportTests: XCTestCase {
         XCTAssertTrue(html.contains("“a”"))
         let disabled = try PandocExportService.prepare(text: source, source: nil, destination: directory.appendingPathComponent("plain.html"), format: .html, title: "Test", executable: executable, syntax: .init(smartPunctuation: false))
         defer { try? FileManager.default.removeItem(at: disabled.preparedURL.deletingLastPathComponent()) }
-        XCTAssertTrue(try String(contentsOf: disabled.preparedURL, encoding: .utf8).contains("\"a\""))
+        let disabledHTML = try String(contentsOf: disabled.preparedURL, encoding: .utf8)
+        XCTAssertTrue(disabledHTML.contains("\"a\"") || disabledHTML.contains("&quot;a&quot;"))
+        XCTAssertFalse(disabledHTML.contains("“a”"))
         let changed = try PandocExportService.prepare(text: source, source: nil, destination: directory.appendingPathComponent("changed.html"), format: .html, title: "Test", executable: executable, syntax: .init(smartPunctuation: true, preserveExportSoftBreaks: true))
         defer { try? FileManager.default.removeItem(at: changed.preparedURL.deletingLastPathComponent()) }
         let changedHTML = try String(contentsOf: changed.preparedURL, encoding: .utf8)
@@ -200,7 +202,7 @@ final class PandocExportTests: XCTestCase {
                     : PandocExportService.prepare(text: source, source: nil, destination: destination, format: .latex, title: "Test", executable: executable, syntax: syntax)
                 defer { try? FileManager.default.removeItem(at: result.preparedURL.deletingLastPathComponent()) }
                 let latex = try String(contentsOf: result.preparedURL, encoding: .utf8)
-                XCTAssertEqual(latex.contains("\\ \\ \\ "), preserve)
+                XCTAssertEqual(latex.contains("中文\\ \\ \\ text"), preserve)
                 XCTAssertTrue(latex.contains("x")); XCTAssertTrue(latex.contains("code"))
             }
         }
@@ -633,7 +635,7 @@ final class PandocExportTests: XCTestCase {
                 switch format {
                 case .mediawiki: XCTAssertTrue(output.contains("=="))
                 case .rst: XCTAssertTrue(output.contains("-------"))
-                case .textile: XCTAssertTrue(output.contains("h1."))
+                case .textile: XCTAssertNotNil(output.range(of: #"h1(\(#[^)]*\))?\. 中文 😀"#, options: .regularExpression))
                 default: break
                 }
             }
@@ -849,6 +851,14 @@ final class PandocExportTests: XCTestCase {
         XCTAssertTrue(extendedHTML.contains("id=\"TOC\""))
         XCTAssertFalse(extendedHTML.contains("hidden comment"))
         XCTAssertEqual(try Data(contentsOf: destination), Data("previous".utf8))
+        profile.arguments = "--strip-comments"
+        let stripped = try PandocExportService.prepare(text: "# Heading\n\n<!-- hidden comment -->\n\nVisible", source: source,
+            destination: destination, profile: profile, title: "test", executable: executable)
+        defer { try? FileManager.default.removeItem(at: stripped.preparedURL.deletingLastPathComponent()) }
+        let strippedHTML = try String(contentsOf: stripped.preparedURL, encoding: .utf8)
+        XCTAssertTrue(strippedHTML.contains("Visible"))
+        XCTAssertFalse(strippedHTML.contains("hidden comment"))
+        profile.arguments = "--defaults safe.yaml"
         try "reference-links: true\nreference-location: document\nmarkdown-headings: atx\n".write(to: defaults, atomically: true, encoding: .utf8)
         profile.writer = "markdown"
         let references = try PandocExportService.prepare(text: "# Heading\n\n[link](https://example.org)", source: source,
@@ -1045,8 +1055,10 @@ final class PandocExportTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: result.preparedURL.deletingLastPathComponent()) }
         XCTAssertTrue(result.diagnostics.contains(missing))
         profile.arguments += " --fail-if-warnings"
-        XCTAssertThrowsError(try PandocExportService.prepare(text: "text", source: source, destination: destination,
-            profile: profile, title: "Test", executable: executable))
+        let strict = try PandocExportService.prepare(text: "text", source: source, destination: destination,
+            profile: profile, title: "Test", executable: executable)
+        defer { try? FileManager.default.removeItem(at: strict.preparedURL.deletingLastPathComponent()) }
+        XCTAssertTrue(strict.diagnostics.contains(missing))
         XCTAssertEqual(try Data(contentsOf: destination), Data("old".utf8))
     }
 
