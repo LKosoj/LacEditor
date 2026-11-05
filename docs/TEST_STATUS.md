@@ -7,6 +7,45 @@
 Добиться полного прогона тестов в режиме Develop/Debug на macOS без ошибок,
 предупреждений и пропусков GUI-сценариев.
 
+## Последний диагностический прогон (2026-11-05)
+
+После чистой сборки выполнен полный `RunAllTests`: 3911 тестов, 3776 passed,
+123 failed, 11 skipped, 1 not run, 0 expected failures. `GetBuildLog` с уровнем
+warning сообщает 0 предупреждений. Адресный `MarkdownAudioInteractionTests`
+проходит 26/28; два media-падения (remote SVG и vertical iframe) воспроизводятся
+изолированно.
+
+После правки iframe cleanup targeted-прогон остаётся 26/28: stale-view
+проверка проходит, остаются только remote SVG timeout и vertical geometry
+(160 вместо 180). Повторная сборка после исправления `NSRange`-предупреждения
+снова сообщает 0 warnings.
+
+Сабагентский разбор группы layout завершён с правками в
+`FoldLayoutManager.swift` (геометрия native page-break) и
+`MarkdownPresentationController.swift` (консервативный fallback отсутствующего
+`rawHTMLRanges` и снятие iframe при reveal). После сборки адресный прогон
+`MarkdownAudioInteractionTests` дал 26/28, а отдельный
+`testNativePageBreakGeometryAndReveal` остаётся 0/1 (rect не найден). По группе
+renderer надёжная причина без runtime-подтверждения не установлена, правки не
+внесены.
+
+PDF-export группа также разобрана без изменений: статический путь media/SVG
+согласован, но без промежуточного runtime-вывода безопасная причина падений не
+подтверждена.
+
+Image copy/edit-группа разобрана без изменений: guards и undo-группы
+соответствуют контракту, безопасная production-причина падений не подтверждена.
+
+Renderer-сабагент обнаружил и исправил подтверждённый дефект HTML audio с
+boolean-атрибутом `controls`: `MarkdownRenderer` теперь использует
+`embeddedMedia` для paired audio. Сборка и targeted-тесты после этой правки ещё
+запущены: сборка и warnings чистые, `MarkdownRendererTests` — 92/103,
+11 падений остаются.
+
+Preview-группа разобрана без изменений: маршрутизация ссылок, отбрасывание
+старого DOM и local-audio revision guards статически согласованы; runtime-причина
+падений не подтверждена.
+
 ## Правила запуска
 
 - Использовать Xcode-схему `LacEditor` и конфигурацию Develop/Debug.

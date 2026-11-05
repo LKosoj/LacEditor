@@ -816,7 +816,6 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         guard index > 0 else { return nil }
         let range = markdownPageBreaks[index - 1]
         guard NSLocationInRange(location, range),
-              !intersectsFoldedRange(range),
               !(markdownRevealedRange.map { touches(range, $0) } ?? false) else { return nil }
         return range
     }

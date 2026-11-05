@@ -1485,7 +1485,8 @@ enum MarkdownRenderer {
                     }
                     if includeHTMLMedia, let source, cmark_node_get_type(current) == CMARK_NODE_HTML_BLOCK,
                        let range = source.range(current), confirmedAudio.contains(range), let literal = cmark_node_get_literal(current),
-                       let source = MarkdownHTMLMediaService.audioSource(in: String(cString: literal), allowPaired: true),
+                       let media = MarkdownHTMLMediaService.embeddedMedia(in: String(cString: literal)),
+                       media.kind == .audio, let source = media.sources.first,
                        let replacement = cmark_node_new(CMARK_NODE_CUSTOM_BLOCK) {
                         let html = addingSourcePosition(to: "<audio controls src=\"\(escape(source))\"></audio>", for: current)
                         let configured = html.withCString { cmark_node_set_on_enter(replacement, $0) }

@@ -188,7 +188,7 @@ final class MarkdownPDFExportTests: XCTestCase {
             if case let .success(.file(file)) = result { prepared = file.preparedURL }
             done.fulfill()
         }
-        service.start(snapshot: document.synchronizedSnapshot(), darkMode: false)
+        service.start(snapshot: document.synchronizedSnapshot(), darkMode: false, sourceURL: document.url)
         await fulfillment(of: [done], timeout: 30)
         let file = try XCTUnwrap(prepared)
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
