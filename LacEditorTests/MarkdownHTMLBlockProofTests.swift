@@ -106,7 +106,8 @@ final class MarkdownHTMLBlockProofTests: XCTestCase {
         let child = NSTextView(frame: NSRect(x: 0, y: 0, width: 80, height: 30)); view.addSubview(child)
         child.setMarkedText("中", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: 0, length: 0))
         XCTAssertTrue(child.hasMarkedText())
-        try await Task.sleep(for: .milliseconds(200))
+        // Пауза длиннее задержки разбора (`parseDelay`, 0.6 с при оформлении): без защиты marked text блок успел бы появиться.
+        try await Task.sleep(for: .milliseconds(900))
         XCTAssertFalse(view.subviews.contains { $0 is MarkdownHTMLBlockView && $0.alphaValue == 1 })
         child.unmarkText(); child.removeFromSuperview(); controller.compositionFinished(revision: 0)
         for _ in 0..<200 where !view.subviews.contains(where: { $0 is MarkdownHTMLBlockView && $0.alphaValue == 1 }) {
@@ -171,8 +172,8 @@ final class MarkdownHTMLBlockProofTests: XCTestCase {
             for _ in 0..<200 where !condition() { try await Task.sleep(for: .milliseconds(20)) }
         }
 
-        /// Даёт отложенному пересчёту рамок и разбору отработать.
-        func settle() async throws { try await Task.sleep(for: .milliseconds(500)) }
+        /// Даёт отложенному пересчёту рамок и разбору отработать (пауза разбора при оформлении — 0.6 с, `parseDelay`).
+        func settle() async throws { try await Task.sleep(for: .milliseconds(900)) }
 
         /// Раскрывает details нажатием на стрелку (сама вью закрытая, находим её по имени класса).
         func openDetails() -> Bool {

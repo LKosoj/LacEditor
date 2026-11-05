@@ -56,6 +56,7 @@ AppKit вызывает `EditorCoordinator.textView(_:shouldChangeTextIn:replace
 - `FoldLayoutManager.shiftMarkdownPresentation` переносит установленное оформление TextKit ([FoldLayoutManager.swift:1800](../../LacEditor/Editor/FoldLayoutManager.swift#L1800));
 - контроллер переносит словари готовых изображений, формул, диаграмм и медиа;
 - `keptEdit` запоминает ревизию, длину и вставленный диапазон до следующего подтверждения.
+- ревизия в `keptEdit` — текущая (`currentRevision()`), без `+ 1`: `EditorCoordinator` увеличивает `contentRevision` до `beforeEdit`, и `edited` получает ту же ревизию. Тесты повторяют этот порядок: `revision += 1` → `beforeEdit(…, replacement:)` → правка текста → `edited(revision:)`.
 
 Следующая клавиша до нового разбора идёт тем же порядком: подтверждённая правка продолжает сдвиг. Если `keptEdit` не подтверждён текущим `edited`, старое оформление снимается: так ошибочные диапазоны не накапливаются.
 

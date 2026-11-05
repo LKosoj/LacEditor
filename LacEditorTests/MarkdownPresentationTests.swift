@@ -1334,7 +1334,7 @@ final class MarkdownPresentationTests: XCTestCase {
         fixture.storage.replaceCharacters(in: edit, with: "\n")
         fixture.controller.edited(revision: fixture.revision)
         XCTAssertTrue(fixture.layout.isMarkdownMarkerHidden(at: 0))
-        try await Task.sleep(for: .milliseconds(500))
+        try await Task.sleep(for: .milliseconds(900))
         XCTAssertEqual(fixture.view.string, "# Heading\n\nSome text\n\n\nTail")
         XCTAssertTrue(fixture.layout.isMarkdownMarkerHidden(at: 0))
         let second = NSRange(location: 21, length: 0)
@@ -1354,7 +1354,7 @@ final class MarkdownPresentationTests: XCTestCase {
         fixture.controller.edited(revision: fixture.revision)
         let plain = try XCTUnwrap(fixture.storage.attribute(.font, at: 2, effectiveRange: nil) as? NSFont)
         XCTAssertEqual(plain.pointSize, fixture.layout.textFont.pointSize)
-        try await Task.sleep(for: .milliseconds(500))
+        try await Task.sleep(for: .milliseconds(900))
         let restored = try XCTUnwrap(fixture.storage.attribute(.font, at: 2, effectiveRange: nil) as? NSFont)
         XCTAssertGreaterThan(restored.pointSize, fixture.layout.textFont.pointSize)
     }

@@ -786,6 +786,15 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         XCTAssertEqual(view.string, source)
         var waiting = true, sawPanel = false
         var nextName = "chosen.png"
+        // Таймеры панели работают только в модальном цикле: ожидание теста внутри runModal не выполняется, поэтому лимит нужен здесь.
+        var panelPolls = 0, panelTimedOut = false
+        func panelExpired() -> Bool {
+            panelPolls += 1
+            guard panelPolls > 250 else { return false }
+            panelTimedOut = true
+            if NSApp.modalWindow != nil { NSApp.abortModal() }
+            return true
+        }
         defer { waiting = false; coordinator.updateActivity(false); manager.unregister(windowID: windowID); if NSApp.modalWindow != nil { NSApp.abortModal() }; window.close() }
         coordinator.clipboardSavePanelPrepare = { panel in
             panel.directoryURL = directory
@@ -799,6 +808,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
                 NSApp.stopModal(withCode: .OK)
                 return
             }
+            if panelExpired() { return }
             RunLoop.main.add(Timer(timeInterval: 0.05, repeats: false) { _ in MainActor.assumeIsolated { acceptPanel() } }, forMode: .modalPanel)
         }
         board.clearContents()
@@ -811,6 +821,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         waiting = false
         if view.string == source { coordinator.updateActivity(false); if NSApp.modalWindow != nil { NSApp.abortModal() } }
         await pending.value
+        XCTAssertFalse(panelTimedOut)
         XCTAssertTrue(sawPanel)
         XCTAssertEqual(try MarkdownImageUploadService.images(in: view.string).map(\.address), ["chosen.png"])
         XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent("chosen.png")), png)
@@ -820,6 +831,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(150))
         var firstPanel: NSSavePanel?, cancelledSecond = false
         waiting = true
+        panelPolls = 0
         nextName = "partial.png"
         func selectThenCancel() {
             guard waiting else { return }
@@ -833,6 +845,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
                     return
                 }
             }
+            if panelExpired() { return }
             RunLoop.main.add(Timer(timeInterval: 0.05, repeats: false) { _ in MainActor.assumeIsolated { selectThenCancel() } }, forMode: .modalPanel)
         }
         let multiExecutable = directory.appendingPathComponent("converter-multi")
@@ -852,6 +865,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         for _ in 0..<150 where document.statusMessage?.contains(directory.appendingPathComponent("partial.png").path) != true {
             try await Task.sleep(for: .milliseconds(20))
         }
+        XCTAssertFalse(panelTimedOut)
         XCTAssertTrue(cancelledSecond)
         XCTAssertEqual(view.string, source)
         XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent("partial.png")), png)
@@ -863,6 +877,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
             release.wait()
         }
         waiting = true
+        panelPolls = 0
         nextName = "stale.png"
         func acceptStalePanel() {
             guard waiting else { return }
@@ -871,6 +886,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
                 NSApp.stopModal(withCode: .OK)
                 return
             }
+            if panelExpired() { return }
             RunLoop.main.add(Timer(timeInterval: 0.05, repeats: false) { _ in MainActor.assumeIsolated { acceptStalePanel() } }, forMode: .modalPanel)
         }
         let staleFile = directory.appendingPathComponent("stale.png")
@@ -891,14 +907,19 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         for _ in 0..<150 where document.statusMessage?.contains(staleFile.path) != true {
             try await Task.sleep(for: .milliseconds(20))
         }
+        XCTAssertFalse(panelTimedOut)
         XCTAssertTrue(wrote)
         XCTAssertEqual(view.string, source + "user")
         XCTAssertEqual(try Data(contentsOf: staleFile), png)
         XCTAssertTrue(document.statusMessage?.contains(staleFile.path) == true)
         try await Task.sleep(for: .milliseconds(150))
         coordinator.clipboardImageWrite = { try $0.write(to: $1, options: .withoutOverwriting) }
-        coordinator.clipboardConversionExecutable = PandocExportService.findPandoc()
+        let htmlExecutable = directory.appendingPathComponent("converter-html")
+        try "#!/bin/sh\nprintf '%s' '![remote](https://example.com/a.png) ![local](data:image/png;base64,\(png.base64EncodedString()))'\n".write(to: htmlExecutable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: htmlExecutable.path)
+        coordinator.clipboardConversionExecutable = htmlExecutable
         waiting = true
+        panelPolls = 0
         nextName = "mixed.png"
         func acceptMixedPanel() {
             guard waiting else { return }
@@ -907,6 +928,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
                 NSApp.stopModal(withCode: .OK)
                 return
             }
+            if panelExpired() { return }
             RunLoop.main.add(Timer(timeInterval: 0.05, repeats: false) { _ in MainActor.assumeIsolated { acceptMixedPanel() } }, forMode: .modalPanel)
         }
         let beforeMixed = view.string
@@ -920,6 +942,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         waiting = false
         if view.string == beforeMixed { coordinator.updateActivity(false); if NSApp.modalWindow != nil { NSApp.abortModal() } }
         await mixedTask.value
+        XCTAssertFalse(panelTimedOut)
         XCTAssertEqual(try MarkdownImageUploadService.images(in: view.string).map(\.address), ["https://example.com/a.png", "mixed.png"])
         XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent("mixed.png")), png)
         try XCTUnwrap(view.undoManager).undo()

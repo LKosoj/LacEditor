@@ -94,6 +94,8 @@ private final class ImageShiftFixture {
 
     func type(after marker: String, _ text: String = "x", also change: (() -> Void)? = nil) {
         let edit = NSRange(location: NSMaxRange(storage.mutableString.range(of: marker)), length: 0)
+        // Как в `EditorCoordinator`: ревизия растёт до `beforeEdit`.
+        revision += 1
         controller.beforeEdit(range: edit, replacementLength: (text as NSString).length, replacement: text)
         change?()
         // A callback may deliberately diverge the source before the typed
@@ -105,7 +107,6 @@ private final class ImageShiftFixture {
         if storage.string != view.string {
             storage.replaceCharacters(in: edit, with: text)
         }
-        revision += 1
         controller.edited(revision: revision)
     }
 

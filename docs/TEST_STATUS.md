@@ -102,6 +102,8 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
 - Исправлен fast-path: `beforeEdit` сохраняет ожидаемую следующую ревизию
   (`currentRevision + 1`), поэтому `edited(revision:)` сохраняет сдвинутую
   презентацию и tooltip-диапазоны вместо преждевременной очистки.
+  (05.11.2026 отменено: `+ 1` расходился с порядком `EditorCoordinator`, см.
+  раздел «Статический разбор на Linux».)
 - Проверены три варианта доставки синтетических клавиш в AutoPair-тестах:
   прямой `keyDown`, `interpretKeyEvents` и `window.sendEvent`; все сохраняют
   проблему стенда, поэтому тестовые ожидания и production fallback не
@@ -326,3 +328,42 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
 - В `MarkdownAudioInteractionTests` синхронизированы media fixture с текстом
   редактора. После targeted-прогона: 19/28 passed, 9 failed; оставшиеся
   ошибки относятся к runtime media geometry/loading, а не к пустому редактору.
+
+### Статический разбор на Linux (2026-11-05)
+
+Тесты не запускались: на сервере нет AppKit. Пять сабагентов разобрали классы с
+известными падениями по коду и истории коммитов; изменения проверены
+`swiftc -frontend -parse` и `git diff --check`. Linux-стенд до правок: 1873
+теста, настоящих падений нет (изменённые файлы в стенд не входят).
+
+- Production: `MarkdownPresentationController.beforeEdit` снова запоминает в
+  `keptEdit` текущую ревизию без `&+ 1` (внесён в a4da8c6). `EditorCoordinator`
+  увеличивает `contentRevision` до `beforeEdit`, поэтому с `+ 1` быстрый путь
+  в приложении не подтверждался ни разу и снимал оформление и медиа на каждой
+  клавише. Ожидаемо чинит около 12 тестов `MarkdownPresentationTests` и
+  `testTypingOutsideKeepsPlayingAudio`, `testTypingOutsideKeepsIframeWebView`.
+  Тесты с обратным порядком (`MarkdownFootnoteTests` — 2 места, fixture
+  `ImageShiftFixture` в `MarkdownImageTests`) приведены к порядку приложения.
+- Задержка разбора с 31.10 (35d6b15) — 0,6 с вместо 0,15 с. Ожидания ≤0,5 с
+  после правки увеличены: `MarkdownPresentationTests` (2), `MarkdownLayoutTests`
+  (2), `MarkdownHTMLBlockProofTests` (`settle()` и marked text).
+- `testRTFImagePasteSavesChosenFileAndUndoesText`: смешанная вставка больше не
+  запускает настоящий Pandoc (тестовый `converter-html`), опрос панели
+  сохранения ограничен (`panelExpired`, ~12,5 с, затем `abortModal` и падение
+  `panelTimedOut` вместо зависания).
+- `testLocalPlayerRevealsSourceAndStopsOnDeactivation`: однострочный
+  `<audio>…</audio>` cmark считает встроенным HTML абзаца, а тест проверяет
+  блочную геометрию; тег в fixture разбит на строки, как в списковой части теста.
+
+Осталось проверить на Mac: классы `MarkdownPresentationTests`,
+`MarkdownFootnoteTests`, `MarkdownImageTests`, `MarkdownAudioInteractionTests`,
+`MarkdownHTMLBlockProofTests`, `MarkdownLayoutTests`,
+`MarkdownClipboardInteractionTests`, затем полный прогон. Нерешённое:
+`testQuoteAndListMediaUseConfirmedContainerLines` (тег `<video>` в цитате,
+разорванный на две строки, не распознаётся и гасит соседние медиа — нужна
+диагностика `blockedHTML` в `MarkdownPresentationParser`); около 7 падений
+`MarkdownPresentationTests` и часть падений `MarkdownAudioInteractionTests`
+(геометрия iframe/аудио) без лога с Mac не локализованы; диалоговые тесты
+`MarkdownImageInteractionTests` (`testVirtualCell*DialogCancelAndConfirm`,
+`testChosenFileRunsRealImageDialogAndInsertsSource`) без `preparePrimaryWindow`
+— кандидаты на проверку или перенос в `LacEditorUITests`.

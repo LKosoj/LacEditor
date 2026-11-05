@@ -2377,7 +2377,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let moved = (fixture.storage.string as NSString).range(of: "42")
         fixture.controller.reapplyCodeColors(in: NSRange(location: 0, length: fixture.storage.length))
         XCTAssertTrue(fixture.hasColor(at: moved.location))
-        try await Task.sleep(for: .milliseconds(500))
+        try await Task.sleep(for: .milliseconds(1000))
         fixture.controller.reapplyCodeColors(in: NSRange(location: 0, length: fixture.storage.length))
         XCTAssertTrue(fixture.hasColor(at: moved.location))
         XCTAssertEqual(fixture.callCount, 1)
@@ -2430,7 +2430,7 @@ final class MarkdownLayoutTests: XCTestCase {
         fixture.controller.codeHighlightDidComplete = { _ in completed.fulfill() }
         await fulfillment(of: [completed], timeout: 10)
         fixture.type(after: "intro")
-        try await Task.sleep(for: .milliseconds(700))
+        try await Task.sleep(for: .milliseconds(1200))
         fixture.controller.viewportChanged()
         try await Task.sleep(for: .milliseconds(200))
         XCTAssertEqual(fixture.callCount, 1)

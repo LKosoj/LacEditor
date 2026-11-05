@@ -883,7 +883,9 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         half(1); half(1); word(8000); word(8000); half(1); half(8)
         sound.append(Data("data".utf8)); word(800); sound.append(Data(repeating: 128, count: 800))
         try sound.write(to: folder.appendingPathComponent("声音.wav"))
-        let source = "---\ntypora-root-url: .\n---\n\n## before\n\n<audio controls><source src='/missing.wav'><source src='/声音.wav'></audio>\n\nafter"
+        // Отдельный HTML-блок: однострочный `<audio>…</audio>` cmark считает
+        // встроенным HTML абзаца, а ниже проверяется геометрия блочного медиа.
+        let source = "---\ntypora-root-url: .\n---\n\n## before\n\n<audio controls>\n<source src='/missing.wav'><source src='/声音.wav'>\n</audio>\n\nafter"
         let document = EditorDocument(text: source, url: folder.appendingPathComponent("document.md"), language: .markdown)
         let storage = NSTextStorage(string: source)
         let layout = FoldLayoutManager()

@@ -239,9 +239,9 @@ final class MarkdownFootnoteTests: XCTestCase {
         XCTAssertEqual(target?.location, definition.location)
         // Буква в начале абзаца идёт быстрым путём: оформление и сноски сдвигаются, разбор не нужен.
         let edit = NSRange(location: 2, length: 0)
+        revision += 1
         controller.beforeEdit(range: edit, replacementLength: 1, replacement: "x")
         storage.replaceCharacters(in: edit, with: "x")
-        revision += 1
         controller.edited(revision: revision)
         let shifted = (storage.string as NSString)
         XCTAssertNotNil(controller.footnoteTarget(at: point(shifted.range(of: "[^a]")), document: document, revision: revision))
@@ -303,9 +303,9 @@ final class MarkdownFootnoteTests: XCTestCase {
         // Быстрый путь не трогает подсказки: новые места приходят с разбором после паузы.
         let before = controller.footnoteTooltipRects
         let edit = NSRange(location: 2, length: 0)
+        revision += 1
         controller.beforeEdit(range: edit, replacementLength: 1, replacement: "x")
         storage.replaceCharacters(in: edit, with: "x")
-        revision += 1
         controller.edited(revision: revision)
         XCTAssertEqual(controller.footnoteTooltipRects, before)
         for _ in 0..<30 {
