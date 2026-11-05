@@ -1,6 +1,6 @@
 # Статус проверки тестов LacEditor
 
-Последнее обновление: 2026-11-04
+Последнее обновление: 2026-11-05
 
 ## Цель
 
@@ -22,6 +22,53 @@
 - Перед завершением выполнить `git diff --check` и полный итоговый прогон.
 
 ## Последние результаты
+
+### Полный прогон Xcode (2026-11-05)
+
+`RunAllTests` завершился штатно: 3904 теста, 3727 passed, 165 failed,
+11 skipped, 1 not run, 0 expected failures. Сборка перед прогоном успешна,
+`GetBuildLog(severity: warning)` сообщает 0 предупреждений. Полный отчёт:
+`/var/folders/6t/m3j2_8mx0msby5p8q7kz8__00000gn/T/ActionArtifacts/181C0C1D-5849-4748-81B7-7D4471FB6731/RunAllTests/5E4A7BEB-36D9-40D2-80AB-D1C171932864.txt`.
+
+Первое исправленное падение после общего прогона —
+`FolderOpeningTests.testQueuedFolderThenFileKeepsExplicitFolder`: подписка
+получала повторное событие, поэтому тест падал на повторном `fulfill`. По
+образцу соседнего проходящего теста добавлено
+`assertForOverFulfill = false`; адресный прогон проходит 1/1.
+
+Адресный повтор `MarkdownAudioInteractionTests` после общего прогона: 22/28
+проходят, 6 падают (inline audio/image reveal и geometry iframe/player).
+Падения воспроизводятся изолированно и требуют отдельного сопоставления с
+проходящими media-тестами; production-guards пока не ослаблялись.
+
+В отчёте ровно 11 `Skipped`, и все имеют явный `XCTSkip` в исходниках:
+
+- `FolderQuickOpenTests/testQuickRequestFocusesFieldSearchesWhileTypingAndEnterOpensResult`,
+  `testImmediateEnterOpensWithoutASecondKeystroke`,
+  `testEmptyQueryOpensRecentFolderWithoutWorkingFolder` и
+  `testEscapeDismissesPanel` пропускаются в headless Xcode test host, где
+  недоступен SwiftUI field editor;
+- `MarkdownFormattingInteractionTests/testMathPairInActiveTableCellUsesOneUndo`,
+  `testSmartQuoteAtEmptyDocumentUsesCheckingAndOneUndo`,
+  `testEmojiCompletionDiscardsLateResultAndEscapeClosesIt` и
+  `testEmojiCompletionUsesEditorSnapshotAndOneUndo` перенесены в
+  `LacEditorUITests` для проверки реальной доставки ввода;
+- `UIExperimentTests/testNativeTabEnduranceAndClosedEditorRelease`,
+  `testCandidatePreviewEnduranceAndRelease` и
+  `testProfileInteractionWorkload` являются опциональными нагрузочными
+  профилями и включаются только переменными `LACEDITOR_UI_ENDURANCE`,
+  `LACEDITOR_RC_PREVIEW` и `LACEDITOR_UI_STRESS` соответственно.
+
+Это не необъяснимые пропуски, но GUI-перенос и отдельный режим запуска ещё не
+закрыты планом.
+
+Единственная запись, обозначенная в текстовом отчёте как `No result`, —
+агрегатный suite `LacEditorTests` (`LacEditorTests.swift:2`), содержащий пустой
+`XCTestCase`; отдельного test case со статусом `not run` в отчёте нет. Причина
+счётчика Xcode `1 not run` этим текстовым отчётом не подтверждена: наиболее
+близкая запись — этот пустой suite, но приписывать ей статус `not run` без
+следующего `xcresult` нельзя. Проверить расхождение форматов в следующем
+прогоне.
 
 | Набор | Результат | Состояние |
 |---|---:|---|

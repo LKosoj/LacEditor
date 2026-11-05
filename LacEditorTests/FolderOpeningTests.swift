@@ -336,6 +336,7 @@ final class FolderOpeningTests: XCTestCase {
         let fixture = try fixture(beforeRegistration: { $0.openFilesFromFinder([root, file]) })
         defer { fixture.close() }
         let opened = expectation(description: "queued file follows folder")
+        opened.assertForOverFulfill = false
         let subscription = fixture.state.$selectedDocumentID.sink { id in
             if fixture.state.documents.first(where: { $0.id == id })?.url == file { opened.fulfill() }
         }

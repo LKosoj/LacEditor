@@ -101,12 +101,28 @@ macOS: 0 ошибок, 0 предупреждений, 0 пропусков GUI-
 - [x] Запустить ранее успешные классы короткими пачками (132/132).
 - [ ] Запустить полный набор тестов одним непрерывным прогоном и дождаться его
   штатного завершения; диагностические пачки запускать только после отчёта.
-- [ ] Установить причины всех `not run` и `skipped`, устранить их или явно
-  обосновать в статусе; не оставлять необъяснимых пропусков.
+  Прогон 2026-11-05 завершён штатно (3904: 3727 passed, 165 failed,
+  11 skipped, 1 not run), поэтому этап запуска выполнен, но критерий чистоты
+  остаётся невыполненным.
+- [x] Установить причины всех 11 `skipped`: 4 headless
+  `FolderQuickOpenTests`, 4 UI-перенесённых сценария
+  `MarkdownFormattingInteractionTests` и 3 опциональных `UIExperimentTests`,
+  включаемых переменными окружения. Единственная запись `No result` — пустой
+  агрегатный suite `LacEditorTests` (`LacEditorTests.swift:2`); отдельного
+  `not run` test case в текстовом отчёте нет.
+- [ ] Подтвердить причину счётчика Xcode `1 not run`: текстовый отчёт не
+  содержит такого состояния, поэтому после следующего прогона нужно сверить
+  исходный `xcresult` и формат его сводки; не считать `No result` доказанным
+  `not run`.
 - [x] Проверить 0 предупреждений и выполнить `git diff --check`.
 - [ ] Обновить итоговый статус и отметить цель выполненной после общего прогона.
 
 ### Последняя адресная проверка (2026-11-05)
+
+- Полный `RunAllTests`: 3904 всего, 3727 passed, 165 failed, 11 skipped,
+  1 not run; сборка и журнал предупреждений чистые.
+- `FolderOpeningTests/testQueuedFolderThenFileKeepsExplicitFolder` — 1/1
+  после разрешения повторного `fulfill` по образцу проходящего теста.
 
 - `MarkdownPresentationTests/testFormattingAndReturningToSourcePreserveTextAndSelection` — 1/1 после исправления fixture и ожидания production-разбора.
 - `MarkdownPresentationTests/testInactiveEditorWaitsUntilActivationToApplyFormatting` — 1/1 после исправления fixture окна/first responder и ожидания production-разбора.
@@ -121,6 +137,9 @@ macOS: 0 ошибок, 0 предупреждений, 0 пропусков GUI-
   controller без пользовательского события оставлять в `LacEditorTests`.
 - `MarkdownAudioInteractionTests` — 19/28 passed после синхронизации fixture;
   9 media runtime-падений остаются.
+- Адресный повтор 2026-11-05: 22/28 passed, 6 media runtime-падений
+  воспроизводятся изолированно; следующий шаг — сравнить их fixture с
+  проходящими `MarkdownAudioInteractionTests` перед любым патчем.
 
 ## Linux-стенд (2026-11-04)
 

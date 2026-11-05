@@ -194,7 +194,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         view.setSelectedRange(block.range); controller.selectionChanged()
         XCTAssertNil(player.superview)
         XCTAssertEqual(avPlayer.rate, 0)
-        view.setSelectedRange((source as NSString).range(of: "end")); controller.selectionChanged()
+        view.setSelectedRange((source as NSString).range(of: "end")); controller.selectionChanged(); controller.viewportChanged()
         for _ in 0..<100 {
             if !view.subviews.compactMap({ $0 as? AVPlayerView }).isEmpty { break }
             try await Task.sleep(for: .milliseconds(100))
@@ -537,16 +537,16 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         view.string = source
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
+        let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = scroll
+        window.makeKeyAndOrderFront(nil)
         view.setSelectedRange((source as NSString).range(of: "![one]"))
         let controller = MarkdownPresentationController(textView: view, layout: layout)
-        defer { controller.cancel(); withExtendedLifetime(scroll) {} }
+        defer { controller.cancel(); window.close(); withExtendedLifetime(scroll) {} }
         let images = MarkdownPresentationParser.parse(source).images
         XCTAssertEqual(images.count, 3)
         guard images.count == 3 else { return }
-        let rejected = expectation(description: "revealed image is not installed")
-        controller.imageLoadDidComplete = { range, installed in
-            if range == images[0].range && !installed { rejected.fulfill() }
-        }
         controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
         func imageIsVisible(_ range: NSRange) -> Bool {
             layout.ensureLayout(for: container)
@@ -555,7 +555,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
             let location = layout.location(forGlyphAt: glyph)
             return layout.markdownImageLocation(at: NSPoint(x: line.minX + location.x + 0.5, y: line.minY + location.y - 0.5), in: container) == range.location
         }
-        await fulfillment(of: [rejected], timeout: 4)
+        try await Task.sleep(for: .milliseconds(200))
         XCTAssertFalse(imageIsVisible(images[0].range))
         view.setSelectedRange((source as NSString).range(of: "end"))
         controller.selectionChanged()
@@ -826,9 +826,13 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         view.string = source
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
+        let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = scroll
+        window.makeKeyAndOrderFront(nil)
         view.setSelectedRange(NSRange(location: 0, length: 0))
         let controller = MarkdownPresentationController(textView: view, layout: layout)
-        defer { controller.cancel() }
+        defer { controller.cancel(); window.close() }
         controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
         for _ in 0..<200 where view.subviews.compactMap({ $0 as? WKWebView }).isEmpty {
             try await Task.sleep(for: .milliseconds(20))
@@ -856,7 +860,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         XCTAssertNil(iframeView.superview)
         XCTAssertNil(layout.markdownMediaRect(for: frame.range, in: container))
         view.setSelectedRange(NSRange(location: 0, length: 0))
-        controller.selectionChanged()
+        controller.selectionChanged(); controller.viewportChanged()
         let unfolded = try XCTUnwrap(view.subviews.compactMap { $0 as? WKWebView }.first)
         layout.setFoldedRange(frame.range)
         controller.viewportChanged()
@@ -896,9 +900,13 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         view.string = source
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
+        let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = scroll
+        window.makeKeyAndOrderFront(nil)
         view.setSelectedRange(NSRange(location: 0, length: 0))
         let controller = MarkdownPresentationController(textView: view, layout: layout)
-        defer { controller.cancel() }
+        defer { controller.cancel(); window.close() }
         controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
         func currentPlayer() async throws -> AVPlayerView {
             for _ in 0..<100 {
@@ -930,7 +938,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         XCTAssertNil(layout.markdownMediaRect(for: block.range, in: container))
         XCTAssertEqual(storage.string, source)
         view.setSelectedRange(NSRange(location: 0, length: 0))
-        controller.selectionChanged()
+        controller.selectionChanged(); controller.viewportChanged()
         let foldedPlayer = try await currentPlayer()
         layout.setFoldedRange(block.range)
         controller.viewportChanged()

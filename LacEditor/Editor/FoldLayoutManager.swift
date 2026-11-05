@@ -1445,6 +1445,9 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         for entry in markdownInlineImages {
             if isCoveredByUppercaseHeading(entry.range) { continue }
             if let rect = inlineImageRect(entry, in: container) {
+                // A zero-sized placeholder reserves no drawable or hit-test
+                // area while an image is loading or has failed to decode.
+                guard rect.width > 0, rect.height > 0 else { continue }
                 if rect.contains(point) { return .inlineImage(entry.range) }
                 let glyph = glyphIndexForCharacter(at: entry.range.location)
                 let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)

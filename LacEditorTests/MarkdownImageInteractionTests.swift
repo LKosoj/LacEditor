@@ -134,6 +134,9 @@ final class MarkdownImageInteractionTests: XCTestCase {
         let scroll = NSScrollView(frame: view.frame); scroll.documentView = view
         let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false; window.contentView = scroll; window.makeKeyAndOrderFront(nil)
+        view.layoutSubtreeIfNeeded()
+        view.displayIfNeeded()
+        layout.ensureLayout(for: container)
         let image = try XCTUnwrap(MarkdownPresentationParser.parse(source).images.first)
         XCTAssertTrue(image.isInline)
         let selection = raw.range(of: "after")
@@ -253,7 +256,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         XCTAssertEqual(layout.markdownImageLocation(at: rect.origin, in: container), nil)
         XCTAssertEqual(storage.string, source)
         layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: range)
-        XCTAssertEqual(layout.markdownRenderedImageRects(for: [range], in: container)[range]?.size, .zero)
+        XCTAssertNil(layout.markdownRenderedImageRects(for: [range], in: container)[range])
         withExtendedLifetime(view) {}
     }
 

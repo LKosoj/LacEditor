@@ -1223,6 +1223,10 @@ final class MarkdownPresentationController {
                     releaseMediaView(view)
                     view.removeFromSuperview()
                 }
+                // Revealing the source removes the installed player.  It must
+                // be eligible for a fresh load when the selection leaves the
+                // source range again.
+                audioCompleted.remove(range)
                 clearMediaGeometry(range, layout: layout)
             }
         }
@@ -1411,7 +1415,13 @@ final class MarkdownPresentationController {
         publishReadableTextIfNeeded()
         refreshMathOptionsIfNeeded()
         lastVisibleRange = nil
-        if enabled, presentation != nil { applyVisible() }
+        if enabled, presentation != nil {
+            applyVisible()
+            // `applyVisible` can return early when all visible text already
+            // has styling; media views still need their frames refreshed after
+            // font/metric changes.
+            notifyGeometryChanged()
+        }
     }
 
     func setStrikeCompletedTasks(_ enabled: Bool) {
@@ -2072,7 +2082,11 @@ final class MarkdownPresentationController {
         // картинки, хотя курсор не находится внутри её диапазона.
         if let presentation, nearby(presentation.images, line, presentation, extent: { $0.paragraphRange }).contains(where: { image in
             let range = image.isInline ? image.range : image.paragraphRange
-            return NSIntersectionRange(line, range).length > 0
+            let isInlineSVG = image.isInline && image.url.hasPrefix("data:image/svg+xml")
+            let touchesInlineSVG = isInlineSVG && (selection.length == 0
+                ? selection.location >= range.location && selection.location <= NSMaxRange(range)
+                : NSIntersectionRange(selection, range).length > 0)
+            return !touchesInlineSVG && NSIntersectionRange(line, range).length > 0
         }) {
             return nil
         }
@@ -2107,7 +2121,12 @@ final class MarkdownPresentationController {
         }
         return nearby(presentation.images, selection, presentation, extent: { $0.paragraphRange }).contains {
             let range = $0.isInline ? $0.range : $0.paragraphRange
-            return !imageRevealedByUppercaseHeading($0) && touches(range)
+            // Raw inline SVG is source-backed markup, unlike a referenced
+            // image token: selecting it must expose its exact source range.
+            // The parser preserves the SVG payload as a data URL, which is
+            // the stable discriminator available at this layer.
+            let isInlineSVG = $0.isInline && $0.url.hasPrefix("data:image/svg+xml")
+            return !isInlineSVG && !imageRevealedByUppercaseHeading($0) && touches(range)
         }
             || nearby(presentation.audioBlocks, selection, presentation, extent: { $0.range }).contains { touches($0.range) }
             || nearby(presentation.iframeBlocks, selection, presentation, extent: { $0.range }).contains { touches($0.range) }
