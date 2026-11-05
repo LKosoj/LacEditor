@@ -162,7 +162,10 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         scroll.documentView = view
         let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
-        window.contentView = scroll; window.makeKeyAndOrderFront(nil)
+        window.contentView = scroll
+        window.makeKeyAndOrderFront(nil)
+        view.layoutSubtreeIfNeeded()
+        view.displayIfNeeded()
         view.setSelectedRange((source as NSString).range(of: "end"))
         let controller = MarkdownPresentationController(textView: view, layout: layout)
         defer { controller.cancel(); window.close() }
@@ -444,13 +447,19 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         view.allowsUndo = true
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
+        let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = scroll
+        window.makeKeyAndOrderFront(nil)
+        view.layoutSubtreeIfNeeded()
+        view.displayIfNeeded()
         view.setSelectedRange((source as NSString).range(of: "end"))
         let controller = MarkdownPresentationController(textView: view, layout: layout)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MarkdownSVGURLProtocol.self]
         let session = URLSession(configuration: configuration)
         controller.imageSession = session
-        defer { controller.cancel(); session.invalidateAndCancel(); withExtendedLifetime(scroll) {} }
+        defer { controller.cancel(); session.invalidateAndCancel(); window.close(); withExtendedLifetime(scroll) {} }
         let images = MarkdownPresentationParser.parse(source).images
         XCTAssertEqual(images.count, 2)
         let local = expectation(description: "local SVG"), remote = expectation(description: "remote SVG")
