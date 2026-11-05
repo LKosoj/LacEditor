@@ -23,6 +23,23 @@
 
 ## Последние результаты
 
+### Сворачивание рабочей папки (2026-11-05, не запускалось на Mac)
+
+Добавлен `FolderWorkspaceTests.testCollapsedWorkspaceHidesRowsAndSurvivesSession`,
+в `SemanticFontTests` разрешён шеврон в `FolderWorkspaceView.swift`. На стенде
+`lac-writer-check` новый тест проходит; на Mac ещё не запускался. Сворачивание
+секции «分区» хранилища (SwiftUI) проверяется только на Mac.
+
+### Кнопки режимов и раздел настроек «笔记库» (2026-11-05, не запускалось на Mac)
+
+`ToolbarDefaultsTests`: обновлены `testDefaultToolbarItemIdentifiers` и
+`testEveryDefaultItemIsAllowedAndPaletteKeepsRemovedItems` (кнопки писателя и
+хранилища убраны из панели по умолчанию, остаются в палитре), добавлен
+`testRemoveSavedToolbarItemsRemovesModesOnce`. Новый раздел настроек
+проверяется существующими `UIPolishCTests` (ключи поиска) и
+`UIExperimentTests` (все разделы). На Linux проверен только разбор
+(`swiftc -frontend -parse`); на Mac эти тесты ещё не запускались.
+
 ### Полный прогон Xcode (2026-11-05)
 
 `RunAllTests` завершился штатно: 3904 теста, 3727 passed, 165 failed,

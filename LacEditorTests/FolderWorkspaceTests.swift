@@ -97,6 +97,41 @@ final class FolderWorkspaceTests: XCTestCase {
         XCTAssertTrue(store.expanded.contains(nested))
     }
 
+    // Свёрнутый список файлов не даёт строк, сохраняется в сессии вкладки, а новая папка открывается развёрнутой.
+    func testCollapsedWorkspaceHidesRowsAndSurvivesSession() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let other = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            try? FileManager.default.removeItem(at: other)
+        }
+        try "a".write(to: root.appendingPathComponent("заметка.md"), atomically: true, encoding: .utf8)
+        let store = FolderWorkspaceStore()
+        await store.setRoot(root)?.value
+        XCTAssertEqual(FolderWorkspaceVisibleRow.rows(in: store).count, 1)
+        store.setCollapsed(true)
+        XCTAssertTrue(FolderWorkspaceVisibleRow.rows(in: store).isEmpty, "свёрнутый список не должен давать строк")
+        let session = try XCTUnwrap(store.sessionState)
+        let decoded = try JSONDecoder().decode(FolderWorkspaceSession.self, from: JSONEncoder().encode(session))
+        XCTAssertEqual(decoded.isCollapsed, true)
+
+        let restored = FolderWorkspaceStore()
+        restored.restore(decoded)
+        XCTAssertTrue(restored.isCollapsed, "восстановленная вкладка остаётся свёрнутой")
+        for _ in 0..<200 where restored.loading.contains(root) { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(FolderWorkspaceVisibleRow.rows(in: restored).isEmpty)
+        restored.setCollapsed(false)
+        XCTAssertEqual(FolderWorkspaceVisibleRow.rows(in: restored).count, 1)
+        XCTAssertNil(restored.sessionState?.isCollapsed, "развёрнутое состояние в сессию не пишется")
+
+        await store.setRoot(other)?.value
+        XCTAssertFalse(store.isCollapsed, "новая папка открывается развёрнутой")
+        let old = try JSONDecoder().decode(FolderWorkspaceSession.self, from: Data("{\"rootPath\":\"/tmp\"}".utf8))
+        XCTAssertNil(old.isCollapsed)
+    }
+
     func testListGroupsFilesAcrossFoldersAndSortsGlobally() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let folder = root.appendingPathComponent("nested", isDirectory: true)

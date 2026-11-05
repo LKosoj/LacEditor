@@ -77,6 +77,8 @@ final class FolderWorkspaceStore: ObservableObject {
     @Published private(set) var currentDirectory: URL?
     @Published private(set) var watchError: String?
     @Published private(set) var notice: String?
+    /// Список файлов свёрнут: виден только заголовок с именем папки. Новая папка открывается развёрнутой.
+    @Published private(set) var isCollapsed = false
 
     /// Состав файлов мог измениться (события папки или явное обновление).
     var filesDidChange: (() -> Void)?
@@ -120,6 +122,7 @@ final class FolderWorkspaceStore: ObservableObject {
         loading.removeAll()
         errors.removeAll()
         expanded.removeAll()
+        isCollapsed = false
         rootURL = url.map { URL(fileURLWithPath: $0.standardizedFileURL.path, isDirectory: true) }
         currentDirectory = rootURL
         guard let rootURL else { return nil }
@@ -179,6 +182,10 @@ final class FolderWorkspaceStore: ObservableObject {
         refresh()
     }
 
+    func setCollapsed(_ value: Bool) {
+        isCollapsed = value
+    }
+
     func setDisplay(_ value: Display) {
         guard value != display else { return }
         restorationGeneration &+= 1
@@ -223,7 +230,8 @@ final class FolderWorkspaceStore: ObservableObject {
             expandedPaths: Array(Set(expanded.compactMap(relative).filter { !$0.isEmpty } + pendingExpandedPaths))
                 .sorted { $0.lexicographicallyPrecedes($1) },
             sort: sort.rawValue, view: display.rawValue,
-            currentPath: currentDirectory.flatMap(relative) ?? [], ascending: sortAscending, groupByFolder: groupByFolder)
+            currentPath: currentDirectory.flatMap(relative) ?? [], ascending: sortAscending, groupByFolder: groupByFolder,
+            isCollapsed: isCollapsed ? true : nil)
     }
 
     func restore(_ session: FolderWorkspaceSession) {
@@ -234,6 +242,7 @@ final class FolderWorkspaceStore: ObservableObject {
         display = Display(rawValue: session.view) ?? .tree
         let root = URL(fileURLWithPath: session.rootPath, isDirectory: true).standardizedFileURL
         guard let first = setRoot(root) else { return }
+        isCollapsed = session.isCollapsed ?? false
         let expectedGeneration = generation
         let token = restorationGeneration
         func valid(_ parts: [String]) -> Bool {

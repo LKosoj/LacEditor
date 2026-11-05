@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case editor = "编辑器", images = "图片设置", appearance = "外观", files = "文件与恢复", snippets = "文本片段", associations = "文件关联", performance = "性能", export = "导出", ai = "人工智能", about = "关于"
+    case editor = "编辑器", images = "图片设置", appearance = "外观", files = "文件与恢复", snippets = "文本片段", associations = "文件关联", performance = "性能", export = "导出", vault = "笔记库", ai = "人工智能", about = "关于"
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -14,6 +14,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .associations: "doc.badge.gearshape"
         case .performance: "gauge.with.dots.needle.33percent"
         case .export: "square.and.arrow.up"
+        case .vault: "externaldrive.connected.to.line.below"
         case .ai: "sparkles"
         case .about: "info.circle"
         }
@@ -28,6 +29,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .associations: L10n.tr("选择哪些文本格式默认使用 LacEditor 打开。")
         case .performance: L10n.tr("按文档大小自动管理，优先保持编辑顺畅。")
         case .export: L10n.tr("配置 Pandoc 导出项目。")
+        case .vault: L10n.tr("连接远程笔记库，并在编辑器中打开其中的笔记。")
         case .ai: L10n.tr("配置文本、判断和图像服务。")
         case .about: L10n.tr("一款专注于文本与代码的 macOS 编辑器。")
         }
@@ -66,6 +68,8 @@ extension SettingsSection {
              "重置导出设置", "删除不支持的导出项目", "添加 Pandoc 导出项目", "添加自定义命令", "添加 PDF 引擎导出项目",
              "扩展名，以空格分隔", "自定义命令", "命令输出", "显示命令输出", "PDF 中间格式", "PDF 引擎路径", "额外参数",
              "Pandoc 输出格式", "原始类型", "模板", "样式参考文件", "EPUB 封面", "EPUB 目录深度"]
+        case .vault:
+            ["笔记库连接", "连接笔记库…", "已保存的连接"]
         case .ai:
             ["AI 功能", "文本模型", "判断模型", "图像模型", "文字识别模型", "语音转写模型", "API 密钥", "服务地址", "模型名称", "自定义检查",
              "Jina 搜索", "Jina 网页读取", "系统拼写检查", "系统语法检查", "接口格式", "完整接口地址",
@@ -289,6 +293,7 @@ struct SettingsView: View {
         case .associations: FileAssociationSettingsView()
         case .performance: performanceSettings
         case .export: MarkdownExportSettingsView(preferences: appState.preferences)
+        case .vault: VaultSettingsView(appState: appState)
         case .ai: AISettingsView(preferences: appState.preferences, isActive: selection == .ai)
         case .about: aboutSettings
         }
@@ -1493,5 +1498,58 @@ extension View {
             .frame(minHeight: minHeight)
             .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(LacEditorDesign.outline, lineWidth: 0.5))
+    }
+}
+
+/// Раздел «笔记库»: список сохранённых подключений. Правка идёт через общий лист подключения,
+/// который открывается поверх активного окна редактора (у окна настроек нет своего хранилища).
+private struct VaultSettingsView: View {
+    let appState: AppState
+    @ObservedObject private var store = VaultConnectionStore.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            if let message = store.issueMessage {
+                StatusMessageView(kind: .error, text: message)
+            }
+            PreferenceGroup(title: L10n.tr("笔记库连接")) {
+                PreferenceRow(title: L10n.tr("连接笔记库…"),
+                              detail: L10n.tr("在当前编辑器窗口中添加、修改或删除连接。也可以使用菜单“文件 → 连接笔记库…”，或在“自定义工具栏…”中添加“笔记库”按钮。")) {
+                    Button(L10n.tr("连接笔记库…")) { present(nil) }
+                        .disabled(appState.hostWindow == nil)
+                }
+            }
+            PreferenceGroup(title: L10n.tr("已保存的连接")) {
+                if store.connections.isEmpty {
+                    Text(L10n.tr("尚未添加连接。")).font(.subheadline).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(16)
+                } else {
+                    ForEach(store.connections) { connection in
+                        row(connection)
+                        if connection.id != store.connections.last?.id { SettingsRowDivider() }
+                    }
+                }
+            }
+        }
+    }
+
+    private func row(_ connection: VaultConnection) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(connection.name).font(.body.weight(.medium)).lineLimit(1)
+                Text(connection.tunnel.map { "\($0.user)@\($0.host)" } ?? connection.baseURL)
+                    .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            Button(L10n.tr("修改连接…")) { present(connection.id) }
+                .disabled(appState.hostWindow == nil)
+                .accessibilityLabel("\(L10n.tr("修改连接…")) \(connection.name)")
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+    }
+
+    /// Лист — это лист окна редактора, поэтому окно выводится вперёд, иначе лист останется за настройками.
+    private func present(_ id: UUID?) {
+        appState.hostWindow?.makeKeyAndOrderFront(nil)
+        appState.presentVaultConnectionSheet(preselectedID: id)
     }
 }

@@ -31,6 +31,8 @@ private struct VaultSidebarContent: View {
     private var pinned: [String] { VaultPresentation.visiblePinned(session.pinnedPaths, hidden: hidden) }
     @State private var unsentExpanded = false
     @State private var conflictsExpanded = true
+    /// «Разделы» сворачиваются стандартным заголовком секции боковой панели; выбор общий для подключений.
+    @AppStorage("LacEditor.VaultSectionsExpanded") private var sectionsExpanded = true
     private var unsentPaths: [String] { session.unsentSummary.attentionUnsent().map(\.serverPath) }
     private var conflictPaths: [String] { session.unsentSummary.conflicts.map(\.serverPath) }
     private var hasRejectedUnsent: Bool {
@@ -161,7 +163,7 @@ private struct VaultSidebarContent: View {
                         ForEach(pinned, id: \.self) { noteRow($0, showsFolder: true, section: "pin") }
                     }
                 }
-                Section(L10n.tr("分区")) {
+                Section(L10n.tr("分区"), isExpanded: $sectionsExpanded) {
                     if catalog.roots.isEmpty { emptyState }
                     ForEach(catalog.roots, id: \.path) { entry in
                         VaultTreeBranch(entry: entry, session: session, catalog: catalog, expanded: $expanded,

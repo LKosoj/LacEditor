@@ -35,8 +35,10 @@ struct FolderWorkspaceSession: Codable, Equatable, Sendable {
     let currentPath: [String]
     let ascending: Bool?
     let groupByFolder: Bool?
+    let isCollapsed: Bool?
 
-    init(rootPath: String, expandedPaths: [[String]], sort: String, view: String, currentPath: [String], ascending: Bool? = nil, groupByFolder: Bool? = nil) {
+    init(rootPath: String, expandedPaths: [[String]], sort: String, view: String, currentPath: [String], ascending: Bool? = nil, groupByFolder: Bool? = nil,
+         isCollapsed: Bool? = nil) {
         self.rootPath = rootPath
         self.expandedPaths = expandedPaths
         self.sort = sort
@@ -44,11 +46,12 @@ struct FolderWorkspaceSession: Codable, Equatable, Sendable {
         self.currentPath = currentPath
         self.ascending = ascending
         self.groupByFolder = groupByFolder
+        self.isCollapsed = isCollapsed
     }
 
     init(from decoder: Decoder) throws {
         guard let values = try? decoder.container(keyedBy: CodingKeys.self) else {
-            rootPath = ""; expandedPaths = []; sort = "natural"; view = "tree"; currentPath = []; ascending = nil; groupByFolder = nil
+            rootPath = ""; expandedPaths = []; sort = "natural"; view = "tree"; currentPath = []; ascending = nil; groupByFolder = nil; isCollapsed = nil
             return
         }
         rootPath = (try? values.decode(String.self, forKey: .rootPath)) ?? ""
@@ -58,6 +61,7 @@ struct FolderWorkspaceSession: Codable, Equatable, Sendable {
         currentPath = (try? values.decode([String].self, forKey: .currentPath)) ?? []
         ascending = try? values.decode(Bool.self, forKey: .ascending)
         groupByFolder = try? values.decode(Bool.self, forKey: .groupByFolder)
+        isCollapsed = try? values.decode(Bool.self, forKey: .isCollapsed)
     }
 }
 

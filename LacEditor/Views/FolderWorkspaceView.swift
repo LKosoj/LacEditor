@@ -3,14 +3,37 @@ import AppKit
 
 struct FolderWorkspaceView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var store: FolderWorkspaceStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(L10n.tr("工作文件夹"))
-                    .sidebarHeadingStyle()
+                if store.rootURL != nil {
+                    // Заголовок сворачивает список файлов, как заголовки секций библиотеки.
+                    Button { store.setCollapsed(!store.isCollapsed) } label: {
+                        HStack(spacing: 0) {
+                            Text(L10n.tr("工作文件夹")).sidebarHeadingStyle()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .rotationEffect(.degrees(store.isCollapsed ? 0 : 90))
+                                .animation(reduceMotion ? nil : LacEditorDesign.sidebarDisclosureAnimation, value: store.isCollapsed)
+                                .accessibilityHidden(true)
+                                .frame(width: 9)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .stableHelp(L10n.tr("展开或收起文件列表"))
+                    .accessibilityIdentifier("sidebar.folderWorkspace.toggle")
                     .accessibilityAddTraits(.isHeader)
+                    .accessibilityValue(store.isCollapsed ? L10n.tr("已收起") : L10n.tr("已展开"))
+                } else {
+                    Text(L10n.tr("工作文件夹"))
+                        .sidebarHeadingStyle()
+                        .accessibilityAddTraits(.isHeader)
+                }
                 Spacer()
                 if store.rootURL != nil {
                     Button { store.refresh() } label: {
@@ -36,6 +59,7 @@ struct FolderWorkspaceView: View {
                             Button(L10n.tr("作为项目打开")) { appState.startWriterProject(at: root) }
                         }
                     }
+                if !store.isCollapsed {
                 HStack {
                     Menu(L10n.tr("显示方式")) {
                         Picker(L10n.tr("显示方式"), selection: Binding(get: { store.display }, set: { store.setDisplay($0) })) {
@@ -57,6 +81,7 @@ struct FolderWorkspaceView: View {
                         }
                         Toggle(L10n.tr("按文件夹分组"), isOn: Binding(get: { store.groupByFolder }, set: { store.setGroupByFolder($0) }))
                     }
+                }
                 }
                 if let error = store.watchError {
                     StatusMessageView(kind: .error, text: error)
@@ -97,7 +122,7 @@ struct FolderWorkspaceVisibleRow: Identifiable {
 
     @MainActor
     static func rows(in store: FolderWorkspaceStore) -> [Self] {
-        guard let root = store.rootURL else { return [] }
+        guard let root = store.rootURL, !store.isCollapsed else { return [] }
         var result: [Self] = []
         func appendDirectory(_ directory: URL, depth: Int) {
             if store.loading.contains(directory) {

@@ -163,10 +163,9 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             after: ItemIdentifier.readingMode,
             flag: "LacEditor.ToolbarDictationAdded"
         )
-        addSavedToolbarItem(
-            ItemIdentifier.writerMode,
-            after: ItemIdentifier.dictation,
-            flag: "LacEditor.ToolbarWriterModeAdded"
+        removeSavedToolbarItems(
+            [ItemIdentifier.writerMode, ItemIdentifier.vault],
+            flag: "LacEditor.ToolbarModesRemoved"
         )
         let toolbar = EditorWindowToolbar(
             identifier: NSToolbar.Identifier("LacEditor.EditorToolbar")
@@ -346,8 +345,6 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             ItemIdentifier.markdownPresentation,
             ItemIdentifier.readingMode,
             ItemIdentifier.dictation,
-            ItemIdentifier.writerMode,
-            ItemIdentifier.vault,
             ItemIdentifier.preview
         ]
     }
@@ -567,6 +564,28 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
             let index = identifiers.firstIndex(of: anchor.rawValue).map { $0 + 1 } ?? identifiers.count
             identifiers.insert(item.rawValue, at: index)
             configuration[listKey] = identifiers
+            changed = true
+        }
+        if changed { defaults.set(configuration, forKey: key) }
+    }
+
+    /// Один раз убирает кнопки режимов из сохранённой панели: раньше писательскую добавляли туда принудительно.
+    /// Режимы включаются из меню; вернуть кнопки можно через настройку панели, повторно они не убираются.
+    func removeSavedToolbarItems(
+        _ items: [NSToolbarItem.Identifier],
+        flag: String,
+        defaults: UserDefaults = .standard
+    ) {
+        guard !defaults.bool(forKey: flag) else { return }
+        defaults.set(true, forKey: flag)
+        let key = "NSToolbar Configuration LacEditor.EditorToolbar"
+        guard var configuration = defaults.dictionary(forKey: key) else { return }
+        let removed = Set(items.map(\.rawValue))
+        var changed = false
+        for listKey in ["TB Default Item Identifiers", "TB Item Identifiers"] {
+            guard let identifiers = configuration[listKey] as? [String],
+                  identifiers.contains(where: removed.contains) else { continue }
+            configuration[listKey] = identifiers.filter { !removed.contains($0) }
             changed = true
         }
         if changed { defaults.set(configuration, forKey: key) }

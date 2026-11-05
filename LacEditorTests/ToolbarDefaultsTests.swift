@@ -25,8 +25,7 @@ final class ToolbarDefaultsTests: XCTestCase {
             NSToolbarItem.Identifier.flexibleSpace.rawValue, "LacEditor.Sidebar",
             NSToolbarItem.Identifier.sidebarTrackingSeparator.rawValue, "LacEditor.WindowTitle",
             NSToolbarItem.Identifier.flexibleSpace.rawValue, "LacEditor.Find", "LacEditor.Language",
-            "LacEditor.MarkdownPresentation", "LacEditor.ReadingMode", "LacEditor.Dictation", "LacEditor.WriterMode",
-            "LacEditor.Vault", "LacEditor.Preview"
+            "LacEditor.MarkdownPresentation", "LacEditor.ReadingMode", "LacEditor.Dictation", "LacEditor.Preview"
         ])
     }
 
@@ -36,7 +35,7 @@ final class ToolbarDefaultsTests: XCTestCase {
         let toolbar = NSToolbar(identifier: NSToolbar.Identifier("t"))
         let allowed = Set(controller.toolbarAllowedItemIdentifiers(toolbar).map(\.rawValue))
         for item in controller.toolbarDefaultItemIdentifiers(toolbar) { XCTAssertTrue(allowed.contains(item.rawValue), item.rawValue) }
-        for name in ["Open", "Save", "History", "NewDocument", "AIWriting", "Import", "Export", "ReadingMode", "Dictation", "WriterMode"] {
+        for name in ["Open", "Save", "History", "NewDocument", "AIWriting", "Import", "Export", "ReadingMode", "Dictation", "WriterMode", "Vault"] {
             XCTAssertTrue(allowed.contains("LacEditor.\(name)"), name)
         }
     }
@@ -71,6 +70,27 @@ final class ToolbarDefaultsTests: XCTestCase {
         controller.addSavedToolbarItem(item, after: anchor, flag: "h", defaults: defaults)
         saved = try XCTUnwrap(defaults.dictionary(forKey: key))
         XCTAssertEqual(saved["TB Item Identifiers"] as? [String], ["A", item.rawValue])
+    }
+
+    // Кнопки режимов убираются из сохранённой панели один раз: добавленные пользователем позже остаются.
+    func testRemoveSavedToolbarItemsRemovesModesOnce() throws {
+        let (controller, _, cleanup) = try makeController()
+        defer { cleanup() }
+        let suite = "LacEditorTests.toolbarSaved.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let key = "NSToolbar Configuration LacEditor.EditorToolbar"
+        let items = [NSToolbarItem.Identifier("LacEditor.WriterMode"), NSToolbarItem.Identifier("LacEditor.Vault")]
+        let list = ["A", "LacEditor.WriterMode", "LacEditor.Vault", "LacEditor.Preview"]
+        defaults.set(["TB Default Item Identifiers": list, "TB Item Identifiers": list], forKey: key)
+        controller.removeSavedToolbarItems(items, flag: "f", defaults: defaults)
+        var saved = try XCTUnwrap(defaults.dictionary(forKey: key))
+        XCTAssertEqual(saved["TB Default Item Identifiers"] as? [String], ["A", "LacEditor.Preview"])
+        XCTAssertEqual(saved["TB Item Identifiers"] as? [String], ["A", "LacEditor.Preview"])
+        defaults.set(["TB Item Identifiers": list], forKey: key)
+        controller.removeSavedToolbarItems(items, flag: "f", defaults: defaults)
+        saved = try XCTUnwrap(defaults.dictionary(forKey: key))
+        XCTAssertEqual(saved["TB Item Identifiers"] as? [String], list, "повторный вызов с той же пометкой не должен ничего убирать")
     }
 
     func testAddSavedToolbarItemWithoutConfigurationOnlySetsFlag() throws {

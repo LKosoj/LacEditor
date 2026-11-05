@@ -2691,3 +2691,12 @@
 "正在应用…" = "Applying…";
 "自动合并：%lld 处" = "Merged automatically: %lld";
 "解决冲突" = "Resolve Conflict";
+
+/* Режим хранилища: настройки */
+"连接远程笔记库，并在编辑器中打开其中的笔记。" = "Connect a remote vault and open its notes in the editor.";
+"在当前编辑器窗口中添加、修改或删除连接。也可以使用菜单“文件 → 连接笔记库…”，或在“自定义工具栏…”中添加“笔记库”按钮。" = "Add, change or delete connections in the current editor window. You can also use File → Connect Vault…, or add the Vault button with Customize Toolbar….";
+"尚未添加连接。" = "No connections yet.";
+"修改连接…" = "Edit Connection…";
+
+/* Рабочая папка: сворачивание списка */
+"展开或收起文件列表" = "Expand or Collapse File List";
