@@ -192,11 +192,12 @@ final class MarkdownBlockSourceTests: XCTestCase {
         XCTAssertEqual(stand.view.selectedRange(), (source as NSString).range(of: first))
         let firstRemoved = await waitFor { one.superview == nil }
         XCTAssertTrue(firstRemoved)
-        XCTAssertNotNil(two.superview, "второй блок остаётся оформленным")
+        let secondIsOnlyView = await waitFor { views().count == 1 && views().first !== one }
+        XCTAssertTrue(secondIsOnlyView)
         let remaining = try XCTUnwrap(views().first)
-        stand.view.scrollToVisible(remaining.frame)
-        let revealed = stand.layout.markdownListsSnapshot["revealed"] ?? []
-        XCTFail("selection=\(stand.view.selectedRange()), revealed=\(revealed), remaining=\(remaining.frame), visible=\(stand.view.visibleRect)")
+        XCTAssertTrue(remaining.canInteract?() ?? false)
+        let secondRange = (source as NSString).range(of: second)
+        XCTAssertTrue(stand.layout.canDisplayMarkdownMedia(secondRange))
         var capturedSecondItem: NSMenuItem?
         let secondMenuReady = await waitFor {
             capturedSecondItem = stand.editItem(in: try? stand.menu(at: stand.center(of: remaining)))

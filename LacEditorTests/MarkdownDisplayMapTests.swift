@@ -145,7 +145,7 @@ final class MarkdownDisplayMapTests: XCTestCase {
     func testCRLFKeepsLineBreaksOneToOne() {
         for text in ["**a**\r\n**b**", "**a**\n**b**"] {
             let map = built(text)
-            let crlf = text.contains("\r") ? 1 : 0
+            let crlf = (text as NSString).range(of: "\r\n").location == NSNotFound ? 0 : 1
             XCTAssertEqual(hidden(map).count, 4, text.debugDescription)
             XCTAssertEqual(map.displayLength, 3 + crlf, text.debugDescription)
             XCTAssertEqual(display(map, 5), 1, "\\r или \\n: один символ")

@@ -133,7 +133,9 @@ final class MarkdownDisplayMapCaretTests: XCTestCase {
         let heading = range(source, "## ")
         XCTAssertEqual(caret(map, heading.location), NSMaxRange(heading))
         let quote = range(source, "> ")
-        XCTAssertEqual(caret(map, quote.location), NSMaxRange(quote))
+        // У цитаты markerRanges содержит только `>`; следующий пробел остаётся
+        // обычной исходной позицией, в отличие от полного префикса заголовка.
+        XCTAssertEqual(caret(map, quote.location), quote.location + 1)
         // `\r\n` между строками не входит в цепочку: позиция перед переводом строки — обычная.
         XCTAssertNil(caret(map, range(source, "\r\n## ").location))
     }

@@ -1274,17 +1274,6 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         guard textContainers.first?.textView?.hasMarkedText() != true else { return false }
         if let foldedRange, NSIntersectionRange(foldedRange, range).length > 0 { return false }
 
-        // Selecting an audio/video block reveals its source even when the
-        // controller has not yet published a separate revealed range.
-        if markdownMedia.contains(where: { NSIntersectionRange($0.range, range).length > 0 }),
-           let selection = textContainers.first?.textView?.selectedRange(),
-           selection.location != NSNotFound,
-           (selection.length > 0
-            ? NSIntersectionRange(selection, range).length > 0
-            : NSLocationInRange(selection.location, range)) {
-            return false
-        }
-
         // An inline image covered by an uppercase-heading projection must be
         // removed while that exact source image is selected.  The projection
         // has no line-based reveal range of its own, so relying only on
@@ -1314,6 +1303,18 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             ? NSIntersectionRange(selection, range).length > 0
             : NSLocationInRange(selection.location, range)) {
             return true
+        }
+
+        // Source-backed blocks reveal their source from the selection itself,
+        // not from the temporary geometry registry. The controller removes
+        // that geometry while revealing a block; consulting it here would
+        // make the block visible again on the next viewport update.
+        if let selection = textContainers.first?.textView?.selectedRange(),
+           selection.location != NSNotFound,
+           (selection.length > 0
+            ? NSIntersectionRange(selection, range).length > 0
+            : NSLocationInRange(selection.location, range)) {
+            return false
         }
         guard let revealed = markdownRevealedRange, touches(range, revealed) else { return true }
 
