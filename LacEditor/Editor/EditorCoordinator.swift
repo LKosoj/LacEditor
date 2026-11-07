@@ -19,11 +19,15 @@ extension EditorTextView {
         var magnificationDidChange: ((CGFloat) -> Void)?
         var requestAIImageEdit: ((AIImageEditRequest) -> Void)?
         var requestAIImageDescription: ((AIImageEditRequest) -> Void)?
+        var requestMarkdownLink: (() -> Void)?
+        var requestToggleMarkdownPresentation: (() -> Void)?
         private var pendingMagnification: CGFloat?
         private var applyingMagnification = false
         private var lastObservedMagnification: CGFloat = 1
         var isApplyingExternalUpdate = false
         private var isApplyingAutomatedEdit = false
+        /// Идёт сеанс Writing Tools (системные «Инструменты письма»): их правки считаются автоматическими.
+        private var isWritingToolsSession = false
         private var isRestoringOffscreenEdit = false
         var currentFontSize: CGFloat = 14
         var currentTabWidth: Int = 4
@@ -116,6 +120,11 @@ extension EditorTextView {
         private var tableCellColumn = 0
         private var tableCellRowStart: Int?
         private var tableCellRowIndex: Int?
+        /// Открыть ячейку под выделением, когда оформление таблиц снова готово (undo, возврат из исходного вида); одна попытка.
+        private var pendingTableReopen: (revision: UInt, selection: NSRange, scrollsIntoView: Bool)?
+        /// Расстояние каретки от верха видимой области до смены вида: после перестройки раскладки каретка остаётся на нём.
+        private var switchScrollAnchor: CGFloat?
+        private var observedMarkdownFormatted: Bool?
         private var tableCellHasVirtualHistory = false
         private var tableCellTableRange: NSRange?
         private var tableCellPresentation: MarkdownPresentation?
@@ -201,7 +210,6 @@ extension EditorTextView {
         private let styleMarksPainter = StyleMarksPainter()
         private var appliedFindRanges: [NSRange] = []
         private var hasCriticColors = false
-        private var obsidianCommentCache: (revision: UInt, ranges: [NSRange])?
         private var appliedFindVisibleRange: NSRange?
         private var findMatchesChanged = false
         private let lineIndex: LogicalLineIndex
@@ -461,15 +469,9 @@ extension EditorTextView {
             guard outsideCode || (outdent && orderedEdits?.count == 1) else { return false }
             guard selection.length == 0 else { return true }
             if let edit = ListContinuationService.unorderedIndentEdit(in: storage.mutableString, selection: selection, indentUnit: indentUnit, outdent: outdent) {
-                textView.breakUndoCoalescing()
-                textView.undoManager?.beginUndoGrouping()
-                defer { textView.undoManager?.endUndoGrouping(); textView.breakUndoCoalescing() }
-                isApplyingAutomatedEdit = true
-                defer { isApplyingAutomatedEdit = false }
-                guard textView.shouldChangeText(in: edit.range, replacementString: edit.replacement) else { return true }
-                storage.replaceCharacters(in: edit.range, with: edit.replacement)
-                textView.didChangeText()
-                textView.setSelectedRange(edit.selection)
+                var transaction = MarkdownEditTransaction(.listContinuation, range: edit.range, replacement: edit.replacement)
+                transaction.selectionAfter = edit.selection
+                perform(transaction)
                 return true
             }
             if ListContinuationService.isUnorderedList(in: storage.mutableString, at: selection.location) {
@@ -532,22 +534,21 @@ extension EditorTextView {
             let replacement = updatedText.substring(with: NSRange(
                 location: prefix, length: updatedText.length - prefix - suffix
             ))
-            isApplyingAutomatedEdit = true
-            defer { isApplyingAutomatedEdit = false }
-            guard textView.shouldChangeText(in: changedRange, replacementString: replacement) else {
-                return false
+            var transaction = MarkdownEditTransaction(.listContinuation, range: changedRange, replacement: replacement)
+            transaction.groupsUndo = false
+            // Выделение считается по длине текста после замены.
+            transaction.afterApply = { [textView, storage] in
+                textView.setSelectedRange(NSRange(
+                    location: max(0, min(
+                        storage.length,
+                        selectionLocation
+                            + edits.reduce(0) { $0 + ($1.replacement as NSString).length - $1.range.length }
+                    )),
+                    length: 0
+                ))
             }
-            storage.replaceCharacters(in: changedRange, with: replacement)
-            textView.didChangeText()
-            textView.setSelectedRange(NSRange(
-                location: max(0, min(
-                    storage.length,
-                    selectionLocation
-                        + edits.reduce(0) { $0 + ($1.replacement as NSString).length - $1.range.length }
-                )),
-                length: 0
-            ))
-            textView.undoManager?.setActionName(L10n.tr("整理有序列表"))
+            transaction.actionName = L10n.tr("整理有序列表")
+            guard case .applied = perform(transaction) else { return false }
             return true
         }
 
@@ -668,6 +669,46 @@ extension EditorTextView {
             return navigateMarkdownLink(position: position, expectedRange: nil)
         }
 
+        /// Заголовки, ссылки и картинки готового разбора внутри диапазона: подписи для VoiceOver. Списки разбора идут в порядке документа.
+        /// Нет оформления, устаревший разбор или незавершённый ввод - пусто.
+        private func markdownAccessibilityItems(in range: NSRange) -> [MarkdownAccessibilityItem] {
+            guard isActive, currentLanguage == .markdown, document.language == .markdown, document.isMarkdownFormatted,
+                  let textView, !textView.hasMarkedText(), let length = textView.textStorage?.length,
+                  let presentation = markdownPresentation?.navigationPresentation(document: document, revision: contentRevision) else { return [] }
+            func window<T>(_ values: [T], _ location: (T) -> Int) -> ArraySlice<T> {
+                var low = 0, high = values.count
+                while low < high {
+                    let middle = low + (high - low) / 2
+                    if location(values[middle]) < range.location { low = middle + 1 } else { high = middle }
+                }
+                var end = low
+                while end < values.count, location(values[end]) < NSMaxRange(range) { end += 1 }
+                return values[low..<end]
+            }
+            func fits(_ value: NSRange) -> Bool { value.location >= 0 && value.length > 0 && NSMaxRange(value) <= length }
+            var items: [MarkdownAccessibilityItem] = []
+            for heading in window(presentation.headings, { $0.range.location }) where fits(heading.range) {
+                items.append(MarkdownAccessibilityItem(kind: .heading(level: heading.level), range: heading.range, label: heading.renderedTitle))
+            }
+            for link in window(presentation.links, { $0.range.location }) where fits(link.range) {
+                let label = textView.accessibilityReadableText(in: link.range).flatMap { $0.isEmpty ? nil : $0 } ?? link.url
+                items.append(MarkdownAccessibilityItem(kind: .link(address: link.url), range: link.range, label: label))
+            }
+            for image in window(presentation.images, { $0.range.location }) where fits(image.range) {
+                items.append(MarkdownAccessibilityItem(kind: .image, range: image.range, label: Self.imageAccessibilityLabel(image)))
+            }
+            return items.sorted { $0.range.location < $1.range.location }
+        }
+
+        /// Подпись картинки: alt, иначе имя файла; адрес `data:` и пустое имя не читаются, вместо них общее «图片».
+        static func imageAccessibilityLabel(_ image: MarkdownImage) -> String {
+            let alt = image.alt.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !alt.isEmpty { return alt }
+            if !image.url.lowercased().hasPrefix("data:"), let name = image.url.split(separator: "?").first?.split(separator: "/").last,
+               let decoded = String(name).removingPercentEncoding, !decoded.isEmpty { return decoded }
+            return L10n.tr("图片")
+        }
+
         private func navigateMarkdownLink(position: Int, expectedRange: NSRange?) -> Bool {
             guard isActive, currentLanguage == .markdown, document.language == .markdown, document.ioState == .idle,
                   let textView, textView.window?.isKeyWindow == true, !textView.hasMarkedText(), tableCellEditor == nil else { return false }
@@ -699,8 +740,9 @@ extension EditorTextView {
             }
             if let parsed = markdownPresentation?.navigationPresentation(document: document, revision: revision), follow(parsed, isDisplay: true) { return true }
             let parse = markdownLinkParse, syntax = syntaxOptions
+            let isVaultNote = MarkdownObsidianComment.appliesTo(documentURL: document.url)
             markdownLinkTask = Task { @MainActor [weak self, weak document] in
-                let parsed = await Task.detached(priority: .userInitiated) { parse?(snapshot.text) ?? MarkdownPresentationParser.parse(snapshot.text, includeWikiLinks: true, syntax: syntax) }.value
+                let parsed = await Task.detached(priority: .userInitiated) { parse?(snapshot.text) ?? MarkdownPresentationBuilder.parse(snapshot.text, includeWikiLinks: true, syntax: syntax, isVaultNote: isVaultNote, isCancelled: { Task.isCancelled }) }.value
                 guard !Task.isCancelled, let self, let document, self.markdownLinkID == token,
                       self.document === document, self.contentRevision == revision, self.isActive,
                       self.textView?.hasMarkedText() == false, self.tableCellEditor == nil else { return }
@@ -816,6 +858,9 @@ extension EditorTextView {
         func installObservers(scrollView: NSScrollView) {
             textView?.markdownLinkHandler = { [weak self] point in self?.navigateMarkdownLink(at: point) ?? false }
             textView?.diagramMenuHandler = { [weak self] point in self?.diagramMenu(at: point) ?? [] }
+            textView?.markdownFormatMenuHandler = { [weak self] in self?.markdownFormatMenuItems() ?? [] }
+            textView?.tableMenuHandler = { [weak self] point in self?.tableMenuItems(at: point) ?? [] }
+            textView?.tableEdgeButtonHandler = { [weak self] button in self?.applyTableEdgeButton(button) ?? false }
             textView?.appearanceChangedHandler = { [weak self] in self?.editorAppearanceChanged() }
             textView?.paragraphStylesChangedHandler = { [weak self] range in
                 self?.markdownPresentation?.paragraphStylesDidChange(in: range)
@@ -850,18 +895,11 @@ extension EditorTextView {
                       let edit = MarkdownHTMLMediaService.videoInsertion(file: file, document: document.url,
                                                                          text: storage.string, location: selection.location),
                       revision == contentRevision, textView.selectedRange() == selection else { return false }
-                textView.breakUndoCoalescing()
-                let undo = textView.undoManager
-                undo?.beginUndoGrouping()
-                defer { undo?.endUndoGrouping(); textView.breakUndoCoalescing() }
-                isApplyingAutomatedEdit = true
-                defer { isApplyingAutomatedEdit = false }
-                guard textView.shouldChangeText(in: edit.range, replacementString: edit.replacement) else { return false }
-                storage.replaceCharacters(in: edit.range, with: edit.replacement)
-                textView.didChangeText()
-                textView.setSelectedRange(edit.selectionRange)
-                textView.scrollRangeToVisible(edit.selectionRange)
-                undo?.setActionName(L10n.tr("插入视频"))
+                var transaction = MarkdownEditTransaction(.formatting, range: edit.range, replacement: edit.replacement)
+                transaction.selectionAfter = edit.selectionRange
+                transaction.scrollsToSelection = true
+                transaction.actionName = L10n.tr("插入视频")
+                guard case .applied = perform(transaction) else { return false }
                 return true
             }
             textView?.tableCellHandler = { [weak self] cell, frame in
@@ -869,6 +907,10 @@ extension EditorTextView {
                       markdownPresentation?.isCurrentTableCell(cell, document: document, revision: contentRevision) == true else { return false }
                 tableAccessibilityVirtualTarget = nil
                 return beginTableCell(cell.range, frame: frame, cell: cell)
+            }
+            textView?.markdownAccessibilityItems = { [weak self] range in self?.markdownAccessibilityItems(in: range) ?? [] }
+            textView?.markdownLinkActivateHandler = { [weak self] range in
+                self?.navigateMarkdownLink(position: range.location, expectedRange: range) ?? false
             }
             textView?.tableAccessibilityRevision = { [weak self] in
                 guard let self, self.isActive else { return nil }
@@ -891,10 +933,7 @@ extension EditorTextView {
                 case .columnLeft: command = .moveColumnLeft
                 case .columnRight: command = .moveColumnRight
                 }
-                let revision = contentRevision
-                guard beginTableCell(cell.range, frame: frame, cell: cell) else { return false }
-                applyMarkdownFormatting(.table(command))
-                return contentRevision != revision
+                return applyTableCommand(command, on: cell, frame: frame)
             }
             textView?.tableAccessibilityRevealHandler = { [weak self] cell in
                 guard let self, isActive, document.language == .markdown, document.isMarkdownFormatted,
@@ -1004,16 +1043,10 @@ extension EditorTextView {
                       storage.mutableString.substring(with: checkbox.markerRange) == (checkbox.state == 32 ? "[ ]" : checkbox.state == 120 ? "[x]" : "[X]") else { return false }
                 let selection = textView.selectedRange()
                 let replacement = checkbox.state == 32 ? "x" : " "
-                textView.breakUndoCoalescing()
-                textView.undoManager?.beginUndoGrouping()
-                defer { textView.undoManager?.endUndoGrouping(); textView.breakUndoCoalescing() }
-                isApplyingAutomatedEdit = true
-                defer { isApplyingAutomatedEdit = false }
-                guard textView.shouldChangeText(in: checkbox.stateRange, replacementString: replacement) else { return true }
-                storage.replaceCharacters(in: checkbox.stateRange, with: replacement)
-                textView.didChangeText()
-                textView.setSelectedRange(selection)
-                textView.undoManager?.setActionName(L10n.tr("任务列表"))
+                var transaction = MarkdownEditTransaction(.formatting, range: checkbox.stateRange, replacement: replacement)
+                transaction.selectionAfter = selection
+                transaction.actionName = L10n.tr("任务列表")
+                perform(transaction)
                 return true
             }
             textView?.codeFenceNewlineHandler = { [weak self] in
@@ -1054,17 +1087,10 @@ extension EditorTextView {
                 let fence = text.substring(with: NSRange(location: openingStart, length: index - openingStart))
                 let continuation = container?.continuationPrefix ?? ""
                 let replacement = newline + continuation + newline + continuation + fence
-                view.breakUndoCoalescing()
-                let undo = view.undoManager
-                undo?.beginUndoGrouping()
-                defer { undo?.endUndoGrouping(); view.breakUndoCoalescing() }
-                self.isApplyingAutomatedEdit = true
-                defer { self.isApplyingAutomatedEdit = false }
-                guard view.shouldChangeText(in: selected, replacementString: replacement) else { return true }
-                storage.replaceCharacters(in: selected, with: replacement)
-                view.didChangeText()
-                view.setSelectedRange(NSRange(location: selected.location + (newline as NSString).length + (continuation as NSString).length, length: 0))
-                undo?.setActionName(L10n.tr("代码块"))
+                var transaction = MarkdownEditTransaction(.formatting, range: selected, replacement: replacement)
+                transaction.selectionAfter = NSRange(location: selected.location + (newline as NSString).length + (continuation as NSString).length, length: 0)
+                transaction.actionName = L10n.tr("代码块")
+                self.perform(transaction)
                 return true
             }
             textView?.listNewlineHandler = { [weak self] in
@@ -1172,6 +1198,10 @@ extension EditorTextView {
                 textView.setSelectedRange(range)
                 textView.scrollRangeToVisible(range)
                 if request.focusesEditor { textView.window?.makeFirstResponder(textView) }
+                // Результат внутри ячейки таблицы: каретка в самой ячейке, а не в скрытом тексте таблицы.
+                if request.focusesEditor || textView.window?.firstResponder === textView {
+                    openTableCellAtSelection(scrollsIntoView: true)
+                }
                 applyFindHighlights()
                 refreshStyleMarks()
             })
@@ -1314,8 +1344,8 @@ extension EditorTextView {
 
         private func diagramMenu(at point: NSPoint) -> [NSMenuItem] {
             guard let controller = markdownPresentation else { return [] }
+            var items: [NSMenuItem] = []
             if let resource = controller.imageResource(at: point), controller.isCurrentImageResource(resource) {
-                var items: [NSMenuItem] = []
                 if aiFeatures.contains(.imageDescription), requestAIImageDescription != nil {
                     let describe = NSMenuItem(title: L10n.tr("使用 AI 描述图片"), action: #selector(describeImageWithAI(_:)), keyEquivalent: "")
                     describe.target = self
@@ -1328,13 +1358,96 @@ extension EditorTextView {
                     edit.representedObject = resource
                     items.append(edit)
                 }
-                if !items.isEmpty { return items }
             }
+            // Блоки «только просмотр» не раскрываются сами (изображение) или раскрываются неочевидно: явная команда.
+            if canEditBlockSource, let source = controller.blockSource(at: point) {
+                let edit = NSMenuItem(title: L10n.tr("编辑源代码"), action: #selector(editBlockSource(_:)), keyEquivalent: "")
+                edit.target = self
+                edit.representedObject = source
+                items.append(edit)
+            }
+            if !items.isEmpty { return items }
             guard let resource = controller.diagramResource(at: point), controller.isCurrentDiagramResource(resource) else { return [] }
             let copy = NSMenuItem(title: L10n.tr("复制图表为图片"), action: #selector(copyDiagram(_:)), keyEquivalent: "")
             let save = NSMenuItem(title: L10n.tr("图表另存为…"), action: #selector(saveDiagram(_:)), keyEquivalent: "")
             for item in [copy, save] { item.target = self; item.representedObject = resource }
             return [copy, save]
+        }
+
+        /// Пункты контекстного меню текста Markdown: подменю форматирования и переключение «исходник ↔ оформленный текст».
+        /// Подменю — только когда команды применимы (редактируемый текст, не режим чтения, нет marked text, одно выделение);
+        /// переключение — всегда. Неподходящие команды не скрываются: при отказе команда сама покажет сообщение.
+        private func markdownFormatMenuItems() -> [NSMenuItem] {
+            guard document.language == .markdown, let textView else { return [] }
+            var items: [NSMenuItem] = []
+            if textView.isEditable, !document.isReadingMode, !textView.hasMarkedText(), textView.selectedRanges.count == 1 {
+                func item(_ title: String, _ command: MarkdownFormattingCommand?) -> NSMenuItem {
+                    let entry = NSMenuItem(title: title, action: #selector(performFormatMenuItem(_:)), keyEquivalent: "")
+                    entry.target = self
+                    entry.representedObject = command.map { MarkdownFormatMenuCommand(command: $0) }
+                    return entry
+                }
+                let format = NSMenuItem(title: L10n.tr("Markdown 格式"), action: nil, keyEquivalent: "")
+                let submenu = NSMenu(title: L10n.tr("Markdown 格式"))
+                submenu.addItem(item(L10n.tr("加粗"), .bold))
+                submenu.addItem(item(L10n.tr("斜体"), .italic))
+                submenu.addItem(item(L10n.tr("删除线"), .strikethrough))
+                submenu.addItem(item(L10n.tr("行内代码"), .inlineCode))
+                submenu.addItem(item(L10n.tr("链接…"), nil))
+                submenu.addItem(.separator())
+                submenu.addItem(item(L10n.tr("普通文本"), .plainText))
+                for level in 1...6 { submenu.addItem(item(L10n.tr("标题 %@ 级", String(level)), .heading(level))) }
+                submenu.addItem(item(L10n.tr("引用"), .quote))
+                submenu.addItem(item(L10n.tr("无序列表"), .bulletList))
+                submenu.addItem(item(L10n.tr("有序列表"), .numberedList))
+                submenu.addItem(item(L10n.tr("任务列表"), .taskList))
+                submenu.addItem(item(L10n.tr("代码块"), .fencedCode))
+                format.submenu = submenu
+                items.append(format)
+            }
+            let toggle = NSMenuItem(title: document.isMarkdownFormatted ? L10n.tr("显示 Markdown 源码") : L10n.tr("显示格式化文本"),
+                                    action: #selector(toggleMarkdownPresentationFromMenu(_:)), keyEquivalent: "")
+            toggle.target = self
+            items.append(toggle)
+            return items
+        }
+
+        private final class MarkdownFormatMenuCommand {
+            let command: MarkdownFormattingCommand
+            init(command: MarkdownFormattingCommand) { self.command = command }
+        }
+
+        @objc private func performFormatMenuItem(_ sender: NSMenuItem) {
+            guard let wrapper = sender.representedObject as? MarkdownFormatMenuCommand else {
+                requestMarkdownLink?()
+                return
+            }
+            applyMarkdownFormatting(wrapper.command)
+        }
+
+        @objc private func toggleMarkdownPresentationFromMenu(_ sender: NSMenuItem) {
+            requestToggleMarkdownPresentation?()
+        }
+
+        private var canEditBlockSource: Bool {
+            document.language == .markdown && document.isMarkdownFormatted && !document.isReadingMode
+                && document.ioState == .idle && textView?.isEditable == true
+        }
+
+        /// Исходник блока «только просмотр»: выделение блока раскрывает его, у изображения документ переключается в исходный вид с кареткой в начале.
+        @objc private func editBlockSource(_ sender: NSMenuItem) {
+            guard let source = sender.representedObject as? MarkdownPresentationController.BlockSource,
+                  canEditBlockSource, markdownPresentation?.isCurrentBlockSource(source) == true, let textView else { return }
+            switch source.action {
+            case .reveal:
+                textView.setSelectedRange(source.range)
+                textView.scrollRangeToVisible(source.range)
+            case .switchToSource:
+                textView.setSelectedRange(NSRange(location: source.range.location, length: 0))
+                document.isMarkdownFormatted = false
+                MarkdownModeAnnouncement.post(formatted: false)
+            }
+            textView.window?.makeFirstResponder(textView)
         }
 
         @objc private func editImageWithAI(_ sender: NSMenuItem) {
@@ -1444,27 +1557,90 @@ extension EditorTextView {
                 edit = MarkdownTableEditingService.edit(in: storage.mutableString, selection: selection,
                                                         command: tableCommand, columnOverride: tableColumn)
             } else {
-                edit = MarkdownFormattingService.edit(in: storage.mutableString, selection: selection, command: command, strictMode: syntaxOptions.strictMode)
+                let input = formattingInput(for: command, selection: selection, storage: storage)
+                edit = input.isRefused ? nil : MarkdownFormattingService.edit(
+                    in: storage.mutableString, selection: input.selection, command: command,
+                    strictMode: syntaxOptions.strictMode, context: input.context)
             }
-            guard let edit,
-                  revision == contentRevision, textView.selectedRange() == selection else { return }
-            let original = storage.mutableString.substring(with: edit.range)
-            guard original != edit.replacement else { return }
-            textView.breakUndoCoalescing()
-            let undoManager = textView.undoManager
-            undoManager?.beginUndoGrouping()
-            defer {
-                undoManager?.endUndoGrouping()
-                textView.breakUndoCoalescing()
+            guard revision == contentRevision, textView.selectedRange() == selection else { return }
+            guard let edit else {
+                // Отказ команды таблицы молчаливый; остальные — общим сообщением.
+                if case .table = command { return }
+                document.setStatusError(L10n.tr("此处无法应用该格式"))
+                return
             }
-            isApplyingAutomatedEdit = true
-            defer { isApplyingAutomatedEdit = false }
-            guard textView.shouldChangeText(in: edit.range, replacementString: edit.replacement) else { return }
-            storage.replaceCharacters(in: edit.range, with: edit.replacement)
-            textView.didChangeText()
-            textView.setSelectedRange(edit.selectionRange)
-            textView.scrollRangeToVisible(edit.selectionRange)
-            undoManager?.setActionName(command.actionName)
+            var transaction = edit.parts.map { MarkdownEditTransaction(.formatting, edits: $0) }
+                ?? MarkdownEditTransaction(.formatting, range: edit.range, replacement: edit.replacement)
+            transaction.expectedRevision = revision
+            transaction.selectionAfter = edit.selectionRange
+            transaction.selectionBefore = selection
+            transaction.scrollsToSelection = true
+            transaction.actionName = command.actionName
+            switch perform(transaction) {
+            case .applied:
+                // Клик по кнопке панели не должен оставлять документ без первого ответчика.
+                if let window = textView.window, window.firstResponder !== textView { window.makeFirstResponder(textView) }
+            case .refused(.unchanged):
+                break
+            case .refused(.rejectedByTextSystem):
+                document.setStatusError(vaultPageDenialMessage() ?? L10n.tr("此处无法应用该格式"))
+            case .refused(.markedText), .refused(.notEditable), .refused(.staleRevision):
+                break
+            case .refused:
+                document.setStatusError(L10n.tr("此处无法应用该格式"))
+            }
+        }
+
+        /// Разбор для команды форматирования: готовый актуальный, иначе один синхронный (явная команда, как у CriticMarkup).
+        /// nil — большой файл или длина разбора не совпала с текстом: команда идёт прежним путём по тексту.
+        private func formattingPresentation(storage: NSTextStorage) -> MarkdownPresentation? {
+            if let ready = markdownPresentation?.navigationPresentation(document: document, revision: contentRevision),
+               ready.elements.textLength == storage.length { return ready }
+            guard !document.isLargeFileMode else { return nil }
+            let parsed = explicitCommandPresentation(storage: storage)
+            return parsed.elements.textLength == storage.length ? parsed : nil
+        }
+
+        /// Разбор для явной команды пользователя: модель текущей версии документа, если она подходит по флагам и синтаксису,
+        /// иначе один синхронный разбор. После правки текста модель устаревшая, поэтому берётся свежий разбор.
+        private func explicitCommandPresentation(storage: NSTextStorage) -> MarkdownPresentation {
+            let syntax = syntaxOptions
+            let isVaultNote = MarkdownObsidianComment.appliesTo(documentURL: document.url)
+            if let model = document.markdownModel(forRevision: contentRevision), model.textLength == storage.length,
+               model.options.syntax == syntax, model.options.isVaultNote == isVaultNote, model.options.includes.isSuperset(of: MarkdownPresentationBuilder.editorIncludes()) {
+                return MarkdownPresentationBuilder.presentation(model, of: storage.string)
+            }
+            return MarkdownPresentationBuilder.parse(storage.string, syntax: syntax, isVaultNote: isVaultNote)
+        }
+
+        /// Что нужно команде форматирования от разбора (T4): выделение, расширенное до целого элемента (только в оформленном
+        /// виде, где маркеры скрыты), данные для строчных правил и отказ блочным командам внутри таблицы.
+        /// Карта строится без раскрытия: форматирование намеренно правит маркеры.
+        private func formattingInput(for command: MarkdownFormattingCommand, selection: NSRange,
+                                     storage: NSTextStorage) -> (selection: NSRange, context: MarkdownInlineContext?, isRefused: Bool) {
+            let isInline: Bool
+            switch command {
+            case .bold, .italic, .strikethrough, .inlineCode, .link: isInline = true
+            case .heading, .quote, .bulletList, .numberedList, .taskList, .fencedCode, .horizontalRule, .blockMath, .plainText: isInline = false
+            default: return (selection, nil, false)
+            }
+            guard let presentation = formattingPresentation(storage: storage) else { return (selection, nil, false) }
+            let inTable = presentation.tables.contains { table in
+                selection.length == 0
+                    ? table.range.location <= selection.location && selection.location < NSMaxRange(table.range)
+                    : NSIntersectionRange(table.range, selection).length > 0
+            }
+            if command == .plainText {
+                return (selection, MarkdownInlineContext(presentation: presentation, strictMode: syntaxOptions.strictMode), inTable)
+            }
+            guard isInline else { return (selection, nil, inTable) }
+            var expanded = selection
+            // Выделение внутри таблицы карта расширила бы до всей таблицы: ячейку проверяет само правило строчных команд.
+            if document.isMarkdownFormatted, !inTable {
+                expanded = MarkdownDisplayMap(presentation: presentation, textLength: storage.length).expandToElement(selection)
+            }
+            if case .link = command { return (expanded, nil, false) }
+            return (expanded, MarkdownInlineContext(presentation: presentation, strictMode: syntaxOptions.strictMode), false)
         }
 
         private func applyLineEditing(_ command: LineEditingCommand) {
@@ -1478,21 +1654,12 @@ extension EditorTextView {
                   revision == contentRevision, textView.selectedRange() == selection,
                   edit.range.location <= storage.length, edit.range.length <= storage.length - edit.range.location,
                   storage.mutableString.substring(with: edit.range) != edit.replacement else { return }
-            textView.breakUndoCoalescing()
-            let undoManager = textView.undoManager
-            undoManager?.beginUndoGrouping()
-            defer {
-                undoManager?.endUndoGrouping()
-                textView.breakUndoCoalescing()
-            }
-            isApplyingAutomatedEdit = true
-            defer { isApplyingAutomatedEdit = false }
-            guard textView.shouldChangeText(in: edit.range, replacementString: edit.replacement) else { return }
-            storage.replaceCharacters(in: edit.range, with: edit.replacement)
-            textView.didChangeText()
-            textView.setSelectedRange(edit.selectionRange)
-            textView.scrollRangeToVisible(edit.selectionRange)
-            undoManager?.setActionName(command.actionName)
+            var transaction = MarkdownEditTransaction(.formatting, range: edit.range, replacement: edit.replacement)
+            transaction.expectedRevision = revision
+            transaction.selectionAfter = edit.selectionRange
+            transaction.scrollsToSelection = true
+            transaction.actionName = command.actionName
+            perform(transaction)
         }
 
         private func applyCriticMarkup(_ command: CriticMarkupCommand) {
@@ -1507,11 +1674,11 @@ extension EditorTextView {
             }
             let length = storage.length
             let index: MarkdownElementIndex
-            if let ready = markdownPresentation?.criticElementIndex(document: document, revision: contentRevision, textLength: length) {
+            if let ready = markdownPresentation?.currentElementIndex(document: document, revision: contentRevision, textLength: length) {
                 index = ready
             } else {
                 // Готового разбора нет (ввод, большой текст): один синхронный разбор по явной команде.
-                index = MarkdownPresentationParser.parse(storage.string, syntax: syntaxOptions).elements
+                index = explicitCommandPresentation(storage: storage).elements
                 guard index.textLength == length else { return }
             }
             let text = storage.mutableString
@@ -1558,28 +1725,15 @@ extension EditorTextView {
                 document.setStatusError(L10n.tr("修订含大图片，请在源码视图中处理"))
                 return
             }
-            textView.breakUndoCoalescing()
-            let undoManager = textView.undoManager
-            undoManager?.beginUndoGrouping()
-            defer {
-                undoManager?.endUndoGrouping()
-                textView.breakUndoCoalescing()
-            }
-            isApplyingAutomatedEdit = true
-            defer { isApplyingAutomatedEdit = false }
             // От конца к началу: диапазоны ещё не применённых замен остаются верными.
-            for replacement in replacements {
-                guard NSMaxRange(replacement.range) <= storage.length,
-                      textView.shouldChangeText(in: replacement.range, replacementString: replacement.replacement) else {
-                    document.setStatusError(L10n.tr("当前文本无法修改"))
-                    return
-                }
-                storage.replaceCharacters(in: replacement.range, with: replacement.replacement)
-                textView.didChangeText()
+            var transaction = MarkdownEditTransaction(.formatting, edits: replacements.map { .init(range: $0.range, replacement: $0.replacement) })
+            transaction.selectionAfter = finalSelection
+            transaction.scrollsToSelection = true
+            transaction.actionName = command.actionName
+            guard case .applied = perform(transaction) else {
+                document.setStatusError(L10n.tr("当前文本无法修改"))
+                return
             }
-            textView.setSelectedRange(finalSelection)
-            textView.scrollRangeToVisible(finalSelection)
-            undoManager?.setActionName(command.actionName)
             if command == .acceptAll || command == .rejectAll {
                 document.statusMessage = L10n.tr("已处理 %d 处修订", items.count)
             }
@@ -1598,20 +1752,245 @@ extension EditorTextView {
                     selection: NSRange(location: start.cell.range.location, length: 0), rows: start.axis == .row,
                     positions: positions), edit.range.location <= storage.length,
                   edit.range.length <= storage.length - edit.range.location else { return }
-            view.breakUndoCoalescing()
-            view.undoManager?.beginUndoGrouping()
-            defer { view.undoManager?.endUndoGrouping(); view.breakUndoCoalescing() }
-            isApplyingAutomatedEdit = true
-            defer { isApplyingAutomatedEdit = false }
-            guard view.shouldChangeText(in: edit.range, replacementString: edit.replacement) else { return }
-            storage.replaceCharacters(in: edit.range, with: edit.replacement)
-            view.didChangeText()
-            view.setSelectedRange(edit.selectionRange)
-            view.undoManager?.setActionName(L10n.tr("表格"))
+            var transaction = MarkdownEditTransaction(.formatting, range: edit.range, replacement: edit.replacement)
+            transaction.selectionAfter = edit.selectionRange
+            transaction.actionName = L10n.tr("表格")
+            perform(transaction)
         }
 
+        // MARK: Таблицы (T7)
+
+        /// Команда таблицы для ячейки (контекстное меню, кнопки края, VoiceOver): открывает ячейку и применяет команду.
+        /// true — текст изменился. Уже открытая та же ячейка не пересоздаётся.
+        func applyTableCommand(_ command: MarkdownTableCommand, on cell: MarkdownTableCell, frame: NSRect) -> Bool {
+            let revision = contentRevision
+            if !(tableCellEditor != nil && tableCellRange == cell.range && tableCellColumn == cell.column) {
+                guard beginTableCell(cell.range, frame: frame, cell: cell) else { return false }
+            }
+            applyMarkdownFormatting(.table(command))
+            return contentRevision != revision
+        }
+
+        /// Кадр ячейки в координатах вида по свежему разбору таблицы (раскладка таблиц после правки ещё старая).
+        private func tableCellFrame(_ cell: MarkdownTableCell, in table: MarkdownTable) -> NSRect? {
+            guard let view = textView, let storage = view.textStorage, let layout = view.layoutManager as? FoldLayoutManager,
+                  let container = view.textContainer,
+                  let row = table.rows.first(where: { $0.cells.contains(cell) }), row.range.location < storage.length else { return nil }
+            layout.ensureLayout(forCharacterRange: row.range)
+            let glyph = layout.glyphIndexForCharacter(at: row.range.location)
+            let fragment = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let indent = (table.containerPrefix as NSString).size(withAttributes: [.font: layout.textFont]).width + 12
+            let width = max(1, container.size.width - 2 * container.lineFragmentPadding - indent)
+            let rowTable = MarkdownTable(range: row.range, delimiterRange: table.delimiterRange, alignments: table.alignments, rows: [row])
+            guard let geometry = layout.markdownTableGeometry(rowTable, text: storage.mutableString, width: width).first(where: { $0.cell == cell }) else { return nil }
+            let headerOffset: CGFloat = table.rows.first == row ? 12 : 0
+            return geometry.rect.offsetBy(dx: fragment.minX + container.lineFragmentPadding + indent + view.textContainerOrigin.x,
+                                          dy: fragment.minY + headerOffset + view.textContainerOrigin.y)
+        }
+
+        /// Открывает ячейку, в которой лежит выделение основного вида, и переносит в неё выделение (смещения UTF-16 исходника
+        /// переводятся в показанный текст). Не открывает при IME, режиме чтения и исходного вида, неготовом оформлении таблиц.
+        /// `freshParse`: после правки таблицы готового разбора нет, берётся свежий.
         @discardableResult
-        func beginTableCell(_ range: NSRange, frame: NSRect, cell: MarkdownTableCell? = nil) -> Bool {
+        func openTableCellAtSelection(scrollsIntoView: Bool, freshParse: Bool = false) -> Bool {
+            guard isActive, document.language == .markdown, document.isMarkdownFormatted, !document.isReadingMode,
+                  document.ioState == .idle, let textView, textView.isEditable, !textView.hasMarkedText(),
+                  freshParse || tableCellEditor == nil, textView.selectedRanges.count == 1, let storage = textView.textStorage else { return false }
+            let selection = textView.selectedRange()
+            guard selection.location != NSNotFound, selection.location <= storage.length,
+                  selection.length <= storage.length - selection.location else { return false }
+            let presentation: MarkdownPresentation
+            if freshParse { presentation = explicitCommandPresentation(storage: storage) }
+            else if let ready = markdownPresentation?.currentTablePresentation(document: document, revision: contentRevision) { presentation = ready }
+            else { return false }
+            guard let table = presentation.tables.first(where: { selection.location >= $0.range.location && selection.location <= NSMaxRange($0.range) }),
+                  let cell = table.cell(containing: selection.location, in: storage.mutableString),
+                  let frame = tableCellFrame(cell, in: table), NSMaxRange(cell.range) <= storage.length else { return false }
+            if freshParse, let stale = tableCellEditor {
+                // После структурной команды диапазон открытой ячейки устарел: её не записываем обратно.
+                stale.contentDidChange = nil
+                stale.removeFromSuperview()
+                tableCellEditor = nil
+                tableCellRange = nil
+                markdownPresentation?.tableEditingGeometryChanged(cell: nil)
+                tableCellVirtualSeparators = 0
+            }
+            let revision = contentRevision
+            guard beginTableCell(cell.range, frame: frame, cell: cell, scrollsIntoView: scrollsIntoView),
+                  let child = tableCellEditor, contentRevision == revision else { return false }
+            // Выделение внутри ячейки переносится целиком; пересекающее её границы — кареткой в начало ячейки.
+            let inside = selection.location >= cell.range.location && NSMaxRange(selection) <= NSMaxRange(cell.range)
+            let raw = NSRange(location: min(max(selection.location - cell.range.location, 0), cell.range.length),
+                              length: inside ? selection.length : 0)
+            let projection = MarkdownTableCellEditor.projection(storage.mutableString.substring(with: cell.range))
+            child.setSelectedRange(MarkdownTableCellEditor.displayRange(forRaw: raw, in: projection))
+            return true
+        }
+
+        /// Закрывает открытую ячейку и оставляет выделение основного вида там же, где была каретка ячейки.
+        func closeTableCellKeepingSelection() {
+            guard tableCellEditor != nil else { return }
+            if !moveTableSelectionToParent(allowVirtual: true) { finishTableCell() }
+        }
+
+        /// Просит открыть ячейку под выделением, когда оформление таблиц будет готово (после undo или возврата из исходного вида).
+        func armTableReopen(scrollsIntoView: Bool) {
+            guard let textView, tableCellEditor == nil else { return }
+            pendingTableReopen = (contentRevision, textView.selectedRange(), scrollsIntoView)
+            reopenPendingTableCell()
+        }
+
+        /// Одна попытка, когда разбор текущей версии установлен; правка или другое выделение отменяют просьбу.
+        private func reopenPendingTableCell() {
+            guard let pending = pendingTableReopen else { return }
+            guard let textView, pending.revision == contentRevision, textView.selectedRange() == pending.selection else {
+                pendingTableReopen = nil
+                switchScrollAnchor = nil
+                return
+            }
+            guard markdownPresentation?.currentTablePresentation(document: document, revision: contentRevision) != nil else { return }
+            pendingTableReopen = nil
+            if textView.window?.firstResponder === textView, openTableCellAtSelection(scrollsIntoView: pending.scrollsIntoView) {
+                restoreSwitchScrollAnchor()
+            }
+            switchScrollAnchor = nil
+        }
+
+        /// Верх строки с выделением (или открытой ячейки) в координатах вида.
+        private func caretTop() -> CGFloat? {
+            if let child = tableCellEditor { return child.frame.minY }
+            guard let textView, let storage = textView.textStorage, storage.length > 0,
+                  let layout = foldLayoutManager else { return nil }
+            let location = min(textView.selectedRange().location, storage.length - 1)
+            layout.ensureLayout(forCharacterRange: NSRange(location: location, length: 1))
+            let glyph = layout.glyphIndexForCharacter(at: location)
+            return layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil).minY + textView.textContainerOrigin.y
+        }
+
+        /// Переключение оформленного/исходного вида (вызывается из `updateNSView`, до закрытия ячейки): запоминает, на каком
+        /// расстоянии от верха была каретка в таблице, чтобы после перестройки раскладки она осталась там же.
+        func noteMarkdownPresentationMode(formatted: Bool?) {
+            defer { observedMarkdownFormatted = formatted }
+            guard let previous = observedMarkdownFormatted, let formatted, previous != formatted,
+                  let textView, let clip = scrollView?.contentView else { return }
+            if formatted {
+                // В исходном виде таблиц ещё нет: попадает ли каретка в таблицу, станет ясно после разбора.
+                switchScrollAnchor = caretTop().map { $0 - clip.bounds.origin.y }
+                armTableReopen(scrollsIntoView: false)
+                return
+            }
+            let selection = textView.selectedRange()
+            let inTable = tableCellEditor != nil || markdownPresentation?.currentTablePresentation(document: document, revision: contentRevision)?
+                .tables.contains(where: { selection.location >= $0.range.location && selection.location <= NSMaxRange($0.range) }) == true
+            guard inTable else { return }
+            switchScrollAnchor = caretTop().map { $0 - clip.bounds.origin.y }
+            DispatchQueue.main.async { [weak self] in
+                self?.restoreSwitchScrollAnchor()
+                self?.switchScrollAnchor = nil
+            }
+        }
+
+        private func restoreSwitchScrollAnchor() {
+            guard let anchor = switchScrollAnchor, let textView, let clip = scrollView?.contentView, let top = caretTop() else { return }
+            let target = min(max(0, top - anchor), max(0, textView.frame.height - clip.bounds.height))
+            guard abs(target - clip.bounds.origin.y) >= 1 else { return }
+            clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: target))
+            scrollView?.reflectScrolledClipView(clip)
+        }
+
+        private final class TableMenuCommand {
+            let command: MarkdownTableCommand
+            let cell: MarkdownTableCell
+            let frame: NSRect
+            let revision: UInt
+            init(command: MarkdownTableCommand, cell: MarkdownTableCell, frame: NSRect, revision: UInt) {
+                self.command = command; self.cell = cell; self.frame = frame; self.revision = revision
+            }
+        }
+
+        /// Подменю «表格» для правого клика по ячейке основного вида; пунктов нет вне ячейки, при IME и в режимах без правки.
+        private func tableMenuItems(at point: NSPoint) -> [NSMenuItem] {
+            guard isActive, document.language == .markdown, document.isMarkdownFormatted, document.ioState == .idle,
+                  let textView, textView.isEditable, !textView.hasMarkedText(), tableCellEditor == nil,
+                  let layout = foldLayoutManager, let container = textView.textContainer,
+                  let presentation = markdownPresentation?.currentTablePresentation(document: document, revision: contentRevision),
+                  let (cell, frame) = layout.markdownTableCellInfo(
+                      at: NSPoint(x: point.x - textView.textContainerOrigin.x, y: point.y - textView.textContainerOrigin.y), in: container),
+                  let table = presentation.tables.first(where: { $0.rows.contains(where: { $0.cells.contains(cell) }) }),
+                  let row = table.rows.firstIndex(where: { $0.cells.contains(cell) }) else { return [] }
+            return tableMenu(cell: cell, frame: frame.offsetBy(dx: textView.textContainerOrigin.x, dy: textView.textContainerOrigin.y),
+                             row: row, rowCount: table.rows.count, columnCount: table.alignments.count)
+        }
+
+        /// То же подменю для правого клика внутри открытой ячейки (клик попадает в её редактор, а не в основной вид).
+        private func openCellTableMenuItems() -> [NSMenuItem] {
+            guard isActive, document.language == .markdown, document.isMarkdownFormatted, document.ioState == .idle,
+                  let textView, textView.isEditable, !textView.hasMarkedText(), let child = tableCellEditor, !child.hasMarkedText(),
+                  tableCellRevision == contentRevision, let range = tableCellRange, let row = tableCellRowIndex,
+                  let table = tableCellPresentation?.tables.first(where: { $0.range == tableCellTableRange }) else { return [] }
+            let cell = MarkdownTableCell(range: range, column: tableCellColumn, virtualSeparators: tableCellVirtualSeparators)
+            return tableMenu(cell: cell, frame: child.frame, row: row, rowCount: table.rows.count, columnCount: table.alignments.count)
+        }
+
+        /// Доступность пунктов считается по месту ячейки в таблице, без пробного вызова сервиса (он разбирает весь документ).
+        private func tableMenu(cell: MarkdownTableCell, frame: NSRect, row: Int, rowCount: Int, columnCount: Int) -> [NSMenuItem] {
+            func item(_ title: String, _ command: MarkdownTableCommand, enabled: Bool = true) -> NSMenuItem {
+                let entry = NSMenuItem(title: title, action: #selector(performTableMenuItem(_:)), keyEquivalent: "")
+                entry.target = self
+                entry.representedObject = TableMenuCommand(command: command, cell: cell, frame: frame, revision: contentRevision)
+                entry.isEnabled = enabled
+                return entry
+            }
+            let submenu = NSMenu(title: L10n.tr("表格"))
+            submenu.autoenablesItems = false
+            submenu.addItem(item(L10n.tr("在上方插入行"), .insertRowBefore, enabled: row > 0))
+            submenu.addItem(item(L10n.tr("在下方插入行"), .insertRowAfter, enabled: row > 0 || rowCount == 1))
+            submenu.addItem(item(L10n.tr("删除行"), .deleteRow, enabled: row > 0))
+            submenu.addItem(item(L10n.tr("上移行"), .moveRowUp, enabled: row > 1))
+            submenu.addItem(item(L10n.tr("下移行"), .moveRowDown, enabled: row > 0 && row + 1 < rowCount))
+            submenu.addItem(.separator())
+            submenu.addItem(item(L10n.tr("在左侧插入列"), .insertColumnBefore))
+            submenu.addItem(item(L10n.tr("在右侧插入列"), .insertColumnAfter))
+            submenu.addItem(item(L10n.tr("删除列"), .deleteColumn, enabled: columnCount > 1))
+            submenu.addItem(item(L10n.tr("左移列"), .moveColumnLeft, enabled: cell.column > 0))
+            submenu.addItem(item(L10n.tr("右移列"), .moveColumnRight, enabled: cell.column + 1 < columnCount))
+            let alignment = NSMenuItem(title: L10n.tr("列对齐"), action: nil, keyEquivalent: "")
+            let alignments = NSMenu(title: L10n.tr("列对齐"))
+            alignments.autoenablesItems = false
+            alignments.addItem(item(L10n.tr("默认对齐"), .align(.unspecified)))
+            alignments.addItem(item(L10n.tr("左对齐"), .align(.left)))
+            alignments.addItem(item(L10n.tr("居中对齐"), .align(.center)))
+            alignments.addItem(item(L10n.tr("右对齐"), .align(.right)))
+            alignment.submenu = alignments
+            submenu.addItem(alignment)
+            let root = NSMenuItem(title: L10n.tr("表格"), action: nil, keyEquivalent: "")
+            root.submenu = submenu
+            return [root]
+        }
+
+        @objc private func performTableMenuItem(_ sender: NSMenuItem) {
+            guard let wrapper = sender.representedObject as? TableMenuCommand, wrapper.revision == contentRevision else { return }
+            if applyTableCommand(wrapper.command, on: wrapper.cell, frame: wrapper.frame) {
+                openTableCellAtSelection(scrollsIntoView: false, freshParse: true)
+            }
+        }
+
+        /// Кнопка «+» на краю таблицы: строка в конец или столбец справа; каретка остаётся в таблице, в новой ячейке.
+        private func applyTableEdgeButton(_ button: FoldLayoutManager.TableEdgeButton) -> Bool {
+            guard isActive, document.language == .markdown, document.isMarkdownFormatted, document.ioState == .idle,
+                  let textView, textView.isEditable, !textView.hasMarkedText(), tableCellEditor?.hasMarkedText() != true,
+                  markdownPresentation?.isCurrentTableCell(button.cell, document: document, revision: contentRevision) == true,
+                  let container = textView.textContainer,
+                  let frame = foldLayoutManager?.markdownTableFrame(for: button.cell, in: container) else { return false }
+            guard applyTableCommand(button.command, on: button.cell,
+                                    frame: frame.offsetBy(dx: textView.textContainerOrigin.x, dy: textView.textContainerOrigin.y)) else { return false }
+            openTableCellAtSelection(scrollsIntoView: true, freshParse: true)
+            return true
+        }
+
+        /// `scrollsIntoView`: Tab, ⌘Enter, кнопки и переходы прокручивают к ячейке; клик, меню и VoiceOver прокрутку документа не меняют.
+        @discardableResult
+        func beginTableCell(_ range: NSRange, frame: NSRect, cell: MarkdownTableCell? = nil, scrollsIntoView: Bool = false) -> Bool {
             guard isActive, document.language == .markdown, document.isMarkdownFormatted,
                   document.ioState == .idle, let textView, textView.isEditable,
                   !textView.hasMarkedText(), tableCellEditor?.hasMarkedText() != true, let storage = textView.textStorage,
@@ -1649,7 +2028,7 @@ extension EditorTextView {
             tableCellHasVirtualHistory = tableCellVirtualSeparators > 0
             tableCellColumn = cell?.column ?? 0
             let presentation = markdownPresentation?.currentTablePresentation(document: document, revision: contentRevision)
-                ?? MarkdownPresentationParser.parse(storage.string, syntax: aiPreferences?.markdownSyntax ?? .init())
+                ?? explicitCommandPresentation(storage: storage)
             tableCellPresentation = presentation
             tableCellIsCompletedTask = presentation.completedTaskRanges.contains {
                 $0.location <= range.location && NSMaxRange(range) <= NSMaxRange($0)
@@ -1772,8 +2151,25 @@ extension EditorTextView {
             child.navigate = { [weak self] backwards in self?.navigateTableCell(backwards: backwards) ?? false }
             child.undoAction = { [weak self] redo in self?.undoTableCell(redo: redo) ?? false }
             child.rowCommand = { [weak self] delete in self?.applyTableRowShortcut(delete: delete) ?? false }
+            child.markdownFormatMenuHandler = { [weak self, weak child] in
+                guard let self, let child, !child.hasMarkedText() else { return [] }
+                return self.markdownFormatMenuItems()
+            }
+            child.tableMenuHandler = { [weak self, weak child] in
+                guard let self, let child, !child.hasMarkedText() else { return [] }
+                return self.openCellTableMenuItems()
+            }
+            // Вход в ячейку (addSubview, первый ответчик, каретка) не должен сдвигать документ.
+            let clip = scrollView?.contentView
+            let origin = clip?.bounds.origin
             textView.addSubview(child)
             textView.window?.makeFirstResponder(child)
+            if scrollsIntoView {
+                textView.scrollToVisible(frame)
+            } else if let clip, let origin, clip.bounds.origin != origin {
+                clip.scroll(to: origin)
+                scrollView?.reflectScrolledClipView(clip)
+            }
             return true
         }
 
@@ -1828,41 +2224,37 @@ extension EditorTextView {
             tableCellHadComposition = false
             applyingTableCell = true
             defer { applyingTableCell = false }
-            textView.breakUndoCoalescing()
-            let undo = textView.undoManager
-            undo?.beginUndoGrouping()
-            defer { undo?.endUndoGrouping(); textView.breakUndoCoalescing() }
-            isApplyingAutomatedEdit = true
-            defer { isApplyingAutomatedEdit = false }
             let prefix = String(repeating: "|", count: tableCellVirtualSeparators)
             let inserted = prefix + replacement
-            guard textView.shouldChangeText(in: range, replacementString: inserted) else {
+            let oldTableRange = tableCellTableRange
+            var transaction = MarkdownEditTransaction(.tableCell, range: range, replacement: inserted)
+            // Состояние ячейки обновляется до didChangeText: оно читает tableCellRevision и диапазоны.
+            transaction.afterReplace = { [self] in
+                tableCellRange = NSRange(location: range.location + (prefix as NSString).length, length: (replacement as NSString).length)
+                tableCellVirtualSeparators = 0
+                if let tableRange = tableCellTableRange {
+                    tableCellTableRange = NSRange(location: tableRange.location, length: tableRange.length + (inserted as NSString).length - range.length)
+                }
+                tableCellOriginal = replacement
+                // Закрывающаяся ячейка исчезает сразу: ей текст не обновляют. Открытой возвращаем каретку.
+                if substitutedMedia, !closing {
+                    let caret = child.selectedRange()
+                    let oldLength = (child.string as NSString).length
+                    child.string = MarkdownTableCellEditor.projection(replacement).text
+                    let length = (child.string as NSString).length
+                    // Подмена укоротила текст: каретка сдвигается на разницу длин и остаётся сразу за токеном.
+                    child.setSelectedRange(NSRange(location: min(max(0, caret.location + length - oldLength), length), length: 0))
+                }
+                tableCellRevision = contentRevision
+                tableCellUndoCount += 1
+                tableCellRedoCount = 0
+            }
+            guard case .applied = perform(transaction) else {
                 child.string = MarkdownTableCellEditor.projection(tableCellOriginal).text
                 document.noteLiveEdit(isEmpty: storage.length == 0)
                 document.refreshDirtyState()
                 return
             }
-            let oldTableRange = tableCellTableRange
-            storage.replaceCharacters(in: range, with: inserted)
-            tableCellRange = NSRange(location: range.location + (prefix as NSString).length, length: (replacement as NSString).length)
-            tableCellVirtualSeparators = 0
-            if let tableRange = tableCellTableRange {
-                tableCellTableRange = NSRange(location: tableRange.location, length: tableRange.length + (inserted as NSString).length - range.length)
-            }
-            tableCellOriginal = replacement
-            // Закрывающаяся ячейка исчезает сразу: ей текст не обновляют. Открытой возвращаем каретку.
-            if substitutedMedia, !closing {
-                let caret = child.selectedRange()
-                let oldLength = (child.string as NSString).length
-                child.string = MarkdownTableCellEditor.projection(replacement).text
-                let length = (child.string as NSString).length
-                // Подмена укоротила текст: каретка сдвигается на разницу длин и остаётся сразу за токеном.
-                child.setSelectedRange(NSRange(location: min(max(0, caret.location + length - oldLength), length), length: 0))
-            }
-            tableCellRevision = contentRevision
-            tableCellUndoCount += 1
-            tableCellRedoCount = 0
-            textView.didChangeText()
             restoreActiveTable(oldTable: oldTableRange, edit: range, replacementLength: (inserted as NSString).length, htmlContextChanged: htmlContextChanged)
         }
 
@@ -1946,7 +2338,7 @@ extension EditorTextView {
             let rowRange = NSRange(location: oldRow.range.location, length: oldRow.range.length + delta)
             guard let parsed = MarkdownTableEditingService.presentationRow(in: storage.mutableString, range: rowRange,
                                                                            columns: table.alignments.count) else { return nil }
-            let row = MarkdownPresentationParser.tableRowDisplay(parsed, text: storage.mutableString, previous: oldRow,
+            let row = MarkdownPresentationBuilder.tableRowDisplay(parsed, text: storage.mutableString, previous: oldRow,
                                                                  changedColumn: tableCellColumn, referenceLabels: table.referenceLabels,
                                                                  syntax: aiPreferences?.markdownSyntax ?? .init())
             let delimiter = table.delimiterRange.location >= NSMaxRange(edit)
@@ -2056,7 +2448,7 @@ extension EditorTextView {
             let oldRevision = contentRevision
             applyMarkdownFormatting(.table(command))
             guard contentRevision != oldRevision,
-                  let table = MarkdownPresentationParser.parse(storage.string, syntax: syntaxOptions).tables.first(where: { $0.range.location == tableRange.location }),
+                  let table = explicitCommandPresentation(storage: storage).tables.first(where: { $0.range.location == tableRange.location }),
                   let row = table.rows.first(where: { NSLocationInRange(view.selectedRange().location, $0.range) })
                       ?? table.rows.first(where: { view.selectedRange().location == NSMaxRange($0.range) }),
                   let cell = row.cells.first, let layout = view.layoutManager as? FoldLayoutManager,
@@ -2071,30 +2463,22 @@ extension EditorTextView {
             let headerOffset: CGFloat = table.rows.first == row ? 12 : 0
             let frame = geometry.rect.offsetBy(dx: fragment.minX + container.lineFragmentPadding + indent + view.textContainerOrigin.x,
                                                dy: fragment.minY + headerOffset + view.textContainerOrigin.y)
-            _ = beginTableCell(cell.range, frame: frame, cell: cell)
+            _ = beginTableCell(cell.range, frame: frame, cell: cell, scrollsIntoView: true)
             return true
         }
 
         private func navigateTableCell(backwards: Bool) -> Bool {
             guard let view = textView, let storage = view.textStorage, let range = tableCellRange,
                   tableCellRevision == contentRevision, tableCellEditor?.hasMarkedText() == false else { return false }
-            var parsed = MarkdownPresentationParser.parse(storage.string, syntax: syntaxOptions)
+            var parsed = explicitCommandPresentation(storage: storage)
             guard var table = parsed.tables.first(where: { NSLocationInRange(range.location, $0.range) || range.location == NSMaxRange($0.range) }),
                   let current = table.rows.flatMap(\.cells).firstIndex(where: { $0.range == range && $0.column == tableCellColumn }) else { return false }
             var cells = table.rows.flatMap(\.cells)
             if backwards && current == 0 { finishTableCell(); view.window?.makeFirstResponder(view); return true }
             if !backwards && current == cells.count - 1 {
                 guard let edit = MarkdownTableEditingService.edit(in: storage.mutableString, selection: NSRange(location: range.location, length: 0), command: .insertRowAfter) else { return true }
-                let undo = view.undoManager
-                undo?.beginUndoGrouping()
-                isApplyingAutomatedEdit = true
-                if view.shouldChangeText(in: edit.range, replacementString: edit.replacement) {
-                    storage.replaceCharacters(in: edit.range, with: edit.replacement)
-                    view.didChangeText()
-                }
-                isApplyingAutomatedEdit = false
-                undo?.endUndoGrouping()
-                parsed = MarkdownPresentationParser.parse(storage.string, syntax: syntaxOptions)
+                perform(MarkdownEditTransaction(.formatting, range: edit.range, replacement: edit.replacement))
+                parsed = explicitCommandPresentation(storage: storage)
                 guard let updated = parsed.tables.first(where: { $0.range.location == table.range.location }) else { finishTableCell(); return true }
                 table = updated
                 cells = table.rows.flatMap(\.cells)
@@ -2120,7 +2504,7 @@ extension EditorTextView {
             tableCellRange = nil
             markdownPresentation?.tableEditingGeometryChanged(cell: nil)
             tableCellVirtualSeparators = 0
-            return beginTableCell(cells[next].range, frame: frame, cell: cells[next])
+            return beginTableCell(cells[next].range, frame: frame, cell: cells[next], scrollsIntoView: true)
         }
 
         func updateTableCellWritingDirection() {
@@ -2469,23 +2853,17 @@ extension EditorTextView {
             )
             // Текст запроса файловый: адреса data: в нём заменяются токенами.
             let shown = mediaMapEnabled ? document.mediaTable.project(request.text).text : request.text
-            isApplyingAutomatedEdit = true
-            defer { isApplyingAutomatedEdit = false }
-            guard textView.shouldChangeText(
-                in: fullRange,
-                replacementString: shown
-            ) else { return }
-
+            var transaction = MarkdownEditTransaction(.formatting, range: fullRange, replacement: shown)
+            transaction.groupsUndo = false
+            transaction.actionName = request.actionName
+            // Карту сдвигает shouldChangeText, поэтому выделение считается после замены.
+            transaction.afterApply = { [self] in
+                let selection = mediaMapEnabled ? liveMediaMap.displayRange(forSource: request.selectionRange) : request.selectionRange
+                textView.setSelectedRange(selection)
+                textView.scrollRangeToVisible(selection)
+            }
+            guard case .applied = perform(transaction) else { return }
             request.wasHandled = true
-            textView.textStorage?.replaceCharacters(
-                in: fullRange,
-                with: shown
-            )
-            textView.didChangeText()
-            let selection = mediaMapEnabled ? liveMediaMap.displayRange(forSource: request.selectionRange) : request.selectionRange
-            textView.setSelectedRange(selection)
-            textView.scrollRangeToVisible(selection)
-            textView.undoManager?.setActionName(request.actionName)
         }
 
         /// Выделение с токенами для буфера: обычный текст без токенов и настоящий исходник.
@@ -2541,8 +2919,11 @@ extension EditorTextView {
             let previous = view.editSource
             view.editSource = .pasted
             defer { view.editSource = previous }
-            view.breakUndoCoalescing()
-            view.insertText(display, replacementRange: view.selectedRange())
+            let range = view.selectedRange()
+            var transaction = MarkdownEditTransaction(.paste, range: range, replacement: display)
+            transaction.usesTextInput = true
+            transaction.scrollsToSelection = true
+            if case .refused = perform(transaction) { NSSound.beep() }
             return true
         }
 
@@ -2560,7 +2941,7 @@ extension EditorTextView {
             guard selection.location != NSNotFound, selection.location >= 0, selection.length >= 0,
                   selection.location <= storage.length, selection.length <= storage.length - selection.location else { return }
             clipboardCopyTask = Task.detached(priority: .userInitiated) { [weak self] in
-                let blocks = MarkdownPresentationParser.parse(text, isCancelled: { Task.isCancelled }).codeBlocks.filter {
+                let blocks = MarkdownPresentationBuilder.parse(text, isCancelled: { Task.isCancelled }).codeBlocks.filter {
                     selection.length == 0 ? selection.location >= $0.range.location &&
                         (selection.location < NSMaxRange($0.range) || (!$0.isClosed && selection.location == NSMaxRange($0.range) && selection.location == (text as NSString).length))
                         : selection.location >= $0.range.location && NSMaxRange(selection) <= NSMaxRange($0.range)
@@ -2603,15 +2984,6 @@ extension EditorTextView {
                     while end < old.length && old.character(at: end) != 32 && old.character(at: end) != 9 { end += 1 }
                     let replacement = old.substring(to: start) + language + old.substring(from: end)
                     guard replacement != original else { return }
-                    view.breakUndoCoalescing()
-                    let undo = view.undoManager
-                    undo?.beginUndoGrouping()
-                    defer { undo?.endUndoGrouping(); view.breakUndoCoalescing() }
-                    self.isApplyingAutomatedEdit = true
-                    defer { self.isApplyingAutomatedEdit = false }
-                    guard view.shouldChangeText(in: block.infoRange, replacementString: replacement) else { return }
-                    storage.replaceCharacters(in: block.infoRange, with: replacement)
-                    view.didChangeText()
                     let delta = (replacement as NSString).length - block.infoRange.length
                     func translated(_ offset: Int) -> Int {
                         if offset <= block.infoRange.location { return offset }
@@ -2619,8 +2991,10 @@ extension EditorTextView {
                         return block.infoRange.location + min(offset - block.infoRange.location, (replacement as NSString).length)
                     }
                     let selectionStart = translated(selection.location), selectionEnd = translated(NSMaxRange(selection))
-                    view.setSelectedRange(NSRange(location: selectionStart, length: selectionEnd - selectionStart))
-                    undo?.setActionName(L10n.tr("设置代码块语言"))
+                    var transaction = MarkdownEditTransaction(.formatting, range: block.infoRange, replacement: replacement)
+                    transaction.selectionAfter = NSRange(location: selectionStart, length: selectionEnd - selectionStart)
+                    transaction.actionName = L10n.tr("设置代码块语言")
+                    self.perform(transaction)
                 }
             }
         }
@@ -2870,10 +3244,16 @@ extension EditorTextView {
             let previous = view.editSource
             view.editSource = .pasted
             defer { view.editSource = previous }
-            view.breakUndoCoalescing()
-            view.undoManager?.beginUndoGrouping()
-            defer { view.undoManager?.endUndoGrouping(); view.breakUndoCoalescing() }
-            view.insertText(text, replacementRange: view.selectedRange())
+            // Вставленный `data:` попадает в хранилище токеном: подмена до правки, автоправка вложенную не запускает.
+            var inserted = text
+            if mediaMapEnabled, inserted.range(of: "data:", options: .caseInsensitive) != nil {
+                inserted = document.mediaTable.incoming(inserted).text
+            }
+            let range = view.selectedRange()
+            var transaction = MarkdownEditTransaction(.paste, range: range, replacement: inserted)
+            transaction.usesTextInput = true
+            transaction.scrollsToSelection = true
+            if case .refused = perform(transaction) { NSSound.beep() }
         }
 
         nonisolated private static func htmlImageSources(_ html: String, isCancelled: @escaping () -> Bool) -> [String]? {
@@ -3218,6 +3598,111 @@ extension EditorTextView {
                                                wasExplicitSelection: textView.selectedRange().length > 0)
         }
 
+        /// Карта «текст редактора ↔ видимый текст» по актуальному разбору (маркеры считаются скрытыми); nil — разбора нет или он устарел.
+        /// `revealSelection` — раскрывать элементы по текущему выделению (для правок); Writing Tools защищает всё, поэтому передаёт false.
+        private func currentDisplayMap(revealSelection: Bool = true) -> MarkdownDisplayMap? {
+            guard let length = textView?.textStorage?.length, document.language == .markdown, document.isMarkdownFormatted,
+                  let presentation = markdownPresentation?.navigationPresentation(document: document, revision: contentRevision),
+                  presentation.elements.textLength == length else { return nil }
+            // Раскрытие берётся из раскладки (`markdownRevealState`): заголовки и списки раскрыты строкой, inline — элементом, как видит пользователь.
+            // Раскрытая формула или картинка показывает исходник и правится.
+            guard revealSelection else { return MarkdownDisplayMap(presentation: presentation, textLength: length) }
+            let selection = textView?.selectedRange()
+            let state = foldLayoutManager?.markdownRevealState
+            let reveal = MarkdownDisplayMap.Reveal(revealedRange: state?.revealed, inlineSelection: state?.inline, selection: selection)
+            return MarkdownDisplayMap(presentation: presentation, textLength: length, reveal: reveal,
+                                      isReplacementShown: { _, range in !MarkdownDisplayMap.Reveal.touches(range, selection) })
+        }
+
+        /// Отказ, если правка режет токен media (`.protectedMedia`) или задевает защищённую часть адреса / склеивает токен (`.protectedAddress`).
+        /// Те же три проверки, что в `shouldChangeTextCore`, но без побочных эффектов: автоправка вложенную правку не запускает.
+        private func mediaRefusal(range: NSRange, replacement: String, length: Int, unit: (Int) -> UInt16) -> MarkdownEditTransaction.Refusal? {
+            guard mediaMapEnabled, !(range.length == 0 && replacement.isEmpty) else { return nil }
+            let map = liveMediaMap
+            if map.decideEdit(range, replacement: replacement, length: length, unit: unit) != .allow { return .protectedAddress }
+            if map.cutsToken(range) { return .protectedMedia }
+            return !replacement.isEmpty && map.joinsToken(range, replacement: replacement) ? .protectedAddress : nil
+        }
+
+        /// Единый путь программной правки текста: проверки до замены, одна группа отмены, замена через `shouldChangeText`.
+        /// Отказ ничего не меняет и не открывает группу отмены. Сообщения пользователю показывает вызывающий.
+        @discardableResult
+        func perform(_ transaction: MarkdownEditTransaction) -> MarkdownEditTransaction.Outcome {
+            guard let textView, let storage = textView.textStorage, textView.isEditable else { return .refused(.notEditable) }
+            // Ввод в ячейку идёт в дочернем редакторе: его marked text уже проверил `tableCellChanged`.
+            if transaction.reason != .tableCell, textView.hasMarkedText() { return .refused(.markedText) }
+            if let expected = transaction.expectedRevision, expected != contentRevision { return .refused(.staleRevision) }
+            if let refusal = MarkdownEditTransaction.geometryRefusal(transaction.edits, textLength: storage.length) { return .refused(refusal) }
+            let text = storage.mutableString
+            if let original = transaction.expectedOriginal {
+                let current = text.substring(with: transaction.edits[0].range)
+                let same = transaction.suppressUndoRegistration ? current.utf16.elementsEqual(original.utf16) : current == original
+                if !same { return .refused(.textChanged) }
+            }
+            if transaction.reason == .formatting, transaction.edits.allSatisfy({ text.substring(with: $0.range) == $0.replacement }) {
+                return .refused(.unchanged)
+            }
+            let length = storage.length
+            for edit in transaction.edits {
+                if let refusal = mediaRefusal(range: edit.range, replacement: edit.replacement, length: length, unit: { text.character(at: $0) }) {
+                    return .refused(refusal)
+                }
+            }
+            // Граница внутри картинки, формулы или скрытого маркера: только для ответа ИИ и вставки; форматирование намеренно правит маркеры.
+            if transaction.reason == .aiReplacement || transaction.reason == .paste, let map = currentDisplayMap(),
+               case let .forbidden(restriction) = map.editability(ofSource: transaction.edits[0].range) {
+                switch restriction {
+                case .insideReplacement(_, let source): return .refused(.insideReplacement(source))
+                case .insideHiddenSyntax(let owner): return .refused(.insideHiddenSyntax(owner))
+                default: break
+                }
+            }
+            if transaction.groupsUndo { textView.breakUndoCoalescing(); textView.undoManager?.beginUndoGrouping() }
+            if transaction.suppressUndoRegistration { textView.undoManager?.disableUndoRegistration() }
+            defer {
+                if transaction.suppressUndoRegistration { textView.undoManager?.enableUndoRegistration() }
+                if transaction.groupsUndo { textView.undoManager?.endUndoGrouping(); textView.breakUndoCoalescing() }
+            }
+            // Регистрируется первым в группе, до `shouldChangeText` (там NSTextView записывает отмену текста): при отмене действия
+            // идут в обратном порядке, и выделение ставится уже после отката текста. Отдельная цель-метка позволяет снять запись,
+            // если система правку отклонит: отказ не оставляет в группе шаг отмены. Метку удерживает само замыкание:
+            // UndoManager хранит цель без сильной ссылки.
+            let selectionUndoToken = NSObject()
+            if let before = transaction.selectionBefore, !transaction.suppressUndoRegistration {
+                textView.undoManager?.registerUndo(withTarget: selectionUndoToken) { [weak textView, selectionUndoToken] _ in
+                    _ = selectionUndoToken
+                    guard let textView else { return }
+                    if NSMaxRange(before) <= (textView.textStorage?.length ?? 0) { textView.setSelectedRange(before) }
+                }
+            }
+            // `insertText` об отказе не сообщает; `selectionBefore` здесь не задают (форматирование идёт путём ниже).
+            if transaction.usesTextInput, transaction.edits.count == 1 {
+                let edit = transaction.edits[0]
+                textView.insertText(edit.replacement, replacementRange: edit.range)
+                if transaction.scrollsToSelection { textView.scrollRangeToVisible(textView.selectedRange()) }
+                transaction.afterApply?()
+                if let actionName = transaction.actionName { textView.undoManager?.setActionName(actionName) }
+                return .applied(NSRange(location: edit.range.location, length: (edit.replacement as NSString).length))
+            }
+            isApplyingAutomatedEdit = true
+            defer { isApplyingAutomatedEdit = false }
+            for (index, edit) in transaction.edits.enumerated() {
+                guard textView.shouldChangeText(in: edit.range, replacementString: edit.replacement) else {
+                    if index == 0 { textView.undoManager?.removeAllActions(withTarget: selectionUndoToken) }
+                    return .refused(.rejectedByTextSystem)
+                }
+                storage.replaceCharacters(in: edit.range, with: edit.replacement)
+                if index == transaction.edits.count - 1 { transaction.afterReplace?() }
+                textView.didChangeText()
+            }
+            if let selection = transaction.selectionAfter { textView.setSelectedRange(selection) }
+            if transaction.scrollsToSelection { textView.scrollRangeToVisible(transaction.selectionAfter ?? textView.selectedRange()) }
+            transaction.afterApply?()
+            if let actionName = transaction.actionName { textView.undoManager?.setActionName(actionName) }
+            let last = transaction.edits[transaction.edits.count - 1]
+            return .applied(NSRange(location: last.range.location, length: (last.replacement as NSString).length))
+        }
+
         private func apply(
             _ request: EditorRangeReplacementRequest,
             to textView: LacTextView
@@ -3303,47 +3788,41 @@ extension EditorTextView {
             // Выполняется последним (после enableUndoRegistration): removeAllActions сам снимает запрет записи отмены.
             var clearsVaultUndo = false
             defer { if clearsVaultUndo { textView.undoManager?.removeAllActions() } }
-            if request.groupsUndo { textView.breakUndoCoalescing(); textView.undoManager?.beginUndoGrouping() }
-            if request.suppressUndoRegistration { textView.undoManager?.disableUndoRegistration() }
-            defer {
-                if request.suppressUndoRegistration { textView.undoManager?.enableUndoRegistration() }
-                if request.groupsUndo { textView.undoManager?.endUndoGrouping(); textView.breakUndoCoalescing() }
+            var transaction = MarkdownEditTransaction(.aiReplacement, range: range, replacement: replacementText)
+            transaction.expectedRevision = request.expectedEditorRevision
+            // Для `.source` текст по диапазону с токенами сверен выше после restore.
+            if request.space == .display { transaction.expectedOriginal = request.originalText }
+            transaction.groupsUndo = request.groupsUndo
+            transaction.suppressUndoRegistration = request.suppressUndoRegistration
+            transaction.actionName = request.actionName
+            let replacementRange = NSRange(location: range.location, length: (replacementText as NSString).length)
+            // Карту к этому моменту уже сдвинул shouldChangeText.
+            transaction.afterApply = { [self] in
+                let selected = request.resultingSelection.map {
+                    request.space == .source ? liveMediaMap.displayRange(forSource: $0) : $0
+                } ?? replacementRange
+                textView.setSelectedRange(selected)
+                textView.scrollRangeToVisible(selected)
+                if request.suppressUndoRegistration, let manager = textView.undoManager, let register = request.registerImageFileUndo {
+                    manager.enableUndoRegistration()
+                    register(manager, textView)
+                    manager.disableUndoRegistration()
+                }
             }
-            isApplyingAutomatedEdit = true
-            defer { isApplyingAutomatedEdit = false }
             vaultServerGuard?.allowsServerUpdate = true
             defer { vaultServerGuard?.allowsServerUpdate = false }
-            guard textView.shouldChangeText(
-                in: range,
-                replacementString: replacementText
-            ) else {
+            switch perform(transaction) {
+            case .applied:
+                request.wasHandled = true
+                // История отмены страницы хранит только правки внутри раздела: серверный текст отменять нельзя (кэш раздела обновил textDidChange).
+                if vaultServerGuard != nil { clearsVaultUndo = true }
+            case .refused(.rejectedByTextSystem), .refused(.protectedAddress), .refused(.notEditable), .refused(.markedText):
                 request.failureMessage = vaultPageDenialMessage() ?? L10n.tr("当前文本无法修改")
-                return
+            case .refused(.staleRevision):
+                request.failureMessage = L10n.tr("编辑内容已变化，请重新执行转换")
+            case .refused:
+                request.failureMessage = L10n.tr("原文位置已变化，请重新执行转换")
             }
-            request.wasHandled = true
-            storage.replaceCharacters(
-                in: range,
-                with: replacementText
-            )
-            textView.didChangeText()
-            // История отмены страницы хранит только правки внутри раздела: серверный текст отменять нельзя (кэш раздела обновил textDidChange).
-            if vaultServerGuard != nil { clearsVaultUndo = true }
-            let replacementRange = NSRange(
-                location: range.location,
-                length: (replacementText as NSString).length
-            )
-            // Карту к этому моменту уже сдвинул shouldChangeText.
-            let selected = request.resultingSelection.map {
-                request.space == .source ? liveMediaMap.displayRange(forSource: $0) : $0
-            } ?? replacementRange
-            textView.setSelectedRange(selected)
-            textView.scrollRangeToVisible(selected)
-            if request.suppressUndoRegistration, let manager = textView.undoManager, let register = request.registerImageFileUndo {
-                manager.enableUndoRegistration()
-                register(manager, textView)
-                manager.disableUndoRegistration()
-            }
-            textView.undoManager?.setActionName(request.actionName)
         }
 
         func updateMarkdownVerticalWriting(_ vertical: Bool) {
@@ -3556,6 +4035,34 @@ extension EditorTextView {
             return filterSmartSubstitutions(results, options: options)
         }
 
+        func textViewWritingToolsWillBegin(_ view: NSTextView) {
+            guard view === textView else { return }
+            isWritingToolsSession = true
+            textView?.breakUndoCoalescing()
+            endEmojiCompletion()
+            endWikiCompletion()
+            cancelAICompletion()
+            finishTableCell()
+        }
+
+        func textViewWritingToolsDidEnd(_ view: NSTextView) {
+            guard view === textView else { return }
+            isWritingToolsSession = false
+            textView?.breakUndoCoalescing()
+        }
+
+        /// Участки, которые Writing Tools нельзя менять: токены media, скрытые маркеры и замены, код, формулы, HTML, таблицы.
+        func textView(_ view: NSTextView, writingToolsIgnoredRangesInEnclosingRange enclosingRange: NSRange) -> [NSValue] {
+            guard view === textView, document.language == .markdown, let storage = view.textStorage else { return [] }
+            let text = storage.mutableString
+            let presentation = markdownPresentation?.navigationPresentation(document: document, revision: contentRevision)
+            let excluded = presentation.map { $0.elements.textLength == storage.length ? $0.elements.excludedRanges(intersecting: enclosingRange) : [] } ?? []
+            return MarkdownEditTransaction.protectedRanges(
+                in: enclosingRange, textLength: storage.length, mediaMap: mediaMapEnabled ? liveMediaMap : MarkdownMediaMap(),
+                unit: { text.character(at: $0) }, displayMap: currentDisplayMap(revealSelection: false), excluded: excluded
+            ).map { NSValue(range: $0) }
+        }
+
         private func scheduleEmojiCompletion() {
             guard emojiCompletionRequested, isActive, currentLanguage == .markdown, document.language == .markdown, document.ioState == .idle,
                   let parent = textView, !parent.hasMarkedText(), parent.completionText == nil, parent.wikiCompletionRange == nil else { return }
@@ -3735,9 +4242,9 @@ extension EditorTextView {
                 markdownPresentation?.setMathOptions(mathOptions)
                 markdownPresentation?.emojiCompletionReady = { [weak self] in self?.scheduleEmojiCompletion() }
                 markdownPresentation?.parsedResultDidChange = { [weak self] in
+                    self?.reopenPendingTableCell()
                     guard let self, let range = self.visibleHighlightRange() else { return }
-                    self.reapplyCriticColors(in: range)
-                    self.reapplyObsidianCommentColors(in: range)
+                    self.reapplyDecorationColors(in: range)
                     self.reapplyVaultPageDim(in: range)
                 }
                 markdownPresentation?.wikiCompletionReady = { [weak self] in self?.scheduleWikiCompletion() }
@@ -4235,6 +4742,10 @@ extension EditorTextView {
             // Страховка: правка мимо shouldChangeText (insertBacktab, возможно undo и IME) меняет длину без сдвига карты.
             // Отмена и повтор могут заменить токен токеном той же длины: длина не меняется, карту пересобираем всегда.
             let undoing = textView?.undoManager?.isUndoing == true || textView?.undoManager?.isRedoing == true
+            // Откат правки в таблице возвращает каретку в её ячейку (выделение откатов ставится позже, поэтому на следующем проходе).
+            if undoing, tableCellEditor == nil, document.language == .markdown, document.isMarkdownFormatted {
+                DispatchQueue.main.async { [weak self] in self?.armTableReopen(scrollsIntoView: true) }
+            }
             if mediaMapEnabled, let length = textView?.textStorage?.length,
                length != mediaMapLength || undoing {
                 mediaMapStale = true
@@ -4527,25 +5038,50 @@ extension EditorTextView {
         }
 
         /// Каретка и выделение не заходят внутрь токена media: точка уходит к краю, диапазон расширяется до краёв.
+        /// Затем каретка от клика или шага ↑/↓ привязывается к границе цепочки скрытых Markdown-маркеров.
         func textView(
             _ textView: NSTextView,
             willChangeSelectionFromCharacterRange oldSelectedCharRange: NSRange,
             toCharacterRange newSelectedCharRange: NSRange
         ) -> NSRange {
-            guard mediaMapEnabled, !mediaMap.isEmpty || mediaMapStale, textView === self.textView,
-                  !isApplyingExternalUpdate, !textView.hasMarkedText() else { return newSelectedCharRange }
-            return liveMediaMap.snappedRange(newSelectedCharRange, from: oldSelectedCharRange)
+            guard textView === self.textView, !isApplyingExternalUpdate, !textView.hasMarkedText() else { return newSelectedCharRange }
+            var proposed = newSelectedCharRange
+            if mediaMapEnabled, !mediaMap.isEmpty || mediaMapStale {
+                proposed = liveMediaMap.snappedRange(proposed, from: oldSelectedCharRange)
+            }
+            return markdownSettledSelection(proposed)
         }
 
         func textView(_ textView: NSTextView,
                       willChangeSelectionFromCharacterRanges oldRanges: [NSValue],
                       toCharacterRanges newRanges: [NSValue]) -> [NSValue] {
-            guard mediaMapEnabled, !mediaMap.isEmpty || mediaMapStale, textView === self.textView,
-                  !isApplyingExternalUpdate, !textView.hasMarkedText(), oldRanges.count == newRanges.count else { return newRanges }
-            let map = liveMediaMap
-            return newRanges.enumerated().map {
-                NSValue(range: map.snappedRange($0.element.rangeValue, from: oldRanges[$0.offset].rangeValue))
+            guard textView === self.textView, !isApplyingExternalUpdate, !textView.hasMarkedText(),
+                  oldRanges.count == newRanges.count else { return newRanges }
+            var result = newRanges
+            if mediaMapEnabled, !mediaMap.isEmpty || mediaMapStale {
+                let map = liveMediaMap
+                result = newRanges.enumerated().map {
+                    NSValue(range: map.snappedRange($0.element.rangeValue, from: oldRanges[$0.offset].rangeValue))
+                }
             }
+            if result.count == 1 { result = [NSValue(range: markdownSettledSelection(result[0].rangeValue))] }
+            return result
+        }
+
+        /// Только каретка и только от указателя или вертикального движения: стрелки влево/вправо, поиск, форматирование и VoiceOver получают точную позицию.
+        private func markdownSettledSelection(_ proposed: NSRange) -> NSRange {
+            guard proposed.length == 0, proposed.location != NSNotFound, let view = textView, view.isPointerTracking || view.isVerticalMove,
+                  document.language == .markdown, document.isMarkdownFormatted, !document.isReadingMode,
+                  let settled = markdownPresentation?.settledCaret(proposed.location) else { return proposed }
+            return NSRange(location: settled, length: 0)
+        }
+
+        /// Кнопка мыши отпущена: применяется отложенное раскрытие, остальное обновляется как при обычной смене выделения.
+        func pointerTrackingEnded() {
+            guard markdownPresentation?.pointerTrackingEnded() == true else { return }
+            textView?.needsDisplay = true
+            invalidateEntireRuler(displayImmediately: true, invalidateLineMap: false)
+            updateCursor()
         }
 
         private func shouldChangeTextCore(
@@ -4556,6 +5092,8 @@ extension EditorTextView {
             let shouldChangeSignpostID = OSSignpostID(log: editorPerformanceLog)
             os_signpost(.begin, log: editorPerformanceLog, name: "EditorShouldChangeText", signpostID: shouldChangeSignpostID)
             defer { os_signpost(.end, log: editorPerformanceLog, name: "EditorShouldChangeText", signpostID: shouldChangeSignpostID) }
+            // Правки Writing Tools идут обычным путём, но считаются автоматическими: без вложенных правок, нормализации списка и ответвлений emoji/wiki.
+            let automated = isApplyingAutomatedEdit || isWritingToolsSession
             tableAccessibilityVirtualTarget = nil
             if tableCellEditor != nil && !applyingTableCell { finishTableCell() }
             clearFold()
@@ -4564,7 +5102,7 @@ extension EditorTextView {
             clearFindHighlights()
             let replacement = replacementString ?? ""
             guard let nsText = textView.textStorage?.mutableString else { return false }
-            if !isApplyingAutomatedEdit, let view = textView as? LacTextView, view.editSource == .typed, !view.hasMarkedText() {
+            if !automated, let view = textView as? LacTextView, view.editSource == .typed, !view.hasMarkedText() {
                 if replacement == ":" {
                     if emojiCompletionRequested { endEmojiCompletion() }
                     else { emojiCompletionRequested = true; markdownPresentation?.beginEmojiCompletion() }
@@ -4572,7 +5110,7 @@ extension EditorTextView {
                     endEmojiCompletion()
                 }
             } else if emojiCompletionRequested && !applyingTableCell { endEmojiCompletion() }
-            if !isApplyingAutomatedEdit, let view = textView as? LacTextView, view.editSource == .typed, !view.hasMarkedText(), tableCellEditor == nil {
+            if !automated, let view = textView as? LacTextView, view.editSource == .typed, !view.hasMarkedText(), tableCellEditor == nil {
                 if !wikiCompletionRequested, replacement == "[" || replacement == "[]", document.language == .markdown, affectedCharRange.length == 0,
                    affectedCharRange.location > 0, affectedCharRange.location <= nsText.length,
                    nsText.character(at: affectedCharRange.location - 1) == 91 {
@@ -4604,7 +5142,7 @@ extension EditorTextView {
                         NSSound.beep()
                         return false
                     }
-                    if isApplyingAutomatedEdit { return false }
+                    if automated { return false }
                     textView.insertText(replacement, replacementRange: covering)
                     return false
                 }
@@ -4619,7 +5157,7 @@ extension EditorTextView {
                     return false
                 }
                 // Автоправка (ответ ИИ, замена) вложенную правку не запускает: текст не меняется, вызывающий покажет свою ошибку.
-                if isApplyingAutomatedEdit { return false }
+                if automated { return false }
                 // У ручной правки флаг не ставится: вложенная идёт тем же путём, что обычная печать или удаление.
                 textView.insertText(replacement, replacementRange: liveMediaMap.coveringRange(safeRange))
                 return false
@@ -4638,7 +5176,7 @@ extension EditorTextView {
                     return false
                 }
             }
-            if !isApplyingAutomatedEdit, (textView as? LacTextView)?.editSource == .typed { deferSelectionUpdateForTypedEdit() }
+            if !automated, (textView as? LacTextView)?.editSource == .typed { deferSelectionUpdateForTypedEdit() }
             let replacementLength = (replacement as NSString).length
             if aiCompletionKeep == nil { cancelAICompletion() }
             contentRevision &+= 1
@@ -4663,13 +5201,13 @@ extension EditorTextView {
             delimiterMatchingContext.invalidate(after: safeRange.location)
             liveTextSnapshot = nil
             cancelDelimiterMatch(clearHighlight: true)
-            if !isApplyingAutomatedEdit {
+            if !automated {
                 listNormalizationWorkItem?.cancel()
                 listNormalizationQueue.cancelAllOperations()
                 document.taskCoordinator.cancel(.listNormalization)
             }
 
-            if !isApplyingAutomatedEdit {
+            if !automated {
                 captureOffscreenSelectionPosition(
                     in: textView,
                     affectedRange: safeRange,
@@ -4677,7 +5215,7 @@ extension EditorTextView {
                 )
             }
 
-            if isApplyingAutomatedEdit {
+            if automated {
                 markdownPresentation?.beforeEdit(range: safeRange, replacementLength: replacementLength)
                 lineIndex.applyEdit(
                     range: safeRange,
@@ -5372,8 +5910,7 @@ extension EditorTextView {
             )
             markdownPresentation?.reapplyCodeColors(in: range)
             markdownPresentation?.reapplyLinkColors(in: range)
-            reapplyCriticColors(in: range)
-            reapplyObsidianCommentColors(in: range)
+            reapplyDecorationColors(in: range)
             reapplyVaultPageDim(in: range)
             os_signpost(
                 .end,
@@ -5475,8 +6012,7 @@ extension EditorTextView {
             )
             markdownPresentation?.reapplyCodeColors(in: range)
             markdownPresentation?.reapplyLinkColors(in: range)
-            reapplyCriticColors(in: range)
-            reapplyObsidianCommentColors(in: range)
+            reapplyDecorationColors(in: range)
             reapplyVaultPageDim(in: range)
         }
 
@@ -5624,69 +6160,11 @@ extension EditorTextView {
             )
         }
 
-        private func criticColor(_ kind: CriticMarkupKind) -> NSColor {
-            switch kind {
-            case .insertion: .lacCriticInsertText
-            case .deletion: .lacCriticDeleteText
-            case .substitution: .lacCriticSubstituteText
-            case .comment: .lacCriticCommentText
-            case .highlight: .lacCriticHighlightText
-            }
-        }
-
-        /// Цвет правок CriticMarkup поверх подсветки синтаксиса; без готового разбора ничего не меняет.
-        /// Устаревший цвет снимает следующий проход подсветки: координаты прежних правок после ввода не хранятся.
-        private func reapplyCriticColors(in range: NSRange) {
-            guard isActive, document.language == .markdown, !document.isLargeFileMode, !document.hasPendingLiveEdits,
-                  let textView, !textView.hasMarkedText(), let layoutManager = textView.layoutManager,
-                  let storage = textView.textStorage,
-                  let index = markdownPresentation?.criticElementIndex(document: document, revision: contentRevision, textLength: storage.length)
-            else { return }
-            let bounded = NSIntersectionRange(range, NSRange(location: 0, length: storage.length))
-            guard bounded.length > 0 else { return }
-            let text = storage.mutableString
-            let window = CriticMarkupService.paragraphRange(containing: bounded, in: text)
-            guard text.range(of: "{", options: .literal, range: window).location != NSNotFound else { return }
-            let items = CriticMarkupService.items(in: text, window: window, excluded: index.excludedRanges(intersecting: window))
-                .filter { NSIntersectionRange($0.range, bounded).length > 0 }
-            guard !items.isEmpty else { return }
+        /// Цвета правок CriticMarkup и комментариев `%%` из разбора контроллера; запоминает, что их нужно снять при смене режима.
+        private func reapplyDecorationColors(in range: NSRange) {
+            guard markdownPresentation?.reapplyDecorationColors(in: range) == true else { return }
             hasCriticColors = true
             if !document.isSyntaxHighlightingEnabled { clearsDisabledSyntaxOnScroll = true }
-            for item in items {
-                layoutManager.addTemporaryAttribute(.foregroundColor, value: criticColor(item.kind),
-                                                    forCharacterRange: NSIntersectionRange(item.range, bounded))
-            }
-        }
-
-        /// Приглушает комментарии Obsidian `%%…%%` заметок хранилища поверх подсветки; текст остаётся видимым. Диапазоны считаются один раз на версию текста
-        /// после готового разбора; в очень длинных текстах приглушение отключено (многострочным комментариям нужен полный проход).
-        private func reapplyObsidianCommentColors(in range: NSRange) {
-            guard isActive, document.language == .markdown, !document.isLargeFileMode, !document.hasPendingLiveEdits,
-                  let textView, !textView.hasMarkedText(), let layoutManager = textView.layoutManager,
-                  let storage = textView.textStorage, storage.length <= 300_000,
-                  MarkdownObsidianComment.appliesTo(documentURL: document.url),
-                  let index = markdownPresentation?.criticElementIndex(document: document, revision: contentRevision, textLength: storage.length)
-            else { return }
-            let bounded = NSIntersectionRange(range, NSRange(location: 0, length: storage.length))
-            guard bounded.length > 0 else { return }
-            let text = storage.mutableString
-            let comments: [NSRange]
-            if let cache = obsidianCommentCache, cache.revision == contentRevision {
-                comments = cache.ranges
-            } else {
-                let whole = NSRange(location: 0, length: storage.length)
-                comments = MarkdownObsidianComment.mayContainComment(text)
-                    ? MarkdownObsidianComment.ranges(in: text, excluded: index.excludedRanges(intersecting: whole)) : []
-                obsidianCommentCache = (contentRevision, comments)
-            }
-            let visible = comments.filter { NSIntersectionRange($0, bounded).length > 0 }
-            guard !visible.isEmpty else { return }
-            hasCriticColors = true
-            if !document.isSyntaxHighlightingEnabled { clearsDisabledSyntaxOnScroll = true }
-            for comment in visible {
-                layoutManager.addTemporaryAttribute(.foregroundColor, value: NSColor.lacCommentText,
-                                                    forCharacterRange: NSIntersectionRange(comment, bounded))
-            }
         }
 
         /// Приглушает текст вне раздела «Owner Notes» собранной страницы хранилища поверх подсветки.

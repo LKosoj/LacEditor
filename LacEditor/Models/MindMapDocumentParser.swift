@@ -25,7 +25,7 @@ enum MindMapDocumentParser {
         var raws: [Raw] = []
         var truncated = false
         var position = 0
-        if let front = MarkdownPresentationParser.frontMatter(text) { position = NSMaxRange(front.range) }
+        if let front = MarkdownFrontMatter.frontMatter(text) { position = NSMaxRange(front.range) }
 
         var fence: (character: unichar, count: Int)?
         var headingLevel = 0

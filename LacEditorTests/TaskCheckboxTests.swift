@@ -6,24 +6,24 @@ import XCTest
 final class TaskCheckboxTests: XCTestCase {
     func testParserFindsOnlyConfirmedMarkers() {
         let text = "中文😀\r\n\r\n- [ ] a\r\n  - [x] b\r\n> - [X] c\r\n\r\n`- [x] code`\r\n\\- [x] escaped"
-        let boxes = MarkdownPresentationParser.parse(text).taskCheckboxes
+        let boxes = MarkdownPresentationBuilder.parse(text).taskCheckboxes
         XCTAssertEqual(boxes.count, 3)
         let source = text as NSString
         XCTAssertEqual(boxes.map { source.substring(with: $0.markerRange) }, ["[ ]", "[x]", "[X]"])
         XCTAssertEqual(boxes.map { source.substring(with: $0.stateRange) }, [" ", "x", "X"])
-        XCTAssertEqual(MarkdownPresentationParser.parse("-\t[x] tabs").taskCheckboxes.first?.markerRange, NSRange(location: 2, length: 3))
-        let uppercase = MarkdownPresentationParser.parse("- [X] completed").taskCheckboxes
+        XCTAssertEqual(MarkdownPresentationBuilder.parse("-\t[x] tabs").taskCheckboxes.first?.markerRange, NSRange(location: 2, length: 3))
+        let uppercase = MarkdownPresentationBuilder.parse("- [X] completed").taskCheckboxes
         XCTAssertEqual(uppercase.first?.state, 88)
         let quoted = "> - [x] quoted" as NSString
-        let quotedBox = MarkdownPresentationParser.parse(quoted as String).taskCheckboxes.first
+        let quotedBox = MarkdownPresentationBuilder.parse(quoted as String).taskCheckboxes.first
         XCTAssertEqual(quotedBox?.markerRange, quoted.range(of: "[x]"))
-        XCTAssertEqual(quotedBox?.state, MarkdownPresentationParser.parse("- [x] plain").taskCheckboxes.first?.state)
+        XCTAssertEqual(quotedBox?.state, MarkdownPresentationBuilder.parse("- [x] plain").taskCheckboxes.first?.state)
         let nested = "> > - [ ] nested\r\n> >   - [X] child" as NSString
-        let nestedBoxes = MarkdownPresentationParser.parse(nested as String).taskCheckboxes
+        let nestedBoxes = MarkdownPresentationBuilder.parse(nested as String).taskCheckboxes
         XCTAssertEqual(nestedBoxes.map(\.markerRange), [nested.range(of: "[ ]"), nested.range(of: "[X]")])
         XCTAssertEqual(nestedBoxes.map(\.state), [32, 88])
         for text in ["> - \\[x] escaped", "> - [q] other", "> - [x]word", "> ```\n> - [x] code\n> ```"] {
-            XCTAssertTrue(MarkdownPresentationParser.parse(text).taskCheckboxes.isEmpty, text)
+            XCTAssertTrue(MarkdownPresentationBuilder.parse(text).taskCheckboxes.isEmpty, text)
         }
     }
 
@@ -31,7 +31,7 @@ final class TaskCheckboxTests: XCTestCase {
         for source in ["-\t[ ] 中文😀", "> -\t[x] 中文😀", "- parent\r\n\t- [X] 中文😀",
                        "- [x] 中文\tbody", "- [ ]\tbody", "> - [x]\tbody"] {
             let raw = source as NSString
-            let boxes = MarkdownPresentationParser.parse(source).taskCheckboxes
+            let boxes = MarkdownPresentationBuilder.parse(source).taskCheckboxes
             XCTAssertEqual(boxes.count, 1, source)
             guard let checkbox = boxes.first else { continue }
             let marker = ["[ ]", "[x]", "[X]"].map { raw.range(of: $0) }.first { $0.location != NSNotFound }!
@@ -40,7 +40,7 @@ final class TaskCheckboxTests: XCTestCase {
             XCTAssertEqual(checkbox.state, raw.character(at: marker.location + 1), source)
         }
         for source in ["-\t  [x] code", "> -\t    [x] code", "> -     [x] code", "> -\t[q] other", "> -\t[x]word"] {
-            XCTAssertTrue(MarkdownPresentationParser.parse(source).taskCheckboxes.isEmpty, source)
+            XCTAssertTrue(MarkdownPresentationBuilder.parse(source).taskCheckboxes.isEmpty, source)
         }
     }
 

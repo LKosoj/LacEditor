@@ -132,7 +132,7 @@ final class MarkdownImageEditingTests: XCTestCase {
         let input = MarkdownImageInput(alt: "文]😀 *&", address: "img/%E5%9B%BE%20%281%29.png", title: "title \"q\"")
         let edit = try XCTUnwrap(MarkdownImageEditingService.edit(in: source, selection: selected, input: input))
         let result = source.replacingCharacters(in: edit.range, with: edit.replacement)
-        XCTAssertTrue(MarkdownRenderer.render(result, darkMode: false).contains("<img"))
+        XCTAssertTrue(MarkdownHTMLRenderer.render(result, darkMode: false).contains("<img"))
         let image = try XCTUnwrap(MarkdownImageEditingService.initial(in: result as NSString, selection: NSRange(location: edit.range.location + 2, length: 0)))
         XCTAssertEqual(image, input)
         XCTAssertEqual((result as NSString).substring(with: edit.selectionRange), "文\\]😀 \\*\\&")
@@ -163,5 +163,65 @@ final class MarkdownImageEditingTests: XCTestCase {
         XCTAssertNil(MarkdownImageEditingService.edit(in: "😀" as NSString, selection: NSRange(location: 1, length: 0), input: empty))
         XCTAssertNil(MarkdownImageEditingService.edit(in: "" as NSString, selection: NSRange(location: 0, length: 0), input: MarkdownImageInput(alt: "a", address: "", title: "")))
         XCTAssertNil(MarkdownImageEditingService.edit(in: "" as NSString, selection: NSRange(location: 0, length: 0), input: MarkdownImageInput(alt: "a\nb", address: "x", title: "")))
+    }
+
+    // Подпись с выделением, кодом или переносом строки не правится; простая (с кириллицей и эмодзи) правится.
+    func testImageWithNestedAltMarkupIsNotEdited() throws {
+        for alt in ["**жирная** 😀", "`код` и 中文", "первая\nвторая"] {
+            let source = "![\(alt)](pic.png)" as NSString
+            let caret = NSRange(location: 3, length: 0)
+            XCTAssertNil(MarkdownImageEditingService.initial(in: source, selection: caret), alt)
+        }
+        let plain = "до ![подпись 中文😀](pic.png \"т\") после" as NSString
+        let initial = try XCTUnwrap(MarkdownImageEditingService.initial(in: plain, selection: NSRange(location: plain.range(of: "подпись").location, length: 0)))
+        XCTAssertEqual(initial, MarkdownImageInput(alt: "подпись 中文😀", address: "pic.png", title: "т"))
+    }
+
+    // Скобка в подписи — отказ (определение `[b]: …` документа потерялось бы); экранированная скобка допустима.
+    func testImageAltWithBracketsIsRefusedUnlessEscaped() throws {
+        let linked = "![a [b] c](x)\n\n[b]: http://z" as NSString
+        XCTAssertNil(MarkdownImageEditingService.initial(in: linked, selection: NSRange(location: 3, length: 0)))
+        let escaped = "![a \\] b](pic.png)" as NSString
+        XCTAssertEqual(MarkdownImageEditingService.initial(in: escaped, selection: NSRange(location: 3, length: 0))?.address, "pic.png")
+        let crlf = "ñ中文\r\n![a *b*](x)" as NSString
+        XCTAssertNil(MarkdownImageEditingService.initial(in: crlf, selection: NSRange(location: crlf.range(of: "a *").location, length: 0)))
+    }
+
+    // Внутри картинки cmark формулу не создаёт: `$…$` в подписи — обычный текст, подпись правится, как в панели.
+    func testImageAltWithFormulaIsEditedAsPlainTextLikePanel() throws {
+        let s = "до ![E=$mc^2$ 中文😀](p.png \"т\") после" as NSString
+        let caret = NSRange(location: s.range(of: "E=").location, length: 0)
+        XCTAssertEqual(MarkdownImageEditingService.initial(in: s, selection: caret),
+                       MarkdownImageInput(alt: "E=$mc^2$ 中文😀", address: "p.png", title: "т"))
+        let edit = try XCTUnwrap(MarkdownImageEditingService.edit(in: s, selection: caret,
+            input: MarkdownImageInput(alt: "E=$mc^2$ 中文😀", address: "q.png", title: "")))
+        XCTAssertEqual(s.replacingCharacters(in: edit.range, with: edit.replacement), "до ![E=$mc^2$ 中文😀](<q.png>) после")
+        XCTAssertEqual((s.replacingCharacters(in: edit.range, with: edit.replacement) as NSString).substring(with: edit.selectionRange), "E=$mc^2$ 中文😀")
+
+        let crlf = "ñ中文\r\n![E=$mc^2$](p.png)" as NSString
+        let crlfCaret = NSRange(location: crlf.range(of: "E=").location, length: 0)
+        XCTAssertEqual(MarkdownImageEditingService.initial(in: crlf, selection: crlfCaret)?.alt, "E=$mc^2$")
+        let crlfEdit = try XCTUnwrap(MarkdownImageEditingService.edit(in: crlf, selection: crlfCaret,
+            input: MarkdownImageInput(alt: "E=$mc^2$", address: "q.png", title: "")))
+        XCTAssertEqual(crlfEdit.range.location, crlf.range(of: "![").location)
+        XCTAssertEqual(crlfEdit.replacement, "![E=$mc^2$](<q.png>)")
+
+        XCTAssertTrue(MarkdownHTMLRenderer.render("![E=$mc^2$](p.png)", darkMode: false).contains("alt=\"E=$mc^2$\""))
+
+        for alt in ["a $*b*$", "a $`код`$", "a {++b++}", "a {--b--}", "я {++中文😀++} z", "$x$ [b]", "a $b$\nc"] {
+            let source = "![\(alt)](x)" as NSString
+            XCTAssertNil(MarkdownImageEditingService.initial(in: source, selection: NSRange(location: 3, length: 0)), alt)
+        }
+    }
+
+    // Подпись берётся буквально: типографские замены (`'`, `"`, `--`, `...`) не попадают ни в диалог, ни в сохранённый текст.
+    func testImageAltKeepsLiteralPunctuation() throws {
+        let alt = "Bob's \"x\" -- y... 中文😀"
+        let s = "ñ\r\n![\(alt)](p.png)" as NSString
+        let caret = NSRange(location: s.range(of: "Bob").location, length: 0)
+        XCTAssertEqual(MarkdownImageEditingService.initial(in: s, selection: caret), MarkdownImageInput(alt: alt, address: "p.png", title: ""))
+        let edit = try XCTUnwrap(MarkdownImageEditingService.edit(in: s, selection: caret,
+            input: MarkdownImageInput(alt: alt, address: "p.png", title: "")))
+        XCTAssertEqual(s.replacingCharacters(in: edit.range, with: edit.replacement), "ñ\r\n![\(alt)](<p.png>)")
     }
 }

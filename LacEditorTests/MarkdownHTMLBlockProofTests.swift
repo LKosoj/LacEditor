@@ -10,7 +10,7 @@ final class MarkdownHTMLBlockProofTests: XCTestCase {
                       "<div><span style='display:none;color:red'>visible</span></div>"] {
             for prefix in ["", "> "] {
                 let source = ("before\r\n\r\n" + prefix + block + "\r\n\r\nafter") as NSString
-                let result = MarkdownPresentationParser.parse(source as String)
+                let result = MarkdownPresentationBuilder.parse(source as String)
                 let candidate = try XCTUnwrap(result.htmlBlocks.first, source as String)
                 XCTAssertEqual(source.substring(with: candidate.range), block)
                 XCTAssertFalse(candidate.html.contains("display:none"))
@@ -24,7 +24,7 @@ final class MarkdownHTMLBlockProofTests: XCTestCase {
                       "<div onclick='evil()'>text</div>", "<div><span style='position:fixed'>text</span></div>",
                       "<div><script>bad()</script></div>", "<div><p>bad</div></p>",
                       "<div><a href='javascript:alert(1)'>bad</a></div>"] {
-            XCTAssertTrue(MarkdownPresentationParser.parse(block).htmlBlocks.isEmpty, block)
+            XCTAssertTrue(MarkdownPresentationBuilder.parse(block).htmlBlocks.isEmpty, block)
         }
     }
 

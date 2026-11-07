@@ -216,9 +216,9 @@ final class MarkdownSectionMoveTests: XCTestCase {
     }
 
     func testParserMarksTopLevelHeadings() {
-        let parsed = MarkdownPresentationParser.parse("> # Q\n\n- # L\n\n# T\n").headings
+        let parsed = MarkdownPresentationBuilder.parse("> # Q\n\n- # L\n\n# T\n").headings
         XCTAssertEqual(parsed.map(\.isTopLevel), [false, false, true])
-        let numbered = MarkdownPresentationParser.parse("> # Q\n\n# T\n").numberingHeadings(true).headings
+        let numbered = MarkdownPresentationBuilder.parse("> # Q\n\n# T\n").numberingHeadings(true).headings
         XCTAssertEqual(numbered.map(\.isTopLevel), [false, true])
     }
 

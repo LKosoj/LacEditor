@@ -230,7 +230,7 @@ enum CustomMarkdownExportService {
         date.locale = Locale(identifier: "en_US_POSIX")
         date.dateFormat = "yyyy-MM-dd"
         variables["today"] = date.string(from: Date())
-        if profile.arguments.contains("${"), MarkdownPresentationParser.frontMatter(text) != nil {
+        if profile.arguments.contains("${"), MarkdownFrontMatter.frontMatter(text) != nil {
             for (name, value) in try PandocExportService.yamlScalarVariables(text, isCancelled: isCancelled)
                 where variables[name] == nil && !["currentPath", "currentFolder", "currentFileName", "currentFileFullName"].contains(name) {
                 variables[name] = value
@@ -336,7 +336,7 @@ enum CustomMarkdownExportService {
         }
         let environment = ProcessInfo.processInfo.environment
         let metadataNames = names.filter { !required.contains($0) && $0 != "HOME" && $0 != "PATH" && environment[$0] == nil }
-        if !metadataNames.isEmpty, MarkdownPresentationParser.frontMatter(text) != nil {
+        if !metadataNames.isEmpty, MarkdownFrontMatter.frontMatter(text) != nil {
             let metadata: [String: String]
             do { metadata = try PandocExportService.yamlScalarVariables(text, isCancelled: isCancelled) }
             catch is CancellationError { throw CancellationError() }

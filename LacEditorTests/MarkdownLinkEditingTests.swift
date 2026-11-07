@@ -10,7 +10,7 @@ final class MarkdownLinkEditingTests: XCTestCase {
         let edit = try XCTUnwrap(MarkdownLinkEditingService.edit(in: source, selection: selected, input: input))
         let output = source.replacingCharacters(in: edit.range, with: edit.replacement)
         XCTAssertEqual((output as NSString).substring(with: edit.selectionRange), "**中文😀**")
-        XCTAssertTrue(MarkdownRenderer.render(output, darkMode: false).contains("<strong>中文😀</strong>"))
+        XCTAssertTrue(MarkdownHTMLRenderer.render(output, darkMode: false).contains("<strong>中文😀</strong>"))
         let caret = NSRange(location: edit.selectionRange.location + 2, length: 0)
         let initial = try XCTUnwrap(MarkdownLinkEditingService.initial(in: output as NSString, selection: caret))
         XCTAssertEqual(initial, input)
@@ -27,7 +27,7 @@ final class MarkdownLinkEditingTests: XCTestCase {
         let edit = try XCTUnwrap(MarkdownLinkEditingService.edit(in: source, selection: NSRange(location: 1, length: 0),
                                                                 input: MarkdownLinkInput(label: "b", address: "relative.md")))
         XCTAssertEqual(edit.replacement, "[b](<relative.md> \"title\")")
-        XCTAssertTrue(MarkdownRenderer.render(edit.replacement, darkMode: false).contains("title=\"title\""))
+        XCTAssertTrue(MarkdownHTMLRenderer.render(edit.replacement, darkMode: false).contains("title=\"title\""))
     }
 
     func testPreservesOriginalTitleSource() throws {
@@ -100,6 +100,31 @@ final class MarkdownLinkEditingTests: XCTestCase {
             let edit = try XCTUnwrap(MarkdownLinkEditingService.edit(in: source, selection: selected,
                                                                     input: MarkdownLinkInput(label: "left", address: "url")))
             XCTAssertEqual(source.replacingCharacters(in: edit.range, with: edit.replacement), "[left](<url>) " + code + " right")
+        }
+    }
+
+    // Строка с позицией, которую разбор не подтвердил (табуляция), помечается «unresolved»: ссылку в ней не правим.
+    func testLinkInsideUnconfirmedLineIsNotEdited() {
+        let source = "😀\t[中文](url) конец\r\n[ok](x)" as NSString
+        let caret = NSRange(location: source.range(of: "中文").location, length: 0)
+        XCTAssertNil(MarkdownLinkEditingService.initial(in: source, selection: caret))
+        XCTAssertNil(MarkdownLinkEditingService.edit(in: source, selection: caret, input: MarkdownLinkInput(label: "b", address: "next")))
+        let other = NSRange(location: source.range(of: "ok").location, length: 0)
+        XCTAssertEqual(MarkdownLinkEditingService.initial(in: source, selection: other), MarkdownLinkInput(label: "ok", address: "x"))
+    }
+
+    // Отличия от голого cmark: ссылка во front matter, внутри формулы и в виде `<a href>` ссылкой для правки не считается.
+    func testFrontMatterFormulaAndHTMLAnchorAreNotLinks() {
+        let empty = MarkdownLinkInput(label: "", address: "")
+        let cases: [(String, String)] = [
+            ("---\ntitle: [прим](u)\n---\n\nтекст", "прим"),
+            ("$x [中文](u) y$", "中文"),
+            ("<a href=\"u\">😀текст</a>", "текст")
+        ]
+        for (source, marker) in cases {
+            let text = source as NSString
+            let caret = NSRange(location: text.range(of: marker).location, length: 0)
+            XCTAssertEqual(MarkdownLinkEditingService.initial(in: text, selection: caret), empty, source)
         }
     }
 }

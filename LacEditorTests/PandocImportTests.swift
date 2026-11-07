@@ -63,7 +63,7 @@ final class PandocImportTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: source), original)
         XCTAssertTrue(imported.text.contains("PDF text layer"))
         XCTAssertTrue(imported.text.contains("data:image/"))
-        let html = MarkdownRenderer.render(imported.text, darkMode: false)
+        let html = MarkdownHTMLRenderer.renderPage(imported.text, darkMode: false).html
         XCTAssertTrue(html.contains("PDF text layer"))
         XCTAssertTrue(html.contains("<img"))
         XCTAssertTrue(html.contains("data:image/"))
@@ -123,7 +123,7 @@ final class PandocImportTests: XCTestCase {
             try bytes.write(to: source)
             let result = try PandocImportService.convert(source: source, executable: executable)
             XCTAssertEqual(try Data(contentsOf: source), bytes, ext)
-            let html = MarkdownRenderer.render(result.text, darkMode: false)
+            let html = MarkdownHTMLRenderer.renderPage(result.text, darkMode: false).html
             XCTAssertTrue(html.contains("Heading</h"), ext)
             XCTAssertTrue(html.contains("中文 😀"), ext)
             XCTAssertTrue(html.contains("href=\"https://example.com\""), ext)
@@ -141,7 +141,7 @@ final class PandocImportTests: XCTestCase {
         try bytes.write(to: source)
         let imported = try PandocImportService.convert(source: source, executable: executable)
         XCTAssertEqual(try Data(contentsOf: source), bytes)
-        let html = MarkdownRenderer.render(imported.text, darkMode: false)
+        let html = MarkdownHTMLRenderer.renderPage(imported.text, darkMode: false).html
         XCTAssertTrue(html.contains("Plain"))
         XCTAssertTrue(html.contains("中文"))
     }
@@ -157,9 +157,9 @@ final class PandocImportTests: XCTestCase {
         try bytes.write(to: source)
         let result = try PandocImportService.convert(source: source, executable: executable)
         XCTAssertEqual(try Data(contentsOf: source), bytes)
-        XCTAssertNotNil(MarkdownPresentationParser.frontMatter(result.text))
+        XCTAssertNotNil(MarkdownFrontMatter.frontMatter(result.text))
         XCTAssertTrue(result.text.contains("title: Title"))
-        let html = MarkdownRenderer.render(result.text, darkMode: false)
+        let html = MarkdownHTMLRenderer.renderPage(result.text, darkMode: false).html
         XCTAssertTrue(html.contains("<h1"))
         XCTAssertTrue(html.contains("中文 😀 Parent</h1>"))
         XCTAssertTrue(html.contains("<h2"))
@@ -193,7 +193,7 @@ final class PandocImportTests: XCTestCase {
             XCTAssertEqual(try Data(contentsOf: source), bytes, ext)
             XCTAssertEqual(try Data(contentsOf: imageURL), image, ext)
             XCTAssertTrue(imported.text.contains("data:image/png;base64,"), ext)
-            let html = MarkdownRenderer.render(imported.text, darkMode: false)
+            let html = MarkdownHTMLRenderer.renderPage(imported.text, darkMode: false).html
             XCTAssertTrue(html.contains("<img"), ext)
             XCTAssertTrue(html.contains("data:image/png;base64,"), ext)
         }
@@ -218,7 +218,7 @@ final class PandocImportTests: XCTestCase {
         let imported = try PandocImportService.convert(source: source, executable: executable)
         XCTAssertEqual(try Data(contentsOf: source), bytes)
         XCTAssertEqual(try Data(contentsOf: imageURL), image)
-        let html = MarkdownRenderer.render(imported.text, darkMode: false)
+        let html = MarkdownHTMLRenderer.renderPage(imported.text, darkMode: false).html
         XCTAssertTrue(html.contains("<img"))
         XCTAssertTrue(html.contains("data:image/png;base64,"))
         XCTAssertTrue(html.contains("中文 Caption 😀"))
@@ -236,7 +236,7 @@ final class PandocImportTests: XCTestCase {
         let imported = try PandocImportService.convert(source: source, executable: executable)
         XCTAssertEqual(try Data(contentsOf: source), bytes)
         XCTAssertFalse(imported.diagnostics.contains("Could not fetch"))
-        let html = MarkdownRenderer.render(imported.text, darkMode: false)
+        let html = MarkdownHTMLRenderer.renderPage(imported.text, darkMode: false).html
         XCTAssertTrue(html.contains("<img"))
         XCTAssertTrue(html.contains("https://example.invalid/image.png"))
         XCTAssertTrue(html.contains("Remote caption"))
@@ -503,12 +503,12 @@ final class PandocImportTests: XCTestCase {
         try bytes.write(to: source)
         let result = try PandocImportService.convert(source: source, executable: executable)
         XCTAssertEqual(try Data(contentsOf: source), bytes)
-        XCTAssertNotNil(MarkdownPresentationParser.frontMatter(result.text))
+        XCTAssertNotNil(MarkdownFrontMatter.frontMatter(result.text))
         XCTAssertTrue(result.text.contains("title: Unique title"))
         XCTAssertTrue(result.text.contains("Alice Example"))
-        let presentation = MarkdownPresentationParser.parse(result.text)
+        let presentation = MarkdownPresentationBuilder.parse(result.text)
         XCTAssertTrue(presentation.headings.contains { $0.title.contains("中文 😀 Heading") })
-        let html = MarkdownRenderer.render(result.text, darkMode: false)
+        let html = MarkdownHTMLRenderer.renderPage(result.text, darkMode: false).html
         XCTAssertTrue(html.contains("中文 😀 Heading</h1>"))
         XCTAssertTrue(html.contains("Body"))
         XCTAssertFalse(html.contains("Alice Example"))

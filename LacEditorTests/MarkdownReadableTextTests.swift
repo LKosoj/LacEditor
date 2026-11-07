@@ -5,8 +5,8 @@ import cmark_gfm
 final class MarkdownReadableTextTests: XCTestCase {
     func testSharedPresentationBuildsReadableTextOnlyWhenRequested() throws {
         let source = "# 中文\n\n**hello** [world](https://example.com)"
-        XCTAssertNil(MarkdownPresentationParser.parse(source).readableText)
-        let presentation = MarkdownPresentationParser.parse(source, includeReadableText: true)
+        XCTAssertNil(MarkdownPresentationBuilder.parse(source).readableText)
+        let presentation = MarkdownPresentationBuilder.parse(source, includeReadableText: true)
         let readable = try XCTUnwrap(presentation.readableText?.text())
         XCTAssertEqual(try XCTUnwrap(DocumentStatistics.calculate(readable)).words, 4)
         XCTAssertFalse(readable.contains("example.com"))
@@ -15,7 +15,7 @@ final class MarkdownReadableTextTests: XCTestCase {
 
     func testTableReplacementInvalidatesReadableText() throws {
         let source = "| A |\n|---|\n| B |"
-        let presentation = MarkdownPresentationParser.parse(source, includeReadableText: true)
+        let presentation = MarkdownPresentationBuilder.parse(source, includeReadableText: true)
         XCTAssertNotNil(presentation.readableText)
         let table = try XCTUnwrap(presentation.tables.first)
         let replacement = presentation.replacingTable(table, oldTable: table.range,
@@ -24,10 +24,10 @@ final class MarkdownReadableTextTests: XCTestCase {
     }
 
     private func projection(_ text: String) throws -> MarkdownReadableText {
-        let frontMatter = MarkdownPresentationParser.frontMatter(text)
-        let input = MarkdownPresentationParser.maskedFrontMatter(text, frontMatter: frontMatter)
+        let frontMatter = MarkdownFrontMatter.frontMatter(text)
+        let input = MarkdownFrontMatter.maskedFrontMatter(text, frontMatter: frontMatter)
         let result = MarkdownMathExtension.withDocument(input, options: CMARK_OPT_SMART | CMARK_OPT_FOOTNOTES) { root, ext, inline in
-            MarkdownReadableTextParser.build(root: root, source: MarkdownPresentationParser.Source(text), text: text as NSString,
+            MarkdownDocumentParser.readableText(root: root, source: MarkdownSourcePositions(text), text: text as NSString,
                 mathExtension: ext, inlineMath: Set(inline.map(\.node)))
         }
         return try XCTUnwrap(result ?? nil)

@@ -631,18 +631,18 @@ final class MarkdownPreviewTests: XCTestCase {
     }
     func testSourcePositionsOnlyWhenRequested() {
         let source = "# T\n\ntext\n\n| a |\n|---|\n| b |\n\n```\ncode\n```"
-        let with = MarkdownRenderer.renderPage(source, darkMode: false, includeSourcePositions: true).body
+        let with = MarkdownHTMLRenderer.renderPage(source, darkMode: false, includeSourcePositions: true).body
         XCTAssertTrue(with.contains("data-sourcepos=\"1:1-1:3\""))
         XCTAssertTrue(with.contains("class=\"table-scroll\""))
         XCTAssertTrue(with.contains("<table data-sourcepos=\""))
         XCTAssertTrue(with.contains("<pre tabindex=\"0\""))
-        let without = MarkdownRenderer.renderPage(source, darkMode: false).body
+        let without = MarkdownHTMLRenderer.renderPage(source, darkMode: false).body
         XCTAssertFalse(without.contains("data-sourcepos"))
         XCTAssertTrue(without.contains("<table>"))
         XCTAssertTrue(without.contains("<pre tabindex=\"0\""))
-        let export = MarkdownRenderer.renderPage(source, darkMode: false, forExport: true, includeSourcePositions: true).body
+        let export = MarkdownHTMLRenderer.renderPage(source, darkMode: false, forExport: true, includeSourcePositions: true).body
         XCTAssertFalse(export.contains("data-sourcepos"))
-        XCTAssertFalse(MarkdownRenderer.render(source, darkMode: false).contains("data-sourcepos"))
+        XCTAssertFalse(MarkdownHTMLRenderer.renderPage(source, darkMode: false).html.contains("data-sourcepos"))
     }
 
     func testRenderActorDefaultEmitsSourcePositions() async {
@@ -700,11 +700,32 @@ final class MarkdownPreviewTests: XCTestCase {
         try await fixture.waitUntil("(() => { const p = document.querySelectorAll('article p'); const a = p[39].getBoundingClientRect().bottom, b = p[42].getBoundingClientRect().top; return Math.abs(a + (b - a) / 2) < 4; })()")
     }
 
+    // Актор отдаёт замыканию ровно ту модель, что получил (версию сверяет beginRender), а без модели — nil.
+    func testRenderActorPassesModelToRenderer() async throws {
+        final class Seen: @unchecked Sendable {
+            private let lock = NSLock()
+            private var values: [Bool] = []
+            func add(_ value: Bool) { lock.lock(); values.append(value); lock.unlock() }
+            var all: [Bool] { lock.lock(); defer { lock.unlock() }; return values }
+        }
+        let seen = Seen()
+        let rendererActor = MarkdownRenderActor { text, darkMode, _, _, _, _, model in
+            seen.add(model != nil)
+            return MarkdownRenderedPage(body: text, darkMode: darkMode, headingIDs: [], formulas: [], diagrams: [], omittedHTML: false)
+        }
+        let model = try XCTUnwrap(MarkdownDocumentParser.parse("Привет 😀", options: .init(syntax: .init(), includes: [.emoji], isVaultNote: false, detectsFrontMatter: true), isCancelled: { false }))
+        let coordinator = DocumentTaskCoordinator()
+        let generation = coordinator.begin(.preview)
+        _ = await rendererActor.render("Привет 😀", darkMode: false, model: model, coordinator: coordinator, generation: generation)
+        _ = await rendererActor.render("Привет 😀", darkMode: false, coordinator: coordinator, generation: generation)
+        XCTAssertEqual(seen.all, [true, false])
+    }
+
     func testRenderActorSerializesAndSkipsCancelledWaitingWork() async {
         let gate = RenderGate()
         let started = expectation(description: "first render started")
         let waiting = expectation(description: "second render queued")
-        let rendererActor = MarkdownRenderActor { text, darkMode, _, _, _, _ in
+        let rendererActor = MarkdownRenderActor { text, darkMode, _, _, _, _, _ in
             gate.render(text, darkMode: darkMode, started: started)
         }
         let firstCoordinator = DocumentTaskCoordinator()

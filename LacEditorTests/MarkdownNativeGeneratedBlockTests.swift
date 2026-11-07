@@ -2,6 +2,21 @@ import AppKit
 import XCTest
 @testable import LacEditor
 
+/// Пересчёт показа таблицы по строкам тем же путём, что в приложении (`tableRowDisplay`): без `previous` — все ячейки заново,
+/// с `previous` — переиспользуются все ячейки, кроме изменённой.
+private func rebuiltTableDisplay(_ table: MarkdownTable, text: NSString, previous: MarkdownTable? = nil,
+            changedRow: Int? = nil, changedColumn: Int = -1) -> MarkdownTable {
+    let labels = previous?.referenceLabels ?? table.referenceLabels
+    let rows = table.rows.enumerated().map { index, row -> MarkdownTableRow in
+        let old = previous.flatMap { index < $0.rows.count ? $0.rows[index] : nil } ?? MarkdownTableRow(range: row.range, cells: [])
+        return MarkdownPresentationBuilder.tableRowDisplay(row, text: text, previous: old,
+            changedColumn: row.range.location == changedRow ? changedColumn : -1, referenceLabels: labels)
+    }
+    return MarkdownTable(range: table.range, delimiterRange: table.delimiterRange, alignments: table.alignments, rows: rows,
+                         containerPrefix: table.containerPrefix, quoteDepth: table.quoteDepth, nestedList: table.nestedList,
+                         referenceLabels: labels)
+}
+
 private final class InlineMathGlyphProbe: NSObject, NSLayoutManagerDelegate {
     var requestedBounds = false
     func layoutManager(_ manager: NSLayoutManager, shouldGenerateGlyphs glyphs: UnsafePointer<CGGlyph>,
@@ -48,7 +63,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
         let controller = MarkdownPresentationController(textView: view, layout: layout)
         defer { controller.cancel() }
         controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
-        let parsed = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true)
+        let parsed = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true)
         let cell = try XCTUnwrap(parsed.tables.first?.rows.last?.cells.first)
         let candidate = try XCTUnwrap(parsed.emojiCandidates.first)
         for _ in 0..<200 {
@@ -78,7 +93,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
         let controller = MarkdownPresentationController(textView: view, layout: layout)
         defer { controller.cancel() }
         controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
-        let parsed = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true)
+        let parsed = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true)
         XCTAssertEqual(parsed.emojiCandidates.count, 2)
         guard parsed.emojiCandidates.count == 2 else { return }
         func imageAt(_ range: NSRange) -> Bool {
@@ -147,7 +162,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
 
     func testTableEmojiFontsCoverManyRunsInOneCell() throws {
         let source = "| A |\n|---|\n| **" + Array(repeating: ":smile:", count: 200).joined(separator: " ") + "** |"
-        let parsed = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true)
+        let parsed = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true)
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
         storage.addLayoutManager(layout)
         let container = NSTextContainer(containerSize: NSSize(width: 450, height: 400))
@@ -165,7 +180,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
         let separator = "| " + Array(repeating: "---", count: 100).joined(separator: " | ") + " |"
         let row = "| " + Array(repeating: ":smile:", count: 100).joined(separator: " | ") + " |"
         let source = [header, separator, row].joined(separator: "\n")
-        let parsed = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true)
+        let parsed = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true)
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
         storage.addLayoutManager(layout)
         let container = NSTextContainer(containerSize: NSSize(width: 450, height: 400))
@@ -179,7 +194,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
     func testTableEmojiAttachmentPreservesLinkHitAfterReplacement() throws {
         _ = NSApplication.shared
         let source = "| A |\n|---|\n| 中\\|😀 :smile: [link](page.md) |"
-        let parsed = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true)
+        let parsed = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true)
         let cell = try XCTUnwrap(parsed.tables.first?.rows.last?.cells.first)
         let candidate = try XCTUnwrap(parsed.emojiCandidates.first)
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
@@ -328,7 +343,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
 
     func testFormulaUsesSharedCmarkAndLeavesUnclosedMarkdown() throws {
         let source = "😀\n\n$$\n# fake\n[id]: https://example.invalid\n$$\n\n# real\n\n$$\n\n# still real"
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         XCTAssertEqual(parsed.headings.map(\.title), ["real", "still real"])
         let formula = try XCTUnwrap(parsed.formulas.first)
         XCTAssertEqual(parsed.formulas.count, 1)
@@ -339,7 +354,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
 
     func testInlineFormulaRangesIncludeEscapedTablePipes() {
         let source = "😀 $x$ `code $bad$` \\$z$\r\n\r\n> 中文 $q$\r\n\r\n| A |\r\n|---|\r\n| a\\|b $c\\|d$ |"
-        let formulas = MarkdownPresentationParser.parse(source).inlineFormulas
+        let formulas = MarkdownPresentationBuilder.parse(source).inlineFormulas
         XCTAssertEqual(formulas.map(\.source), ["x", "q", "c|d"])
         let raw = source as NSString
         XCTAssertEqual(formulas.map { raw.substring(with: $0.range) }, ["$x$", "$q$", "$c\\|d$"])
@@ -347,7 +362,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
 
     func testHeadingKeepsInlineFormulaInOutlineAndSource() {
         let source = "# 中文😀 $x^2$ and `code $y$`\r\n"
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         XCTAssertEqual(parsed.headings.map(\.title), ["中文😀 $x^2$ and code $y$"])
         XCTAssertEqual(parsed.inlineFormulas.map(\.source), ["x^2"])
         XCTAssertEqual(parsed.inlineFormulas.map { (source as NSString).substring(with: $0.range) }, ["$x^2$"])
@@ -355,7 +370,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
 
     func testInlineFormulaInLinkLabelKeepsLinkAndImageAlt() {
         let source = "# [中文 $x$](https://example.com)\n\n[ref $y$][id] ![alt $z$](image.png)\n\n[id]: https://example.com\n"
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         XCTAssertEqual(parsed.headings.map(\.title), ["中文 $x$"])
         XCTAssertEqual(parsed.inlineFormulas.map(\.source), ["x", "y"])
         XCTAssertEqual(parsed.inlineFormulas.map { (source as NSString).substring(with: $0.range) }, ["$x$", "$y$"])
@@ -364,7 +379,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
 
     func testUnclosedMathCannotConsumeLinkBoundary() {
         let source = "[foo $x](https://example.com) and $y$\n\n[ok $a[1] + \\]b$](https://example.com)"
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         XCTAssertEqual(parsed.inlineFormulas.map(\.source), ["y", "a[1] + \\]b"])
         XCTAssertEqual(parsed.spans.filter { $0.kind == .link }.count, 2)
         XCTAssertEqual(parsed.inlineFormulas.map { (source as NSString).substring(with: $0.range) }, ["$y$", "$a[1] + \\]b$"])
@@ -372,19 +387,19 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
 
     func testTableFormulaSourceRemainsVisibleBeforeNativeCellRendering() throws {
         let source = "| A |\r\n|---|\r\n| 中文\\|😀 **$x$** |"
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         let table = try XCTUnwrap(parsed.tables.first)
         let cell = try XCTUnwrap(table.rows.last?.cells.first)
         XCTAssertEqual(cell.displayText, "中文|😀 $x$")
         XCTAssertEqual(parsed.inlineFormulas.map(\.source), ["x"])
-        let rebuilt = MarkdownPresentationParser.tableDisplay(table, text: source as NSString)
+        let rebuilt = rebuiltTableDisplay(table, text: source as NSString)
         XCTAssertEqual(rebuilt.rows.last?.cells.first?.displayText, cell.displayText)
     }
 
     func testTableFormulaImagesUseExactCellRangesWithoutChangingSource() throws {
         _ = NSApplication.shared
         let source = "| A |\n|---|\n| 中\\|😀 $x$ and $x$ |"
-        let presentation = MarkdownPresentationParser.parse(source)
+        let presentation = MarkdownPresentationBuilder.parse(source)
         let table = try XCTUnwrap(presentation.tables.first)
         let cell = try XCTUnwrap(table.rows.last?.cells.first)
         XCTAssertEqual(presentation.inlineFormulas.count, 2)
@@ -415,15 +430,15 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
     func testEditedTableCellRebuildsMathRangesLocally() throws {
         let source = "| A | B |\r\n|---|---|\r\n| 中 $x$ | $z$ |"
         let changed = source.replacingOccurrences(of: "中 $x$", with: "中\\|😀 $y$")
-        let initial = MarkdownPresentationParser.parse(source)
+        let initial = MarkdownPresentationBuilder.parse(source)
         let oldTable = try XCTUnwrap(initial.tables.first)
         let oldRow = try XCTUnwrap(oldTable.rows.last)
         let oldCell = try XCTUnwrap(oldRow.cells.first)
-        let full = MarkdownPresentationParser.parse(changed)
+        let full = MarkdownPresentationBuilder.parse(changed)
         let fullTable = try XCTUnwrap(full.tables.first)
         let raw = try XCTUnwrap(MarkdownTableEditingService.presentationTable(in: changed as NSString, range: fullTable.range))
-        let local = MarkdownPresentationParser.tableDisplay(raw, text: changed as NSString, previous: oldTable,
-                                                            changedRow: oldRow.range.location, changedColumn: 0)
+        let local = rebuiltTableDisplay(raw, text: changed as NSString, previous: oldTable,
+            changedRow: oldRow.range.location, changedColumn: 0)
         let newCell = try XCTUnwrap(local.rows.last?.cells.first)
         let updated = initial.replacingTable(local, oldTable: oldTable.range, edit: oldCell.range, replacementLength: newCell.range.length)
         XCTAssertEqual(updated.inlineFormulas, full.inlineFormulas)
@@ -456,13 +471,13 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
         coordinator.attachLiveTextProvider()
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
-        let table = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first)
+        let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first)
         let virtual = try XCTUnwrap(table.rows.last?.cells.last)
         XCTAssertTrue(coordinator.beginTableCell(virtual.range, frame: NSRect(x: 0, y: 0, width: 100, height: 40), cell: virtual))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         child.insertText("$y$", replacementRange: NSRange(location: 0, length: 0))
         let changed = view.string
-        let changedTable = try XCTUnwrap(MarkdownPresentationParser.parse(changed).tables.first)
+        let changedTable = try XCTUnwrap(MarkdownPresentationBuilder.parse(changed).tables.first)
         let actual = try XCTUnwrap(layout.accessibilityTableModel(changedTable.range))
         XCTAssertEqual(actual.rows.last?.cells, changedTable.rows.last?.cells)
         XCTAssertEqual(child.undoAction?(false), true)
@@ -473,7 +488,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
 
     func testInlineFormulaInTableEmphasisUsesCellByteMap() {
         let source = "| A |\r\n|---|\r\n| 中\\|😀\\| **$c$** |"
-        let formulas = MarkdownPresentationParser.parse(source).inlineFormulas
+        let formulas = MarkdownPresentationBuilder.parse(source).inlineFormulas
         XCTAssertEqual(formulas.map(\.source), ["c"])
         XCTAssertEqual(formulas.map { (source as NSString).substring(with: $0.range) }, ["$c$"])
     }
@@ -517,7 +532,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
     func testVisibleBlockMathReferenceUsesCurrentSnapshot() async throws {
         _ = NSApplication.shared
         let source = "$$\n\\ref{eq:a}\n$$\n\n$$\nx\\tag{1}\\label{eq:a}\n$$\n\nafter"
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         XCTAssertEqual(parsed.formulas.count, 2)
         guard parsed.formulas.count == 2 else { return }
         let document = EditorDocument(text: source, language: .markdown)
@@ -560,7 +575,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
         for kind in 0...2 {
             let prefix = kind == 0 ? "$$\n\\ref{eq:a}\n$$" : (kind == 1 ? "See $\\ref{eq:a}$ here." : "| A |\n|---|\n| $\\ref{eq:a}$ |")
             let source = prefix + "\n\n$$\nx\\tag{1}\\label{eq:a}\n$$\n\nafter"
-            let parsed = MarkdownPresentationParser.parse(source)
+            let parsed = MarkdownPresentationBuilder.parse(source)
             let from = try XCTUnwrap(kind == 0 ? parsed.formulas.first : parsed.inlineFormulas.first)
             let target = try XCTUnwrap(parsed.formulas.last)
             let document = EditorDocument(text: source, language: .markdown)
@@ -625,7 +640,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
     func testInlineMathReferenceUsesRenderedImageAndCurrentRevision() async throws {
         _ = NSApplication.shared
         let source = "See $\\ref{eq:a}$ here.\n\n$$\nx\\tag{1}\\label{eq:a}\n$$\n\nafter"
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         let inline = try XCTUnwrap(parsed.inlineFormulas.first), target = try XCTUnwrap(parsed.formulas.first)
         let document = EditorDocument(text: source, language: .markdown)
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
@@ -667,7 +682,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
     func testTableMathReferenceUsesAttachmentGeometry() async throws {
         _ = NSApplication.shared
         let source = "| A |\n|---|\n| 中\\|😀 $\\ref{eq:a}+\\eqref{eq:b}+\\ref{eq:a}$ |\n\n$$\nx\\tag{1}\\label{eq:a}\n$$\n\n$$\ny\\tag{2}\\label{eq:b}\n$$\n\nafter"
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         let target = try XCTUnwrap(parsed.formulas.first)
         let secondTarget = try XCTUnwrap(parsed.formulas.last)
         let cell = try XCTUnwrap(parsed.tables.first?.rows.last?.cells.first)
@@ -722,7 +737,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
     func testActiveTableCellCommandClickMathReference() async throws {
         _ = NSApplication.shared
         let source = "| A |\n|---|\n| 中\\|😀 $\\ref{eq:a}$ |\n\n$$\nx\\tag{1}\\label{eq:a}\n$$\n\nafter"
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         let cell = try XCTUnwrap(parsed.tables.first?.rows.last?.cells.first)
         let target = try XCTUnwrap(parsed.formulas.first)
         let document = EditorDocument(text: source, language: .markdown)
@@ -863,7 +878,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
         _ = NSApplication.shared
         for (before, marker, indent, newline) in [("", "- ", "  ", "\n"), ("", "12. ", "    ", "\r\n"), ("- parent\n", "  - ", "    ", "\n"), ("", "> - ", ">   ", "\r\n"), ("", "-\t", "\t", "\n"), ("", "- \t", "    ", "\r\n"), ("", "> -\t", ">   ", "\r\n"), ("- parent\r\n", "  -\t", "    ", "\r\n")] {
             let source = before + [marker + "$$", indent + "\\frac{a}{b}", indent + "$$", "", "after"].joined(separator: newline)
-            let parsed = MarkdownPresentationParser.parse(source)
+            let parsed = MarkdownPresentationBuilder.parse(source)
             let formula = try XCTUnwrap(parsed.formulas.first)
             XCTAssertEqual(formula.source, "\\frac{a}{b}\n")
             let document = EditorDocument(text: source, language: .markdown)
@@ -906,7 +921,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
     func testQuotedFormulaAppearsRevealsAndFoldsWithoutChangingSource() async throws {
         _ = NSApplication.shared
         let source = "> $$\n> \\frac{a}{b}\n> $$\n\nafter"
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         let formula = try XCTUnwrap(parsed.formulas.first)
         XCTAssertEqual(formula.source, "\\frac{a}{b}\n")
         XCTAssertEqual((source as NSString).substring(with: formula.range), "$$\n> \\frac{a}{b}\n> $$")
@@ -964,7 +979,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
             let controller = MarkdownPresentationController(textView: view, layout: layout)
             defer { controller.cancel() }
             controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
-            let diagram = try XCTUnwrap(MarkdownPresentationParser.parse(source).diagrams.first)
+            let diagram = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).diagrams.first)
             func point() -> NSPoint {
                 layout.ensureLayout(forBoundingRect: view.visibleRect, in: container)
                 let glyph = layout.glyphIndexForCharacter(at: diagram.range.location)
@@ -1000,7 +1015,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
         defer { controller.cancel(); withExtendedLifetime(scroll) {} }
         var revision: UInt = 0
         controller.update(document: document, enabled: true, isActive: true, revision: revision, currentRevision: { revision })
-        let original = try XCTUnwrap(MarkdownPresentationParser.parse(source).diagrams.first)
+        let original = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).diagrams.first)
 
         func imagePoint(for range: NSRange) -> NSPoint {
             layout.ensureLayout(forBoundingRect: view.visibleRect, in: container)
@@ -1048,7 +1063,7 @@ final class MarkdownNativeGeneratedBlockTests: XCTestCase {
         let controller = MarkdownPresentationController(textView: view, layout: layout)
         var revision: UInt = 0
         controller.update(document: document, enabled: true, isActive: true, revision: revision, currentRevision: { revision })
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         XCTAssertEqual(parsed.inlineFormulas.map(\.source), ["\\def\\lacfrac{\\frac{a}{b}}"])
         let diagram = try XCTUnwrap(parsed.diagrams.first)
         let formula = try XCTUnwrap(parsed.formulas.first)

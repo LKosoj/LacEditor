@@ -5,6 +5,18 @@ import AppKit
 final class MarkdownTableCellEditor: NSTextView, NSTextViewDelegate {
     var beginTextChecking: (([NSSpellChecker.OptionKey: Any]) -> [NSSpellChecker.OptionKey: Any])?
     var filterTextCheckingResults: (([NSTextCheckingResult], [NSSpellChecker.OptionKey: Any]) -> [NSTextCheckingResult])?
+    /// Пункты форматирования и подменю «表格» контекстного меню открытой ячейки (те же обработчики, что у основного вида).
+    var markdownFormatMenuHandler: (() -> [NSMenuItem])?
+    var tableMenuHandler: (() -> [NSMenuItem])?
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = super.menu(for: event) ?? NSMenu()
+        for items in [markdownFormatMenuHandler?() ?? [], tableMenuHandler?() ?? []] where !items.isEmpty {
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            items.forEach { menu.addItem($0) }
+        }
+        return menu
+    }
 
     /// Каретка и выделение не заходят внутрь токена media.
     func textView(_ textView: NSTextView, willChangeSelectionFromCharacterRange oldSelectedCharRange: NSRange,
@@ -23,8 +35,29 @@ final class MarkdownTableCellEditor: NSTextView, NSTextViewDelegate {
                   orthography: NSOrthography, wordCount: Int) -> [NSTextCheckingResult] {
         filterTextCheckingResults?(results, options) ?? results
     }
-    static func projection(_ raw: String) -> MarkdownPresentationParser.Projection {
-        MarkdownPresentationParser.projection(raw)
+    static func projection(_ raw: String) -> MarkdownPresentationBuilder.Projection {
+        MarkdownPresentationBuilder.projection(raw)
+    }
+
+    /// Выделение исходника ячейки в показанном тексте. Токены вроде `<br>` и `\|` занимают один показанный знак:
+    /// начало берётся не правее позиции, конец не левее; каретка (длина 0) остаётся кареткой.
+    static func displayRange(forRaw raw: NSRange, in projection: MarkdownPresentationBuilder.Projection) -> NSRange {
+        let boundaries = projection.rawBoundaries
+        guard !boundaries.isEmpty else { return NSRange(location: 0, length: 0) }
+        func lowerBound(_ value: Int) -> Int {
+            var low = 0, high = boundaries.count
+            while low < high {
+                let middle = (low + high) / 2
+                if boundaries[middle] < value { low = middle + 1 } else { high = middle }
+            }
+            return low
+        }
+        // Последний показанный индекс, чья позиция в исходнике не больше начала.
+        let upper = lowerBound(raw.location + 1)
+        let start = max(0, min(upper - 1, boundaries.count - 1))
+        if raw.length == 0 { return NSRange(location: start, length: 0) }
+        let end = max(start, min(lowerBound(NSMaxRange(raw)), boundaries.count - 1))
+        return NSRange(location: start, length: end - start)
     }
 
     static func sourceText(raw: String, display: String) -> String? {

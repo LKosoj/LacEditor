@@ -21,18 +21,18 @@ final class MarkdownTableEditingTests: XCTestCase {
             selection: NSRange(location: uneven.range(of: "A").location, length: 0), rows: false, positions: 2))
         let unevenResult = uneven.replacingCharacters(in: unevenMove.range, with: unevenMove.replacement)
         XCTAssertEqual(unevenResult, "| B | C | A |\n| --- | --- | --- |\n||| x |\n| q | r | p | extra |")
-        XCTAssertFalse(MarkdownRenderer.renderPage(unevenResult, darkMode: false).body.contains("extra"))
+        XCTAssertFalse(MarkdownHTMLRenderer.renderPage(unevenResult, darkMode: false).body.contains("extra"))
     }
     func testNestedTableOperationsKeepContainerPrefixesAndSibling() throws {
         for newline in ["\n", "\r\n"] {
             let quote = ["> > | A | B |", "> > | --- | --- |", "> > | 中文😀 | x |"].joined(separator: newline)
             let quoted = try apply(quote, at: "中文", command: .insertColumnAfter).0
             XCTAssertEqual(quoted, ["> > | A |   | B |", "> > | --- | --- | --- |", "> > | 中文😀 |   | x |"].joined(separator: newline))
-            XCTAssertTrue(MarkdownRenderer.renderPage(quoted, darkMode: false).body.contains("<table>"))
+            XCTAssertTrue(MarkdownHTMLRenderer.renderPage(quoted, darkMode: false).body.contains("<table>"))
             let source = ["- | A | B |", "  | --- | --- |", "  | 中文😀 | x |", "- sibling"].joined(separator: newline)
             let inserted = try apply(source, at: "中文", command: .insertRowAfter).0
             XCTAssertEqual(inserted, ["- | A | B |", "  | --- | --- |", "  | 中文😀 | x |", "  |   |   |", "- sibling"].joined(separator: newline))
-            XCTAssertTrue(MarkdownRenderer.renderPage(inserted, darkMode: false).body.contains("<table>"))
+            XCTAssertTrue(MarkdownHTMLRenderer.renderPage(inserted, darkMode: false).body.contains("<table>"))
         }
     }
     func testIrregularRowsKeepSourceDuringRowOperationsAndAlignment() throws {
@@ -57,8 +57,8 @@ final class MarkdownTableEditingTests: XCTestCase {
         let (result, selection) = try apply(source, at: "x", command: .insertRowAfter)
         XCTAssertEqual(result, source + "\r\n|   |")
         XCTAssertEqual(selection.location, (source as NSString).length + 4)
-        XCTAssertEqual(MarkdownPresentationParser.parse(result).tables.first?.rows.count, 3)
-        XCTAssertTrue(MarkdownRenderer.renderPage(result, darkMode: false).body.contains("<tbody>"))
+        XCTAssertEqual(MarkdownPresentationBuilder.parse(result).tables.first?.rows.count, 3)
+        XCTAssertTrue(MarkdownHTMLRenderer.renderPage(result, darkMode: false).body.contains("<tbody>"))
     }
 
     func testIrregularColumnOperationsPreserveExtraTail() throws {
@@ -73,7 +73,7 @@ final class MarkdownTableEditingTests: XCTestCase {
                 let (result, selection) = try apply(source, at: "A", command: command)
                 XCTAssertEqual(result, expected.joined(separator: newline))
                 XCTAssertLessThanOrEqual(NSMaxRange(selection), (result as NSString).length)
-                let body = MarkdownRenderer.renderPage(result, darkMode: false).body
+                let body = MarkdownHTMLRenderer.renderPage(result, darkMode: false).body
                 XCTAssertTrue(body.contains("<table>"))
                 XCTAssertFalse(body.contains("hidden"))
             }
@@ -105,7 +105,7 @@ final class MarkdownTableEditingTests: XCTestCase {
                 let edit = try XCTUnwrap(MarkdownTableEditingService.edit(in: text, selection: NSRange(location: location, length: 0), command: .create(rows: 1, columns: 2)))
                 let result = text.replacingCharacters(in: edit.range, with: edit.replacement)
                 XCTAssertEqual(result, expected)
-                XCTAssertTrue(MarkdownRenderer.render(result, darkMode: false).contains("<table>"))
+                XCTAssertTrue(MarkdownHTMLRenderer.render(result, darkMode: false).contains("<table>"))
             }
         }
     }
@@ -116,6 +116,23 @@ final class MarkdownTableEditingTests: XCTestCase {
             let firstBreak = text.range(of: "\n")
             let location = firstBreak.location + 1
             XCTAssertNil(MarkdownTableEditingService.edit(in: text, selection: NSRange(location: location, length: 0), command: .create(rows: 1, columns: 2)), source)
+        }
+    }
+
+    // Каретка не в первой таблице контейнера: в документе, после цитаты и в списке из двух таблиц.
+    func testEditsTableThatIsNotFirstInItsContainer() throws {
+        for nl in ["\n", "\r\n"] {
+            let first = ["| а | б |", "| - | - |", "| 1 | 2 |"].joined(separator: nl)
+            let second = ["| в | г |", "| - | - |", "| 中文😀 | 4 |"].joined(separator: nl)
+            let document = first + nl + nl + "текст" + nl + nl + second
+            XCTAssertEqual(try apply(document, at: "中文", command: .insertColumnAfter).0,
+                           first + nl + nl + "текст" + nl + nl + ["| в |   | г |", "| - | --- | - |", "| 中文😀 |   | 4 |"].joined(separator: nl))
+            let quoted = ["> | а | б |", "> | - | - |", "> | 1 | 2 |"].joined(separator: nl) + nl + nl + second
+            XCTAssertEqual(try apply(quoted, at: "中文", command: .insertColumnAfter).0.hasSuffix(["| в |   | г |", "| - | --- | - |", "| 中文😀 |   | 4 |"].joined(separator: nl)), true)
+            let list = ["- | а | б |", "  | - | - |", "  | 1 | 2 |", "", "  | в | г |", "  | - | - |", "  | 中文😀 | 4 |"].joined(separator: nl)
+            let result = try apply(list, at: "中文", command: .insertColumnAfter).0
+            XCTAssertTrue(result.contains("  | в |   | г |"), nl)
+            XCTAssertTrue(result.hasPrefix("- | а | б |"), nl)
         }
     }
 
@@ -139,7 +156,7 @@ final class MarkdownTableEditingTests: XCTestCase {
             let (result, selection) = try apply(source, at: "A", command: .insertRowAfter)
             XCTAssertEqual(result, source + ending + "|   |   |")
             XCTAssertEqual(selection.location, (source as NSString).length + (ending as NSString).length + 2)
-            XCTAssertTrue(MarkdownRenderer.render(result, darkMode: false).contains("<tbody>"))
+            XCTAssertTrue(MarkdownHTMLRenderer.render(result, darkMode: false).contains("<tbody>"))
         }
     }
 

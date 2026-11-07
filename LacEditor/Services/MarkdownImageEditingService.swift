@@ -1,6 +1,4 @@
 import Foundation
-import cmark_gfm
-import cmark_gfm_extensions
 import Yams
 import SwiftTreeSitter
 import TreeSitterYAML
@@ -67,9 +65,10 @@ enum MarkdownImageEditingService {
         let kind: String
         let range: NSRange
         let address: String
-        let alt: String
+        var alt: String
         let title: String
-        var complexAlt = false
+        /// Подпись между `![` и `]`; `nil` — позиции маркеров не подтверждены.
+        var labelRange: NSRange? = nil
     }
 
     static func rootPathEdit(in text: String, path: String, selection: NSRange) -> MarkdownFormattingEdit? {
@@ -79,7 +78,7 @@ enum MarkdownImageEditingService {
               let encoded = try? JSONEncoder().encode(path), let quoted = String(data: encoded, encoding: .utf8) else { return nil }
         let newline = text.contains("\r\n") ? "\r\n" : (text.contains("\n") ? "\n" : (text.contains("\r") ? "\r" : "\n"))
         let editRange: NSRange, replacement: String
-        if let block = MarkdownPresentationParser.frontMatter(text), block.markers.count == 2 {
+        if let block = MarkdownFrontMatter.frontMatter(text), block.markers.count == 2 {
             let start = NSMaxRange(block.markers[0]), end = block.markers[1].location
             guard end >= start else { return nil }
             let yaml = raw.substring(with: NSRange(location: start, length: end - start))
@@ -222,7 +221,7 @@ enum MarkdownImageEditingService {
         }
         guard !nodes.contains(where: { ["code", "code_block", "link", "unresolved"].contains($0.kind) && intersects($0.range) }) else { return nil }
         if let image = nodes.first(where: { $0.kind == "image" && intersects($0.range) }) {
-            guard !image.complexAlt, selection.length == 0 || selection == image.range else { return nil }
+            guard !isComplexAlt(image, in: text), selection.length == 0 || selection == image.range else { return nil }
             let raw = text.substring(with: image.range) as NSString
             guard isInlineImage(raw) else { return nil }
             return (image.range, image)
@@ -252,78 +251,46 @@ enum MarkdownImageEditingService {
     }
 
     private static func nodes(in text: String) -> [Node]? {
-        guard !text.utf8.contains(0), let parser = cmark_parser_new(CMARK_OPT_TABLE_SPANS) else { return nil }
-        defer { cmark_parser_free(parser) }
-        cmark_gfm_core_extensions_ensure_registered()
-        "table".withCString { if let ext = cmark_find_syntax_extension($0) { cmark_parser_attach_syntax_extension(parser, ext) } }
-        text.withCString { cmark_parser_feed(parser, $0, text.utf8.count) }
-        guard let root = cmark_parser_finish(parser) else { return nil }
-        defer { cmark_node_free(root) }
+        guard let model = MarkdownEditingNode.model(of: text) else { return nil }
         let ns = text as NSString
-        var lines: [(Int, String)] = [], start = 0, offset = 0
-        while offset < ns.length {
-            if ns.character(at: offset) == 10 || ns.character(at: offset) == 13 {
-                if ns.character(at: offset) == 13 && offset + 1 < ns.length && ns.character(at: offset + 1) == 10 { offset += 1 }
-                offset += 1
-                lines.append((start, ns.substring(with: NSRange(location: start, length: offset - start))))
-                start = offset
-            } else { offset += 1 }
-        }
-        lines.append((start, ns.substring(from: start)))
-        func position(_ line: Int, _ column: Int) -> Int? {
-            guard line > 0, line <= lines.count, column >= 0 else { return nil }
-            let item = lines[line - 1]
-            guard !item.1.contains("\t"), column <= item.1.utf8.count,
-                  let byte = item.1.utf8.index(item.1.utf8.startIndex, offsetBy: column, limitedBy: item.1.utf8.endIndex),
-                  let index = String.Index(byte, within: item.1) else { return nil }
-            return item.0 + item.1[..<index].utf16.count
-        }
-        var result: [Node] = []
-        func visit(_ node: UnsafeMutablePointer<cmark_node>) {
-            if let name = cmark_node_get_type_string(node) {
-                let kind = String(cString: name)
-                if ["image", "link", "code", "code_block"].contains(kind) {
-                    let first = Int(cmark_node_get_start_line(node)), last = Int(cmark_node_get_end_line(node))
-                    guard let start = position(first, Int(cmark_node_get_start_column(node)) - 1),
-                          cmark_node_get_end_column(node) > 0, let end = position(last, Int(cmark_node_get_end_column(node))), end >= start else {
-                        let lo = max(0, min(first - 1, lines.count - 1)), hi = max(lo, min(last - 1, lines.count - 1))
-                        let end = lines[hi].0 + (lines[hi].1 as NSString).length
-                        result.append(Node(kind: "unresolved", range: NSRange(location: lines[lo].0, length: end - lines[lo].0), address: "", alt: "", title: ""))
-                        return
-                    }
-                    var left = start, right = end
-                    if kind == "code" {
-                        while left > 0 && ns.character(at: left - 1) == 96 { left -= 1 }
-                        while right < ns.length && ns.character(at: right) == 96 { right += 1 }
-                        if start - left == 0 || start - left != right - end {
-                            result.append(Node(kind: "unresolved", range: NSRange(location: lines[first - 1].0, length: (lines[first - 1].1 as NSString).length), address: "", alt: "", title: "")); return
-                        }
-                    }
-                    var alt = ""
-                    func append(_ current: UnsafeMutablePointer<cmark_node>) {
-                        if let nodeType = cmark_node_get_type_string(current), String(cString: nodeType) == "text",
-                           let value = cmark_node_get_literal(current) { alt += String(cString: value) }
-                        var child = cmark_node_first_child(current)
-                        while let next = child { append(next); child = cmark_node_next(next) }
-                    }
-                    if kind == "image" { append(node) }
-                    var value = Node(kind: kind, range: NSRange(location: left, length: right - left),
-                        address: cmark_node_get_url(node).map { String(cString: $0) } ?? "", alt: alt,
-                        title: cmark_node_get_title(node).map { String(cString: $0) } ?? "")
-                    if kind == "image" {
-                        var child = cmark_node_first_child(node)
-                        while let next = child {
-                            if let childName = cmark_node_get_type_string(next), String(cString: childName) != "text" { value.complexAlt = true }
-                            child = cmark_node_next(next)
-                        }
-                    }
-                    result.append(value)
+        return model.editingNodes(in: ns).map { item in
+            guard !item.isUnreliable else {
+                return Node(kind: "unresolved", range: item.unresolvedLines(in: ns), address: "", alt: "", title: "")
+            }
+            var value = Node(kind: item.kind, range: item.range, address: item.address, alt: "", title: item.title)
+            if case let .inline(node) = item.content, case let .image(image) = node.kind {
+                value.alt = image.alt
+                if node.markerRanges.count == 2 {
+                    let start = NSMaxRange(node.markerRanges[0]), end = node.markerRanges[1].location
+                    if start <= end, end <= ns.length { value.labelRange = NSRange(location: start, length: end - start) }
                 }
             }
-            var child = cmark_node_first_child(node)
-            while let next = child { visit(next); child = cmark_node_next(next) }
+            return value
         }
-        visit(root)
-        return result
+    }
+
+    /// Подпись содержит не только текст (выделение, код, ссылка, перенос строки). У картинки в модели нет вложенных узлов,
+    /// поэтому подпись разбирается отдельно, и только для картинки под выделением. Скобка `[` в подписи — всегда отказ:
+    /// отдельный разбор не видит определений ссылок документа, и правка потеряла бы ссылку. Точка впереди не даёт
+    /// началу подписи стать блоком (`-`, `#`). Формулы в пробе выключены: внутри картинки cmark их не создаёт,
+    /// `$…$` в подписи — обычный текст, а выделение внутри него остаётся выделением.
+    /// CriticMarkup — отказ: документ разбирается с ним, поэтому alt в модели уже без разметки, и правка потеряла бы `{++…++}`.
+    private static func isComplexAlt(_ image: Node, in text: NSString) -> Bool {
+        guard let range = image.labelRange else { return true }
+        let label = text.substring(with: range) as NSString
+        var index = 0
+        while index < label.length {
+            let unit = label.character(at: index)
+            if unit == 92 { index += 2; continue }
+            if unit == 91 { return true }
+            index += 1
+        }
+        guard !(label as String).utf8.contains(0),
+              let parsed = MarkdownPresentationBuilder.model(of: "." + (label as String), syntax: MarkdownSyntaxOptions(inlineMath: false, smartPunctuation: false), includes: MarkdownEditingNode.includes), parsed.blocks.count == 1,
+              case .paragraph = parsed.blocks[0].kind else { return true }
+        return parsed.blocks[0].inlines.contains { inline in
+            if case .text = inline.kind { return false }
+            return true
+        }
     }
 }

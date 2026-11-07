@@ -12,7 +12,7 @@ final class TyporaBaselineTests: XCTestCase {
     }
 
     private func checkRanges(_ text: String, offset: Int, file: StaticString = #filePath, line: UInt = #line) throws {
-        let presentation = MarkdownPresentationParser.parse(text)
+        let presentation = MarkdownPresentationBuilder.parse(text)
         let source = text as NSString
         let expected: [(MarkdownPresentationKind, NSRange, String, [String])] = [
             (.heading(1), NSRange(location: 0, length: 10), "# 中文 😀 e\u{301}", ["# "]),
@@ -42,7 +42,7 @@ final class TyporaBaselineTests: XCTestCase {
     func testFixturePreviewHTML() throws {
         let text = try fixture()
         for source in [text, text.replacingOccurrences(of: "\n", with: "\r\n")] {
-            let body = MarkdownRenderer.renderPage(source, darkMode: false).body
+            let body = MarkdownHTMLRenderer.renderPage(source, darkMode: false).body
             XCTAssertTrue(body.contains("<h1>中文 😀 e\u{301}</h1>"))
             XCTAssertTrue(body.contains("<strong>жирный</strong>"))
             XCTAssertTrue(body.contains("<em>курсив</em>"))

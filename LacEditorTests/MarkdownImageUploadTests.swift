@@ -82,7 +82,7 @@ final class MarkdownImageUploadTests: XCTestCase {
         let source = "中文😀\n\nText <img src='a.png'>\n\n<script><img src='hidden.png'></script>\n\n<div><img src='b.png'></div>"
         let standalone = try MarkdownImageUploadService.images(in: source, allowSharedReference: true, htmlForExport: true)
         let reused = try XCTUnwrap(MarkdownMathExtension.withDocument(source) { root, _, _ in
-            let mapping = MarkdownPresentationParser.Source(source, root: root)
+            let mapping = MarkdownSourcePositions(source, root: root)
             return try? MarkdownImageUploadService.images(in: source, allowSharedReference: true, htmlForExport: true, root: root, sourceMapping: mapping)
         } ?? nil)
         XCTAssertEqual(reused.map(\.address), standalone.map(\.address))
@@ -91,7 +91,7 @@ final class MarkdownImageUploadTests: XCTestCase {
         for inline in [false, true] {
             for legacy in [false, true] {
                 let images = try XCTUnwrap(MarkdownMathExtension.withDocument(mixed, options: CMARK_OPT_TABLE_SPANS | CMARK_OPT_NOBREAKS, includeInline: inline, legacyInlineMath: legacy) { root, ext, _ in
-                    let mapping = MarkdownPresentationParser.Source(mixed, root: root, textOrigins: MarkdownMathExtension.textOrigins(in: ext))
+                    let mapping = MarkdownSourcePositions(mixed, root: root, textOrigins: MarkdownMathExtension.textOrigins(in: ext))
                     return try? MarkdownImageUploadService.images(in: mixed, allowSharedReference: true, htmlForExport: true, root: root, sourceMapping: mapping)
                 } ?? nil)
                 XCTAssertTrue(images.contains { $0.address == "outside.png" })
@@ -1399,7 +1399,7 @@ final class MarkdownImageUploadTests: XCTestCase {
         coordinator.updateActivity(true)
         window.makeKeyAndOrderFront(nil)
         defer { coordinator.updateActivity(false); manager.unregister(windowID: id); window.close() }
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 180, height: 40), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         child.setMarkedText("中", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: 0, length: 0))

@@ -25,7 +25,7 @@ final class MarkdownCalloutTests: XCTestCase {
     }
 
     private func html(_ markdown: String, forExport: Bool = false) -> String {
-        MarkdownRenderer.renderPage(markdown, darkMode: false, forExport: forExport).body
+        MarkdownHTMLRenderer.renderPage(markdown, darkMode: false, forExport: forExport).body
     }
 
     func testMarkerParsing() throws {
@@ -42,21 +42,27 @@ final class MarkdownCalloutTests: XCTestCase {
     func testTitleIsSeparatedWithAndWithoutSoftBreaks() {
         for keepsBreaks in [true, false] {
             let syntax = MarkdownSyntaxOptions(preserveEditingSoftBreaks: keepsBreaks)
-            let result = MarkdownRenderer.renderPage("> [!note] Заголовок\n> текст тела", darkMode: false, syntax: syntax).body
+            let result = MarkdownHTMLRenderer.renderPage("> [!note] Заголовок\n> текст тела", darkMode: false, syntax: syntax).body
             XCTAssertTrue(result.contains("<span class=\"lac-callout-text\">Заголовок</span>"), "\(keepsBreaks): \(result)")
             XCTAssertTrue(result.contains("текст тела</p>"), "\(keepsBreaks): \(result)")
-            let bare = MarkdownRenderer.renderPage("> [!tip]\n> только тело", darkMode: false, syntax: syntax).body
+            let bare = MarkdownHTMLRenderer.renderPage("> [!tip]\n> только тело", darkMode: false, syntax: syntax).body
             XCTAssertFalse(bare.contains("lac-callout-text"), "\(keepsBreaks): \(bare)")
             XCTAssertTrue(bare.contains("только тело"), "\(keepsBreaks): \(bare)")
-            let nested = MarkdownRenderer.renderPage("- > [!note]- Внутри\n  > тело", darkMode: false, syntax: syntax).body
+            let nested = MarkdownHTMLRenderer.renderPage("- > [!note]- Внутри\n  > тело", darkMode: false, syntax: syntax).body
             XCTAssertTrue(nested.contains("lac-callout-text\">Внутри</span>") && nested.contains("тело"), "\(keepsBreaks): \(nested)")
-            let code = MarkdownRenderer.renderPage("```\n> [!note] Код\n> текст\n```", darkMode: false, syntax: syntax).body
+            let code = MarkdownHTMLRenderer.renderPage("```\n> [!note] Код\n> текст\n```", darkMode: false, syntax: syntax).body
             XCTAssertFalse(code.contains("lac-callout"), code)
         }
-        let source = "> [!note] T\n> x\n\n```\n> [!note] T\n> x\n```"
-        XCTAssertEqual(MarkdownCalloutRender.separatingTitles(in: source, syntax: .init()), "> [!note] T  \n> x\n\n```\n> [!note] T\n> x\n```")
-        XCTAssertEqual(MarkdownCalloutRender.separatingTitles(in: "> text\n> [!note] T\n> x", syntax: .init()), "> text\n> [!note] T\n> x")
-        XCTAssertEqual(MarkdownCalloutRender.separatingTitles(in: "plain [!note] text", syntax: .init()), "plain [!note] text")
+        // Выноска считается только в начале цитаты; такой же текст в коде выноской не становится.
+        let both = html("> [!note] T\n> x\n\n```\n> [!note] T\n> x\n```")
+        XCTAssertEqual(both.components(separatedBy: "lac-callout-text\">T</span>").count - 1, 1, both)
+        XCTAssertTrue(both.contains("[!note] T"), both)
+        let notFirst = html("> text\n> [!note] T\n> x")
+        XCTAssertFalse(notFirst.contains("lac-callout"), notFirst)
+        XCTAssertTrue(notFirst.contains("[!note] T"), notFirst)
+        let plain = html("plain [!note] text")
+        XCTAssertFalse(plain.contains("lac-callout"), plain)
+        XCTAssertTrue(plain.contains("plain [!note] text"), plain)
     }
 
     func testMarkerRejectsNonCallouts() {
@@ -135,7 +141,7 @@ final class MarkdownCalloutTests: XCTestCase {
     }
 
     func testSourcePositionMovesToCallout() {
-        let page = MarkdownRenderer.renderPage("> [!note] T\n> body", darkMode: false, includeSourcePositions: true)
+        let page = MarkdownHTMLRenderer.renderPage("> [!note] T\n> body", darkMode: false, includeSourcePositions: true)
         XCTAssertTrue(page.body.contains("role=\"note\""))
         XCTAssertTrue(page.body.contains("data-sourcepos=\"1:1-2:"))
         XCTAssertFalse(page.body.contains("<blockquote"))
@@ -183,15 +189,18 @@ final class MarkdownCalloutTests: XCTestCase {
 
     func testExportExpandsCollapsed() {
         XCTAssertTrue(html("> [!tip]- Closed\n> body", forExport: true).contains("<details class=\"lac-callout lac-callout-tip\" open"))
-        let direct = MarkdownCalloutRender.transform(html: "<blockquote>\n<p>[!note]- T\nx</p>\n</blockquote>\n", expandCollapsed: true)
-        XCTAssertTrue(direct.contains(" open "))
+        let note = html("> [!note]- T\n> x", forExport: true)
+        XCTAssertTrue(note.contains(" open"), note)
+        XCTAssertTrue(html("> [!note]- T\n> x").contains("<details class=\"lac-callout lac-callout-note\" aria-label"))
     }
 
-    func testTransformLeavesOrdinaryHTMLAlone() {
-        let page = "<p>text</p>\n<blockquote>\n<p>quote</p>\n</blockquote>\n"
-        XCTAssertFalse(MarkdownCalloutRender.mayContainCallout(page))
-        XCTAssertEqual(MarkdownCalloutRender.transform(html: page, expandCollapsed: false), page)
-        XCTAssertEqual(MarkdownCalloutRender.transform(html: "<p>[!note]</p>", expandCollapsed: false), "<p>[!note]</p>")
+    func testOrdinaryMarkdownHasNoCallouts() {
+        let page = html("text\n\n> quote\n")
+        XCTAssertFalse(page.contains("lac-callout"), page)
+        XCTAssertTrue(page.contains("<p>text</p>") && page.contains("<blockquote>") && page.contains("quote"), page)
+        let marker = html("[!note]")
+        XCTAssertFalse(marker.contains("lac-callout"), marker)
+        XCTAssertTrue(marker.contains("[!note]"), marker)
     }
 
     func testStylesUseOnlyExistingVariables() {
@@ -199,7 +208,7 @@ final class MarkdownCalloutTests: XCTestCase {
         XCTAssertTrue(css.contains(".lac-callout"))
         XCTAssertTrue(css.contains("@media print"))
         XCTAssertFalse(css.contains("#"), "в стилях выносок не должно быть литералов цвета")
-        XCTAssertTrue(MarkdownRenderer.renderPage("x", darkMode: false).html.contains(".lac-callout-title"))
+        XCTAssertTrue(MarkdownHTMLRenderer.renderPage("x", darkMode: false).html.contains(".lac-callout-title"))
     }
 
     func testLabelsFollowInterfaceLanguage() {

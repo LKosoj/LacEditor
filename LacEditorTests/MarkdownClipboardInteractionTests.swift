@@ -524,7 +524,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
         window.makeKeyAndOrderFront(nil)
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.last)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.last)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 100, height: 30), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         board.clearContents()
@@ -533,7 +533,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         let task = try XCTUnwrap(coordinator.clipboardPasteTask)
         await task.value
         XCTAssertEqual(try MarkdownImageUploadService.images(in: view.string).map(\.address), ["https://example.com/a.png"])
-        let updated = try XCTUnwrap(MarkdownPresentationParser.parse(view.string).tables.first?.rows.last?.cells.last)
+        let updated = try XCTUnwrap(MarkdownPresentationBuilder.parse(view.string).tables.first?.rows.last?.cells.last)
         XCTAssertTrue((view.string as NSString).substring(with: updated.range).contains("https://example.com/a.png"))
         try XCTUnwrap(view.undoManager).undo()
         XCTAssertEqual(view.string, source)
@@ -1132,7 +1132,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.last)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.last)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 100, height: 30), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         board.clearContents()
@@ -2138,7 +2138,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell((source as NSString).range(of: "one"), frame: NSRect(x: 0, y: 0, width: 100, height: 30), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         child.setSelectedRange(NSRange(location: 1, length: 0))
@@ -2217,7 +2217,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         coordinator.attachLiveTextProvider()
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.last)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.last)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 100, height: 30), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         let item = NSPasteboardItem()

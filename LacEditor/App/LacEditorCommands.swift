@@ -545,8 +545,9 @@ struct LacEditorCommands: Commands {
                 set: { formatted in
                     if isReadingMode {
                         if !formatted { appState?.exitReadingModeToSource() }
-                    } else {
-                        appState?.selectedDocument?.isMarkdownFormatted = formatted
+                    } else if let document = appState?.selectedDocument, document.isMarkdownFormatted != formatted {
+                        document.isMarkdownFormatted = formatted
+                        MarkdownModeAnnouncement.post(formatted: formatted)
                     }
                 }
             )) {
@@ -760,6 +761,7 @@ struct LacEditorCommands: Commands {
                     Button(L10n.tr("上传全部本地图片")) { appState?.uploadMarkdownImages(selectedOnly: false) }
                 }
                 Divider()
+                Button(L10n.tr("普通文本")) { appState?.formatMarkdown(.plainText) }
                 ForEach(1...6, id: \.self) { level in
                     Button(L10n.tr("标题 %@ 级", String(level))) {
                         appState?.formatMarkdown(.heading(level))

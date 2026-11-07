@@ -215,7 +215,7 @@ struct StyleProseMask: Sendable {
 
         mutating func maskMarkdown(text: String) {
             var frontEnd = 0
-            if let front = MarkdownPresentationParser.frontMatter(text) {
+            if let front = MarkdownFrontMatter.frontMatter(text) {
                 frontEnd = NSMaxRange(front.range)
                 mark(0, frontEnd)
             }

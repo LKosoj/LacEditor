@@ -12,17 +12,6 @@ extension MarkdownNoteEmbedProvider {
     func openAddress(for target: String, heading: String?) -> String? { nil }
 }
 
-/// Встраивание, найденное в тексте.
-struct MarkdownNoteEmbedItem: Equatable, Sendable {
-    enum Kind: Equatable, Sendable { case note, image, attachment }
-    let range: NSRange            // от `!` до последней `]`
-    let target: String
-    let heading: String?
-    let alias: String?
-    let kind: Kind
-    let isBlock: Bool             // стоит в отдельном абзаце верхнего уровня
-}
-
 /// Встраивание заметок Obsidian `![[…]]` в предпросмотре и экспорте HTML/PDF.
 enum MarkdownNoteEmbed {
     static let maxEmbedsPerPage = 20
@@ -146,9 +135,9 @@ enum MarkdownNoteEmbed {
         return true
     }
 
-    /// Текст без front matter (`MarkdownPresentationParser.frontMatter`).
+    /// Текст без front matter (`MarkdownFrontMatter.frontMatter`).
     static func body(of note: String) -> String {
-        guard let frontMatter = MarkdownPresentationParser.frontMatter(note) else { return note }
+        guard let frontMatter = MarkdownFrontMatter.frontMatter(note) else { return note }
         var rest = (note as NSString).substring(from: NSMaxRange(frontMatter.range))
         // Конец строки закрывающего маркера в диапазон front matter не входит.
         if rest.hasPrefix("\r\n") { rest.removeFirst(2) } else if rest.hasPrefix("\n") || rest.hasPrefix("\r") { rest.removeFirst() }
@@ -219,75 +208,14 @@ enum MarkdownNoteEmbed {
         return (hashes.count, title)
     }
 
-    struct Prepared {
-        let text: String                       // число строк не изменилось
-        let blocks: [Block]                    // встраивания-врезки
-        let token: String                      // префикс подстановочных абзацев, уникальный для страницы
-        struct Block { let marker: String; let item: MarkdownNoteEmbedItem }
-    }
-
-    /// До cmark: картинки/вложения → `![x](путь)` или курсивная подпись «Вложение недоступно»; блоки → абзац `token + номер`.
-    /// Без провайдера блоки остаются текстом. Число строк не меняется.
-    static func prepare(_ text: String, syntax: MarkdownSyntaxOptions, context: MarkdownWikiLinkContext?,
-                        provider: (any MarkdownNoteEmbedProvider)?, documentURL: URL? = nil) -> Prepared {
-        var token = "LACEMBED"
-        var counter = 0
-        while text.contains(token) { counter += 1; token = "LACEMBED\(counter)X" }
-        guard mayContainEmbed(text) else { return Prepared(text: text, blocks: [], token: token) }
-        let source = text as NSString
-        let index = MarkdownPresentationParser.parse(text, syntax: syntax, isCancelled: { false }).elements
-        guard index.textLength == source.length else { return Prepared(text: text, blocks: [], token: token) }
-        let excluded = index.excludedRanges(intersecting: NSRange(location: 0, length: source.length))
-        let found = items(in: source, excluded: excluded)
-        guard !found.isEmpty else { return Prepared(text: text, blocks: [], token: token) }
-        let address = documentURL ?? context?.documentURL
-        var replacements: [(NSRange, String)] = []
-        var blocks: [Prepared.Block] = []
-        for item in found {
-            switch item.kind {
-            case .image, .attachment:
-                replacements.append((item.range, fileReplacement(for: item, documentURL: address, base: context?.resolver.base)))
-            case .note:
-                guard item.isBlock, provider != nil else { continue }
-                let marker = token + String(blocks.count) + "Z"
-                blocks.append(Prepared.Block(marker: marker, item: item))
-                replacements.append((item.range, marker))
-            }
-        }
-        guard !replacements.isEmpty else { return Prepared(text: text, blocks: [], token: token) }
-        let result = NSMutableString(string: text)
-        for (range, value) in replacements.reversed() { result.replaceCharacters(in: range, with: value) }
-        return Prepared(text: result as String, blocks: blocks, token: token)
-    }
-
-    private static let markdownSpecial: Set<Character> = ["\\", "`", "*", "_", "[", "]", "<", ">", "&", "~", "^", "$", "!", "|", "=", "#", "{", "}"]
-
-    private static func escaped(_ value: String) -> String {
-        var result = ""
-        for character in value {
-            if markdownSpecial.contains(character) { result.append("\\") }
-            result.append(character)
-        }
-        return result
-    }
-
     private static let pathAllowed: CharacterSet = {
         var set = CharacterSet.urlPathAllowed
         set.remove(charactersIn: "()[]<>\\ $:")
         return set
     }()
 
-    /// Картинка или ссылка на существующий файл либо курсивная подпись «Вложение недоступно».
-    private static func fileReplacement(for item: MarkdownNoteEmbedItem, documentURL: URL?, base: URL?) -> String {
-        let name = (item.target as NSString).lastPathComponent
-        if let href = existingFileHref(target: item.target, documentURL: documentURL, base: base) {
-            return item.kind == .image ? "![\(escaped(name))](\(href))" : "[\(escaped(name))](\(href))"
-        }
-        return "*" + escaped(L10n.tr("附件不可用：%@", name)) + "*"
-    }
-
     /// Относительный путь от каталога документа к существующему файлу: сначала рядом с документом, затем от корня.
-    private static func existingFileHref(target: String, documentURL: URL?, base: URL?) -> String? {
+    static func existingFileHref(target: String, documentURL: URL?, base: URL?) -> String? {
         guard let documentURL, documentURL.isFileURL, !target.hasPrefix("/"), !target.hasPrefix("~"),
               !target.contains("\0"), !target.contains("\\"),
               !target.split(separator: "/").contains(where: { $0 == ".." }) else { return nil }
@@ -320,65 +248,8 @@ enum MarkdownNoteEmbed {
         return parts.map { $0 == ".." ? $0 : encoded($0) }.joined(separator: "/")
     }
 
-    /// После cmark: заменяет `<p …>token N</p>` на врезку. Содержимое — вложенный
-    /// `MarkdownRenderer.renderPage(embeds и wiki отключены, forExport: …)`, затем `flatten` (картинки → alt, без `id`).
-    static func finalize(html: String, prepared: Prepared, context: MarkdownWikiLinkContext?,
-                         provider: (any MarkdownNoteEmbedProvider)?, syntax: MarkdownSyntaxOptions,
-                         darkMode: Bool, forExport: Bool, hidesComments: Bool = false) -> String {
-        guard !prepared.blocks.isEmpty else { return html }
-        var cache: [String: String?] = [:]
-        var replacements: [(range: Range<String.Index>, html: String)] = []
-        var totalBytes = 0
-        for (number, block) in prepared.blocks.enumerated() {
-            let item = block.item
-            let outcome: Outcome
-            if number >= maxEmbedsPerPage {
-                outcome = .missingNote
-            } else {
-                let note: String?
-                if let cached = cache[item.target] { note = cached } else {
-                    var read = provider?.embeddedNote(for: item.target)
-                    if let value = read {
-                        let bytes = min(value.utf8.count, maxNoteBytes)
-                        if totalBytes + bytes > maxTotalBytes { read = nil } else { totalBytes += bytes }
-                    }
-                    cache[item.target] = read
-                    note = read
-                }
-                if let note {
-                    var content = body(of: note)
-                    var missingSection = false
-                    if let heading = item.heading {
-                        if let section = section(of: content, heading: heading) { content = section } else { missingSection = true }
-                    }
-                    if missingSection {
-                        outcome = .missingSection
-                    } else {
-                        let (limited, wasCut) = limitedNote(content)
-                        let page = MarkdownRenderer.renderPage(limited, darkMode: darkMode, syntax: syntax, forExport: forExport, wiki: nil, embeds: nil,
-                                                         hidesObsidianComments: hidesComments)
-                        outcome = .content(html: flatten(page.body), truncated: wasCut)
-                    }
-                } else {
-                    outcome = .missingNote
-                }
-            }
-            let href = provider?.openAddress(for: item.target, heading: item.heading)
-                ?? context?.relativeHref(for: MarkdownWikiLink(range: NSRange(location: 0, length: 0), displayRange: NSRange(location: 0, length: 0),
-                                                              target: item.target, heading: item.heading, alias: nil, markerRanges: []))
-            let embedHTML = blockHTML(name: item.target, heading: item.heading, href: href, outcome: outcome)
-            if let range = markerRange(block.marker, in: html) { replacements.append((range, embedHTML)) }
-        }
-        // Подстановка с конца по диапазонам исходного HTML: текст встроенных заметок маркер подменить не может.
-        var result = html
-        for replacement in replacements.sorted(by: { $0.range.lowerBound > $1.range.lowerBound }) {
-            result.replaceSubrange(replacement.range, with: replacement.html)
-        }
-        return result
-    }
-
     /// Обрезка до `maxNoteBytes` по границе символа и строки.
-    private static func limitedNote(_ value: String) -> (String, Bool) {
+    static func limitedNote(_ value: String) -> (String, Bool) {
         guard value.utf8.count > maxNoteBytes else { return (value, false) }
         var count = maxNoteBytes
         var cut: String?
@@ -389,20 +260,6 @@ enum MarkdownNoteEmbed {
         var text = cut ?? ""
         if let newline = text.lastIndex(where: { $0 == "\n" }) { text = String(text[text.startIndex..<newline]) }
         return (text, true)
-    }
-
-    /// Диапазон абзаца-подстановки (с атрибутами или без) в исходном HTML; если маркер не в абзаце — только сам маркер.
-    private static func markerRange(_ marker: String, in source: String) -> Range<String.Index>? {
-        guard let markerRange = source.range(of: marker) else { return nil }
-        let before = source[source.startIndex..<markerRange.lowerBound]
-        if let tagStart = before.range(of: "<p", options: .backwards),
-           let tagEnd = source.range(of: ">", range: tagStart.upperBound..<source.endIndex),
-           tagEnd.upperBound == markerRange.lowerBound,
-           source[tagStart.upperBound...].hasPrefix(">") || source[tagStart.upperBound...].hasPrefix(" "),
-           source[markerRange.upperBound...].hasPrefix("</p>") {
-            return tagStart.lowerBound..<source.index(markerRange.upperBound, offsetBy: 4)
-        }
-        return markerRange
     }
 
     /// HTML врезки по готовому телу или причине отсутствия.

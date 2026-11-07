@@ -10,7 +10,7 @@ struct MarkdownPDFMetadata {
 
 enum MarkdownPDFMetadataReader {
     static func read(_ text: String, includeHTMLFragments: Bool = false, executable: URL? = nil, isCancelled: () -> Bool) throws -> MarkdownPDFMetadata {
-        guard let block = MarkdownPresentationParser.frontMatter(text) else { return MarkdownPDFMetadata() }
+        guard let block = MarkdownFrontMatter.frontMatter(text) else { return MarkdownPDFMetadata() }
         guard let executable = executable ?? PandocExportService.findPandoc() else { throw PandocExportError.missingPandoc }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
@@ -278,9 +278,9 @@ final class MarkdownPDFExportService: NSObject, WKNavigationDelegate {
                 let wikiContext = (wiki != nil && snapshot.text.contains("[[")) ? wiki.flatMap {
                     try? MarkdownWikiLinkContext.load(root: $0.root, documentURL: $0.documentURL, isCancelled: { Task.isCancelled })
                 } : nil
-                var page = MarkdownRenderer.renderPage(snapshot.text, darkMode: darkMode, includeHTMLMedia: isHTML, renderEmoji: true,
-                                                       resolveLocalImages: !isHTML, documentURL: sourceURL, prepareRemoteImages: !isHTML, syntax: syntax, forExport: true, includeHeadingNumbers: true, includeListStyles: true,
-                                                       staticWidgetFallback: !isHTML, preserveRawHTMLBlocks: isHTML, highlightCode: !isHTML, wiki: wikiContext, critic: critic)
+                var page = MarkdownHTMLRenderer.renderPage(snapshot.text, darkMode: darkMode, includeHTMLMedia: isHTML, renderEmoji: true,
+                                                           resolveLocalImages: !isHTML, documentURL: sourceURL, prepareRemoteImages: !isHTML, syntax: syntax, forExport: true, includeHeadingNumbers: true, includeListStyles: true,
+                                                           staticWidgetFallback: !isHTML, preserveRawHTMLBlocks: isHTML, highlightCode: !isHTML, wiki: wikiContext, critic: critic)
                 if remoteImagesAllowed { try? await page.resolveRemoteImages(session: imageSession) }
                 else { try? page.hideRemoteImages() }
                 try? page.prepareLocalMedia(load: true)

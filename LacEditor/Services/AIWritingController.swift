@@ -568,27 +568,66 @@ final class AIWritingController: ObservableObject {
     }
 
     func insertImage() {
-        guard let image else { return }
-        guard let source = CGImageSourceCreateWithData(image as CFData, nil),
+        guard let image, let appState, let documentID = snapshot?.documentID,
+              let document = appState.documents.first(where: { $0.id == documentID }),
+              let source = CGImageSourceCreateWithData(image as CFData, nil),
               let identifier = CGImageSourceGetType(source) as String?,
-              let mime = UTType(identifier)?.preferredMIMEType else { return }
-        insertBlock("![AI](data:\(mime);base64,\(image.base64EncodedString()))")
+              let type = UTType(identifier), let mime = type.preferredMIMEType,
+              let ext = type.preferredFilenameExtension else { return }
+        let embedded = "![AI](\(MarkdownImagePlacement.dataAddress(image, mime: mime)))"
+        let currentURL = document.url
+        // Место картинки выбирается по общему правилу: несохранённый документ и заметка хранилища встраивают сразу.
+        let decision = MarkdownImagePlacement.decision(documentURL: currentURL,
+            isVaultNote: currentURL.map { appState.isVaultFile($0) } ?? false,
+            remembered: currentURL.flatMap { appState.preferences.markdownImagePlacement(for: $0) })
+        guard case let .ask(remembered) = decision, let documentURL = currentURL else { insertBlock(embedded); return }
+        let current = generation
+        let profile = appState.preferences.aiProfile(for: .illustration)
+        let prompt = MarkdownImagePlacementPrompt(remembered: remembered)
+        guard prompt.runAlert(), generation == current, self.image == image, feature == .illustration,
+              appState.selectedDocumentID == documentID, document.url == documentURL,
+              appState.preferences.aiFeatures.contains(.illustration),
+              appState.preferences.aiProfile(for: .illustration) == profile, activeCredentialsAreCurrent() else { return }
+        appState.preferences.setMarkdownImagePlacement(prompt.remember ? prompt.choice : nil, for: documentURL)
+        guard prompt.choice == .besideDocument else { insertBlock(embedded); return }
+        // Запись файла вне главного потока; после неё документ и профиль проверяются заново.
+        Task { @MainActor [weak self, weak document] in
+            let result = await Task.detached { Result { try MarkdownImagePlacement.save(image, fileExtension: ext, nextTo: documentURL) } }.value
+            guard let self else { return }
+            let saved: URL
+            switch result {
+            case let .failure(error): self.message = L10n.tr("无法保存图片：%@", error.localizedDescription); return
+            case let .success(url): saved = url
+            }
+            let input = MarkdownImageInput(alt: "AI", address: MarkdownImageEditingService.address(for: saved, document: documentURL) ?? "", title: "")
+            guard let appState = self.appState, let document, self.generation == current, self.image == image, self.feature == .illustration,
+                  appState.selectedDocumentID == documentID, document.url == documentURL,
+                  appState.preferences.aiFeatures.contains(.illustration),
+                  appState.preferences.aiProfile(for: .illustration) == profile, self.activeCredentialsAreCurrent(),
+                  let edit = MarkdownImageEditingService.edit(in: "" as NSString, selection: NSRange(location: 0, length: 0), input: input),
+                  self.insertBlock(edit.replacement) else {
+                self.message = L10n.tr("图片位于 %@，但文档已变化，未插入", saved.path)
+                return
+            }
+        }
     }
 
     /// Сводка и картинка: если текст не менялся, после исходного фрагмента, иначе в текущий курсор. Отказа из-за правки текста нет.
-    private func insertBlock(_ block: String) {
+    @discardableResult
+    private func insertBlock(_ block: String) -> Bool {
         guard let snapshot, let appState,
               appState.selectedDocumentID == snapshot.documentID,
               appState.preferences.aiFeatures.contains(feature),
               activeCredentialsAreCurrent(),
-              let live = liveText(for: snapshot) else { return }
+              let live = liveText(for: snapshot) else { return false }
         let location = live.selection.editorRevision == snapshot.editorRevision ? NSMaxRange(snapshot.range) : NSMaxRange(live.selection.range)
-        guard location <= live.text.length else { return }
+        guard location <= live.text.length else { return false }
         let replacement = AIDocumentToolsController.blockSeparator(before: location, in: live.text) + block
         let request = EditorRangeReplacementRequest(documentID: snapshot.documentID, range: NSRange(location: location, length: 0), originalText: "", replacementText: replacement, expectedEditorRevision: live.selection.editorRevision, actionName: feature.title)
         request.space = .display
         NotificationCenter.default.post(name: EditorCommandNotification.applyRangeReplacement, object: request)
         if !request.wasHandled { message = request.failureMessage ?? L10n.tr("编辑内容已变化，请重新执行转换") }
+        return request.wasHandled
     }
 
     func saveImage() {

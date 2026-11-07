@@ -593,7 +593,7 @@ final class AIWritingControllerTests: XCTestCase {
     private typealias WritingGenerate = (AIFeature, String, String, AIModelProfile, String?, JinaConfiguration?, String?, String?, AIRewriteMode?) async throws -> AIWritingResult
 
     @MainActor
-    private func makeLive(text: String, features: Set<AIFeature> = [.clarity], extra: [EditorDocument] = [], generate: @escaping WritingGenerate) throws -> (controller: AIWritingController, state: AppState, document: EditorDocument, editor: LiveEditor, cleanup: @MainActor () -> Void) {
+    private func makeLive(text: String, url: URL? = nil, features: Set<AIFeature> = [.clarity], extra: [EditorDocument] = [], generate: @escaping WritingGenerate) throws -> (controller: AIWritingController, state: AppState, document: EditorDocument, editor: LiveEditor, cleanup: @MainActor () -> Void) {
         let suite = "LacEditor-AILive-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         let preferences = AppPreferences(defaults: defaults)
@@ -601,7 +601,7 @@ final class AIWritingControllerTests: XCTestCase {
         var configuration = preferences.aiConfiguration
         configuration.text.isEnabled = true
         preferences.aiConfiguration = configuration
-        let document = EditorDocument(text: text)
+        let document = url.map { EditorDocument(text: text, url: $0, language: .markdown) } ?? EditorDocument(text: text)
         let state = AppState(initialDocuments: [document] + extra, recentFiles: RecentFilesStore(defaults: defaults), preferences: preferences)
         state.selectedDocumentID = document.id
         let controller = AIWritingController(appState: state, loadKey: { _, _ in nil }, generate: generate)
@@ -854,6 +854,120 @@ final class AIWritingControllerTests: XCTestCase {
         XCTAssertEqual(live.editor.requests.last?.range, NSRange(location: 5, length: 0))
         XCTAssertEqual(live.document.text, "hello\n\nsum world\n\nsum")
         XCTAssertEqual(live.controller.report, "sum")
+    }
+
+    // MARK: Вставка иллюстрации: место изображения
+
+    private static let illustrationPNG = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")!
+
+    /// Живой стенд с готовой иллюстрацией; ключ не нужен, профиль картинок включён.
+    @MainActor
+    private func makeIllustration(url: URL?) async throws -> (controller: AIWritingController, state: AppState, document: EditorDocument, editor: LiveEditor, cleanup: @MainActor () -> Void) {
+        let png = Self.illustrationPNG
+        let live = try makeLive(text: "before", url: url, features: [.illustration]) { _, _, _, _, _, _, _, _, _ in
+            AIWritingResult(suggestions: [], report: "", image: png)
+        }
+        var configuration = live.state.preferences.aiConfiguration
+        configuration.image.isEnabled = true
+        live.state.preferences.aiConfiguration = configuration
+        live.editor.caret = NSRange(location: 6, length: 0)
+        live.controller.run(.illustration, option: "cat")
+        await settle(live.controller)
+        XCTAssertEqual(live.controller.image, png)
+        return live
+    }
+
+    private func illustrationFolder() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true).appendingPathComponent("Папка с пробелом", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    @MainActor
+    func testInsertImageEmbedsDataURIForUnsavedDocument() async throws {
+        let live = try await makeIllustration(url: nil)
+        defer { live.cleanup() }
+        live.controller.insertImage()
+        XCTAssertTrue(live.document.text.hasSuffix("![AI](data:image/png;base64,\(Self.illustrationPNG.base64EncodedString()))"), live.document.text)
+    }
+
+    @MainActor
+    func testInsertImageAsksForSavedDocumentAndSavesBeside() async throws {
+        let directory = try illustrationFolder()
+        defer { try? FileManager.default.removeItem(at: directory.deletingLastPathComponent()) }
+        let url = directory.appendingPathComponent("Заметка.md")
+        let live = try await makeIllustration(url: url)
+        defer { live.cleanup() }
+        let script = PlacementDialogScript(choose: .besideDocument, remember: true)
+        defer { script.stop() }
+        script.start()
+        live.controller.insertImage()
+        XCTAssertTrue(script.appeared)
+        XCTAssertEqual(script.besideState, .on)
+        XCTAssertEqual(script.rememberState, .off)
+        // Файл пишется в фоне: ждём вставку опросом с пределом.
+        for _ in 0..<200 where live.document.text == "before" { try await Task.sleep(for: .milliseconds(20)) }
+        let files = try FileManager.default.contentsOfDirectory(at: MarkdownImagePlacement.assetsFolder(for: url), includingPropertiesForKeys: nil)
+        let saved = try XCTUnwrap(files.first)
+        XCTAssertEqual(files.count, 1)
+        XCTAssertEqual(try Data(contentsOf: saved), Self.illustrationPNG)
+        let address = try XCTUnwrap(MarkdownImageEditingService.address(for: saved, document: url))
+        XCTAssertTrue(live.document.text.hasSuffix("![AI](<\(address)>)"), live.document.text)
+        XCTAssertEqual(live.state.preferences.markdownImagePlacement(for: url), .besideDocument)
+    }
+
+    @MainActor
+    func testInsertImageEmbedChoiceInsertsDataURIAndRememberedChoiceIsPreselected() async throws {
+        let directory = try illustrationFolder()
+        defer { try? FileManager.default.removeItem(at: directory.deletingLastPathComponent()) }
+        let url = directory.appendingPathComponent("note.md")
+        let live = try await makeIllustration(url: url)
+        defer { live.cleanup() }
+        live.state.preferences.setMarkdownImagePlacement(.embedded, for: url)
+        let script = PlacementDialogScript()
+        defer { script.stop() }
+        script.start()
+        live.controller.insertImage()
+        XCTAssertEqual(script.embedState, .on)
+        XCTAssertEqual(script.rememberState, .on)
+        XCTAssertTrue(live.document.text.hasSuffix("![AI](data:image/png;base64,\(Self.illustrationPNG.base64EncodedString()))"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: MarkdownImagePlacement.assetsFolder(for: url).path))
+    }
+
+    @MainActor
+    func testInsertImageCancelInsertsNothingAndKeepsRememberedChoice() async throws {
+        let directory = try illustrationFolder()
+        defer { try? FileManager.default.removeItem(at: directory.deletingLastPathComponent()) }
+        let url = directory.appendingPathComponent("note.md")
+        let live = try await makeIllustration(url: url)
+        defer { live.cleanup() }
+        live.state.preferences.setMarkdownImagePlacement(.embedded, for: url)
+        let script = PlacementDialogScript(choose: .besideDocument, remember: false, cancel: true)
+        defer { script.stop() }
+        script.start()
+        live.controller.insertImage()
+        XCTAssertTrue(script.appeared)
+        XCTAssertEqual(live.document.text, "before")
+        XCTAssertEqual(live.state.preferences.markdownImagePlacement(for: url), .embedded)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: MarkdownImagePlacement.assetsFolder(for: url).path))
+    }
+
+    @MainActor
+    func testInsertImageSaveFailureSetsMessageAndInsertsNothing() async throws {
+        let directory = try illustrationFolder()
+        defer { try? FileManager.default.removeItem(at: directory.deletingLastPathComponent()) }
+        let url = directory.appendingPathComponent("note.md")
+        try Data().write(to: MarkdownImagePlacement.assetsFolder(for: url))
+        let live = try await makeIllustration(url: url)
+        defer { live.cleanup() }
+        let script = PlacementDialogScript(choose: .besideDocument)
+        defer { script.stop() }
+        script.start()
+        live.controller.insertImage()
+        XCTAssertTrue(script.appeared)
+        for _ in 0..<200 where live.controller.message.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertTrue(live.controller.message.hasPrefix(String(L10n.tr("无法保存图片：%@").dropLast(2))), live.controller.message)
+        XCTAssertEqual(live.document.text, "before")
     }
 
     func testPlacementLocatesExpectedPlaceThenOnlyOccurrence() {

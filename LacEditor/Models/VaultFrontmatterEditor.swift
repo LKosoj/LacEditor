@@ -68,7 +68,7 @@ enum VaultFrontmatterEditError: Error, Equatable {
 
 /// Правка шапки YAML построчными заплатками: меняется только целевое поле, всё остальное (порядок, кавычки соседей,
 /// комментарии, пустые строки, окончания строк, BOM, текст после шапки) остаётся нетронутым байт в байт.
-/// Границы шапки — как в `MarkdownPresentationParser.frontMatter`; начало поля — как в `VaultMerge.records`
+/// Границы шапки — как в `MarkdownFrontMatter.frontMatter`; начало поля — как в `VaultMerge.records`
 /// (первая колонка не пробел/табуляция/`#`/`-`, дальше `:`). Результат перечитывается Yams.
 enum VaultFrontmatterEditor {
     // MARK: Внутренние типы
@@ -136,7 +136,7 @@ enum VaultFrontmatterEditor {
     }
 
     private static func analyze(_ text: String) -> Analysis {
-        guard let front = MarkdownPresentationParser.frontMatter(text), front.markers.count == 2 else { return .none }
+        guard let front = MarkdownFrontMatter.frontMatter(text), front.markers.count == 2 else { return .none }
         let ns = text as NSString
         let opening = ns.lineRange(for: NSRange(location: front.markers[0].location, length: 0))
         let bodyStart = NSMaxRange(opening)

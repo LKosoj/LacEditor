@@ -113,7 +113,7 @@ final class MarkdownLinkNavigationInteractionTests: XCTestCase {
             }
         }
         XCTAssertEqual(navigations, 0)
-        let headings = MarkdownPresentationParser.parse(source).headings
+        let headings = MarkdownPresentationBuilder.parse(source).headings
         try click(fixture.editor, character: (source as NSString).range(of: "before").location, command: true)
         for _ in 0..<100 where fixture.editor.selectedRange().location != headings.first?.range.location {
             try await Task.sleep(for: .milliseconds(50))
@@ -137,7 +137,7 @@ final class MarkdownLinkNavigationInteractionTests: XCTestCase {
         let view = fixture.editor
         let layout = try XCTUnwrap(view.layoutManager as? FoldLayoutManager)
         let container = try XCTUnwrap(view.textContainer)
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         let heading = try XCTUnwrap(parsed.headings.first)
         let word = (source as NSString).range(of: "Go")
         let run = MarkdownHeading.UppercaseRun(pieces: [.init(sourceRange: word, text: "Go", matchesSource: true)], styles: [.link])
@@ -188,7 +188,7 @@ final class MarkdownLinkNavigationInteractionTests: XCTestCase {
             defer { fixture.close() }
             fixture.editor.setSelectedRange(NSRange(location: 0, length: 0))
             try click(fixture.editor, character: 2, command: true)
-            let heading = try XCTUnwrap(MarkdownPresentationParser.parse(source).headings.first)
+            let heading = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).headings.first)
             for _ in 0..<100 {
                 if fixture.editor.selectedRange().location == heading.range.location { break }
                 try await Task.sleep(for: .milliseconds(50))
@@ -213,7 +213,7 @@ final class MarkdownLinkNavigationInteractionTests: XCTestCase {
         coordinator.markdownLinkParse = { text in
             started.fulfill()
             release.wait()
-            return MarkdownPresentationParser.parse(text)
+            return MarkdownPresentationBuilder.parse(text)
         }
         fixture.editor.setSelectedRange(NSRange(location: 0, length: 0))
         try click(fixture.editor, character: 2, command: true)
@@ -240,14 +240,14 @@ final class MarkdownLinkNavigationInteractionTests: XCTestCase {
         coordinator.markdownLinkParse = { text in
             started.fulfill()
             release.wait()
-            return MarkdownPresentationParser.parse(text)
+            return MarkdownPresentationBuilder.parse(text)
         }
         fixture.editor.setSelectedRange(NSRange(location: 0, length: 0))
         try click(fixture.editor, character: 2, command: true)
         let pending = try XCTUnwrap(coordinator.markdownLinkTask)
         await fulfillment(of: [started], timeout: 5)
         document.isMarkdownFormatted = true
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 100, height: 30), cell: cell))
         coordinator.finishTableCell()
         release.signal()
@@ -278,7 +278,7 @@ final class MarkdownLinkNavigationInteractionTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(50))
         }
         try click(fixture.editor, character: 2, command: true)
-        let heading = try XCTUnwrap(MarkdownPresentationParser.parse(target).headings.first)
+        let heading = try XCTUnwrap(MarkdownPresentationBuilder.parse(target).headings.first)
         for _ in 0..<100 {
             if targetDocument.selectionRange.location == heading.range.location { break }
             try await Task.sleep(for: .milliseconds(50))

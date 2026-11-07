@@ -112,7 +112,7 @@ enum StoryCardText {
     static func proseRanges(in text: String) -> [NSRange] {
         let ns = text as NSString
         var proseStart = 0
-        if let front = MarkdownPresentationParser.frontMatter(text) { proseStart = NSMaxRange(front.range) }
+        if let front = MarkdownFrontMatter.frontMatter(text) { proseStart = NSMaxRange(front.range) }
         var result: [NSRange] = []
         var fence: (character: Character, count: Int)?
         var position = proseStart

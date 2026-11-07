@@ -29,16 +29,16 @@ enum MarkdownTextSourceCapture {
         return result
     }
 
-    static func ranges(_ origins: [Origin], source: MarkdownPresentationParser.Source,
+    static func ranges(_ origins: [Origin], source: MarkdownSourcePositions,
                        isCancelled: () -> Bool = { false }) -> [OpaquePointer: NSRange] {
         var recovered: [OpaquePointer: NSRange] = [:]
-        var cellPositions: [OpaquePointer: MarkdownPresentationParser.Source.TableCellPositions?] = [:]
+        var cellPositions: [OpaquePointer: MarkdownSourcePositions.TableCellPositions?] = [:]
         for origin in origins {
             if isCancelled() { return [:] }
             guard cmark_node_next(origin.node) != origin.next else { continue }
             var cell = cmark_node_parent(origin.node)
             while let parent = cell, cmark_node_get_type_string(parent).map({ String(cString: $0) }) != "table_cell" { cell = cmark_node_parent(parent) }
-            let positions: MarkdownPresentationParser.Source.TableCellPositions?
+            let positions: MarkdownSourcePositions.TableCellPositions?
             if let cell {
                 if let cached = cellPositions[cell] { positions = cached }
                 else {

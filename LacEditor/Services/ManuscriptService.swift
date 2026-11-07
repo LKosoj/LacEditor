@@ -162,7 +162,7 @@ enum ManuscriptService {
         var imageCheckFailed = false
         // Удаляется только подтверждённый front matter: структура и корректный YAML-отображение (или пустой YAML).
         var frontMatterEnd = 0
-        if !isFirst, let block = MarkdownPresentationParser.frontMatter(text) {
+        if !isFirst, let block = MarkdownFrontMatter.frontMatter(text) {
             var isConfirmed = true
             do { _ = try PandocExportService.yamlFrontMatter(text) } catch { isConfirmed = false }
             if isConfirmed {
@@ -178,14 +178,14 @@ enum ManuscriptService {
             }
         }
         // разбор принимает замыкание отмены как escaping, но не сохраняет его после возврата
-        let presentation = withoutActuallyEscaping(isCancelled) {
-            MarkdownPresentationParser.parse(text, syntax: syntax, isCancelled: $0)
+        let model = withoutActuallyEscaping(isCancelled) {
+            MarkdownDocumentParser.parseOrEmpty(text, syntax: syntax, includes: [], isCancelled: $0)
         }
         if isCancelled() { throw CancellationError() }
         var labels: [String] = []
         var seenLabels: Set<String> = []
         var seenDefinitions: Set<Int> = []
-        for footnote in presentation.footnotes {
+        for footnote in model.footnotes {
             let range = footnote.definitionRange
             guard range.location >= 0, range.length >= 4, NSMaxRange(range) <= source.length,
                   seenDefinitions.insert(range.location).inserted else { continue }
@@ -235,10 +235,15 @@ enum ManuscriptService {
                 }
             }
 
+            // Запросы к модели — один обход; спаны-хвосты — маркеры `[текст](адрес)`.
+            guard let linkEntries = withoutActuallyEscaping(isCancelled, do: { model.queries(.links, isCancelled: $0) })?.linkEntries else { throw CancellationError() }
             var tails: [NSRange: NSRange] = [:]
-            for span in presentation.spans where span.kind == .link && span.markerRanges.count == 2 { tails[span.range] = span.markerRanges[1] }
-            for link in presentation.links {
+            for entry in linkEntries where entry.form == .inline && entry.markers.count == 2 { tails[entry.link.range] = entry.markers[1] }
+            for entry in linkEntries {
+                let link = entry.link
                 if isCancelled() { throw CancellationError() }
+                // `<a href>…</a>`: хвост `</a>` здесь не считается.
+                if entry.form == .html { continue }
                 if let tail = tails[link.range], tail.location >= 0, NSMaxRange(tail) <= source.length,
                    source.substring(with: tail).lowercased() == "</a>" { continue }
                 if let tail = tails[link.range], tail.location >= 0, tail.length >= 3, NSMaxRange(tail) <= source.length,
@@ -253,7 +258,7 @@ enum ManuscriptService {
             }
             // Не переписываются, только считаются; теги внутри блоков кода тоже попадают в счёт.
             // `<a href>`, который разбор уже вернул ссылкой (её диапазон начинается с открывающего тега), посчитан выше.
-            let parsedLinkStarts = Set(presentation.links.map(\.range.location))
+            let parsedLinkStarts = Set(linkEntries.map(\.link.range.location))
             htmlAddress?.enumerateMatches(in: text, range: NSRange(location: 0, length: source.length)) { match, _, _ in
                 guard let match, !parsedLinkStarts.contains(match.range.location) else { return }
                 for group in 1...3 where match.range(at: group).location != NSNotFound {

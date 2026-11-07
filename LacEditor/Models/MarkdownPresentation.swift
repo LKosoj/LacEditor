@@ -1,7 +1,7 @@
 import Foundation
 
 enum MarkdownPresentationKind: Equatable, Sendable {
-    case heading(Int), strong, emphasis, strikethrough, code, keyboard, link, quote, codeBlock, highlight, yaml, alert(String), subscriptText, superscriptText, underline, inlineStyle(MarkdownInlineStyle), tableMath(NSRange), tableEmoji(NSRange), tableImage(NSRange)
+    case heading(Int), strong, emphasis, strikethrough, code, keyboard, link, quote, codeBlock, highlight, yaml, alert(String), critic(CriticMarkupKind), obsidianComment, callout(label: String, kind: MarkdownCalloutKind?), subscriptText, superscriptText, underline, inlineStyle(MarkdownInlineStyle), tableMath(NSRange), tableEmoji(NSRange), tableImage(NSRange)
 }
 
 struct MarkdownPresentationSpan: Equatable, Sendable {
@@ -351,6 +351,8 @@ struct MarkdownWikiLink: Equatable, Sendable {
     let heading: String?
     let alias: String?
     var markerRanges: [NSRange]
+    /// `![[…]]`: встраивание заметки, а не обычная wiki-ссылка.
+    var isEmbed: Bool = false
 }
 
 struct MarkdownImage: Equatable, Sendable {
@@ -456,6 +458,14 @@ struct MarkdownFootnote: Equatable, Sendable {
 
 enum MarkdownTableAlignment: Equatable, Sendable {
     case unspecified, left, center, right
+}
+
+// Здесь, а не в MarkdownTableEditingService: тип нужен FoldLayoutManager, который в Scripts собирается без cmark.
+enum MarkdownTableCommand: Equatable {
+    case create(rows: Int, columns: Int)
+    case insertRowBefore, insertRowAfter, deleteRow, moveRowUp, moveRowDown
+    case insertColumnBefore, insertColumnAfter, deleteColumn, moveColumnLeft, moveColumnRight
+    case align(MarkdownTableAlignment)
 }
 
 struct MarkdownTableCell: Equatable, Sendable {
@@ -620,7 +630,7 @@ struct MarkdownTextReplacement: Equatable, Sendable {
     let kind: Kind
 }
 
-struct MarkdownLooseIndent: Sendable {
+struct MarkdownLooseIndent: Equatable, Sendable {
     var range: NSRange
     let replacement: String
 }
@@ -891,6 +901,8 @@ struct MarkdownPresentation: Sendable {
     private(set) var fenceContextAvailable: Bool
     private(set) var readableText: MarkdownReadableText?
     private(set) var wikiLinks: [MarkdownWikiLink] = []
+    /// Строки, где позиции cmark не подтверждены (элемент без диапазона не получил оформление): отсортированы, слиты. Карту текста и правку внутри них нельзя считать точными.
+    private(set) var unreliableRanges: [NSRange] = []
     private(set) var elements: MarkdownElementIndex = .empty
     /// Префиксные максимумы концов `spans` и `completedTaskRanges`; считает `prepareForEditing`, держит `shift`.
     private(set) var spanEnds: [Int] = []
@@ -941,6 +953,36 @@ struct MarkdownPresentation: Sendable {
         return copy
     }
 
+    func withUnreliableRanges(_ ranges: [NSRange]) -> MarkdownPresentation {
+        var copy = self
+        copy.unreliableRanges = ranges
+        return copy
+    }
+
+    /// Сортирует диапазоны и сливает пересекающиеся и касающиеся.
+    static func mergedRanges(_ ranges: [NSRange]) -> [NSRange] {
+        var result: [NSRange] = []
+        for range in ranges.sorted(by: { $0.location < $1.location }) {
+            if let last = result.last, range.location <= NSMaxRange(last) {
+                result[result.count - 1] = NSUnionRange(last, range)
+            } else { result.append(range) }
+        }
+        return result
+    }
+
+    /// Участки, которых коснулась правка, растут вместе с ней, а не пропадают.
+    private func shiftedUnreliable(_ edit: MarkdownTextEdit) -> [NSRange] {
+        let ranges = unreliableRanges.compactMap { range -> NSRange? in
+            if NSMaxRange(range) < edit.range.location { return range }
+            if range.location > edit.end { return NSRange(location: range.location + edit.delta, length: range.length) }
+            let low = min(range.location, edit.range.location), high = max(NSMaxRange(range), edit.end)
+            let length = high - low + edit.delta
+            // Участок, целиком попавший в удалённый диапазон, исчезает: пустой не храним.
+            return length > 0 ? NSRange(location: low, length: length) : nil
+        }
+        return Self.mergedRanges(ranges)
+    }
+
     func withElements(_ index: MarkdownElementIndex) -> MarkdownPresentation {
         var copy = self
         copy.elements = index
@@ -953,7 +995,7 @@ struct MarkdownPresentation: Sendable {
             emojiCandidates: emojiCandidates, emojiCandidatesIncluded: emojiCandidatesIncluded, emojiCompletionRanges: emojiCompletionRanges, smartTextRanges: smartTextRanges, smartRawHTMLRanges: smartRawHTMLRanges, textReplacements: textReplacements, paragraphs: paragraphs, completedTaskRanges: completedTaskRanges,
             taskCheckboxes: taskCheckboxes, listMarkers: listMarkers, looseIndents: looseIndents, footnotes: footnotes, tableOfContents: tableOfContents, tables: tables,
             codeBlocks: codeBlocks, fenceContainerLines: fenceContainerLines, fenceBlockedRanges: fenceBlockedRanges, fenceBlockedEOF: fenceBlockedEOF,
-            fenceContextAvailable: fenceContextAvailable, readableText: readableText ?? self.readableText).withWikiLinks(wikiLinks).withElements(elements)
+            fenceContextAvailable: fenceContextAvailable, readableText: readableText ?? self.readableText).withWikiLinks(wikiLinks).withElements(elements).withUnreliableRanges(unreliableRanges)
     }
 
     func numberingHeadings(_ enabled: Bool) -> MarkdownPresentation {
@@ -962,7 +1004,7 @@ struct MarkdownPresentation: Sendable {
             emojiCandidates: emojiCandidates, emojiCandidatesIncluded: emojiCandidatesIncluded, emojiCompletionRanges: emojiCompletionRanges, smartTextRanges: smartTextRanges, smartRawHTMLRanges: smartRawHTMLRanges, textReplacements: textReplacements, paragraphs: paragraphs, completedTaskRanges: completedTaskRanges,
             taskCheckboxes: taskCheckboxes, listMarkers: listMarkers, looseIndents: looseIndents, footnotes: footnotes, tableOfContents: tableOfContents, tables: tables,
             codeBlocks: codeBlocks, fenceContainerLines: fenceContainerLines, fenceBlockedRanges: fenceBlockedRanges, fenceBlockedEOF: fenceBlockedEOF,
-            fenceContextAvailable: fenceContextAvailable, readableText: readableText).withWikiLinks(wikiLinks).withElements(elements)
+            fenceContextAvailable: fenceContextAvailable, readableText: readableText).withWikiLinks(wikiLinks).withElements(elements).withUnreliableRanges(unreliableRanges)
     }
 
     func replacingTable(_ table: MarkdownTable, oldTable: NSRange, edit: NSRange, replacementLength: Int) -> MarkdownPresentation {
@@ -977,7 +1019,7 @@ struct MarkdownPresentation: Sendable {
             guard markers.count == span.markerRanges.count else { return nil }
             let range: NSRange
             let isContainer: Bool
-            switch span.kind { case .quote, .alert: isContainer = true; default: isContainer = false }
+            switch span.kind { case .quote, .alert, .callout: isContainer = true; default: isContainer = false }
             if isContainer && edit.length == 0 && NSMaxRange(span.range) == edit.location {
                 range = NSRange(location: span.range.location, length: span.range.length + replacementLength)
             } else if let shifted = shift(span.range) {
@@ -1132,6 +1174,14 @@ struct MarkdownPresentation: Sendable {
                                         shift(indent.range).map { MarkdownLooseIndent(range: $0, replacement: indent.replacement) }
                                     }, footnotes: newFootnotes,
                                     tableOfContents: tableOfContents.compactMap(shift), tables: newTables, codeBlocks: newCodeBlocks).withWikiLinks(newWikiLinks)
+            .withUnreliableRanges(unreliableRanges.compactMap { range in
+                // Участок, задетый правкой таблицы, растёт на неё.
+                if NSMaxRange(range) < edit.location { return range }
+                if range.location > NSMaxRange(edit) { return NSRange(location: range.location + delta, length: range.length) }
+                let low = min(range.location, edit.location), high = max(NSMaxRange(range), NSMaxRange(edit))
+                let length = high - low + delta
+                return length > 0 ? NSRange(location: low, length: length) : nil
+            })
     }
 
     /// Нет элементов, чьё установленное состояние (оглавление, якоря, разрывы страниц) сдвигом не переносится, и нет заголовков с номером или заглавными буквами.
@@ -1148,7 +1198,7 @@ struct MarkdownPresentation: Sendable {
         switch span.kind {
         case .heading, .quote:
             return edit.block(span.range)
-        case .strong, .emphasis, .strikethrough, .code, .highlight, .subscriptText, .superscriptText:
+        case .strong, .emphasis, .strikethrough, .code, .highlight, .subscriptText, .superscriptText, .critic, .obsidianComment:
             return edit.inline(span.range)
         case .tableMath, .tableEmoji, .tableImage:
             return nil
@@ -1407,6 +1457,7 @@ struct MarkdownPresentation: Sendable {
                 move(&footnotes[index].definitionRange, edit.away)
             }
         }
+        if !unreliableRanges.isEmpty { unreliableRanges = shiftedUnreliable(edit) }
         smartTextRanges = []
         smartRawHTMLRanges = nil
         readableText = nil
@@ -1527,18 +1578,9 @@ struct MarkdownPresentation: Sendable {
         for index in edit.window(iframeBlocks, extent: { $0.range }).lowerBound..<iframeBlocks.count { move(&iframeBlocks[index].range, edit.away) }
         for index in edit.window(detailsBlocks, extent: { $0.range }).lowerBound..<detailsBlocks.count { move(&detailsBlocks[index].range, edit.away) }
         for index in edit.window(htmlBlocks, extent: { $0.range }).lowerBound..<htmlBlocks.count { move(&htmlBlocks[index].range, edit.away) }
+        if !unreliableRanges.isEmpty { unreliableRanges = shiftedUnreliable(edit) }
     }
 
-
-    /// Копия с оформлением, сдвинутым под правку; nil, если `canShift` отказал. Для тестов и проверок: экран сдвигает `canShift` и `shift` на месте.
-    func shiftedForTextEdit(_ edit: NSRange, replacementLength: Int, textLength: Int) -> MarkdownPresentation? {
-        var copy = self
-        copy.prepareForEditing()
-        let change = MarkdownTextEdit(range: edit, replacementLength: replacementLength, textLength: textLength)
-        guard copy.canShift(change) else { return nil }
-        copy.shift(change)
-        return copy
-    }
 
     /// Enter в конце обычного абзаца: дальше пустая строка или конец текста, абзац начинается с начала строки.
     /// Возвращает правку для `canShift` или nil. Позиция правки берётся после уже стоящего перевода строки: текст тот же.
@@ -1719,6 +1761,11 @@ struct MarkdownElementIndex: Equatable, Sendable {
 
     static let empty = MarkdownElementIndex(textLength: 0, blocks: [], inlines: [])
 
+    /// Записи списками: локальный разбор (T5) склеивает их по участкам и собирает индекс заново.
+    var flattened: (blocks: [(NSRange, MarkdownElement.Kind)], inlines: [(NSRange, MarkdownElement.Kind)]) {
+        (blocks.map { ($0.range, $0.kind) }, inlines.map { ($0.range, $0.kind) })
+    }
+
     init(textLength: Int, blocks: [(NSRange, MarkdownElement.Kind)], inlines: [(NSRange, MarkdownElement.Kind)],
          endsWithLineBreak: Bool = false) {
         self.textLength = textLength
@@ -1850,5 +1897,26 @@ extension MarkdownReadableText {
         }
         return MarkdownReadableText(sourceLength: sourceLength, fragments: mappedFragments,
                                     unsupportedRanges: unsupportedRanges.map { map.sourceRange(forDisplay: $0) })
+    }
+}
+
+extension MarkdownTable {
+    /// Ячейка, в которой лежит позиция текста. На `|` между ячейками — следующая, после последнего `|` — последняя,
+    /// на строке-разделителе — ячейка заголовка того же столбца. nil — позиция вне строк таблицы.
+    func cell(containing location: Int, in text: NSString) -> MarkdownTableCell? {
+        if let row = rows.first(where: { location >= $0.range.location && location <= NSMaxRange($0.range) }) {
+            return row.cells.first(where: { location >= $0.range.location && location <= NSMaxRange($0.range) })
+                ?? row.cells.first(where: { $0.range.location > location }) ?? row.cells.last
+        }
+        guard location >= delimiterRange.location, location <= NSMaxRange(delimiterRange),
+              NSMaxRange(delimiterRange) <= text.length, let header = rows.first else { return nil }
+        let line = text.substring(with: delimiterRange) as NSString
+        var start = 0
+        while start < line.length, [32, 62].contains(line.character(at: start)) { start += 1 }
+        let hasLeadingPipe = start < line.length && line.character(at: start) == 124
+        var pipes = 0
+        for index in 0..<min(location - delimiterRange.location, line.length) where line.character(at: index) == 124 { pipes += 1 }
+        let column = max(0, pipes - (hasLeadingPipe ? 1 : 0))
+        return header.cells.first(where: { $0.column == column }) ?? header.cells.last
     }
 }

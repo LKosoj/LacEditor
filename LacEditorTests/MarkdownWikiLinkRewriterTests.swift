@@ -45,11 +45,11 @@ final class MarkdownWikiLinkRewriterTests: XCTestCase {
     }
 
     func testPreviewRendersLinkAndPlainText() {
-        let html = MarkdownRenderer.renderPage("[[a]] and [[nope]]", darkMode: false, wiki: context()).html
+        let html = MarkdownHTMLRenderer.renderPage("[[a]] and [[nope]]", darkMode: false, wiki: context()).html
         XCTAssertTrue(html.contains("<a href=\"a.md\">a</a>"))
         XCTAssertTrue(html.contains("and nope"))
         XCTAssertFalse(html.contains("[["))
-        let untouched = MarkdownRenderer.renderPage("[[a]]", darkMode: false).html
+        let untouched = MarkdownHTMLRenderer.renderPage("[[a]]", darkMode: false).html
         XCTAssertTrue(untouched.contains("[[a]]"))
     }
 

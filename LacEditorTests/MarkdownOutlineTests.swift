@@ -24,7 +24,7 @@ final class MarkdownOutlineTests: XCTestCase {
     func testHeadingNumberingExcludesFootnoteDefinitions() {
         for source in ["[^1]:\n    # Foot\n\n# Normal\n\nref [^1]\n",
                        "# Normal\n\nref [^1]\n\n[^1]:\n    # Foot\n"] {
-            let numbered = MarkdownPresentationParser.parse(source).numberingHeadings(true)
+            let numbered = MarkdownPresentationBuilder.parse(source).numberingHeadings(true)
             XCTAssertEqual(numbered.headings.map(\.title), ["Normal"])
             XCTAssertEqual(numbered.headings.map(\.number), ["1. "])
         }

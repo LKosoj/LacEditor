@@ -85,13 +85,13 @@ final class MarkdownDataMediaTests: XCTestCase {
     func testInlineEmbedGivesPDFBlock() throws {
         let pdf = "data:application/pdf;base64,JVBERi0="
         let source = "до <embed src=\"\(pdf)\" type=\"application/pdf\" width=\"400\"> после"
-        let block = try XCTUnwrap(MarkdownPresentationParser.parse(source).audioBlocks.first)
+        let block = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).audioBlocks.first)
         XCTAssertEqual(block.media.kind, .pdf)
         XCTAssertEqual(block.media.sources, [pdf])
         XCTAssertTrue(block.isInline)
         XCTAssertEqual((source as NSString).substring(with: block.range).hasPrefix("<embed"), true)
-        XCTAssertTrue(MarkdownPresentationParser.parse("до <embed src=\"https://e.example/a.pdf\"> после").audioBlocks.isEmpty)
-        let alone = MarkdownPresentationParser.parse("<embed src=\"\(pdf)\">").audioBlocks
+        XCTAssertTrue(MarkdownPresentationBuilder.parse("до <embed src=\"https://e.example/a.pdf\"> после").audioBlocks.isEmpty)
+        let alone = MarkdownPresentationBuilder.parse("<embed src=\"\(pdf)\">").audioBlocks
         XCTAssertEqual(alone.count, 1, "отдельный блок не задваивается")
     }
 }

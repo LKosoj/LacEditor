@@ -16,7 +16,7 @@ final class MarkdownRubyOutputTests: XCTestCase {
         for ruby in ["<ruby><strong>漢</strong><em>字</em><rt>kan</rt></ruby>",
                      "<ruby>**漢**<span style='color:red'>字</span><rt>kan</rt></ruby>"] {
             let source = "before " + ruby + " after"
-            let parsed = MarkdownPresentationParser.parse(source)
+            let parsed = MarkdownPresentationBuilder.parse(source)
             let item = try XCTUnwrap(parsed.ruby.first, ruby)
             XCTAssertEqual(item.base, "漢字")
             XCTAssertEqual(item.baseRuns.map(\.range), [NSRange(location: 0, length: 1), NSRange(location: 1, length: 1)])
@@ -29,7 +29,7 @@ final class MarkdownRubyOutputTests: XCTestCase {
             XCTAssertTrue(copied.html.contains("<strong>漢</strong>"))
             XCTAssertTrue(copied.hasUnverifiedHTMLBlocks)
             for plain in [false, true] {
-                let page = MarkdownRenderer.renderPage(source, darkMode: false, includeHTMLMedia: plain, resolveLocalImages: !plain)
+                let page = MarkdownHTMLRenderer.renderPage(source, darkMode: false, includeHTMLMedia: plain, resolveLocalImages: !plain)
                 XCTAssertTrue(page.body.contains("<ruby>"), ruby)
                 XCTAssertTrue(page.body.contains("<strong>漢</strong>"), ruby)
                 XCTAssertTrue(page.body.contains("<rt>kan</rt>"), ruby)
@@ -42,7 +42,7 @@ final class MarkdownRubyOutputTests: XCTestCase {
         for ruby in ["<ruby><strong>**a</strong><em>b**</em><rt>x</rt></ruby>",
                      "<ruby><span style='background:yellow'>漢</span><rt>kan</rt></ruby>",
                      "<ruby><strong>漢</strong><rt><em>kan</em></rt></ruby>"] {
-            XCTAssertTrue(MarkdownPresentationParser.parse(ruby).ruby.isEmpty, ruby)
+            XCTAssertTrue(MarkdownPresentationBuilder.parse(ruby).ruby.isEmpty, ruby)
             XCTAssertNil(MarkdownClipboardCopyService.project(ruby, selection: NSRange(location: 0, length: (ruby as NSString).length)), ruby)
         }
     }
@@ -53,13 +53,13 @@ final class MarkdownRubyOutputTests: XCTestCase {
                                    ("<span style='font-size:2rem'>", "</span>"),
                                    ("<u>", "</u>"), ("<mark>", "</mark>"), ("<s>", "</s>")] {
             let source = opening + ruby + closing
-            XCTAssertTrue(MarkdownPresentationParser.parse(source).ruby.isEmpty, source)
+            XCTAssertTrue(MarkdownPresentationBuilder.parse(source).ruby.isEmpty, source)
             XCTAssertNil(MarkdownClipboardCopyService.project(source, selection: (source as NSString).range(of: ruby)), source)
-            let page = MarkdownRenderer.renderPage(source, darkMode: false)
+            let page = MarkdownHTMLRenderer.renderPage(source, darkMode: false)
             XCTAssertTrue(page.body.contains("&lt;ruby&gt;"), source)
         }
         let supported = "<strong><span style='color:red'>" + ruby + "</span></strong>"
-        let presentation = MarkdownPresentationParser.parse(supported)
+        let presentation = MarkdownPresentationBuilder.parse(supported)
         XCTAssertEqual(presentation.ruby.count, 1)
         let item = try XCTUnwrap(presentation.ruby.first)
         XCTAssertTrue(presentation.spans.contains { $0.kind == .strong && NSIntersectionRange($0.range, item.range) == item.range })
@@ -67,12 +67,12 @@ final class MarkdownRubyOutputTests: XCTestCase {
         let copy = try XCTUnwrap(MarkdownClipboardCopyService.project(supported, selection: (supported as NSString).range(of: ruby)))
         XCTAssertTrue(copy.html.contains("<strong><ruby>"))
         XCTAssertTrue(copy.html.components(separatedBy: "<ruby>").first?.contains("color:") == true)
-        let page = MarkdownRenderer.renderPage(supported, darkMode: false)
+        let page = MarkdownHTMLRenderer.renderPage(supported, darkMode: false)
         XCTAssertTrue(page.body.contains("<strong><span style="))
         XCTAssertTrue(page.body.components(separatedBy: "<ruby>").first?.contains("color:") == true)
         for source in ["<u><br>" + ruby + "</u>", "<u>" + ruby + "<br></u>",
                        "<u><span>" + ruby + "</span></u>"] {
-            XCTAssertTrue(MarkdownPresentationParser.parse(source).ruby.isEmpty, source)
+            XCTAssertTrue(MarkdownPresentationBuilder.parse(source).ruby.isEmpty, source)
             XCTAssertNil(MarkdownClipboardCopyService.project(source, selection: (source as NSString).range(of: ruby)), source)
         }
     }
@@ -80,7 +80,7 @@ final class MarkdownRubyOutputTests: XCTestCase {
     func testStyledRubyInsideQuoteKeepsQuoteRange() throws {
         let ruby = "<ruby><strong>漢</strong><rt>kan</rt></ruby>"
         let source = "> " + ruby
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         let item = try XCTUnwrap(parsed.ruby.first)
         let quote = try XCTUnwrap(parsed.spans.first { $0.kind == .quote })
         XCTAssertEqual((source as NSString).substring(with: item.range), ruby)
@@ -125,7 +125,7 @@ final class MarkdownRubyOutputTests: XCTestCase {
         let source = "<ruby> 漢 <rt> ㄏㄢˋ </rt> </ruby>"
         let copy = try XCTUnwrap(MarkdownClipboardCopyService.project(source, selection: NSRange(location: 0, length: (source as NSString).length)))
         for plain in [false, true] {
-            let page = MarkdownRenderer.renderPage(source, darkMode: false, includeHTMLMedia: plain, resolveLocalImages: !plain)
+            let page = MarkdownHTMLRenderer.renderPage(source, darkMode: false, includeHTMLMedia: plain, resolveLocalImages: !plain)
             let loaded = expectation(description: "spaced ruby loaded")
             let navigation = RubyOutputNavigation(loaded)
             let web = WKWebView(frame: NSRect(x: 0, y: 0, width: 480, height: 240))
@@ -166,7 +166,7 @@ final class MarkdownRubyOutputTests: XCTestCase {
         let source = "before " + ruby + " after"
         let selected = (source as NSString).range(of: ruby)
         for plain in [false, true] {
-            let page = MarkdownRenderer.renderPage(source, darkMode: false, includeHTMLMedia: plain,
+            let page = MarkdownHTMLRenderer.renderPage(source, darkMode: false, includeHTMLMedia: plain,
                                                    resolveLocalImages: !plain)
             let loaded = expectation(description: "ruby output loaded")
             let navigation = RubyOutputNavigation(loaded)

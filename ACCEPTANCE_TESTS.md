@@ -99,7 +99,7 @@
 | AUTO-TYPORA-10 | P1 | 工作文件夹 | FolderWorkspaceTests、FolderWorkspaceInteractionTests 验证根/请求过期、展开/收起、符号链接替换、多窗口与既有文件身份；Mac 另验真实点击和大型目录懒加载 |
 | AUTO-TYPORA-11 | P1 | 写作模式 | WritingModesTests 验证选择/版本变化、手动滚动、EOF Unicode；Mac 检查几何位置、IME、真实鼠标和大文档性能 |
 | AUTO-TYPORA-12 | P0 | 自动符号配对 | MarkdownAutoPairTests 验证默认关闭、分别开启、普通按键与精确程序插入、选区包围、跳过闭合、退格、UTF-16 和撤销；Mac 另验真实输入法和性能 |
-| AUTO-TYPORA-13 | P1 | 文内大纲 | MarkdownPresentationParserTests、MarkdownLayoutTests、MarkdownFootnoteTests 验证 standalone [toc]、共用 headings、宽度/折叠/选择、真实 mouseDown 和远端标记不触发布局；HTML 已准备同树生成及锚点验证，PDF 书签与导出参数仍在开发，实际 Mac 输出另验 |
+| AUTO-TYPORA-13 | P1 | 文内大纲 | MarkdownPresentationBuilderScenarioTests、MarkdownLayoutTests、MarkdownFootnoteTests 验证 standalone [toc]、共用 headings、宽度/折叠/选择、真实 mouseDown 和远端标记不触发布局；HTML 已准备同树生成及锚点验证，PDF 书签与导出参数仍在开发，实际 Mac 输出另验 |
 | AUTO-TYPORA-14 | P0 | 文件夹搜索 | FolderSearchTests 验证 UTF-16/CRLF、未保存快照、hardlink/nil identity、文件过期、取消及长行多匹配；UI/controller 和真实跳转需单独验收 |
 | AUTO-TYPORA-15 | P0 | 原生表格初步编辑 | MarkdownNativeTableParserTests、MarkdownLayoutTests、MarkdownNativeTableInteractionTests 验证确认的单元格、真实点击/输入、标记输入快照、撤销、Tab、宽度和相邻格式；新增虚拟/嵌套/多行单元格、双向源范围映射、拖动、可访问性、虚拟目标对话框及大表单行增量测试；实际性能、VoiceOver 和完整键盘/剪贴板另验 |
 | AUTO-TYPORA-16 | P0 | 文件操作 | FolderWorkspaceTests、FolderWorkspaceInteractionTests、InteractionPolishTests 验证真实创建/复制/移动/临时模拟的废纸篓、别名/相对链接、外部变更、延迟删除、地址式撤销与异步反馈；真实废纸篓和并发另验 |

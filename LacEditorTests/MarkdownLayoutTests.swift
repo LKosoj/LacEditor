@@ -9,7 +9,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "before <ruby>漢<rt>kan</rt></ruby> ![x](x.png) after\nnext", raw = source as NSString
         let (storage, layout, container) = makeLayout(source)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 300), textContainer: container)
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         let ruby = try XCTUnwrap(parsed.ruby.first)
         let image = try XCTUnwrap(parsed.images.first)
         layout.setMarkdownPresentation(parsed, revealedRange: raw.range(of: "next"))
@@ -179,7 +179,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "before 中文\n\n<!-- COMMENT_SECRET\nsecond line -->\n\nafter 😀"
         let (storage, layout, container) = makeLayout(source)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), textContainer: container)
-        let presentation = MarkdownPresentationParser.parse(source)
+        let presentation = MarkdownPresentationBuilder.parse(source)
         let selected = (source as NSString).range(of: "after")
         layout.setMarkdownPresentation(presentation, revealedRange: selected, inlineSelection: selected)
         layout.ensureLayout(for: container)
@@ -238,7 +238,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "hello --  world\n\nend"
         let (storage, layout, container) = makeLayout(source)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), textContainer: container)
-        let presentation = MarkdownPresentationParser.parse(source, syntax: .init(smartPunctuation: true, preserveEditingWhitespace: false))
+        let presentation = MarkdownPresentationBuilder.parse(source, syntax: .init(smartPunctuation: true, preserveEditingWhitespace: false))
         let smart = try XCTUnwrap(presentation.textReplacements.first { $0.kind == .smart })
         let spaces = try XCTUnwrap(presentation.textReplacements.first { $0.kind == .spaces })
         let end = (source as NSString).range(of: "end")
@@ -267,7 +267,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "  中文 😀  \n\nend"
         let (storage, layout, container) = makeLayout(source)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), textContainer: container)
-        let presentation = MarkdownPresentationParser.parse(source, syntax: .init(preserveEditingWhitespace: false))
+        let presentation = MarkdownPresentationBuilder.parse(source, syntax: .init(preserveEditingWhitespace: false))
         let edges = presentation.textReplacements.filter { $0.kind == .spaces && $0.text.isEmpty }
         XCTAssertEqual(edges.count, 2)
         let end = (source as NSString).range(of: "end")
@@ -309,7 +309,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "中文😀\t \t\r\n\r\nend"
         let (storage, layout, container) = makeLayout(source)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), textContainer: container)
-        let parsed = MarkdownPresentationParser.parse(source, syntax: .init(preserveEditingWhitespace: false))
+        let parsed = MarkdownPresentationBuilder.parse(source, syntax: .init(preserveEditingWhitespace: false))
         let edge = try XCTUnwrap(parsed.textReplacements.first { $0.kind == .spaces && $0.text.isEmpty })
         let end = (source as NSString).range(of: "end")
         layout.setMarkdownPresentation(parsed, revealedRange: end, inlineSelection: end)
@@ -330,7 +330,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "first\r\n   中文\ttext --\r\n\r\nend", raw = source as NSString
         let (storage, layout, container) = makeLayout(source)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), textContainer: container)
-        let parsed = MarkdownPresentationParser.parse(source, syntax: .init(preserveEditingWhitespace: false, preserveEditingSoftBreaks: true))
+        let parsed = MarkdownPresentationBuilder.parse(source, syntax: .init(preserveEditingWhitespace: false, preserveEditingSoftBreaks: true))
         let tab = try XCTUnwrap(parsed.textReplacements.first { $0.kind == .spaces && raw.substring(with: $0.range) == "\t" })
         let end = raw.range(of: "end")
         layout.setMarkdownPresentation(parsed, revealedRange: end, inlineSelection: end)
@@ -350,7 +350,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "> first\r\n> \t中文😀\r\n\r\nend", raw = source as NSString
         let (storage, layout, container) = makeLayout(source)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), textContainer: container)
-        let parsed = MarkdownPresentationParser.parse(source, syntax: .init(preserveEditingWhitespace: false, preserveEditingSoftBreaks: true))
+        let parsed = MarkdownPresentationBuilder.parse(source, syntax: .init(preserveEditingWhitespace: false, preserveEditingSoftBreaks: true))
         let edge = try XCTUnwrap(parsed.textReplacements.first { $0.kind == .spaces && $0.text.isEmpty })
         XCTAssertEqual(raw.substring(with: edge.range), "\t")
         let end = raw.range(of: "end")
@@ -373,7 +373,7 @@ final class MarkdownLayoutTests: XCTestCase {
             let raw = source as NSString
             let (storage, layout, container) = makeLayout(source)
             let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), textContainer: container)
-            let presentation = MarkdownPresentationParser.parse(source, syntax: .init(preserveEditingWhitespace: false))
+            let presentation = MarkdownPresentationBuilder.parse(source, syntax: .init(preserveEditingWhitespace: false))
             let edge = try XCTUnwrap(presentation.textReplacements.first { $0.kind == .spaces && $0.text.isEmpty })
             let end = raw.range(of: "end")
             layout.setMarkdownPresentation(presentation, revealedRange: end, inlineSelection: end)
@@ -412,7 +412,7 @@ final class MarkdownLayoutTests: XCTestCase {
             let raw = source as NSString
             let (storage, layout, container) = makeLayout(source)
             let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), textContainer: container)
-            let presentation = MarkdownPresentationParser.parse(source, syntax: .init(preserveEditingSoftBreaks: false))
+            let presentation = MarkdownPresentationBuilder.parse(source, syntax: .init(preserveEditingSoftBreaks: false))
             let replacement = try XCTUnwrap(presentation.textReplacements.first { $0.kind == .softBreak })
             let end = raw.range(of: "end")
             layout.setMarkdownPresentation(presentation, revealedRange: end, inlineSelection: end)
@@ -435,7 +435,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "first\r\n   中文😀\r\n\r\nend", raw = source as NSString
         let (storage, layout, container) = makeLayout(source)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), textContainer: container)
-        let parsed = MarkdownPresentationParser.parse(source, syntax: .init(preserveEditingWhitespace: false, preserveEditingSoftBreaks: true))
+        let parsed = MarkdownPresentationBuilder.parse(source, syntax: .init(preserveEditingWhitespace: false, preserveEditingSoftBreaks: true))
         let edge = try XCTUnwrap(parsed.textReplacements.first { $0.kind == .spaces && $0.text.isEmpty })
         XCTAssertEqual(raw.substring(with: edge.range), "   ")
         let end = raw.range(of: "end")
@@ -457,7 +457,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "> **one\r\n>   中文 --** after\r\n\r\nend", raw = source as NSString
         let (storage, layout, container) = makeLayout(source)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), textContainer: container)
-        let parsed = MarkdownPresentationParser.parse(source, syntax: .init(preserveEditingWhitespace: false, preserveEditingSoftBreaks: true))
+        let parsed = MarkdownPresentationBuilder.parse(source, syntax: .init(preserveEditingWhitespace: false, preserveEditingSoftBreaks: true))
         let edge = try XCTUnwrap(parsed.textReplacements.first { $0.kind == .spaces && $0.text.isEmpty })
         let strong = try XCTUnwrap(parsed.spans.first { $0.kind == .strong }), marker = try XCTUnwrap(strong.markerRanges.first)
         let end = raw.range(of: "end")
@@ -481,7 +481,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "> first\r\n>   **中文 --**\r\n\r\nend", raw = source as NSString
         let (storage, layout, container) = makeLayout(source)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), textContainer: container)
-        let parsed = MarkdownPresentationParser.parse(source, syntax: .init(preserveEditingWhitespace: false, preserveEditingSoftBreaks: true))
+        let parsed = MarkdownPresentationBuilder.parse(source, syntax: .init(preserveEditingWhitespace: false, preserveEditingSoftBreaks: true))
         let edge = try XCTUnwrap(parsed.textReplacements.first { $0.kind == .spaces && $0.text.isEmpty })
         XCTAssertEqual(raw.substring(with: edge.range), "  ")
         let strong = try XCTUnwrap(parsed.spans.first { $0.kind == .strong })
@@ -602,7 +602,7 @@ final class MarkdownLayoutTests: XCTestCase {
 
     func testCompletedTaskStrikethroughIncludesRenderedTableText() throws {
         let source = "- [x] task\n\n  | A | B |\n  |---|---|\n  | one | two |"
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         let table = try XCTUnwrap(parsed.tables.first)
         let cell = try XCTUnwrap(table.rows.last?.cells.first)
         let (storage, layout, _) = makeLayout(source)
@@ -690,7 +690,7 @@ final class MarkdownLayoutTests: XCTestCase {
         window.contentView = scroll
         defer { window.close() }
         window.makeKeyAndOrderFront(nil)
-        let presentation = MarkdownPresentationParser.parse(source)
+        let presentation = MarkdownPresentationBuilder.parse(source)
         let heading = try XCTUnwrap(presentation.headings.first)
         layout.setMarkdownPresentation(presentation, revealedRange: (source as NSString).range(of: "end"))
         let sourceTitle = (source as NSString).range(of: title)
@@ -877,7 +877,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 300), textContainer: container)
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         let heading = try XCTUnwrap(parsed.headings.first)
         let word = raw.range(of: "Straße"), entity = raw.range(of: "&amp;"), code = raw.range(of: "hi")
         let runs: [MarkdownHeading.UppercaseRun] = [
@@ -916,7 +916,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 300), textContainer: container)
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
-        let parsed = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeUppercaseRuns: true)
+        let parsed = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true, includeUppercaseRuns: true)
         let heading = try XCTUnwrap(parsed.headings.first)
         let runs = try XCTUnwrap(heading.uppercaseRuns)
         layout.setMarkdownPresentation(parsed, revealedRange: (source as NSString).range(of: "end"))
@@ -958,7 +958,7 @@ final class MarkdownLayoutTests: XCTestCase {
         view.setLayoutOrientation(.vertical)
         scroll.magnification = 1.5
         container.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        let parsed = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeUppercaseRuns: true)
+        let parsed = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true, includeUppercaseRuns: true)
         let heading = try XCTUnwrap(parsed.headings.first)
         let runs = try XCTUnwrap(heading.uppercaseRuns)
         view.setSelectedRange((source as NSString).range(of: "end"))
@@ -1060,7 +1060,7 @@ final class MarkdownLayoutTests: XCTestCase {
         _ = NSApplication.shared
         let source = "| H |\n|---|\n| <span style='color:red;font-size:2rem'>**bold <span style='background:yellow'>inner</span>**</span> |"
         let (storage, layout, _) = makeLayout(source)
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         let content = layout.tableCellAttributedText(cell, text: storage.mutableString)
         let bold = (content.string as NSString).range(of: "bold"), inner = (content.string as NSString).range(of: "inner")
         let font = try XCTUnwrap(content.attribute(.font, at: bold.location, effectiveRange: nil) as? NSFont)
@@ -1072,7 +1072,7 @@ final class MarkdownLayoutTests: XCTestCase {
         XCTAssertEqual(background.usingColorSpace(.sRGB)?.greenComponent ?? 0, 1, accuracy: 0.01)
         XCTAssertEqual(storage.string, source)
         let nested = "| H |\n|---|\n| <span style='color:red;background:red;font-size:2rem'><span style='color:yellow;background:yellow;font-size:1rem'>x</span></span> |"
-        let nestedCell = try XCTUnwrap(MarkdownPresentationParser.parse(nested).tables.first?.rows.last?.cells.first)
+        let nestedCell = try XCTUnwrap(MarkdownPresentationBuilder.parse(nested).tables.first?.rows.last?.cells.first)
         let nestedDisplay = layout.tableCellAttributedText(nestedCell, text: nested as NSString)
         let nestedColor = try XCTUnwrap(nestedDisplay.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor)
         let nestedBackground = try XCTUnwrap(nestedDisplay.attribute(.backgroundColor, at: 0, effectiveRange: nil) as? NSColor)
@@ -1084,7 +1084,7 @@ final class MarkdownLayoutTests: XCTestCase {
 
     func testTableWithTrailingLineBreakIsPresented() throws {
         let source = "| A | B |\n|---|---|\n| 1 | 2 |\n"
-        let table = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first)
+        let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first)
         XCTAssertEqual(table.rows.count, 2)
         XCTAssertEqual(table.rows.last?.cells.map { (source as NSString).substring(with: $0.range) }, [" 1 ", " 2 "])
     }
@@ -1136,7 +1136,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "# <span style='color:red;font-size:2rem'>**Straße**</span>\n\nend"
         let (storage, layout, container) = makeLayout(source)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), textContainer: container)
-        let presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeUppercaseRuns: true)
+        let presentation = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true, includeUppercaseRuns: true)
         let heading = try XCTUnwrap(presentation.headings.first), runs = try XCTUnwrap(heading.uppercaseRuns)
         layout.setMarkdownPresentation(presentation, revealedRange: (source as NSString).range(of: "end"))
         XCTAssertTrue(layout.setUppercaseHeading(heading.range, runs: runs, width: 300, level: heading.level))
@@ -1173,7 +1173,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let italicFont = try XCTUnwrap(storage.attribute(.font, at: italic.location, effectiveRange: nil) as? NSFont)
         XCTAssertTrue(manager.traits(of: boldFont).contains(.boldFontMask))
         XCTAssertTrue(manager.traits(of: italicFont).contains(.italicFontMask))
-        let parsed = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeUppercaseRuns: true)
+        let parsed = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true, includeUppercaseRuns: true)
         let heading = try XCTUnwrap(parsed.headings.first), runs = try XCTUnwrap(heading.uppercaseRuns)
         layout.setMarkdownPresentation(parsed, revealedRange: raw.range(of: "end"), inlineSelection: raw.range(of: "end"))
         XCTAssertTrue(layout.setUppercaseHeading(heading.range, runs: runs, width: 350, level: heading.level))
@@ -1193,7 +1193,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "# **e**\u{301} end\n\nrest"
         let (storage, layout, container) = makeLayout(source)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), textContainer: container)
-        let presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeUppercaseRuns: true)
+        let presentation = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true, includeUppercaseRuns: true)
         let heading = try XCTUnwrap(presentation.headings.first)
         let runs = try XCTUnwrap(heading.uppercaseRuns)
         let base = try XCTUnwrap(runs.first { $0.pieces.map(\.text).joined() == "e" })
@@ -1217,7 +1217,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "# \(title)\n\nend"
         let (storage, layout, container) = makeLayout(source)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 400), textContainer: container)
-        let heading = try XCTUnwrap(MarkdownPresentationParser.parse(source).headings.first)
+        let heading = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).headings.first)
         let titleRange = (source as NSString).range(of: title)
         XCTAssertFalse(layout.setPlainUppercaseHeading(heading.range, source: titleRange, text: reordered, width: 200, level: 1))
         XCTAssertEqual(storage.string, source)
@@ -1350,7 +1350,7 @@ final class MarkdownLayoutTests: XCTestCase {
     func testVerticalTableUsesVerticalGlyphsAndPhysicalCellHit() throws {
         _ = NSApplication.shared
         let source = "| 中文 | $x$ |\n|---|---|\n| 甲 | B |"
-        let result = MarkdownPresentationParser.parse(source)
+        let result = MarkdownPresentationBuilder.parse(source)
         let table = try XCTUnwrap(result.tables.first)
         let (storage, layout, container) = makeLayout(source)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 400), textContainer: container)
@@ -1390,7 +1390,7 @@ final class MarkdownLayoutTests: XCTestCase {
 
     func testRightToLeftReversesTableColumnsAndCellDirection() throws {
         let source = "| العربية | English |\n|---|---|\n| مرحبا | hello |"
-        let table = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first)
+        let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first)
         let (storage, layout, container) = makeLayout(source)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 400), textContainer: container)
         let scroll = NSScrollView(frame: view.frame)
@@ -1405,7 +1405,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let style = layout.tableCellAttributedText(rtl[0].cell, text: storage.mutableString)
             .attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
         XCTAssertEqual(style?.baseWritingDirection, .rightToLeft)
-        layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: nil)
+        layout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(source), revealedRange: nil)
         layout.ensureLayout(for: container)
         let first = try XCTUnwrap(layout.markdownTableFrame(for: rtl[0].cell, in: container))
         let hit = try XCTUnwrap(layout.markdownTableCellInfo(at: NSPoint(x: first.midX, y: first.midY), in: container))
@@ -1651,7 +1651,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 400), textContainer: container)
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         let separator = try XCTUnwrap(parsed.paragraphs.first?.separatorAfter)
         let next = (source as NSString).range(of: "next")
         func y(_ range: NSRange) -> CGFloat {
@@ -1713,7 +1713,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
         let next = (source as NSString).range(of: "next")
-        layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: next)
+        layout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(source), revealedRange: next)
         func nextY() -> CGFloat {
             layout.ensureLayout(for: container)
             return layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: next.location), effectiveRange: nil).minY
@@ -1779,7 +1779,7 @@ final class MarkdownLayoutTests: XCTestCase {
         _ = NSApplication.shared
         let source = "9. one\n1. two\n   - nested\n\nafter"
         let (storage, layout, container) = makeLayout(source)
-        let presentation = MarkdownPresentationParser.parse(source)
+        let presentation = MarkdownPresentationBuilder.parse(source)
         let ordered = try XCTUnwrap(presentation.listMarkers.first { $0.ordinal == 10 })
         let nested = try XCTUnwrap(presentation.listMarkers.first { $0.depth == 2 })
         var styles = MarkdownListStyles()
@@ -1810,7 +1810,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 400), textContainer: container)
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         XCTAssertEqual(parsed.listMarkers.map(\.text), ["9.", "10."])
         let marker = try XCTUnwrap(parsed.listMarkers.last)
         layout.setMarkdownPresentation(parsed, revealedRange: (source as NSString).range(of: "after"))
@@ -1967,7 +1967,7 @@ final class MarkdownLayoutTests: XCTestCase {
 
     func testTableCellUsesLigatureSettingWithoutChangingSource() throws {
         let source = "| A |\n|---|\n| office ffi |"
-        let table = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first)
+        let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first)
         let cell = try XCTUnwrap(table.rows.last?.cells.first)
         let (storage, layout, _) = makeLayout(source)
         XCTAssertNil(layout.tableCellAttributedText(cell, text: storage.mutableString).attribute(.ligature, at: 0, effectiveRange: nil))
@@ -1982,7 +1982,7 @@ final class MarkdownLayoutTests: XCTestCase {
 
     func testSmartTextRangesIncludeConfirmedPunctuationButExcludeEntitiesAndEscapes() {
         let source = "say \"hello\" -- world &amp; \\-- end"
-        let parsed = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true)
+        let parsed = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true)
         let raw = source as NSString
         func contains(_ range: NSRange) -> Bool {
             parsed.smartTextRanges.contains { $0.location <= range.location && NSMaxRange(range) <= NSMaxRange($0) }
@@ -2029,7 +2029,7 @@ final class MarkdownLayoutTests: XCTestCase {
     func testEmojiCompletionExcludesTextInsideRawHTML() {
         for tag in ["script", "style", "textarea"] {
             let source = "before <\(tag)>\n\ninside :smile:\n\n</\(tag)>\n\nafter :smile:"
-            let parsed = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true)
+            let parsed = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true)
             let raw = source as NSString
             let inside = raw.range(of: "inside :smile:")
             let after = raw.range(of: "after :smile:")
@@ -2702,7 +2702,7 @@ final class MarkdownLayoutTests: XCTestCase {
 
     func testTableCodeFontUsesSelectionAndRestoresDefault() throws {
         let source = "| header |\n| --- |\n| `code中文` |"
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         let layout = FoldLayoutManager()
         let selected = try XCTUnwrap(NSFont(name: "TimesNewRomanPSMT", size: layout.textFont.pointSize))
         layout.markdownCodeFont = selected
@@ -2784,7 +2784,7 @@ final class MarkdownLayoutTests: XCTestCase {
     func testInlineRevealHandlesNestedOwnersAndBoundaries() throws {
         _ = NSApplication.shared
         let source = "**outer *inner*** and `code`"
-        let presentation = MarkdownPresentationParser.parse(source)
+        let presentation = MarkdownPresentationBuilder.parse(source)
         let outer = try XCTUnwrap(presentation.spans.first { $0.kind == .strong })
         let inner = try XCTUnwrap(presentation.spans.first { $0.kind == .emphasis })
         let code = try XCTUnwrap(presentation.spans.first { $0.kind == .code })
@@ -2808,7 +2808,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "中文😀 <u>plain</u>"
         let (storage, layout, container) = makeLayout(source)
         let opening = (source as NSString).range(of: "<u>")
-        layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: nil)
+        layout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(source), revealedRange: nil)
         layout.ensureLayout(for: container)
         XCTAssertTrue(layout.isMarkdownMarkerHidden(at: opening.location))
         layout.updateMarkdownRevealedRange((source as NSString).range(of: "plain"))
@@ -2846,7 +2846,7 @@ final class MarkdownLayoutTests: XCTestCase {
     func testSubscriptAndSuperscriptMarkersReveal() {
         let source = "H~2~O X^2^"
         let (storage, layout, container) = makeLayout(source)
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         layout.setMarkdownPresentation(parsed, revealedRange: nil)
         layout.ensureLayout(for: container)
         let sub = (source as NSString).range(of: "~2~"), sup = (source as NSString).range(of: "^2^")
@@ -2861,7 +2861,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "> [!NOTE]\n> content\n\nnext"
         let (storage, layout, container) = makeLayout(source)
         let marker = (source as NSString).range(of: "[!NOTE]")
-        layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: NSRange(location: (source as NSString).length, length: 0))
+        layout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(source), revealedRange: NSRange(location: (source as NSString).length, length: 0))
         layout.ensureLayout(for: container)
         XCTAssertTrue(layout.isMarkdownMarkerHidden(at: marker.location))
         layout.updateMarkdownRevealedRange((source as NSString).range(of: "content"))
@@ -2871,7 +2871,7 @@ final class MarkdownLayoutTests: XCTestCase {
     func testFrontMatterMarkersRevealWithoutChangingDocument() {
         let source = "---\ntitle: 中文😀\n---\n\n# Heading"
         let (storage, layout, container) = makeLayout(source)
-        let result = MarkdownPresentationParser.parse(source)
+        let result = MarkdownPresentationBuilder.parse(source)
         layout.setMarkdownPresentation(result, revealedRange: NSRange(location: (source as NSString).length, length: 0))
         layout.ensureLayout(for: container)
         XCTAssertTrue(layout.isMarkdownMarkerHidden(at: 0))
@@ -2883,7 +2883,7 @@ final class MarkdownLayoutTests: XCTestCase {
         _ = NSApplication.shared
         let source = "intro\n\n```bash\nbody\n```\n\nreads `verify_aim`, not\n", raw = source as NSString
         let (storage, layout, container) = makeLayout(source)
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         layout.setMarkdownPresentation(parsed, revealedRange: nil)
         for span in parsed.spans where span.kind == .code || span.kind == .codeBlock {
             layout.addTemporaryAttribute(.backgroundColor, value: NSColor.lightGray.withAlphaComponent(0.12), forCharacterRange: span.range)
@@ -2951,7 +2951,7 @@ final class MarkdownLayoutTests: XCTestCase {
     func testHighlightMarkersRevealWithoutChangingSource() {
         let source = "==中文😀=="
         let (storage, layout, container) = makeLayout(source)
-        layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: nil)
+        layout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(source), revealedRange: nil)
         layout.ensureLayout(for: container)
         XCTAssertTrue(layout.isMarkdownMarkerHidden(at: 0))
         XCTAssertTrue(layout.isMarkdownMarkerHidden(at: (source as NSString).length - 1))
@@ -2961,7 +2961,7 @@ final class MarkdownLayoutTests: XCTestCase {
     }
     func testNativeTableGeometryFitsRowsAndPreservesSource() throws {
         let source = "| A | B |\n| --- | --- |\n| short | a long cell that wraps across several lines |"
-        let table = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first)
+        let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first)
         let (storage, layout, _) = makeLayout(source)
         let wide = layout.markdownTableGeometry(table, text: storage.mutableString, width: 500)
         let narrow = layout.markdownTableGeometry(table, text: storage.mutableString, width: 120)
@@ -2976,7 +2976,7 @@ final class MarkdownLayoutTests: XCTestCase {
 
     func testTableGeometryCacheReusesRowForSameInputs() throws {
         let source = "| A | B |\n| --- | --- |\n| short | a long cell that wraps across several lines |"
-        let presentation = MarkdownPresentationParser.parse(source)
+        let presentation = MarkdownPresentationBuilder.parse(source)
         let cell = try XCTUnwrap(presentation.tables.first?.rows.last?.cells.last)
         let (_, layout, container) = makeLayout(source)
         layout.setMarkdownPresentation(presentation, revealedRange: nil)
@@ -2991,7 +2991,7 @@ final class MarkdownLayoutTests: XCTestCase {
 
     func testTableGeometryCacheRecomputesOnWidthChange() throws {
         let source = "| A | B |\n| --- | --- |\n| short | a long cell that wraps across several lines |"
-        let presentation = MarkdownPresentationParser.parse(source)
+        let presentation = MarkdownPresentationBuilder.parse(source)
         let cell = try XCTUnwrap(presentation.tables.first?.rows.last?.cells.last)
         let (_, layout, container) = makeLayout(source)
         layout.setMarkdownPresentation(presentation, revealedRange: nil)
@@ -3007,7 +3007,7 @@ final class MarkdownLayoutTests: XCTestCase {
 
     func testTableGeometryCacheResetsOnFontSpacingAndRTL() throws {
         let source = "| العربية | English |\n|---|---|\n| مرحبا | hello world |"
-        let presentation = MarkdownPresentationParser.parse(source)
+        let presentation = MarkdownPresentationBuilder.parse(source)
         let row = try XCTUnwrap(presentation.tables.first?.rows.last)
         let first = try XCTUnwrap(row.cells.first)
         let second = try XCTUnwrap(row.cells.last)
@@ -3038,13 +3038,13 @@ final class MarkdownLayoutTests: XCTestCase {
     func testTableGeometryCacheDoesNotReturnStaleRowAfterEdit() throws {
         let source = "| A | B |\n| --- | --- |\n| x | y |"
         let (storage, layout, container) = makeLayout(source)
-        layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: nil)
+        layout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(source), revealedRange: nil)
         layout.ensureLayout(for: container)
-        let oldCell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.last)
+        let oldCell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.last)
         let before = try XCTUnwrap(layout.markdownTableFrame(for: oldCell, in: container))
         let edited = "| A | B |\n| --- | --- |\n| x | a long cell that wraps across several lines and more and more words here to wrap again |"
         storage.replaceCharacters(in: NSRange(location: 0, length: (source as NSString).length), with: edited)
-        let presentation = MarkdownPresentationParser.parse(edited)
+        let presentation = MarkdownPresentationBuilder.parse(edited)
         let misses = layout.tableGeometryMisses
         layout.setMarkdownPresentation(presentation, revealedRange: nil)
         layout.ensureLayout(for: container)
@@ -3056,7 +3056,7 @@ final class MarkdownLayoutTests: XCTestCase {
 
     func testTableGeometryCacheResetsOnTableImageChange() throws {
         let source = "| $x$ | B |\n| --- | --- |\n| a | b |"
-        let presentation = MarkdownPresentationParser.parse(source)
+        let presentation = MarkdownPresentationBuilder.parse(source)
         let cell = try XCTUnwrap(presentation.tables.first?.rows.first?.cells.first)
         let formula = try XCTUnwrap(presentation.inlineFormulas.first)
         let (_, layout, container) = makeLayout(source)
@@ -3076,7 +3076,7 @@ final class MarkdownLayoutTests: XCTestCase {
                                                    before: NSRect, misses: Int, shifted: MarkdownTableCell, oldLocation: Int) {
         let source = "Intro words\n\n| A | B |\n| --- | --- |\n| short | a long cell that wraps across several lines |"
         let raw = source as NSString
-        var presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
+        var presentation = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
         let cell = try XCTUnwrap(presentation.tables.first?.rows.last?.cells.last)
         let (storage, layout, container) = makeLayout(source)
         layout.setMarkdownPresentation(presentation, revealedRange: nil)
@@ -3108,7 +3108,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let fixture = try shiftedTableFixture()
         let edited = "Ixntro words\n\n| A | B |\n| --- | --- |\n| short | a long cell that wraps across several lines and more and more words here to wrap again |"
         fixture.storage.replaceCharacters(in: NSRange(location: 0, length: fixture.storage.length), with: edited)
-        let presentation = MarkdownPresentationParser.parse(edited)
+        let presentation = MarkdownPresentationBuilder.parse(edited)
         fixture.layout.setMarkdownPresentation(presentation, revealedRange: nil)
         fixture.layout.ensureLayout(for: fixture.container)
         let cell = try XCTUnwrap(presentation.tables.first?.rows.last?.cells.last)
@@ -3125,7 +3125,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
         view.setLayoutOrientation(.vertical)
-        let presentation = MarkdownPresentationParser.parse(source).numberingHeadings(true)
+        let presentation = MarkdownPresentationBuilder.parse(source).numberingHeadings(true)
         let toc = try XCTUnwrap(presentation.tableOfContents.first)
         let marker = try XCTUnwrap(presentation.listMarkers.last)
         layout.setMarkdownPresentation(presentation, revealedRange: (source as NSString).range(of: "end"))
@@ -3153,7 +3153,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "[toc]\n\n# First heading with a long title\n\n## Second"
         let (storage, layout, container) = makeLayout(source)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 2_000), textContainer: container)
-        let presentation = MarkdownPresentationParser.parse(source)
+        let presentation = MarkdownPresentationBuilder.parse(source)
         let toc = try XCTUnwrap(presentation.tableOfContents.first)
         layout.setMarkdownPresentation(presentation, revealedRange: nil)
         layout.ensureLayout(for: container)
@@ -3188,7 +3188,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 300_000), textContainer: container)
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 600, height: 150))
         scroll.documentView = view
-        layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: nil,
+        layout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(source), revealedRange: nil,
                                        invalidating: NSRange(location: 0, length: 1))
         let visible = view.visibleRect.offsetBy(dx: -view.textContainerOrigin.x, dy: -view.textContainerOrigin.y)
         layout.ensureLayout(forBoundingRect: visible, in: container)
@@ -3204,7 +3204,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let (storage, layout, container) = makeLayout(source)
         layout.backgroundLayoutEnabled = false
         layout.allowsNonContiguousLayout = false
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         let strong = try XCTUnwrap(parsed.spans.first { $0.kind == .strong }), marker = try XCTUnwrap(strong.markerRanges.first)
         let plain = NSRange(location: 2, length: 0)
         layout.setMarkdownPresentation(parsed, revealedRange: nil, inlineSelection: nil)
@@ -3243,7 +3243,7 @@ final class MarkdownLayoutTests: XCTestCase {
                                          ("inner don", "e", 0), ("open ta", "", 2), ("Last paragraph, wi", "x", 0), ("\n\nLast", "я", 0), ("one\n", "x", 0), ("| 1 | 2 |\n\n> ", "x", 0), ("| 1", "z", 0), ("words\n\n", "x", 0)] {
             let edit = NSRange(location: NSMaxRange(raw.range(of: marker)), length: remove)
             let length = (insert as NSString).length
-            var presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
+            var presentation = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
             let (shiftedStorage, shiftedLayout, _) = makeLayout(source)
             shiftedLayout.setMarkdownPresentation(presentation, revealedRange: nil)
             presentation.prepareForEditing()
@@ -3255,7 +3255,7 @@ final class MarkdownLayoutTests: XCTestCase {
             shiftedLayout.shiftMarkdownPresentation(change, spanStart: spanStart, revealedRange: nil, inlineSelection: nil)
             let changed = raw.replacingCharacters(in: edit, with: insert)
             let (freshStorage, freshLayout, _) = makeLayout(changed)
-            freshLayout.setMarkdownPresentation(MarkdownPresentationParser.parse(changed, includeEmojiCandidates: true, includeWikiLinks: true), revealedRange: nil)
+            freshLayout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(changed, includeEmojiCandidates: true, includeWikiLinks: true), revealedRange: nil)
             // Заголовки после сдвига сброшены, как и у прежнего пути с сдвинутым оформлением.
             let expected = freshLayout.markdownListsSnapshot.filter { $0.key != "tocHeadings" }
             XCTAssertEqual(shiftedLayout.markdownListsSnapshot.filter { $0.key != "tocHeadings" }, expected, "\(edit) \(insert)")
@@ -3286,7 +3286,7 @@ final class MarkdownLayoutTests: XCTestCase {
         for (marker, insert, remove) in [("Intro wor", "x", 0), ("Between wor", "я", 0), ("Audio tail wor", "x", 0), ("Frame tail wor", "", 1),
                                          ("Details tail wor", "x", 0), ("Html tail wor", "x", 0), ("Ruby ", "x", 0), ("Tail wor", "x", 0)] {
             let edit = NSRange(location: NSMaxRange(raw.range(of: marker)), length: remove)
-            var presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
+            var presentation = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
             let (shiftedStorage, shiftedLayout, _) = makeLayout(source)
             shiftedLayout.setMarkdownPresentation(presentation, revealedRange: nil)
             installDiagramsAndInserts(shiftedLayout, presentation)
@@ -3300,7 +3300,7 @@ final class MarkdownLayoutTests: XCTestCase {
             shiftedLayout.shiftMarkdownPresentation(change, spanStart: spanStart, revealedRange: nil, inlineSelection: nil)
             let changed = raw.replacingCharacters(in: edit, with: insert)
             let (freshStorage, freshLayout, _) = makeLayout(changed)
-            let reparsed = MarkdownPresentationParser.parse(changed, includeEmojiCandidates: true, includeWikiLinks: true)
+            let reparsed = MarkdownPresentationBuilder.parse(changed, includeEmojiCandidates: true, includeWikiLinks: true)
             freshLayout.setMarkdownPresentation(reparsed, revealedRange: nil)
             installDiagramsAndInserts(freshLayout, reparsed)
             let expected = freshLayout.markdownListsSnapshot.filter { $0.key != "tocHeadings" }
@@ -3322,7 +3322,7 @@ final class MarkdownLayoutTests: XCTestCase {
         var checked = 0
         for (marker, insert) in [("Intro word", "x"), ("Intro word", "😀"), ("Middle word", "x"), ("image and", "x"), ("math :smile: en", "x"), ("Tail word", "x"), ("Tail", "я")] {
             let edit = NSRange(location: NSMaxRange(raw.range(of: marker)), length: 0)
-            var presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
+            var presentation = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
             let (shiftedStorage, shiftedLayout, _) = makeLayout(source)
             shiftedLayout.setMarkdownPresentation(presentation, revealedRange: nil)
             presentation.prepareForEditing()
@@ -3334,7 +3334,7 @@ final class MarkdownLayoutTests: XCTestCase {
             shiftedLayout.shiftMarkdownPresentation(change, spanStart: spanStart, revealedRange: nil, inlineSelection: nil)
             let changed = raw.replacingCharacters(in: edit, with: insert)
             let (freshStorage, freshLayout, _) = makeLayout(changed)
-            freshLayout.setMarkdownPresentation(MarkdownPresentationParser.parse(changed, includeEmojiCandidates: true, includeWikiLinks: true), revealedRange: nil)
+            freshLayout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(changed, includeEmojiCandidates: true, includeWikiLinks: true), revealedRange: nil)
             XCTAssertEqual(shiftedLayout.markdownListsSnapshot.filter { $0.key != "tocHeadings" }, freshLayout.markdownListsSnapshot.filter { $0.key != "tocHeadings" }, "\(marker) \(insert)")
             withExtendedLifetime((shiftedStorage, freshStorage)) {}
         }
@@ -3348,7 +3348,7 @@ final class MarkdownLayoutTests: XCTestCase {
         var checked = 0
         for marker in ["First para", "Second para", "Last paragraph"] {
             let location = NSMaxRange(raw.range(of: marker))
-            var presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
+            var presentation = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
             let (shiftedStorage, shiftedLayout, _) = makeLayout(source)
             shiftedLayout.setMarkdownPresentation(presentation, revealedRange: nil)
             presentation.prepareForEditing()
@@ -3359,7 +3359,7 @@ final class MarkdownLayoutTests: XCTestCase {
             shiftedLayout.shiftMarkdownPresentation(change, spanStart: spanStart, revealedRange: nil, inlineSelection: nil)
             let changed = raw.replacingCharacters(in: NSRange(location: location, length: 0), with: "\n")
             let (freshStorage, freshLayout, _) = makeLayout(changed)
-            freshLayout.setMarkdownPresentation(MarkdownPresentationParser.parse(changed, includeEmojiCandidates: true, includeWikiLinks: true), revealedRange: nil)
+            freshLayout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(changed, includeEmojiCandidates: true, includeWikiLinks: true), revealedRange: nil)
             XCTAssertEqual(shiftedLayout.markdownListsSnapshot.filter { $0.key != "tocHeadings" }, freshLayout.markdownListsSnapshot.filter { $0.key != "tocHeadings" }, marker)
             for index in 0..<(changed as NSString).length {
                 XCTAssertEqual(shiftedLayout.isMarkdownMarkerHidden(at: index), freshLayout.isMarkdownMarkerHidden(at: index), "\(marker) at \(index)")
@@ -3378,7 +3378,7 @@ final class MarkdownLayoutTests: XCTestCase {
             return layout.boundingRect(forGlyphRange: NSRange(location: 0, length: layout.numberOfGlyphs), in: container).width
         }
         let originalWidth = width()
-        layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: nil)
+        layout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(source), revealedRange: nil)
         XCTAssertLessThan(width(), originalWidth)
         XCTAssertTrue(layout.isMarkdownMarkerHidden(at: 0))
         XCTAssertFalse(layout.isMarkdownMarkerHidden(at: 2))
@@ -3393,7 +3393,7 @@ final class MarkdownLayoutTests: XCTestCase {
     func testIndentedAndQuotedHeadingsUseHeadingLineHeight() {
         for source in ["# Heading\nbody", "  # Heading\nbody", "> # Heading\n\nbody"] {
             let (storage, layout, container) = makeLayout(source)
-            layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: NSRange(location: 0, length: 1))
+            layout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(source), revealedRange: NSRange(location: 0, length: 1))
             layout.ensureLayout(for: container)
             let heading = (source as NSString).range(of: "Heading")
             let body = (source as NSString).range(of: "body")
@@ -3408,7 +3408,7 @@ final class MarkdownLayoutTests: XCTestCase {
     func testFoldingAndMarkerVisibilityAreIndependent() {
         let source = "**first**\nbody\n**last**"
         let (storage, layout, _) = makeLayout(source)
-        layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: nil)
+        layout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(source), revealedRange: nil)
         let body = (source as NSString).range(of: "body\n")
         layout.setFoldedRange(body)
         XCTAssertTrue(layout.isCharacterFolded(body.location))
@@ -3431,7 +3431,7 @@ final class MarkdownLayoutTests: XCTestCase {
             return layout.boundingRect(forGlyphRange: layout.glyphRange(forCharacterRange: last, actualCharacterRange: nil), in: container).width
         }
         let width = lastWidth()
-        layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: nil)
+        layout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(source), revealedRange: nil)
         XCTAssertLessThan(lastWidth(), width)
         layout.setMarkdownPresentation(nil, revealedRange: nil, invalidating: NSRange(location: 0, length: 9))
         layout.setMarkdownPresentation(nil, revealedRange: nil)
@@ -3552,7 +3552,7 @@ final class MarkdownLayoutTests: XCTestCase {
         for _ in 0..<200 where button()?.state != .on { try await Task.sleep(for: .milliseconds(20)) }
         let refreshed = try XCTUnwrap(button())
         XCTAssertEqual(refreshed.state, .on)
-        let range = try XCTUnwrap(MarkdownPresentationParser.parse(source).detailsBlocks.first?.range)
+        let range = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).detailsBlocks.first?.range)
         view.setSelectedRange(range); controller.selectionChanged()
         XCTAssertNil(detailsView.superview)
         XCTAssertEqual(storage.string, source + "!")
@@ -3585,7 +3585,7 @@ final class MarkdownLayoutTests: XCTestCase {
         for _ in 0..<200 where button() == nil { try await Task.sleep(for: .milliseconds(20)) }
         let disclosure = try XCTUnwrap(button())
         let detailsView = try XCTUnwrap(disclosure.superview)
-        let block = try XCTUnwrap(MarkdownPresentationParser.parse(source).detailsBlocks.first)
+        let block = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).detailsBlocks.first)
         func assertGeometry() throws {
             layout.ensureLayout(for: container)
             let rect = try XCTUnwrap(layout.markdownMediaRect(for: block.range, in: container))
@@ -3694,7 +3694,7 @@ final class MarkdownLayoutTests: XCTestCase {
         let (storage, layout, container) = makeLayout(source)
         let range = (source as NSString).range(of: "![图](a.png)")
         let after = (source as NSString).range(of: "after")
-        layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: nil)
+        layout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(source), revealedRange: nil)
         layout.ensureLayout(for: container)
         let original = layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: after.location), effectiveRange: nil).minY
         layout.setMarkdownImage(NSImage(size: NSSize(width: 120, height: 100)), for: range)

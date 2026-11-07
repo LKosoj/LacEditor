@@ -134,31 +134,31 @@ final class MarkdownImageTests: XCTestCase {
     func testHTMLImagesUseConfirmedSourceAndTableRun() {
         let source = "中文😀\r\n\r\n<img src='block.png' width='40'>\r\n\r\ntext <img src=inline.png style='height:20px'> tail\r\n\r\n| H |\r\n|---|\r\n| <img src='cell.png' width='50%'> |\r\n\r\n<script><img src='hidden.png'></script>"
         let text = source as NSString
-        let result = MarkdownPresentationParser.parse(source)
+        let result = MarkdownPresentationBuilder.parse(source)
         XCTAssertEqual(result.images.map(\.url), ["block.png", "inline.png", "cell.png"])
         XCTAssertEqual(result.images.map { text.substring(with: $0.range) }, ["<img src='block.png' width='40'>", "<img src=inline.png style='height:20px'>", "<img src='cell.png' width='50%'>"])
         guard let table = result.tables.first, table.rows.count > 1, let cell = table.rows[1].cells.first else { return XCTFail("missing table cell") }
         XCTAssertTrue(cell.displayRuns.contains { if case .tableImage = $0.kind { return true }; return false })
-        let nested = MarkdownPresentationParser.parse("| H |\n|---|\n| **<img src='x.png'>** |")
+        let nested = MarkdownPresentationBuilder.parse("| H |\n|---|\n| **<img src='x.png'>** |")
         guard let nestedTable = nested.tables.first, nestedTable.rows.count > 1,
               let nestedCell = nestedTable.rows[1].cells.first else { return XCTFail("missing nested table cell") }
         XCTAssertEqual(nested.images.map(\.url), ["x.png"])
         XCTAssertTrue(nestedCell.displayRuns.contains { if case .tableImage = $0.kind { return true }; return false })
         for mixed in ["<div><select><img src='hidden.png'></select></div>", "<table><img src='misplaced.png'></table>"] {
-            XCTAssertTrue(MarkdownPresentationParser.parse(mixed).images.isEmpty)
+            XCTAssertTrue(MarkdownPresentationBuilder.parse(mixed).images.isEmpty)
         }
         let block = "<div>text<img src='first.png'><template><img src='hidden.png'></template><img src='second.png'></div>"
-        let blockImages = MarkdownPresentationParser.parse(block).images
+        let blockImages = MarkdownPresentationBuilder.parse(block).images
         XCTAssertEqual(blockImages.map(\.url), ["first.png", "second.png"])
         XCTAssertTrue(blockImages.allSatisfy(\.isInline))
         let quoted = "> <div>\r\n> text<img src='quoted.png'>\r\n> </div>"
-        let quoteImages = MarkdownPresentationParser.parse(quoted).images
+        let quoteImages = MarkdownPresentationBuilder.parse(quoted).images
         XCTAssertEqual(quoteImages.map(\.url), ["quoted.png"])
         if let image = quoteImages.first { XCTAssertEqual((quoted as NSString).substring(with: image.range), "<img src='quoted.png'>") }
         let split = "before <select> text <img src='hidden.png'> text </select> after <img src='visible.png'>"
-        XCTAssertEqual(MarkdownPresentationParser.parse(split).images.map(\.url), ["visible.png"])
+        XCTAssertEqual(MarkdownPresentationBuilder.parse(split).images.map(\.url), ["visible.png"])
         let heading = "# 中文 <img src='heading.png' width='50%'>\n\nend"
-        let parsedHeading = MarkdownPresentationParser.parse(heading)
+        let parsedHeading = MarkdownPresentationBuilder.parse(heading)
         XCTAssertEqual(parsedHeading.images.map(\.url), ["heading.png"])
         XCTAssertEqual(parsedHeading.images.first?.isInline, true)
         XCTAssertEqual(parsedHeading.images.first?.paragraphRange, parsedHeading.headings.first?.range)

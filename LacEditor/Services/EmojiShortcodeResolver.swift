@@ -96,9 +96,10 @@ enum EmojiShortcodeResolver {
                                 isCancelled: @escaping () -> Bool = { false }) throws -> String {
         if isCancelled() { throw CancellationError() }
         guard markdown.contains(":") else { return markdown }
-        let presentation = MarkdownPresentationParser.parse(markdown, includeEmojiCandidates: true, isCancelled: isCancelled)
+        let model = MarkdownDocumentParser.parseOrEmpty(markdown, includes: [.emoji], isCancelled: isCancelled)
         if isCancelled() { throw CancellationError() }
-        let candidates = presentation.emojiCandidates
+        guard let queries = model.queries(.emoji, isCancelled: isCancelled), !isCancelled() else { throw CancellationError() }
+        let candidates = queries.emojiCandidates
         guard !candidates.isEmpty else { return markdown }
         let values = try resolve(candidates.map(\.name), isCancelled: isCancelled)
         let result = NSMutableString(string: markdown)

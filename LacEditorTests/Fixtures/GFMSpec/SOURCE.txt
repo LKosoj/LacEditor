@@ -1,0 +1,12 @@
+Файлы spec.txt и extensions.txt взяты без изменений (побайтно) из репозитория github/cmark-gfm, каталог test/:
+  https://raw.githubusercontent.com/github/cmark-gfm/master/test/spec.txt
+  https://raw.githubusercontent.com/github/cmark-gfm/master/test/extensions.txt
+Получены 2026-11-05. Те же файлы лежат в зависимости swift-cmark 0.8.0 (test/spec.txt, test/extensions.txt).
+
+sha256:
+  7d8e5814befec287ac116786d81ff14e0adc9b13295b4494649e995408fd871c  spec.txt        (GitHub Flavored Markdown Spec 0.29, 2019-04-06, 672 примера)
+  a2a45e98be9fca95f564f927265a0f63beea6cae5369d1cf4bde44caa51b2a3a  extensions.txt  (30 примеров)
+
+Лицензия: CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
+Авторы: John MacFarlane и другие авторы CommonMark; расширения GFM - GitHub, Inc. (команда cmark-gfm).
+Изменения: нет. Примеры разбирает GFMSpecReader, символ "→" в них заменяется на табуляцию.

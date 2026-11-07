@@ -784,8 +784,6 @@
 
 "无法保存图片，文件可能已存在" = "Could not save the image. The file may already exist.";
 
-"图片已保存，但文档已变化，未插入" = "The image was saved, but the document changed and it was not inserted.";
-
 "打印 Markdown…" = "Print Markdown…";
 
 "无法生成完整的 PNG 图像" = "Could not create a complete PNG image.";
@@ -2700,3 +2698,20 @@
 
 /* Рабочая папка: сворачивание списка */
 "展开或收起文件列表" = "Expand or Collapse File List";
+
+/* Изображения: место вставки */
+"图片位置" = "Image location";
+"保存在文档旁边" = "Save next to the document";
+"嵌入文档" = "Embed in the document";
+"记住此文档的选择" = "Remember for this document";
+"无法保存图片：%@" = "Could not save the image: %@";
+
+/* Форматирование: этап 4 */
+"普通文本" = "Plain Text";
+"此处无法应用该格式" = "This format can't be applied here";
+"段落样式" = "Paragraph Style";
+"插入块" = "Insert Block";
+
+/* Markdown: undo, IME, paste, accessibility (T9) */
+"已切换到 Markdown 源码" = "Showing Markdown source";
+"已切换到格式化文本" = "Showing formatted text";

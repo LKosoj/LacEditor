@@ -7,20 +7,24 @@ private let markdownPerformanceLog = OSLog(subsystem: "com.laceditor.LacEditor",
 
 actor MarkdownRenderActor {
     static let shared = MarkdownRenderActor()
-    private let renderer: @Sendable (String, Bool, URL?, MarkdownSyntaxOptions, MarkdownWikiLinkContext?, CriticMarkupRenderMode?) -> MarkdownRenderedPage
+    private let renderer: @Sendable (String, Bool, URL?, MarkdownSyntaxOptions, MarkdownWikiLinkContext?, CriticMarkupRenderMode?, MarkdownDocumentModel?) -> MarkdownRenderedPage
 
-    init(renderer: @escaping @Sendable (String, Bool, URL?, MarkdownSyntaxOptions, MarkdownWikiLinkContext?, CriticMarkupRenderMode?) -> MarkdownRenderedPage = {
-        MarkdownRenderer.renderPage($0, darkMode: $1, renderEmoji: true, resolveLocalImages: true, documentURL: $2, prepareRemoteImages: true, syntax: $3, includeHeadingNumbers: true, includeListStyles: true, includeSourcePositions: true, isPreview: true, highlightCode: true, wiki: $4, critic: $5)
+    init(renderer: @escaping @Sendable (String, Bool, URL?, MarkdownSyntaxOptions, MarkdownWikiLinkContext?, CriticMarkupRenderMode?, MarkdownDocumentModel?) -> MarkdownRenderedPage = {
+        // Модель редактора берётся, только если она подходит под настройки; иначе текст разбирается заново.
+        if let model = $6, MarkdownHTMLRenderer.accepts(model, text: $0, syntax: $3, wiki: $4, critic: $5, documentURL: $2) {
+            return MarkdownHTMLRenderer.renderPage(model, text: $0, darkMode: $1, renderEmoji: true, resolveLocalImages: true, documentURL: $2, prepareRemoteImages: true, includeHeadingNumbers: true, includeListStyles: true, includeSourcePositions: true, isPreview: true, highlightCode: true, wiki: $4, critic: $5)
+        }
+        return MarkdownHTMLRenderer.renderPage($0, darkMode: $1, renderEmoji: true, resolveLocalImages: true, documentURL: $2, prepareRemoteImages: true, syntax: $3, includeHeadingNumbers: true, includeListStyles: true, includeSourcePositions: true, isPreview: true, highlightCode: true, wiki: $4, critic: $5)
     }) {
         self.renderer = renderer
     }
 
-    func render(_ markdown: String, darkMode: Bool, documentURL: URL? = nil, syntax: MarkdownSyntaxOptions = .init(), wiki: MarkdownWikiLinkContext? = nil, critic: CriticMarkupRenderMode? = nil, coordinator: DocumentTaskCoordinator,
+    func render(_ markdown: String, darkMode: Bool, documentURL: URL? = nil, syntax: MarkdownSyntaxOptions = .init(), wiki: MarkdownWikiLinkContext? = nil, critic: CriticMarkupRenderMode? = nil, model: MarkdownDocumentModel? = nil, coordinator: DocumentTaskCoordinator,
                 generation: UInt) async -> MarkdownRenderedPage? {
         guard !Task.isCancelled, coordinator.isCurrent(generation, for: .preview) else { return nil }
         let signpost = OSSignpostID(log: markdownPerformanceLog)
         os_signpost(.begin, log: markdownPerformanceLog, name: "MarkdownRender", signpostID: signpost)
-        let page = renderer(markdown, darkMode, documentURL, syntax, wiki, critic)
+        let page = renderer(markdown, darkMode, documentURL, syntax, wiki, critic, model)
         os_signpost(.end, log: markdownPerformanceLog, name: "MarkdownRender", signpostID: signpost)
         guard !Task.isCancelled, coordinator.isCurrent(generation, for: .preview) else { return nil }
         return page
@@ -541,6 +545,8 @@ struct MarkdownPreview: NSViewRepresentable {
             let remoteImagesAllowed = document.allowsRemoteImages
             let imageSession = self.imageSession
             let coordinator = document.taskCoordinator
+            // Модель берётся сейчас, в основном потоке: только если она той же версии, что и текст.
+            let model = document.markdownModel(forRevision: revision)
             let taskGeneration = coordinator.begin(.preview)
             self.taskGeneration = taskGeneration
             let task = Task.detached(priority: .userInitiated) { [weak self, weak document] in
@@ -551,7 +557,7 @@ struct MarkdownPreview: NSViewRepresentable {
                 }
                 guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .preview) else { await clearLoading(); return }
                 guard var page = await MarkdownRenderActor.shared.render(
-                    markdown, darkMode: darkMode, documentURL: sourceURL, syntax: syntax, wiki: wiki, critic: critic, coordinator: coordinator, generation: taskGeneration
+                    markdown, darkMode: darkMode, documentURL: sourceURL, syntax: syntax, wiki: wiki, critic: critic, model: model, coordinator: coordinator, generation: taskGeneration
                 ) else { await clearLoading(); return }
                 guard !Task.isCancelled, coordinator.isCurrent(taskGeneration, for: .preview) else { await clearLoading(); return }
                 @MainActor func apply(_ page: MarkdownRenderedPage, finished: Bool) -> Bool {

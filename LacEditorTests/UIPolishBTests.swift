@@ -55,25 +55,25 @@ final class UIPolishBTests: XCTestCase {
     }
 
     func testLinksHaveAlwaysVisibleUnderline() {
-        let html = MarkdownRenderer.render(sample, darkMode: false)
+        let html = MarkdownHTMLRenderer.renderPage(sample, darkMode: false).html
         XCTAssertTrue(html.contains("color-mix(in srgb, var(--accent)"))
         XCTAssertTrue(html.contains("a:hover, a:focus-visible"))
         XCTAssertFalse(html.contains("a:not(:hover) { text-decoration-color: transparent; }"))
     }
 
     func testDarkSelectionHasOwnColor() {
-        XCTAssertTrue(MarkdownRenderer.render(sample, darkMode: true).contains(":root[data-theme=\"dark\"] ::selection"))
+        XCTAssertTrue(MarkdownHTMLRenderer.renderPage(sample, darkMode: true).html.contains(":root[data-theme=\"dark\"] ::selection"))
     }
 
     func testFontStackIncludesSystemAndCJK() {
-        let html = MarkdownRenderer.render(sample, darkMode: false)
+        let html = MarkdownHTMLRenderer.renderPage(sample, darkMode: false).html
         for name in ["system-ui", "\"Hiragino Sans\"", "\"Apple SD Gothic Neo\"", "\"PingFang SC\""] {
             XCTAssertTrue(html.contains(name), name)
         }
     }
 
     func testBlockquoteUsesPrimaryText() throws {
-        let html = MarkdownRenderer.render(sample, darkMode: false)
+        let html = MarkdownHTMLRenderer.renderPage(sample, darkMode: false).html
         let start = try XCTUnwrap(html.range(of: "blockquote {"))
         let end = try XCTUnwrap(html.range(of: "}", range: start.upperBound..<html.endIndex))
         let block = html[start.upperBound..<end.lowerBound]
@@ -82,13 +82,13 @@ final class UIPolishBTests: XCTestCase {
     }
 
     func testTablesAlternateRowsAndUseTabularNumbers() {
-        let html = MarkdownRenderer.render(sample, darkMode: false)
+        let html = MarkdownHTMLRenderer.renderPage(sample, darkMode: false).html
         XCTAssertTrue(html.contains("tbody tr:nth-child(even)"))
         XCTAssertTrue(html.contains("td { font-variant-numeric: tabular-nums; }"))
     }
 
     func testPrintStyleAvoidsBreaksAndForcesLightTheme() throws {
-        let block = try printBlock(MarkdownRenderer.render(sample, darkMode: true))
+        let block = try printBlock(MarkdownHTMLRenderer.renderPage(sample, darkMode: true).html)
         for fragment in ["break-inside: avoid", ".mermaid-diagram", "break-after: avoid", ":root[data-theme=\"dark\"]", "--page: #fff"] {
             XCTAssertTrue(block.contains(fragment), fragment)
         }
@@ -96,7 +96,7 @@ final class UIPolishBTests: XCTestCase {
 
     func testPrintCSSKeepsCustomContentWidth() {
         let typography = MarkdownTypography(fontSize: 15, lineHeight: 24, maximumWidth: 600)
-        var page = MarkdownRenderer.renderPage("x", darkMode: false)
+        var page = MarkdownHTMLRenderer.renderPage("x", darkMode: false)
         page.typography = typography
         XCTAssertTrue(page.html.contains("--lac-content-width:600"))
         XCTAssertTrue(page.html.contains("--lac-print-width:min(100%,600"))
@@ -120,7 +120,7 @@ final class UIPolishBTests: XCTestCase {
         dark.text = MarkdownSRGBColor(red: 1, green: 0, blue: 0)
         let typography = MarkdownTypography(fontSize: 15, lineHeight: 24, lightColors: light, darkColors: dark)
         let useDark = AppState.markdownOutputUsesDarkMode(for: .pdf, windowIsDark: true)
-        var page = MarkdownRenderer.renderPage("x", darkMode: useDark)
+        var page = MarkdownHTMLRenderer.renderPage("x", darkMode: useDark)
         page.typography = typography
         let html = page.html
         XCTAssertTrue(html.contains("data-theme=\"light\""))

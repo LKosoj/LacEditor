@@ -62,6 +62,14 @@ final class ManuscriptServiceTests: XCTestCase {
         XCTAssertEqual(output.report.unconvertedAddresses, 0)
     }
 
+    // Ссылка с пустым текстом `[](адрес)` — обычная ссылка: адрес переписывается (раньше считался «не удалось»).
+    func testEmptyTextLinkAddressIsConverted() throws {
+        let base = root.standardizedFileURL.path
+        let output = try merge([part("中文 😀 [](images/a.md) Ф", "sub/ch.md")])
+        XCTAssertEqual(output.text, "中文 😀 [](\(base)/sub/images/a.md) Ф")
+        XCTAssertEqual(output.report.unconvertedAddresses, 0)
+    }
+
     func testUntouchedAddresses() throws {
         let text = "![a](/abs/x.png) ![](#x) ![h](http://e.com/a.png) ![d](data:image/png;base64,AAAA) [f](file:///x.md) [m](mailto:a@b.c) [h](#h) [w](//host/x) [u](https://e.com/x.md)\n\n```\n![c](code.png)\n```"
         let output = try merge([part(text)])
@@ -117,6 +125,12 @@ final class ManuscriptServiceTests: XCTestCase {
         XCTAssertEqual(output.report.duplicateFootnoteLabels, ["1", "A"])
         let single = try merge([part("`[^9]: x`\n\n    [^8]: y"), part("c[^1]\n\n[^1]: x", "b.md")])
         XCTAssertEqual(single.report.duplicateFootnoteLabels, [])
+    }
+
+    // Сноска после неподтверждённого HTML (`<span style="bad">`) не отсеивается: её метка участвует в поиске повторов между файлами.
+    func testFootnoteAfterUnprovenHTMLTakesPartInLabels() throws {
+        let output = try merge([part("<span style=\"bad\">\n\nпривет 😀[^1] 中文\r\n\r\n[^1]: заметка"), part("дальше[^1]\n\n[^1]: другая", "b.md")])
+        XCTAssertEqual(output.report.duplicateFootnoteLabels, ["1"])
     }
 
     func testCancellation() {

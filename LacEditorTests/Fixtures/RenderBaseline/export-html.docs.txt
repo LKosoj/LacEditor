@@ -1,0 +1,1700 @@
+=== doc/MarkdownBaseline/long-chapter
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-глава-n"
+[listDepths] 1
+--- body
+<span id="lac-heading-глава-n"></span>
+<h2><span data-lac-heading-number="0.1. "></span>Глава {N}</h2>
+<p>документ список данные <strong>жирный</strong> текст строка текст проверка данные <em>курсив</em> проверка глава разметка данные заметка <code>код</code> проверка слово таблица список разметка <a href="https://example.invalid/11">ссылка</a> документ данные данные слово пример <del>старое</del> строка пример данные заметка документ текст таблица абзац слово слово слово глава скорость слово таблица разметка 😀.</p>
+<p>разметка пример слово <strong>жирный</strong> заметка данные проверка проверка скорость <em>курсив</em> абзац заметка глава заметка данные <code>код</code> строка таблица слово разметка список <a href="https://example.invalid/22">ссылка</a> скорость таблица глава текст редактор <del>старое</del> пример список строка текст пример абзац таблица пример пример скорость таблица разметка скорость список таблица глава заметка строка 😀.</p>
+<p>документ таблица проверка <strong>жирный</strong> скорость разметка документ список слово <em>курсив</em> заметка пример данные разметка разметка <code>код</code> редактор абзац скорость таблица пример <a href="https://example.invalid/33">ссылка</a> глава пример абзац текст проверка <del>старое</del> скорость текст данные редактор скорость список разметка абзац проверка пример слово проверка слово строка пример список документ документ документ разметка глава 😀.</p>
+<p>редактор скорость заметка <strong>жирный</strong> данные заметка скорость таблица список <em>курсив</em> заметка разметка скорость абзац список <code>код</code> абзац проверка таблица строка глава <a href="https://example.invalid/44">ссылка</a> документ пример слово разметка данные <del>старое</del> список таблица пример скорость данные редактор скорость данные скорость заметка разметка слово проверка список абзац документ скорость 😀.</p>
+<p>скорость разметка проверка <strong>жирный</strong> абзац разметка абзац слово скорость <em>курсив</em> документ данные документ абзац проверка <code>код</code> слово данные заметка глава редактор <a href="https://example.invalid/55">ссылка</a> документ редактор список текст данные <del>старое</del> данные список список таблица строка 中文内容测试 список глава текст текст список слово проверка слово данные данные строка заметка 😀.</p>
+<p>текст данные документ <strong>жирный</strong> абзац строка текст редактор редактор <em>курсив</em> скорость редактор глава строка глава <code>код</code> строка проверка пример абзац проверка <a href="https://example.invalid/66">ссылка</a> текст слово строка разметка абзац <del>старое</del> данные заметка строка текст строка таблица пример скорость заметка документ разметка список слово заметка слово разметка редактор слово пример редактор 😀.</p>
+<p>пример скорость глава <strong>жирный</strong> скорость список заметка глава данные <em>курсив</em> скорость проверка заметка скорость глава <code>код</code> разметка глава документ данные абзац <a href="https://example.invalid/77">ссылка</a> глава разметка слово пример строка <del>старое</del> заметка таблица слово строка текст список текст строка таблица строка пример редактор разметка документ строка редактор слово скорость таблица список слово документ список заметка таблица документ 😀.</p>
+<p>редактор список список <strong>жирный</strong> данные пример документ скорость слово <em>курсив</em> заметка абзац текст заметка документ <code>код</code> таблица разметка документ заметка проверка <a href="https://example.invalid/88">ссылка</a> глава разметка строка скорость проверка <del>старое</del> абзац документ список разметка таблица строка слово редактор заметка список абзац данные документ данные редактор абзац разметка заметка строка глава текст список разметка таблица скорость абзац 😀.</p>
+<p>проверка данные скорость <strong>жирный</strong> текст пример слово текст редактор <em>курсив</em> редактор таблица скорость заметка строка <code>код</code> абзац документ скорость список строка <a href="https://example.invalid/99">ссылка</a> абзац абзац текст строка заметка <del>старое</del> документ данные пример таблица проверка редактор документ скорость данные текст абзац слово разметка текст разметка список данные редактор список редактор абзац текст документ документ данные таблица разметка текст документ 😀.</p>
+<p>заметка документ текст <strong>жирный</strong> абзац таблица строка документ скорость <em>курсив</em> текст проверка таблица строка текст <code>код</code> слово список строка слово документ <a href="https://example.invalid/110">ссылка</a> слово текст разметка текст список <del>старое</del> данные слово заметка заметка данные 中文内容测试 разметка редактор текст проверка редактор глава заметка редактор пример список текст разметка таблица разметка данные скорость таблица список строка скорость строка пример проверка 😀.</p>
+<ul>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 1</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 2</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 3</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 4</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 5</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 6</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 7 с <strong>разметкой</strong></li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 8</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 9</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 10</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 11</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 12</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 13</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 14 с <strong>разметкой</strong></li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 15</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 16</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 17</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 18</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 19</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 20</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 21 с <strong>разметкой</strong></li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 22</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 23</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 24</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 25</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 26</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 27</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 28 с <strong>разметкой</strong></li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 29</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 30</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 31</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 32</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 33</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 34</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 35 с <strong>разметкой</strong></li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 36</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 37</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 38</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 39</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 40</li>
+</ul>
+<p>текст заметка глава <strong>жирный</strong> слово слово слово данные таблица <em>курсив</em> пример документ абзац проверка разметка <code>код</code> разметка текст текст таблица абзац <a href="https://example.invalid/121">ссылка</a> проверка текст строка заметка данные <del>старое</del> данные таблица скорость список пример проверка глава абзац строка редактор скорость заметка строка заметка заметка абзац текст список строка текст данные проверка 😀.</p>
+<p>глава документ глава <strong>жирный</strong> заметка разметка строка слово абзац <em>курсив</em> абзац данные список документ таблица <code>код</code> строка заметка абзац текст скорость <a href="https://example.invalid/132">ссылка</a> документ данные документ текст заметка <del>старое</del> слово данные заметка разметка текст строка скорость список текст пример текст слово глава слово 😀.</p>
+<p>данные данные абзац <strong>жирный</strong> проверка список список редактор текст <em>курсив</em> данные данные абзац текст скорость <code>код</code> редактор редактор данные редактор редактор <a href="https://example.invalid/143">ссылка</a> список абзац строка текст пример <del>старое</del> список таблица документ строка редактор таблица заметка редактор скорость таблица пример слово данные абзац список таблица документ данные глава таблица скорость 😀.</p>
+<p>редактор строка разметка <strong>жирный</strong> редактор слово пример список глава <em>курсив</em> строка данные текст глава проверка <code>код</code> разметка скорость строка скорость проверка <a href="https://example.invalid/154">ссылка</a> скорость проверка слово разметка список <del>старое</del> редактор строка проверка слово данные глава таблица разметка документ слово слово пример абзац документ редактор документ редактор редактор 😀.</p>
+<p>список строка разметка <strong>жирный</strong> разметка редактор документ текст заметка <em>курсив</em> слово редактор скорость абзац скорость <code>код</code> глава таблица проверка таблица глава <a href="https://example.invalid/165">ссылка</a> пример заметка заметка абзац проверка <del>старое</del> проверка заметка пример разметка абзац 中文内容测试 документ таблица пример таблица глава строка глава заметка слово таблица текст данные скорость глава 😀.</p>
+<ol>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 1</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 2</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 3</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 4</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 5</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 6</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 7</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 8</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 9</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 10</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 11</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 12</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 13</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 14</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 15</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 16</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 17</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 18</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 19</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 20</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 21</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 22</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 23</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 24</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 25</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 26</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 27</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 28</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 29</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 30</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 31</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 32</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 33</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 34</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 35</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 36</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 37</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 38</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 39</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+шаг 40</li>
+</ol>
+<blockquote>
+<p>Цитата главы, строка 1<br />
+Цитата главы, строка 2<br />
+Цитата главы, строка 3<br />
+Цитата главы, строка 4<br />
+Цитата главы, строка 5<br />
+Цитата главы, строка 6<br />
+Цитата главы, строка 7<br />
+Цитата главы, строка 8<br />
+Цитата главы, строка 9<br />
+Цитата главы, строка 10</p>
+</blockquote>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code class="language-swift">let value0 = 0 // комментарий 0
+let value1 = 1 // комментарий 1
+let value2 = 2 // комментарий 2
+let value3 = 3 // комментарий 3
+let value4 = 4 // комментарий 4
+let value5 = 5 // комментарий 5
+let value6 = 6 // комментарий 6
+let value7 = 7 // комментарий 7
+let value8 = 8 // комментарий 8
+let value9 = 9 // комментарий 9
+let value10 = 10 // комментарий 10
+let value11 = 11 // комментарий 11
+let value12 = 12 // комментарий 12
+let value13 = 13 // комментарий 13
+let value14 = 14 // комментарий 14
+let value15 = 15 // комментарий 15
+let value16 = 16 // комментарий 16
+let value17 = 17 // комментарий 17
+let value18 = 18 // комментарий 18
+let value19 = 19 // комментарий 19
+</code></pre>
+<p>редактор скорость данные <strong>жирный</strong> таблица заметка строка строка пример <em>курсив</em> список скорость абзац редактор пример <code>код</code> пример проверка документ текст список <a href="https://example.invalid/176">ссылка</a> таблица документ скорость документ разметка <del>старое</del> редактор строка разметка заметка документ пример данные данные слово проверка глава разметка пример глава абзац разметка скорость список редактор скорость пример слово скорость 😀.</p>
+<p>данные строка глава <strong>жирный</strong> строка пример таблица текст редактор <em>курсив</em> документ список глава глава пример <code>код</code> проверка список таблица заметка список <a href="https://example.invalid/187">ссылка</a> данные таблица разметка разметка редактор <del>старое</del> абзац проверка редактор документ таблица проверка заметка текст разметка документ скорость разметка таблица текст 😀.</p>
+<p>строка заметка разметка <strong>жирный</strong> скорость слово заметка скорость проверка <em>курсив</em> слово слово глава документ заметка <code>код</code> строка заметка редактор строка редактор <a href="https://example.invalid/198">ссылка</a> заметка строка строка документ данные <del>старое</del> список глава проверка данные список данные список редактор скорость абзац проверка разметка список текст данные заметка документ таблица разметка заметка строка 😀.</p>
+<p>таблица данные слово <strong>жирный</strong> документ пример слово скорость строка <em>курсив</em> данные пример глава редактор текст <code>код</code> абзац документ данные строка разметка <a href="https://example.invalid/209">ссылка</a> глава абзац данные скорость абзац <del>старое</del> текст проверка пример проверка абзац строка скорость разметка абзац данные пример глава документ проверка текст 😀.</p>
+<p>таблица разметка разметка <strong>жирный</strong> скорость слово строка глава документ <em>курсив</em> таблица пример список пример скорость <code>код</code> таблица проверка документ список скорость <a href="https://example.invalid/220">ссылка</a> таблица пример пример строка пример <del>старое</del> проверка документ глава скорость заметка 中文内容测试 скорость слово глава разметка документ разметка разметка абзац список документ документ пример пример таблица пример текст проверка пример заметка глава глава строка глава слово разметка пример 😀.</p>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>№</th>
+<th align="center">Название</th>
+<th align="right">Значение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td align="center">строка 1</td>
+<td align="right">7</td>
+</tr>
+<tr>
+<td>2</td>
+<td align="center">строка 2</td>
+<td align="right">14</td>
+</tr>
+<tr>
+<td>3</td>
+<td align="center">строка 3</td>
+<td align="right">21</td>
+</tr>
+<tr>
+<td>4</td>
+<td align="center">строка 4</td>
+<td align="right">28</td>
+</tr>
+<tr>
+<td>5</td>
+<td align="center">строка 5</td>
+<td align="right">35</td>
+</tr>
+<tr>
+<td>6</td>
+<td align="center">строка 6</td>
+<td align="right">42</td>
+</tr>
+</tbody>
+</table></div>
+<p>Китайская строка один: 这是第一章的中文测试内容。</p>
+<p>Китайская строка два: 编辑器性能基准文档。</p>
+<p>Китайская строка три: 表格与列表混合排版。</p>
+=== doc/MarkdownBaseline/note-media
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-media"
+[diagram] kind=flow source="st=>start: Старт\ne=>end: Конец\nst->e\n"
+[diagram] kind=sequence source="Алиса->Боб: Привет\nБоб-->Алиса: Ответ\n"
+[raw] <!--LACRAW#0X0--> -> "<img src=\"images/pic.png\" width=\"50%\">"
+[raw] <!--LACRAW#0X1--> -> "<audio src=\"a.mp3\" controls>"
+[raw] <!--LACRAW#0X2--> -> "</audio>"
+[raw] <!--LACRAW#0X3--> -> "<video src=\"v.mp4\" controls>"
+[raw] <!--LACRAW#0X4--> -> "</video>"
+--- body
+<span id="lac-heading-media"></span>
+<h2><span data-lac-heading-number="0.1. "></span>Media</h2>
+<p>Локальное изображение:</p>
+<p><img src="images/pic.png" alt="local" /></p>
+<p>HTML-изображение:</p>
+<!--LACRAW#0X0-->
+<p>Удалённое изображение:</p>
+<p><img src="https://example.invalid/pic.png" alt="remote" /></p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code class="language-mermaid">graph TD
+  A[Начало] --&gt; B[中文]
+  B --&gt; C[Конец]
+</code></pre>
+<pre data-lac-diagram="0">st=&gt;start: Старт
+e=&gt;end: Конец
+st-&gt;e
+</pre>
+<pre data-lac-diagram="1">Алиса-&gt;Боб: Привет
+Боб--&gt;Алиса: Ответ
+</pre>
+<iframe sandbox="allow-scripts" src="https://example.invalid/" style="width:400px;height:200px;"></iframe>
+<p><!--LACRAW#0X1--><!--LACRAW#0X2--></p>
+<p><!--LACRAW#0X3--><!--LACRAW#0X4--></p>
+<p>Конец media-блока.</p>
+=== doc/MarkdownBaseline/note
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-html", "lac-heading-setext-заголовок-второго-уровня", "lac-heading-setext-заголовок-первого-уровня", "lac-heading-заголовок-второго-уровня", "lac-heading-заголовок-пятого-уровня", "lac-heading-заголовок-третьего-уровня", "lac-heading-заголовок-четвёртого-уровня", "lac-heading-заголовок-шестого-уровня", "lac-heading-заметка-для-baseline", "lac-heading-код", "lac-heading-списки", "lac-heading-таблица", "lac-heading-формулы", "lac-heading-цитаты", "lac-heading-中文标题"
+[listDepths] 1, 2, 3
+[formula] display=false source="a^2 + b^2 = c^2"
+[formula] display=false source="x_{i}"
+[formula] display=true source="\\int_0^1 x^2\\,dx = \\frac{1}{3}\n"
+[raw] <!--LACRAW#0X0--> -> "<kbd>"
+[raw] <!--LACRAW#0X1--> -> "</kbd>"
+[raw] <!--LACRAW#0X2--> -> "<kbd>"
+[raw] <!--LACRAW#0X3--> -> "</kbd>"
+[raw] <!--LACRAW#0X4--> -> "<sub>"
+[raw] <!--LACRAW#0X5--> -> "</sub>"
+[raw] <!--LACRAW#0X6--> -> "<sup>"
+[raw] <!--LACRAW#0X7--> -> "</sup>"
+[raw] <!--LACRAW#0X8--> -> "<div class=\"box\">\nБлок HTML с <b>жирным</b> текстом.\n</div>"
+[raw] <!--LACRAW#0X9--> -> "<details>\n<summary>Сводка details</summary>"
+[raw] <!--LACRAW#0X10--> -> "</details>"
+[raw] <!--LACRAW#0X11--> -> "<ruby>"
+[raw] <!--LACRAW#0X12--> -> "<rt>"
+[raw] <!--LACRAW#0X13--> -> "</rt>"
+[raw] <!--LACRAW#0X14--> -> "</ruby>"
+[raw] <!--LACRAW#0X15--> -> "<ruby>"
+[raw] <!--LACRAW#0X16--> -> "<rt>"
+[raw] <!--LACRAW#0X17--> -> "</rt>"
+[raw] <!--LACRAW#0X18--> -> "</ruby>"
+--- body
+<span id="lac-heading-заметка-для-baseline"></span>
+<h1><span data-lac-heading-number="1. "></span>Заметка для baseline</h1>
+<p>Вводный абзац с <strong>жирным</strong>, <em>курсивом</em>, <del>зачёркнутым</del>, <code>кодом</code> и <mark>подсветкой</mark>. Есть <!--LACRAW#0X0-->Cmd<!--LACRAW#0X1-->+<!--LACRAW#0X2-->B<!--LACRAW#0X3-->, H<!--LACRAW#0X4-->2<!--LACRAW#0X5-->O и x<!--LACRAW#0X6-->2<!--LACRAW#0X7-->.</p>
+<span id="lac-heading-заголовок-второго-уровня"></span>
+<h2><span data-lac-heading-number="1.1. "></span>Заголовок второго уровня 😀</h2>
+<span id="lac-heading-заголовок-третьего-уровня"></span>
+<h3><span data-lac-heading-number="1.1.1. "></span>Заголовок третьего уровня</h3>
+<span id="lac-heading-заголовок-четвёртого-уровня"></span>
+<h4><span data-lac-heading-number="1.1.1.1. "></span>Заголовок четвёртого уровня</h4>
+<span id="lac-heading-заголовок-пятого-уровня"></span>
+<h5><span data-lac-heading-number="1.1.1.1.1. "></span>Заголовок пятого уровня</h5>
+<span id="lac-heading-заголовок-шестого-уровня"></span>
+<h6><span data-lac-heading-number="1.1.1.1.1.1. "></span>Заголовок шестого уровня</h6>
+<span id="lac-heading-setext-заголовок-первого-уровня"></span>
+<h1><span data-lac-heading-number="2. "></span>Setext-заголовок первого уровня</h1>
+<span id="lac-heading-setext-заголовок-второго-уровня"></span>
+<h2><span data-lac-heading-number="2.1. "></span>Setext-заголовок второго уровня</h2>
+<span id="lac-heading-中文标题"></span>
+<h2><span data-lac-heading-number="2.2. "></span>中文标题</h2>
+<p>Абзац с кириллицей, китайским текстом 中文内容测试 и составным эмодзи 👨‍👩‍👧 внутри строки. Ещё эмодзи: 😄 и 😀.</p>
+<p>Строка с хвостовыми пробелами<br />
+и вторая строка после мягкого переноса.</p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code>Строка с табом в начале
+</code></pre>
+<p>Ссылки: <a href="https://example.invalid/page">обычная</a>, автоссылка <a href="https://example.invalid/auto">https://example.invalid/auto</a>, wiki-ссылка Другая заметка, wiki с алиасом псевдоним, якорь <a href="#lac-heading-%D0%B7%D0%B0%D0%BC%D0%B5%D1%82%D0%BA%D0%B0-%D0%B4%D0%BB%D1%8F-baseline">к заголовку</a>.</p>
+<p>Ссылка-сноска: <a href="https://example.invalid/ref" title="Заголовок ссылки">текст ссылки</a> и сноска<sup class="footnote-ref"><a href="#fn-1" id="fnref-1" data-footnote-ref>1</a></sup> в конце предложения.</p>
+<span id="lac-heading-списки"></span>
+<h2><span data-lac-heading-number="2.3. "></span>Списки</h2>
+<ul>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+Первый пункт</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+Второй пункт
+<ul>
+<li>
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+Вложенный пункт
+<ul>
+<li>
+<span hidden data-lac-list-depth="3" data-lac-list-kind="unordered"></span>
+Ещё глубже</li>
+</ul>
+</li>
+<li>
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+Другой вложенный</li>
+</ul>
+</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+Третий пункт</li>
+</ul>
+<ol>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+Первый номер</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+Второй номер
+<ol>
+<li>
+<span hidden data-lac-list-depth="2" data-lac-list-kind="ordered"></span>
+Вложенный номер</li>
+<li>
+<span hidden data-lac-list-depth="2" data-lac-list-kind="ordered"></span>
+Второй вложенный</li>
+</ol>
+</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+Третий номер</li>
+</ol>
+<ul>
+<li><input type="checkbox" disabled="" /> Невыполненная задача</li>
+<li><input type="checkbox" checked="" disabled="" />\u{20}
+<span data-lac-checked-task></span>
+Выполненная задача
+<ul>
+<li><input type="checkbox" disabled="" /> Вложенная задача</li>
+</ul>
+</li>
+<li><input type="checkbox" checked="" disabled="" />\u{20}
+<span data-lac-checked-task></span>
+Ещё выполненная</li>
+</ul>
+<span id="lac-heading-цитаты"></span>
+<h2><span data-lac-heading-number="2.4. "></span>Цитаты</h2>
+<blockquote>
+<p>Обычная цитата с <strong>жирным</strong> текстом.<br />
+Вторая строка цитаты.</p>
+<blockquote>
+<p>Вложенная цитата.</p>
+</blockquote>
+</blockquote>
+<aside class="lac-alert lac-alert-note">
+<blockquote>
+<p><strong>NOTE</strong><br />
+Это заметка-callout с текстом 中文.</p>
+</blockquote>
+</aside>
+<aside class="lac-alert lac-alert-warning">
+<blockquote>
+<p><strong>WARNING</strong><br />
+Предупреждение.</p>
+</blockquote>
+</aside>
+<span id="lac-heading-таблица"></span>
+<h2><span data-lac-heading-number="2.5. "></span>Таблица</h2>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th align="left">Слева</th>
+<th align="center">По центру</th>
+<th align="right">Справа</th>
+<th>Без выравнивания</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="left">a</td>
+<td align="center">b</td>
+<td align="right">c</td>
+<td>d</td>
+</tr>
+<tr>
+<td align="left"><strong>жирный</strong></td>
+<td align="center"><code>код</code></td>
+<td align="right"><a href="https://example.invalid">ссылка</a></td>
+<td>中文</td>
+</tr>
+<tr>
+<td align="left">символ | в ячейке</td>
+<td align="center">😀</td>
+<td align="right">1</td>
+<td>2</td>
+</tr>
+<tr>
+<td align="left">пусто</td>
+<td align="center"></td>
+<td align="right"></td>
+<td></td>
+</tr>
+<tr>
+<td align="left">конец</td>
+<td align="center">строки</td>
+<td align="right">таблицы</td>
+<td>5</td>
+</tr>
+</tbody>
+</table></div>
+<span id="lac-heading-формулы"></span>
+<h2><span data-lac-heading-number="2.6. "></span>Формулы</h2>
+<p>Строчная формула <span data-lac-math="0">$a^2 + b^2 = c^2$</span> внутри абзаца и ещё одна <span data-lac-math="1">$x_{i}$</span>.</p>
+<div data-lac-math="2">$$
+\\int_0^1 x^2\,dx = \frac{1}{3}
+$$</div>
+<span id="lac-heading-код"></span>
+<h2><span data-lac-heading-number="2.7. "></span>Код</h2>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code class="language-swift">func greet(_ name: String) -&gt; String {
+    return &quot;Привет, \(name)&quot;
+}
+</code></pre>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code class="language-json">{
+  &quot;name&quot;: &quot;baseline&quot;,
+  &quot;items&quot;: [1, 2, 3]
+}
+</code></pre>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code>код без языка
+	со строкой с табом
+</code></pre>
+<span id="lac-heading-html"></span>
+<h2><span data-lac-heading-number="2.8. "></span>HTML</h2>
+<!--LACRAW#0X8-->
+<!--LACRAW#0X9-->
+<p>Скрытое содержимое с <strong>разметкой</strong>.</p>
+<!--LACRAW#0X10-->
+<p>Ruby: <!--LACRAW#0X11-->漢<!--LACRAW#0X12-->kan<!--LACRAW#0X13--><!--LACRAW#0X14--> и <!--LACRAW#0X15-->字<!--LACRAW#0X16-->ji<!--LACRAW#0X17--><!--LACRAW#0X18-->.</p>
+<hr />
+<p>Последний абзац после горизонтальной черты.</p>
+<p>Ещё абзац после пустой строки с пробелами.</p>
+<p>И после пустой строки с табом.</p>
+<section class="footnotes" data-footnotes>
+<ol>
+<li id="fn-1">
+<p>Определение сноски с <strong>разметкой</strong> и 中文. <a href="#fnref-1" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="1" aria-label="Back to reference 1">↩</a></p>
+</li>
+</ol>
+</section>
+=== doc/MarkdownBaseline/tables
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-таблицы"
+[listDepths] 1
+[formula] display=false source="x_{i}"
+[formula] display=false source="a^2"
+[raw] <!--LACRAW#0X0--> -> "<br>"
+--- body
+<span id="lac-heading-таблицы"></span>
+<h1><span data-lac-heading-number="1. "></span>Таблицы</h1>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th align="left">Слева</th>
+<th align="center">Центр</th>
+<th align="right">Справа</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="left">a</td>
+<td align="center">b</td>
+<td align="right">c</td>
+</tr>
+<tr>
+<td align="left">длинный текст ячейки</td>
+<td align="center">середина</td>
+<td align="right">12345</td>
+</tr>
+</tbody>
+</table></div>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>Разметка</th>
+<th>Значение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>жирный</strong></td>
+<td><code>код</code></td>
+</tr>
+<tr>
+<td><a href="https://example.invalid">ссылка</a></td>
+<td>первая<!--LACRAW#0X0-->вторая</td>
+</tr>
+<tr>
+<td>символ | в ячейке</td>
+<td>конец</td>
+</tr>
+</tbody>
+</table></div>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>Язык</th>
+<th>Текст</th>
+<th>Эмодзи</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Русский</td>
+<td>Привет, мир</td>
+<td>😀</td>
+</tr>
+<tr>
+<td>Китайский</td>
+<td>你好，世界</td>
+<td>👨‍👩‍👧</td>
+</tr>
+<tr>
+<td>Смешанный</td>
+<td>Привет 中文</td>
+<td>😄</td>
+</tr>
+</tbody>
+</table></div>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>A</th>
+<th>B</th>
+<th>C</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>заполнено</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td>заполнено</td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td>заполнено</td>
+</tr>
+</tbody>
+</table></div>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>Формула</th>
+<th>Значение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span data-lac-math="0">$x_{i}$</span></td>
+<td><span data-lac-math="1">$a^2$</span></td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p>Пункт списка с таблицей:</p>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>К1</th>
+<th>К2</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>2</td>
+</tr>
+<tr>
+<td>3</td>
+<td>4</td>
+</tr>
+</tbody>
+</table></div>
+</li>
+</ul>
+<blockquote>
+<p>Цитата с таблицей:</p>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>К1</th>
+<th>К2</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a</td>
+<td>b</td>
+</tr>
+<tr>
+<td>c</td>
+<td>d</td>
+</tr>
+</tbody>
+</table></div>
+</blockquote>
+<p>Конец.</p>
+=== doc/Verification/acceptance
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-laceditor-markdown-验收"
+[listDepths] 1
+--- body
+<span id="lac-heading-laceditor-markdown-验收"></span>
+<h1><span data-lac-heading-number="1. "></span>LacEditor Markdown 验收</h1>
+<p>普通段落包含 <strong>加粗</strong>、<em>斜体</em>、<a href="https://example.com">链接</a> 和 <code>**保持原样**</code>。</p>
+<blockquote>
+<p>这是一段引用。</p>
+</blockquote>
+<ol>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+第一项</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+第二项</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+第三项</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+第四项</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+第五项</li>
+</ol>
+<ul>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+无序项目 A</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+无序项目 B</li>
+</ul>
+<hr />
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code class="language-swift">let message = &quot;Hello // not a comment&quot;
+</code></pre>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>类型</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Markdown</td>
+<td>通过</td>
+</tr>
+</tbody>
+</table></div>
+=== doc/Verification/typora-baseline
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-中文-é"
+[listDepths] 1
+--- body
+<span id="lac-heading-中文-é"></span>
+<h1><span data-lac-heading-number="1. "></span>中文 😀 é</h1>
+<p>Текст <strong>жирный</strong> и <em>курсив</em>, <del>старое</del>, <code>код</code> и <a href="https://example.com/a">ссылка</a>.</p>
+<blockquote>
+<p>Цитата</p>
+</blockquote>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code class="language-swift">let value = 1
+</code></pre>
+<ul>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+Первый</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+Второй</li>
+</ul>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>Имя</th>
+<th>Значение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A</td>
+<td>B</td>
+</tr>
+</tbody>
+</table></div>
+=== doc/Verification/typora-parity
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-диаграммы", "lac-heading-изображения-и-медиа", "lac-heading-код-и-html", "lac-heading-после-разрыва-страницы", "lac-heading-проверка-возможностей-typora", "lac-heading-списки-и-цитаты", "lac-heading-ссылки-и-сноски", "lac-heading-таблицы", "lac-heading-текст-и-выделение", "lac-heading-формулы"
+[listDepths] 1, 2
+[formula] display=false source="\\def\\parityvar{x}"
+[formula] display=false source="\\frac{a}{b}"
+[formula] display=false source="\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}"
+[formula] display=false source="\\ref{parity:eq}"
+[formula] display=true source="\\parityvar^2 + y^2 = z^2 \\tag{1}\\label{parity:eq}\n"
+[formula] display=true source="\\frac{\\alpha}{\\beta}\n"
+[local] LACLOCALMEDIA#0X0 -> "/lac-baseline/missing.wav" fragment=""
+[raw] <!--LACRAW#0X0--> -> "<u>"
+[raw] <!--LACRAW#0X1--> -> "</u>"
+[raw] <!--LACRAW#0X2--> -> "<br>"
+[raw] <!--LACRAW#0X3--> -> "<video src=\"missing.mp4\" controls>"
+[raw] <!--LACRAW#0X4--> -> "</video>"
+[raw] <!--LACRAW#0X5--> -> "<span style=\"color: red\">"
+[raw] <!--LACRAW#0X6--> -> "</span>"
+[raw] <!--LACRAW#0X7--> -> "<kbd>"
+[raw] <!--LACRAW#0X8--> -> "</kbd>"
+[raw] <!--LACRAW#0X9--> -> "<kbd>"
+[raw] <!--LACRAW#0X10--> -> "</kbd>"
+[raw] <!--LACRAW#0X11--> -> "<ruby>"
+[raw] <!--LACRAW#0X12--> -> "<rt>"
+[raw] <!--LACRAW#0X13--> -> "</rt>"
+[raw] <!--LACRAW#0X14--> -> "</ruby>"
+[raw] <!--LACRAW#0X15--> -> "<!-- Комментарий не должен отображаться в печати. <img src=\"not-an-image.png\"> -->"
+[raw] <!--LACRAW#0X16--> -> "<div style=\"page-break-after: always; break-after: page;\"></div>"
+--- body
+<span id="lac-heading-проверка-возможностей-typora"></span>
+<h1><span data-lac-heading-number="1. "></span>Проверка возможностей Typora</h1>
+<p>Этот документ — набор контрольных примеров, а не подтверждение готовности функций.<br />
+Для каждого примера отдельно проверяются исходник, оформленный редактор, выделение,<br />
+отмена, сохранение, предпросмотр и поддерживаемые форматы вывода.</p>
+<nav aria-label="Outline" data-lac-toc><ul><li data-level="1"><a href="#lac-heading-%D0%BF%D1%80%D0%BE%D0%B2%D0%B5%D1%80%D0%BA%D0%B0-%D0%B2%D0%BE%D0%B7%D0%BC%D0%BE%D0%B6%D0%BD%D0%BE%D1%81%D1%82%D0%B5%D0%B9-typora"><span data-lac-heading-number="1. "></span>Проверка возможностей Typora</a></li><li data-level="2"><a href="#lac-heading-%D1%82%D0%B5%D0%BA%D1%81%D1%82-%D0%B8-%D0%B2%D1%8B%D0%B4%D0%B5%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5"><span data-lac-heading-number="1.1. "></span>Текст и выделение</a></li><li data-level="2"><a href="#lac-heading-%D1%81%D0%BF%D0%B8%D1%81%D0%BA%D0%B8-%D0%B8-%D1%86%D0%B8%D1%82%D0%B0%D1%82%D1%8B"><span data-lac-heading-number="1.2. "></span>Списки и цитаты</a></li><li data-level="2"><a href="#lac-heading-%D1%82%D0%B0%D0%B1%D0%BB%D0%B8%D1%86%D1%8B"><span data-lac-heading-number="1.3. "></span>Таблицы</a></li><li data-level="2"><a href="#lac-heading-%D1%81%D1%81%D1%8B%D0%BB%D0%BA%D0%B8-%D0%B8-%D1%81%D0%BD%D0%BE%D1%81%D0%BA%D0%B8"><span data-lac-heading-number="1.4. "></span>Ссылки и сноски</a></li><li data-level="2"><a href="#lac-heading-%D0%B8%D0%B7%D0%BE%D0%B1%D1%80%D0%B0%D0%B6%D0%B5%D0%BD%D0%B8%D1%8F-%D0%B8-%D0%BC%D0%B5%D0%B4%D0%B8%D0%B0"><span data-lac-heading-number="1.5. "></span>Изображения и медиа</a></li><li data-level="2"><a href="#lac-heading-%D1%84%D0%BE%D1%80%D0%BC%D1%83%D0%BB%D1%8B"><span data-lac-heading-number="1.6. "></span>Формулы</a></li><li data-level="2"><a href="#lac-heading-%D0%B4%D0%B8%D0%B0%D0%B3%D1%80%D0%B0%D0%BC%D0%BC%D1%8B"><span data-lac-heading-number="1.7. "></span>Диаграммы</a></li><li data-level="2"><a href="#lac-heading-%D0%BA%D0%BE%D0%B4-%D0%B8-html"><span data-lac-heading-number="1.8. "></span>Код и HTML</a></li><li data-level="2"><a href="#lac-heading-%D0%BF%D0%BE%D1%81%D0%BB%D0%B5-%D1%80%D0%B0%D0%B7%D1%80%D1%8B%D0%B2%D0%B0-%D1%81%D1%82%D1%80%D0%B0%D0%BD%D0%B8%D1%86%D1%8B"><span data-lac-heading-number="1.9. "></span>После разрыва страницы</a></li></ul></nav>
+<span id="lac-heading-текст-и-выделение"></span>
+<h2><span data-lac-heading-number="1.1. "></span>Текст и выделение</h2>
+<p>Русский, 中文, English, 😀, 👨‍👩‍👧‍👦, é. <strong>Жирный <em>с курсивом</em></strong>,<br />
+<del>зачёркивание</del>, <code>literal **code**</code>, <mark>выделение</mark>, H<sub>2</sub>O, x<sup>2</sup>,<br />
+<!--LACRAW#0X0-->подчёркивание<!--LACRAW#0X1-->, 😄 и :unknown_shortcode_for_acceptance:.</p>
+<p>Экранированные *звёздочки*, &amp;, 😀, кавычки “text” и – тире.<br />
+Выделить отдельно слово внутри жирного текста и часть содержимого кода;<br />
+сравнить обычное копирование, Markdown, HTML-код и вставку исходника.</p>
+<span id="lac-heading-списки-и-цитаты"></span>
+<h2><span data-lac-heading-number="1.2. "></span>Списки и цитаты</h2>
+<ol>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+Первый пункт
+<ul>
+<li>
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+Вложенный пункт
+<ul>
+<li><input type="checkbox" disabled="" /> Невыполненная задача</li>
+<li><input type="checkbox" checked="" disabled="" />\u{20}
+<span data-lac-checked-task></span>
+Выполненная задача</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+Второй пункт</li>
+</ol>
+<blockquote>
+<p>Цитата с <strong>оформлением</strong>.</p>
+<p>[!NOTE]<br />
+Уведомление с несколькими строками.</p>
+<blockquote>
+<p>Вложенная цитата.</p>
+</blockquote>
+</blockquote>
+<span id="lac-heading-таблицы"></span>
+<h2><span data-lac-heading-number="1.3. "></span>Таблицы</h2>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th align="left">Левая</th>
+<th align="center">Центр</th>
+<th align="right">Правая</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="left"><strong>中😀</strong></td>
+<td align="center"><code>a|b</code></td>
+<td align="right"><a href="https://example.com">ссылка</a></td>
+</tr>
+<tr>
+<td align="left">короткая</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td align="left">первая<!--LACRAW#0X2-->вторая</td>
+<td align="center">a\|b</td>
+<td align="right">последняя</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>A</th>
+<th>B</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>цитата</td>
+<td><strong>ячейка</strong></td>
+</tr>
+</tbody>
+</table></div>
+</blockquote>
+<ul>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p>Таблица в списке:</p>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>A</th>
+<th>B</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>список</td>
+<td>ячейка</td>
+</tr>
+</tbody>
+</table></div>
+</li>
+</ul>
+<span id="lac-heading-ссылки-и-сноски"></span>
+<h2><span data-lac-heading-number="1.4. "></span>Ссылки и сноски</h2>
+<p><a href="https://example.com" title="Подсказка">Внешняя</a>, <a href="https://example.com">https://example.com</a>,<br />
+<a href="https://example.com/path?q=%E4%B8%AD" title="Reference title">по определению</a>, <a href="typora-baseline.md">локальный файл</a>,<br />
+<a href="#lac-heading-%D1%82%D0%B5%D0%BA%D1%81%D1%82-%D0%B8-%D0%B2%D1%8B%D0%B4%D0%B5%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5">якорь</a>, сноска<sup class="footnote-ref"><a href="#fn-note" id="fnref-note" data-footnote-ref>1</a></sup> и повторная ссылка<sup class="footnote-ref"><a href="#fn-note" id="fnref-note-2" data-footnote-ref>1</a></sup>.</p>
+<span id="lac-heading-изображения-и-медиа"></span>
+<h2><span data-lac-heading-number="1.5. "></span>Изображения и медиа</h2>
+<p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC" alt="Встроенный пиксель" /></p>
+<p>Строчное изображение <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC" alt="пиксель" /> между словами.</p>
+<p>Ниже намеренно недоступные локальные файлы: проверить видимую ошибку/исходник,<br />
+затем подставить существующие файлы из отдельной временной папки приёмки.</p>
+<audio><source src="LACLOCALMEDIA#0X0"></audio>
+<p><!--LACRAW#0X3--><!--LACRAW#0X4--></p>
+<span id="lac-heading-формулы"></span>
+<h2><span data-lac-heading-number="1.6. "></span>Формулы</h2>
+<p>Общий макрос <span data-lac-math="0">$\def\parityvar{x}$</span>; строчная дробь <span data-lac-math="1">$\frac{a}{b}$</span> между словами,<br />
+высокая формула <span data-lac-math="2">$\begin{pmatrix}a&amp;b\\c&amp;d\end{pmatrix}$</span> и ссылка <span data-lac-math="3">$\ref{parity:eq}$</span>.</p>
+<div data-lac-math="4">$$
+\\parityvar^2 + y^2 = z^2 \tag{1}\label{parity:eq}
+$$</div>
+<blockquote>
+<div data-lac-math="5">$$
+\\frac{\alpha}{\beta}
+$$</div>
+</blockquote>
+<span id="lac-heading-диаграммы"></span>
+<h2><span data-lac-heading-number="1.7. "></span>Диаграммы</h2>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code class="language-mermaid">flowchart TD
+  A[Начало] --&gt; B{Проверка}
+  B --&gt;|да| C[Готово]
+  B --&gt;|нет| A
+</code></pre>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code class="language-mermaid">sequenceDiagram
+  participant A as Автор
+  participant E as Редактор
+  A-&gt;&gt;E: Правка
+  E--&gt;&gt;A: Отмена доступна
+</code></pre>
+<span id="lac-heading-код-и-html"></span>
+<h2><span data-lac-heading-number="1.8. "></span>Код и HTML</h2>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code class="language-swift">let text = &quot;中文 😀 **literal**&quot;
+// # Not an outline heading
+// [toc]
+</code></pre>
+<p><!--LACRAW#0X5-->Цвет текста<!--LACRAW#0X6-->, <!--LACRAW#0X7-->⌘<!--LACRAW#0X8-->+<!--LACRAW#0X9-->B<!--LACRAW#0X10-->,<br />
+<!--LACRAW#0X11-->漢<!--LACRAW#0X12-->かん<!--LACRAW#0X13--><!--LACRAW#0X14-->.</p>
+<!--LACRAW#0X15-->
+<!--LACRAW#0X16-->
+<span id="lac-heading-после-разрыва-страницы"></span>
+<h2><span data-lac-heading-number="1.9. "></span>После разрыва страницы</h2>
+<p>Проверить поиск, оглавление, выделение, восстановление сессии и PDF-закладку.</p>
+<section class="footnotes" data-footnotes>
+<ol>
+<li id="fn-note">
+<p>Первый абзац с <strong>оформлением</strong>.</p>
+<p>Второй абзац определения с <code>кодом</code>. <a href="#fnref-note" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="1" aria-label="Back to reference 1">↩</a> <a href="#fnref-note-2" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="1-2" aria-label="Back to reference 1-2">↩<sup class="footnote-ref">2</sup></a></p>
+</li>
+</ol>
+</section>
+=== doc/Corpus/callouts
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-выноски"
+--- body
+<span id="lac-heading-выноски"></span>
+<h1><span data-lac-heading-number="1. "></span>Выноски</h1>
+<div class="lac-callout lac-callout-note" role="note" aria-label="Note: Заголовок"><div class="lac-callout-title"><span class="lac-callout-icon" aria-hidden="true">✎</span><span class="lac-callout-label">Note</span><span class="lac-callout-text">Заголовок</span></div><div class="lac-callout-body"><p>Текст выноски <strong>жирный</strong>.</p>
+</div></div>
+<details class="lac-callout lac-callout-warning" open aria-label="Warning: Раскрыта"><summary class="lac-callout-title"><span class="lac-callout-icon" aria-hidden="true">⚠︎</span><span class="lac-callout-label">Warning</span><span class="lac-callout-text">Раскрыта</span></summary><div class="lac-callout-body"><p>Тело</p>
+</div></details>
+<details class="lac-callout lac-callout-tip" open aria-label="Tip: Свёрнута"><summary class="lac-callout-title"><span class="lac-callout-icon" aria-hidden="true">✦</span><span class="lac-callout-label">Tip</span><span class="lac-callout-text">Свёрнута</span></summary><div class="lac-callout-body"><p>Скрытое тело</p>
+</div></details>
+<div class="lac-callout lac-callout-note lac-callout-custom" role="note" aria-label="Custom-type"><div class="lac-callout-title"><span class="lac-callout-icon" aria-hidden="true">✎</span><span class="lac-callout-label">Custom-type</span></div><div class="lac-callout-body"><p>Без заголовка</p>
+</div></div>
+<blockquote>
+<p>Обычная цитата<br />
+без выноски</p>
+</blockquote>
+=== doc/Corpus/code-fences
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-код"
+--- body
+<span id="lac-heading-код"></span>
+<h1><span data-lac-heading-number="1. "></span>Код</h1>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code class="language-swift">let x = 1 // комментарий
+func f() -&gt; String { &quot;строка&quot; }
+</code></pre>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code class="language-python">def f():
+    return &quot;x&quot;
+</code></pre>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code>без языка
+</code></pre>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code class="language-md">```
+вложенное ограждение
+```
+</code></pre>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code>отступный код
+</code></pre>
+<p>Инлайн <code>код</code> и <code>с `обратной` кавычкой</code>.</p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code class="language-json">{&quot;a&quot;: [1, 2, null], &quot;б&quot;: true}
+</code></pre>
+=== doc/Corpus/critic
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-правки-criticmarkup"
+--- body
+<span id="lac-heading-правки-criticmarkup"></span>
+<h1><span data-lac-heading-number="1. "></span>Правки CriticMarkup</h1>
+<p>Добавление новый текст в строке.</p>
+<p>Удаление  в строке.</p>
+<p>Замена новое слова.</p>
+<p>Выделение важное и просто комментарий.</p>
+<p>Несколько строк первая<br />
+вторая внутри абзаца.</p>
+<p>Не правка: <code>{++код++}</code> и {++экранировано++}.</p>
+=== doc/Corpus/crlf-notes
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-заметка-для-crlf"
+[listDepths] 1
+--- body
+<span id="lac-heading-заметка-для-crlf"></span>
+<h1><span data-lac-heading-number="1. "></span>Заметка для CRLF</h1>
+<p>Первая строка<br />
+вторая строка</p>
+<ul>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+список</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+ещё</li>
+</ul>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code>код
+</code></pre>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>а</th>
+<th>б</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>2</td>
+</tr>
+</tbody>
+</table></div>
+=== doc/Corpus/cyrillic-cjk-emoji
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-кириллица-中文-эмодзи"
+[listDepths] 1
+--- body
+<span id="lac-heading-кириллица-中文-эмодзи"></span>
+<h1><span data-lac-heading-number="1. "></span>Кириллица, 中文, эмодзи 😀</h1>
+<p>Текст на русском языке, 日本語のテキスト, 한국어, 😀👨‍👩‍👧 семья, флаг 🇷🇺, é и é (комбинируемый), ёлка.</p>
+<blockquote>
+<p>Цитата с 中文 и <strong>жирным</strong></p>
+</blockquote>
+<ul>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 1</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+пункт 2 😀</li>
+</ul>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>列</th>
+<th>Колонка</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>值</td>
+<td>значение</td>
+</tr>
+</tbody>
+</table></div>
+=== doc/Corpus/details
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-details"
+[listDepths] 1
+[raw] <!--LACRAW#0X0--> -> "<details>\n<summary>Заголовок 中文</summary>"
+[raw] <!--LACRAW#0X1--> -> "</details>"
+[raw] <!--LACRAW#0X2--> -> "<details open>\n<summary>Раскрытый</summary>\nТело без пустой строки.\n</details>"
+--- body
+<span id="lac-heading-details"></span>
+<h1><span data-lac-heading-number="1. "></span>Details</h1>
+<!--LACRAW#0X0-->
+<p>Внутри <strong>текст</strong> и список:</p>
+<ul>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+один</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+два</li>
+</ul>
+<!--LACRAW#0X1-->
+<!--LACRAW#0X2-->
+=== doc/Corpus/diagrams
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-диаграммы"
+[diagram] kind=flow source="st=>start: Старт\ne=>end: Конец\nst->e\n"
+[diagram] kind=sequence source="Алиса->Боб: Привет\nБоб-->Алиса: Ответ\n"
+--- body
+<span id="lac-heading-диаграммы"></span>
+<h1><span data-lac-heading-number="1. "></span>Диаграммы</h1>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code class="language-mermaid">graph TD
+  A[Начало] --&gt; B[中文]
+  B --&gt; C[Конец]
+</code></pre>
+<pre data-lac-diagram="0">st=&gt;start: Старт
+e=&gt;end: Конец
+st-&gt;e
+</pre>
+<pre data-lac-diagram="1">Алиса-&gt;Боб: Привет
+Боб--&gt;Алиса: Ответ
+</pre>
+=== doc/Corpus/embeds
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-встраивания"
+--- body
+<span id="lac-heading-встраивания"></span>
+<h1><span data-lac-heading-number="1. "></span>Встраивания</h1>
+<section class="lac-embed" role="group" aria-label="Embedded note: note-a"><div class="lac-embed-head"><span class="lac-embed-name">note-a</span><a class="lac-embed-open" href="note-a.md" aria-label="Open note: note-a">Open</a></div><div class="lac-embed-body"><span></span>
+<h1>Заметка A</h1>
+<ul>
+<li>первый</li>
+<li>второй</li>
+</ul>
+<p>Текст [[x]] с <strong>жирным</strong>.</p>
+</div></section>
+<section class="lac-embed" role="group" aria-label="Embedded note: Корпус"><div class="lac-embed-head"><span class="lac-embed-name">Корпус</span><a class="lac-embed-open" href="%D0%9A%D0%BE%D1%80%D0%BF%D1%83%D1%81.md" aria-label="Open note: Корпус">Open</a></div><div class="lac-embed-body"><p>Корпус: кириллица, 中文, 😀.</p>
+</div></section>
+<section class="lac-embed" role="group" aria-label="Embedded note: deep"><div class="lac-embed-head"><span class="lac-embed-name">deep</span></div><div class="lac-embed-body"><p>Глубокая заметка</p>
+<p>![[note-a]]</p>
+</div></section>
+<section class="lac-embed lac-embed-missing" role="group" aria-label="Note not found: нет-такой"><p class="lac-embed-note">Note not found: нет-такой</p></section>
+<section class="lac-embed" role="group" aria-label="Embedded note: note-a"><div class="lac-embed-head"><span class="lac-embed-name">note-a › Заметка A</span><a class="lac-embed-open" href="note-a.md#%D0%B7%D0%B0%D0%BC%D0%B5%D1%82%D0%BA%D0%B0-a" aria-label="Open note: note-a">Open</a></div><div class="lac-embed-body"><span></span>
+<h1>Заметка A</h1>
+<ul>
+<li>первый</li>
+<li>второй</li>
+</ul>
+<p>Текст [[x]] с <strong>жирным</strong>.</p>
+</div></section>
+<p>Конец документа.</p>
+=== doc/Corpus/emoji
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-эмодзи-smile"
+[listDepths] 1
+--- body
+<span id="lac-heading-эмодзи-smile"></span>
+<h1><span data-lac-heading-number="1. "></span>Эмодзи 😄</h1>
+<p>Текст 👍 и 🎉 и :нет_такого: и 😀 настоящий.</p>
+<p><code>:smile:</code> в коде не меняется.</p>
+<ul>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+❤️ пункт</li>
+</ul>
+=== doc/Corpus/entities-autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-сущности-и-ссылки"
+--- body
+<span id="lac-heading-сущности-и-ссылки"></span>
+<h1><span data-lac-heading-number="1. "></span>Сущности и ссылки</h1>
+<p>&amp; &lt; &gt; © # 😀 &amp;нет;</p>
+<p><a href="https://example.com/path?x=1">https://example.com/path?x=1</a> и <a href="http://www.example.com">www.example.com</a> и <a href="https://example.com/a_b">https://example.com/a_b</a> и <a href="mailto:user@example.com">user@example.com</a>.</p>
+<p><a href="https://example.com" title="заголовок">ссылка</a> и <a href="https://example.com/ref">ссылка-ссылка</a> и <a href="">пустая</a>.</p>
+<p>Жёсткий перенос<br />
+после слэша и<br />
+после пробелов.</p>
+<hr />
+<p>Escaped *звезда* и # решётка.</p>
+=== doc/Corpus/footnotes
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-сноски"
+--- body
+<span id="lac-heading-сноски"></span>
+<h1><span data-lac-heading-number="1. "></span>Сноски</h1>
+<p>Текст со сноской<sup class="footnote-ref"><a href="#fn-1" id="fnref-1" data-footnote-ref>1</a></sup> и ещё одной<sup class="footnote-ref"><a href="#fn-long" id="fnref-long" data-footnote-ref>2</a></sup> и повтором<sup class="footnote-ref"><a href="#fn-1" id="fnref-1-2" data-footnote-ref>1</a></sup>.</p>
+<p>Без определения[^нет].</p>
+<section class="footnotes" data-footnotes>
+<ol>
+<li id="fn-1">
+<p>Первая сноска. <a href="#fnref-1" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="1" aria-label="Back to reference 1">↩</a> <a href="#fnref-1-2" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="1-2" aria-label="Back to reference 1-2">↩<sup class="footnote-ref">2</sup></a></p>
+</li>
+<li id="fn-long">
+<p>Длинная сноска</p>
+<p>с абзацем и <code>кодом</code>. <a href="#fnref-long" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="2" aria-label="Back to reference 2">↩</a></p>
+</li>
+</ol>
+</section>
+=== doc/Corpus/front-matter
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-после-front-matter"
+--- body
+<span id="lac-heading-после-front-matter"></span>
+<h1><span data-lac-heading-number="1. "></span>После front matter</h1>
+<p>Текст.</p>
+=== doc/Corpus/headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-setext-второго-уровня", "lac-heading-setext-первого-уровня", "lac-heading-без-пробела-после-решётки", "lac-heading-заголовок", "lac-heading-заголовок-1", "lac-heading-заголовок-с-кодом-и-курсивом", "lac-heading-повтор", "lac-heading-повтор-1", "lac-heading-повтор-2"
+--- body
+<span id="lac-heading-заголовок"></span>
+<h1><span data-lac-heading-number="1. "></span>Заголовок</h1>
+<span id="lac-heading-повтор"></span>
+<h2><span data-lac-heading-number="1.1. "></span>Повтор</h2>
+<span id="lac-heading-повтор-1"></span>
+<h2><span data-lac-heading-number="1.2. "></span>Повтор</h2>
+<span id="lac-heading-повтор-2"></span>
+<h2><span data-lac-heading-number="1.3. "></span>Повтор</h2>
+<span id="lac-heading-заголовок-с-кодом-и-курсивом"></span>
+<h3><span data-lac-heading-number="1.3.1. "></span>Заголовок с <code>кодом</code> и <em>курсивом</em></h3>
+<span id="lac-heading-setext-первого-уровня"></span>
+<h1><span data-lac-heading-number="2. "></span>Setext первого уровня</h1>
+<span id="lac-heading-setext-второго-уровня"></span>
+<h2><span data-lac-heading-number="2.1. "></span>Setext второго уровня</h2>
+<span id="lac-heading-заголовок-1"></span>
+<h1><span data-lac-heading-number="3. "></span>Заголовок</h1>
+<span id="lac-heading-без-пробела-после-решётки"></span>
+<h4><span data-lac-heading-number="3.0.0.1. "></span>Без пробела после решётки</h4>
+<p>#Не заголовок</p>
+=== doc/Corpus/highlight-sub-sup
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-выделение-индексы"
+[raw] <!--LACRAW#0X0--> -> "<mark>"
+[raw] <!--LACRAW#0X1--> -> "</mark>"
+[raw] <!--LACRAW#0X2--> -> "<sub>"
+[raw] <!--LACRAW#0X3--> -> "</sub>"
+[raw] <!--LACRAW#0X4--> -> "<sup>"
+[raw] <!--LACRAW#0X5--> -> "</sup>"
+[raw] <!--LACRAW#0X6--> -> "<kbd>"
+[raw] <!--LACRAW#0X7--> -> "</kbd>"
+--- body
+<span id="lac-heading-выделение-индексы"></span>
+<h1><span data-lac-heading-number="1. "></span>Выделение, индексы</h1>
+<p><mark>выделено</mark> и <sub>нижний</sub> и <sup>верхний</sup> индекс, H<sub>2</sub>O, x<sup>2</sup>.</p>
+<p><del>зачёркнуто</del> и <strong>жирный</strong> и <em>курсив</em> и <em><strong>оба</strong></em>.</p>
+<p><!--LACRAW#0X0-->mark<!--LACRAW#0X1--> <!--LACRAW#0X2-->sub<!--LACRAW#0X3--> <!--LACRAW#0X4-->sup<!--LACRAW#0X5--> <!--LACRAW#0X6-->Ctrl<!--LACRAW#0X7--></p>
+=== doc/Corpus/html-blocks
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-html-блоки"
+[raw] <!--LACRAW#0X0--> -> "<div class=\"note\">\nблок <b>жирный</b>\n</div>"
+[raw] <!--LACRAW#0X1--> -> "<span>"
+[raw] <!--LACRAW#0X2--> -> "</span>"
+[raw] <!--LACRAW#0X3--> -> "<b>"
+[raw] <!--LACRAW#0X4--> -> "</b>"
+[raw] <!--LACRAW#0X5--> -> "<!-- комментарий -->"
+[raw] <!--LACRAW#0X6--> -> "<script>alert(1)</script>"
+[raw] <!--LACRAW#0X7--> -> "<center>центр</center>"
+[raw] <!--LACRAW#0X8--> -> "<table><tr><td>ячейка</td></tr></table>"
+--- body
+<span id="lac-heading-html-блоки"></span>
+<h1><span data-lac-heading-number="1. "></span>HTML-блоки</h1>
+<!--LACRAW#0X0-->
+<p>Строчный <!--LACRAW#0X1-->HTML<!--LACRAW#0X2--> и <!--LACRAW#0X3-->теги<!--LACRAW#0X4-->.</p>
+<!--LACRAW#0X5-->
+<!--LACRAW#0X6-->
+<!--LACRAW#0X7-->
+<!--LACRAW#0X8-->
+=== doc/Corpus/images-local-remote
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-картинки"
+[raw] <!--LACRAW#0X0--> -> "<img src=\"https://example.invalid/html.png\" alt=\"html удалённая\">"
+--- body
+<span id="lac-heading-картинки"></span>
+<h1><span data-lac-heading-number="1. "></span>Картинки</h1>
+<p><img src="images/pic.png" alt="локальная" /></p>
+<p><img src="images/my%20pic.png" alt="локальная с пробелом" /></p>
+<p><img src="https://example.invalid/pic.png" alt="удалённая" title="заголовок" /></p>
+<p><img src="https://example.invalid/other.png" alt="ещё удалённая" /></p>
+<p>Строка с <img src="images/inline.png" alt="встроенной" /> картинкой.</p>
+<!--LACRAW#0X0-->
+<p><a href="https://example.invalid/"><img src="images/pic.png" alt="ссылка-картинка" /></a></p>
+=== doc/Corpus/inline-css
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-встроенный-css"
+[raw] <!--LACRAW#0X0--> -> "<span style=\"color:red\">"
+[raw] <!--LACRAW#0X1--> -> "</span>"
+[raw] <!--LACRAW#0X2--> -> "<span style=\"font-size:20px;background:yellow\">"
+[raw] <!--LACRAW#0X3--> -> "</span>"
+[raw] <!--LACRAW#0X4--> -> "<div style=\"text-align:center\">по центру</div>"
+[raw] <!--LACRAW#0X5--> -> "<p style=\"color:blue\" onclick=\"x()\">опасный атрибут</p>"
+[raw] <!--LACRAW#0X6--> -> "<style>p { color: red }</style>"
+--- body
+<span id="lac-heading-встроенный-css"></span>
+<h1><span data-lac-heading-number="1. "></span>Встроенный CSS</h1>
+<p><!--LACRAW#0X0-->красный<!--LACRAW#0X1--> и <!--LACRAW#0X2-->крупный<!--LACRAW#0X3-->.</p>
+<!--LACRAW#0X4-->
+<!--LACRAW#0X5-->
+<!--LACRAW#0X6-->
+=== doc/Corpus/loose-lists
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-списки"
+[listDepths] 1, 2
+--- body
+<span id="lac-heading-списки"></span>
+<h1><span data-lac-heading-number="1. "></span>Списки</h1>
+<ul>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p>плотный</p>
+</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p>список</p>
+</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p>рыхлый</p>
+</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p>список</p>
+</li>
+</ul>
+<ol>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+первый</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+второй
+<ul>
+<li>
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+<p>вложенный</p>
+<p>абзац во вложенном</p>
+</li>
+</ul>
+</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+третий</li>
+</ol>
+<ul>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+звёздочка</li>
+</ul>
+<ul>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+плюс</li>
+</ul>
+<ul>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+дефис</li>
+</ul>
+<ol start="10">
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+с десяти</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+дальше</li>
+</ol>
+=== doc/Corpus/math
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-формулы"
+[formula] display=false source="x^2 + y^2 = z^2"
+[formula] display=false source="\\alpha"
+[formula] display=true source="\\int_0^1 x\\,dx = \\frac{1}{2}\n"
+[formula] display=false source="а_б"
+[formula] display=false source="中_文"
+--- body
+<span id="lac-heading-формулы"></span>
+<h1><span data-lac-heading-number="1. "></span>Формулы</h1>
+<p>Строчная <span data-lac-math="0">$x^2 + y^2 = z^2$</span> и ещё <span data-lac-math="1">$\alpha$</span> в тексте.</p>
+<div data-lac-math="2">$$
+\\int_0^1 x\,dx = \frac{1}{2}
+$$</div>
+<p>Цена $5 и $10 не формула. Кириллица <span data-lac-math="3">$а_б$</span> и CJK <span data-lac-math="4">$中_文$</span>.</p>
+<p>В коде <code>$x$</code> остаётся.</p>
+=== doc/Corpus/media-av
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-аудио-и-видео"
+[raw] <!--LACRAW#0X0--> -> "<audio src=\"a.mp3\" controls>"
+[raw] <!--LACRAW#0X1--> -> "</audio>"
+[raw] <!--LACRAW#0X2--> -> "<video src=\"v.mp4\" controls width=\"320\">"
+[raw] <!--LACRAW#0X3--> -> "</video>"
+--- body
+<span id="lac-heading-аудио-и-видео"></span>
+<h1><span data-lac-heading-number="1. "></span>Аудио и видео</h1>
+<p><!--LACRAW#0X0--><!--LACRAW#0X1--></p>
+<p><!--LACRAW#0X2--><!--LACRAW#0X3--></p>
+<p>Конец.</p>
+=== doc/Corpus/media-data-uri
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-картинка-в-data-uri"
+[raw] <!--LACRAW#0X0--> -> "<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC\" alt=\"html-пиксель\">"
+--- body
+<span id="lac-heading-картинка-в-data-uri"></span>
+<h1><span data-lac-heading-number="1. "></span>Картинка в data-URI</h1>
+<p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC" alt="пиксель" /></p>
+<!--LACRAW#0X0-->
+<p>Текст после.</p>
+=== doc/Corpus/media-html
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-html-медиа"
+[raw] <!--LACRAW#0X0--> -> "<embed src=\"doc.pdf\" type=\"application/pdf\" width=\"300\" height=\"200\">"
+[raw] <!--LACRAW#0X1--> -> "<img src=\"images/pic.png\" width=\"50%\" alt=\"картинка\">"
+--- body
+<span id="lac-heading-html-медиа"></span>
+<h1><span data-lac-heading-number="1. "></span>HTML-медиа</h1>
+<iframe sandbox="allow-scripts" src="https://example.invalid/page" style="width:400px;height:200px;"></iframe>
+<!--LACRAW#0X0-->
+<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSIyMCIgdmlld0JveD0iMCAwIDQwIDIwIj48cmVjdCB3aWR0aD0iNDAiIGhlaWdodD0iMjAiIGZpbGw9InJlZCIvPjwvc3ZnPg==" alt="">
+<!--LACRAW#0X1-->
+<p>Конец.</p>
+=== doc/Corpus/obsidian-comments
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-комментарии-obsidian"
+--- body
+<span id="lac-heading-комментарии-obsidian"></span>
+<h1><span data-lac-heading-number="1. "></span>Комментарии Obsidian</h1>
+<p>Видимый текст %%скрытый комментарий%% и дальше.</p>
+<p>%%<br />
+Блочный комментарий<br />
+на несколько строк<br />
+%%</p>
+<p>Строка с <code>%%кодом%%</code> остаётся.</p>
+<p>Конец.</p>
+=== doc/Corpus/raw-html-unproven
+[flags] omitted=false whitespace=false rawFailed=true
+[headingIDs] "lac-heading-сырой-html-без-доказательства-блока"
+[raw] <!--LACRAW#0X0--> -> "<script type=\"text/javascript\">\n// пример скрипта\n\ndocument.getElementById(\"demo\").innerHTML = \"Привет\";"
+[raw] <!--LACRAW#0X1--> -> "<pre language=\"haskell\"><code>\nimport Text.HTML.TagSoup\n\nmain :: IO ()\nmain = print $ parseTags tags"
+[raw] <!--LACRAW#0X2--> -> "<!-- комментарий\nс пустой строкой"
+[raw] <!--LACRAW#0X3--> -> "<?php\n\n  echo '>';"
+[raw] <!--LACRAW#0X4--> -> "<a  />"
+[raw] <!--LACRAW#0X5--> -> "<b2\ndata=\"foo\" >"
+[raw] <!--LACRAW#0X6--> -> "<!-- комментарий с --\nдефисами - внутри -->"
+--- body
+<span id="lac-heading-сырой-html-без-доказательства-блока"></span>
+<h1><span data-lac-heading-number="1. "></span>Сырой HTML без доказательства блока</h1>
+<!--LACRAW#0X0-->
+<p>после скрипта</p>
+<!--LACRAW#0X1-->
+<p>после pre</p>
+<!--LACRAW#0X2-->
+<p>после комментария</p>
+<!--LACRAW#0X3-->
+<p>после инструкции</p>
+<p><!--LACRAW#0X4--><!--LACRAW#0X5--></p>
+<p>текст <!--LACRAW#0X6--> конец</p>
+=== doc/Corpus/ruby
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-ruby"
+[raw] <!--LACRAW#0X0--> -> "<ruby>"
+[raw] <!--LACRAW#0X1--> -> "<rt>"
+[raw] <!--LACRAW#0X2--> -> "</rt>"
+[raw] <!--LACRAW#0X3--> -> "<rt>"
+[raw] <!--LACRAW#0X4--> -> "</rt>"
+[raw] <!--LACRAW#0X5--> -> "</ruby>"
+[raw] <!--LACRAW#0X6--> -> "<ruby>"
+[raw] <!--LACRAW#0X7--> -> "<rp>"
+[raw] <!--LACRAW#0X8--> -> "</rp>"
+[raw] <!--LACRAW#0X9--> -> "<rt>"
+[raw] <!--LACRAW#0X10--> -> "</rt>"
+[raw] <!--LACRAW#0X11--> -> "<rp>"
+[raw] <!--LACRAW#0X12--> -> "</rp>"
+[raw] <!--LACRAW#0X13--> -> "</ruby>"
+[raw] <!--LACRAW#0X14--> -> "<ruby>"
+[raw] <!--LACRAW#0X15--> -> "<rt>"
+--- body
+<span id="lac-heading-ruby"></span>
+<h1><span data-lac-heading-number="1. "></span>Ruby</h1>
+<p><!--LACRAW#0X0-->漢<!--LACRAW#0X1-->kan<!--LACRAW#0X2-->字<!--LACRAW#0X3-->ji<!--LACRAW#0X4--><!--LACRAW#0X5--> в тексте.</p>
+<p><!--LACRAW#0X6-->東京<!--LACRAW#0X7-->(<!--LACRAW#0X8--><!--LACRAW#0X9-->とうきょう<!--LACRAW#0X10--><!--LACRAW#0X11-->)<!--LACRAW#0X12--><!--LACRAW#0X13--></p>
+<p>Незакрытый <!--LACRAW#0X14-->слово<!--LACRAW#0X15-->sl</p>
+=== doc/Corpus/smart-punctuation
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-пунктуация"
+--- body
+<span id="lac-heading-пунктуация"></span>
+<h1><span data-lac-heading-number="1. "></span>Пунктуация</h1>
+<p>“Кавычки” и ‘одинарные’ – тире — длинное… многоточие.</p>
+<p>Дефис-слово и – минус.</p>
+=== doc/Corpus/tables
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-таблицы"
+--- body
+<span id="lac-heading-таблицы"></span>
+<h1><span data-lac-heading-number="1. "></span>Таблицы</h1>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th align="left">Левый</th>
+<th align="center">По центру</th>
+<th align="right">Правый</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="left">а</td>
+<td align="center">б</td>
+<td align="right">в</td>
+</tr>
+<tr>
+<td align="left">中文</td>
+<td align="center">😀</td>
+<td align="right"><code>код</code></td>
+</tr>
+</tbody>
+</table></div>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>Один</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ячейка с | чертой</td>
+</tr>
+</tbody>
+</table></div>
+<p>Таблица с рваными строками:</p>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>a</th>
+<th>b</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td></td>
+</tr>
+<tr>
+<td>1</td>
+<td>2</td>
+</tr>
+</tbody>
+</table></div>
+=== doc/Corpus/tasks
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-задачи"
+[listDepths] 1
+--- body
+<span id="lac-heading-задачи"></span>
+<h1><span data-lac-heading-number="1. "></span>Задачи</h1>
+<ul>
+<li><input type="checkbox" disabled="" /> открытая</li>
+<li><input type="checkbox" checked="" disabled="" />\u{20}
+<span data-lac-checked-task></span>
+выполненная</li>
+<li><input type="checkbox" checked="" disabled="" />\u{20}
+<span data-lac-checked-task></span>
+выполненная заглавная
+<ul>
+<li><input type="checkbox" disabled="" /> вложенная</li>
+</ul>
+</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+обычный пункт</li>
+</ul>
+<ol>
+<li><input type="checkbox" disabled="" /> нумерованная</li>
+<li><input type="checkbox" checked="" disabled="" />\u{20}
+<span data-lac-checked-task></span>
+готово</li>
+</ol>
+=== doc/Corpus/toc
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-второй-раздел", "lac-heading-оглавление", "lac-heading-первый-раздел", "lac-heading-подраздел"
+--- body
+<span id="lac-heading-оглавление"></span>
+<h1><span data-lac-heading-number="1. "></span>Оглавление</h1>
+<p>[TOC]</p>
+<span id="lac-heading-первый-раздел"></span>
+<h2><span data-lac-heading-number="1.1. "></span>Первый раздел</h2>
+<p>Текст.</p>
+<span id="lac-heading-подраздел"></span>
+<h3><span data-lac-heading-number="1.1.1. "></span>Подраздел</h3>
+<span id="lac-heading-второй-раздел"></span>
+<h2><span data-lac-heading-number="1.2. "></span>Второй раздел</h2>
+<p>Текст.</p>
+=== doc/Corpus/twitter-pagebreak
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-твиты-и-разрывы-страниц"
+[raw] <!--LACRAW#0X0--> -> "<div style=\"page-break-after:always\"></div>"
+[raw] <!--LACRAW#0X1--> -> "<div style=\"break-after:page\"></div>"
+--- body
+<span id="lac-heading-твиты-и-разрывы-страниц"></span>
+<h1><span data-lac-heading-number="1. "></span>Твиты и разрывы страниц</h1>
+<iframe sandbox="allow-scripts" src="https://platform.twitter.com/embed/Tweet.html?id=1234567890&amp;dnt=true"></iframe>
+<!--LACRAW#0X0-->
+<p>После разрыва страницы.</p>
+<!--LACRAW#0X1-->
+<p>Конец.</p>
+=== doc/Corpus/wiki
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-wiki-ссылки"
+--- body
+<span id="lac-heading-wiki-ссылки"></span>
+<h1><span data-lac-heading-number="1. "></span>Wiki-ссылки</h1>
+<p><a href="a.md">a</a> и <a href="a.md">псевдоним</a> и <a href="sub/c.md">sub/c</a> и <a href="%D0%9A%D0%BE%D1%80%D0%BF%D1%83%D1%81.md">Корпус</a>.</p>
+<p>Двусмысленная x, отсутствующая нет-файла, заголовок <a href="a.md#%D1%80%D0%B0%D0%B7%D0%B4%D0%B5%D0%BB">a#Раздел</a>, текущий <a href="#%D0%BD%D0%B0%D1%87%D0%B0%D0%BB%D0%BE">#Начало</a>.</p>
+<p>В коде <code>[[a]]</code> не ссылка.</p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code>[[a]]
+</code></pre>

@@ -377,6 +377,18 @@ final class AppPreferences: ObservableObject {
         }
     }
 
+    /// Запомненный выбор места нового изображения по пути документа; без `@Published`, окно читает его при каждом вопросе.
+    func markdownImagePlacement(for documentURL: URL) -> MarkdownImagePlacement.Choice? {
+        (defaults.dictionary(forKey: Keys.markdownImagePlacementChoices) as? [String: String])?[documentURL.standardizedFileURL.path]
+            .flatMap(MarkdownImagePlacement.Choice.init(rawValue:))
+    }
+
+    func setMarkdownImagePlacement(_ choice: MarkdownImagePlacement.Choice?, for documentURL: URL) {
+        var all = defaults.dictionary(forKey: Keys.markdownImagePlacementChoices) as? [String: String] ?? [:]
+        all[documentURL.standardizedFileURL.path] = choice?.rawValue
+        defaults.set(all, forKey: Keys.markdownImagePlacementChoices)
+    }
+
     @Published var markdownExportConfiguration: MarkdownExportConfiguration {
         didSet { saveMarkdownExportConfiguration() }
     }
@@ -881,6 +893,7 @@ final class AppPreferences: ObservableObject {
         static let markdownPDFHeaderFooterOptions = "markdownPDFHeaderFooterOptions"
         static let markdownNativeExportOptions = "markdownNativeExportOptions"
         static let markdownImageUploadConfiguration = "markdownImageUploadConfiguration"
+        static let markdownImagePlacementChoices = "markdownImagePlacementChoices"
         static let markdownTypographyCustomized = "markdownTypographyCustomized"
         static let editorTextFontFamily = "editorTextFontFamily"
         static let editorCodeFontFamily = "editorCodeFontFamily"

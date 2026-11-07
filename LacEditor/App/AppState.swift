@@ -936,11 +936,24 @@ final class AppState: ObservableObject {
     }
 
     /// Выходит из режима чтения и показывает Markdown-исходник. Условия те же, что у toggleReadingMode.
-    func exitReadingModeToSource() {
+    func exitReadingModeToSource(announce: (String) -> Void = MarkdownModeAnnouncement.systemAnnounce) {
         guard let document = selectedDocument, document.isReadingMode, document.language == .markdown else { return }
         toggleReadingMode()
         guard !document.isReadingMode else { return }
         document.isMarkdownFormatted = false
+        MarkdownModeAnnouncement.post(formatted: false, announce: announce)
+    }
+
+    /// Переключение «исходник ↔ оформленный текст» выбранного Markdown-документа; из режима чтения выход идёт в исходник.
+    /// Текст, выделение и история отмены не меняются.
+    func toggleMarkdownPresentation(announce: (String) -> Void = MarkdownModeAnnouncement.systemAnnounce) {
+        guard let document = selectedDocument, document.language == .markdown else { return }
+        if document.isReadingMode {
+            exitReadingModeToSource(announce: announce)
+        } else {
+            document.isMarkdownFormatted.toggle()
+            MarkdownModeAnnouncement.post(formatted: document.isMarkdownFormatted, announce: announce)
+        }
     }
 
     func toggleTypewriterMode() { isTypewriterMode.toggle() }
@@ -4878,18 +4891,21 @@ final class AppState: ObservableObject {
                 document.statusMessage = existing + "\n" + message
             } else { document.statusMessage = message }
         }
-        let ask: (String, Bool, Bool) -> MarkdownImageInput? = { proposedAddress, allowAddressEditing, pendingUpload in
+        func ask(_ proposedAddress: String, _ allowAddressEditing: Bool, _ pendingUpload: Bool,
+                 placement: MarkdownImagePlacementPrompt? = nil) -> MarkdownImageInput? {
             let alt = NSTextField(string: initial.alt)
             let address = NSTextField(string: pendingUpload ? L10n.tr("处理后生成地址") : proposedAddress)
             address.isEditable = allowAddressEditing
             let title = NSTextField(string: initial.title)
-            let fields = NSStackView(views: [NSTextField(labelWithString: L10n.tr("图片替代文字")), alt,
+            var rows: [NSView] = [NSTextField(labelWithString: L10n.tr("图片替代文字")), alt,
                 NSTextField(labelWithString: L10n.tr("图片地址")), address,
-                NSTextField(labelWithString: L10n.tr("图片标题")), title])
+                NSTextField(labelWithString: L10n.tr("图片标题")), title]
+            if let placement { rows.append(placement.view) }
+            let fields = NSStackView(views: rows)
             fields.orientation = .vertical
             fields.alignment = .leading
             fields.spacing = 6
-            fields.frame = NSRect(x: 0, y: 0, width: 360, height: 150)
+            fields.frame = NSRect(x: 0, y: 0, width: 360, height: placement == nil ? 150 : 240)
             for field in [alt, address, title] { field.widthAnchor.constraint(equalToConstant: 360).isActive = true }
             let alert = NSAlert()
             alert.messageText = L10n.tr("图片")
@@ -4943,7 +4959,7 @@ final class AppState: ObservableObject {
         imageCopyOperations.removeValue(forKey: documentID)?.cancel()
         let policyOperation = BlockOperation()
         if uploadConfig.allowDocumentPolicy || uploadConfig.allowDocumentCopy { imagePolicyOperations[documentID] = policyOperation }
-        Task { @MainActor [weak self, weak manager, weak document] in
+        Task { @MainActor [weak self, weak document] in
             defer {
                 if let self, self.imagePolicyOperations[documentID] === policyOperation { self.imagePolicyOperations.removeValue(forKey: documentID) }
             }
@@ -4952,7 +4968,7 @@ final class AppState: ObservableObject {
                 reportStale(L10n.tr("文档已变化，未插入图片"))
                 return
             }
-            guard let (data, selectedURL, identifier) = identified else {
+            guard let (data, selectedURL, _) = identified else {
                 document?.statusMessage = L10n.tr("无法读取图片")
                 return
             }
@@ -5137,26 +5153,50 @@ final class AppState: ObservableObject {
                 }
                 return
             }
-            let destination: URL
-            if let selectedURL { destination = selectedURL }
-            else {
-                let panel = NSSavePanel()
-                if let type = UTType(identifier) { panel.allowedContentTypes = [type]; panel.nameFieldStringValue = "image." + (type.preferredFilenameExtension ?? "png") }
-                guard panel.runModal() == .OK, let url = panel.url, current() else { return }
-                destination = url
-            }
-            guard let address = MarkdownImageEditingService.address(for: destination, document: originalURL),
-                  let input = ask(address, data == nil, false), current() else { return }
-            if let data {
-                let written = await Task.detached { () -> Bool in
-                    do { try data.write(to: destination, options: .withoutOverwriting); return true } catch { return false }
-                }.value
-                guard written else { document?.statusMessage = L10n.tr("无法保存图片，文件可能已存在"); return }
-                guard current(), apply(input) else {
-                    manager?.activeState?.selectedDocument?.statusMessage = L10n.tr("图片已保存，但文档已变化，未插入")
+            if let data, selectedURL == nil {
+                guard let self else { return }
+                // Новое изображение без явных настроек: место выбирает MarkdownImagePlacement (рядом с документом или встроить).
+                let remembered = originalURL.flatMap { self.preferences.markdownImagePlacement(for: $0) }
+                let prompt: MarkdownImagePlacementPrompt?
+                switch MarkdownImagePlacement.decision(documentURL: originalURL,
+                        isVaultNote: originalURL.map { self.isVaultFile($0) } ?? false, remembered: remembered) {
+                case .embedWithoutQuestion: prompt = nil
+                case let .ask(value): prompt = MarkdownImagePlacementPrompt(remembered: value)
+                }
+                guard let input = ask("https://laceditor.invalid/image", false, true, placement: prompt), current(),
+                      self.preferences.markdownImageUploadConfiguration == uploadConfig else { return }
+                guard let payload = try? MarkdownImageUploadService.payload(data: data) else {
+                    document?.statusMessage = L10n.tr("无法读取图片")
                     return
                 }
-            } else { _ = apply(input) }
+                if let prompt, let originalURL {
+                    self.preferences.setMarkdownImagePlacement(prompt.remember ? prompt.choice : nil, for: originalURL)
+                }
+                if let prompt, prompt.choice == .besideDocument, let originalURL {
+                    let ext = (payload.filename as NSString).pathExtension
+                    let saved = await Task.detached { Result { try MarkdownImagePlacement.save(payload.data, fileExtension: ext, nextTo: originalURL) } }.value
+                    switch saved {
+                    case let .failure(error):
+                        document?.statusMessage = L10n.tr("无法保存图片：%@", error.localizedDescription)
+                    case let .success(url):
+                        guard current(), self.preferences.markdownImageUploadConfiguration == uploadConfig,
+                              let address = MarkdownImageEditingService.address(for: url, document: originalURL),
+                              apply(MarkdownImageInput(alt: input.alt, address: address, title: input.title)) else {
+                            reportStale(L10n.tr("图片位于 %@，但文档已变化，未插入", url.path))
+                            return
+                        }
+                        document?.statusMessage = L10n.tr("图片位于 %@", url.path)
+                    }
+                } else {
+                    // Встроить: при включённой карте media адрес data: заменяется токеном при вставке.
+                    let embedded = MarkdownImageInput(alt: input.alt, address: MarkdownImagePlacement.dataAddress(payload.data, mime: payload.mime), title: input.title)
+                    guard apply(embedded) else { reportStale(L10n.tr("文档已变化，未插入图片")); return }
+                }
+                return
+            }
+            guard let selectedURL, let address = MarkdownImageEditingService.address(for: selectedURL, document: originalURL),
+                  let input = ask(address, true, false), current() else { return }
+            _ = apply(input)
         }
         return true
     }
@@ -5497,7 +5537,8 @@ final class AppState: ObservableObject {
                         }
                         guard let syntax = self?.preferences.markdownSyntax else { return }
                         let parsed = await Task.detached(priority: .userInitiated) {
-                            MarkdownPresentationParser.parse(opened.snapshot.text, syntax: syntax, isCancelled: { Task.isCancelled })
+                            let model = MarkdownDocumentParser.parseOrEmpty(opened.snapshot.text, syntax: syntax, isCancelled: { Task.isCancelled })
+                            return (headings: model.headings, namedAnchors: model.namedAnchors)
                         }.value
                         guard !Task.isCancelled, self?.selectedDocument?.url == sourceURL, self?.isCurrentMarkdownLink(request) == true,
                               self?.preferences.markdownSyntax == syntax,

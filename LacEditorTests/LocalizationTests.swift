@@ -62,6 +62,22 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testFormattingBarTextsExistInAllCatalogs() throws {
+        let keys = ["普通文本", "此处无法应用该格式", "段落样式", "插入块"]
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        for language in ["zh-Hans", "en", "ru"] {
+            let url = root.appendingPathComponent("LacEditor/\(language).lproj/Localizable.strings")
+            let catalog = try XCTUnwrap(NSDictionary(contentsOf: url) as? [String: String])
+            for key in keys {
+                let value = try XCTUnwrap(catalog[key], "\(language): \(key)")
+                XCTAssertFalse(value.isEmpty, "\(language): \(key)")
+                if language != "zh-Hans" {
+                    XCTAssertNil(value.range(of: "\\p{Han}", options: .regularExpression), "\(language): \(key)")
+                }
+            }
+        }
+    }
+
     func testFormattedStringsAndMessagePrefixes() throws {
         let name = "LacEditor.LocalizationTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
@@ -200,6 +216,23 @@ final class LocalizationTests: XCTestCase {
                 XCTAssertEqual(value.components(separatedBy: "%@").count, key.components(separatedBy: "%@").count, "\(language): \(key)")
                 XCTAssertEqual(value.components(separatedBy: "%d").count, key.components(separatedBy: "%d").count, "\(language): \(key)")
                 XCTAssertEqual(text.components(separatedBy: "\n\"\(key)\" =").count - 1, 1, "\(language): \(key)")
+            }
+        }
+    }
+
+    func testTableMenuTextsExistInAllCatalogs() throws {
+        let keys = ["表格", "在上方插入行", "在下方插入行", "删除行", "上移行", "下移行", "在左侧插入列", "在右侧插入列",
+                    "删除列", "左移列", "右移列", "列对齐", "默认对齐", "左对齐", "居中对齐", "右对齐"]
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        for language in ["zh-Hans", "en", "ru"] {
+            let url = root.appendingPathComponent("LacEditor/\(language).lproj/Localizable.strings")
+            let catalog = try XCTUnwrap(NSDictionary(contentsOf: url) as? [String: String])
+            for key in keys {
+                let value = try XCTUnwrap(catalog[key], "\(language): \(key)")
+                XCTAssertFalse(value.isEmpty, "\(language): \(key)")
+                if language != "zh-Hans" {
+                    XCTAssertNil(value.range(of: "\\p{Han}", options: .regularExpression), "\(language): \(key)")
+                }
             }
         }
     }

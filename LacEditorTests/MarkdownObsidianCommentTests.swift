@@ -18,13 +18,26 @@ final class MarkdownObsidianCommentTests: XCTestCase {
         text.utf16.reduce(0) { $0 + ($1 == 10 ? 1 : 0) }
     }
 
+    /// Маска заметки хранилища: комментарии закрашиваются, длина и переводы строк прежние.
+    private func mask(_ text: String) -> MarkdownSourceMask.Result {
+        MarkdownSourceMask.mask(text, options: .init(syntax: syntax, isVaultNote: true, detectsFrontMatter: true, includesCritic: false))
+    }
+
+    /// Признаки первого комментария: (занимает строки целиком, не рвёт абзац).
+    private func flags(_ text: String) -> [Bool] {
+        let segment = mask(text).segments.first { $0.kind == .comment }
+        return [segment?.occupiesWholeLines ?? false, segment?.keepsParagraph ?? false]
+    }
+
     func testInlineComments() {
         XCTAssertEqual(ranges("a %%hidden%% b"), ["%%hidden%%"])
         XCTAssertEqual(ranges("%%one%% x %%two%%"), ["%%one%%", "%%two%%"])
         XCTAssertEqual(ranges("%%start%% text"), ["%%start%%"])
         XCTAssertEqual(ranges("text %%end%%"), ["%%end%%"])
         XCTAssertEqual(ranges("a %%%% b"), ["%%%%"])
-        XCTAssertEqual(MarkdownObsidianComment.hidden("a %%hidden%% b", syntax: syntax), "a  b")
+        let body = MarkdownHTMLRenderer.renderPage("a %%hidden%% b", darkMode: false, documentURL: vaultURL).body
+        XCTAssertFalse(body.contains("hidden") || body.contains("%%"), body)
+        XCTAssertTrue(body.contains("<p>a  b</p>"), body)
     }
 
     func testMultilineComments() {
@@ -32,9 +45,14 @@ final class MarkdownObsidianCommentTests: XCTestCase {
         XCTAssertEqual(ranges("%%one\n\ntwo%%\nz"), ["%%one\n\ntwo%%"])
         for newline in ["\n", "\r", "\r\n"] {
             let text = "a %%x\(newline)y\(newline)z%% b\(newline)c"
-            let hidden = MarkdownObsidianComment.hidden(text, syntax: syntax)
-            XCTAssertEqual(hidden, "a \(newline)\(newline) b\(newline)c")
-            XCTAssertEqual(hidden.components(separatedBy: newline).count, text.components(separatedBy: newline).count)
+            let masked = mask(text)
+            let comment = masked.segments.first { $0.kind == .comment }
+            XCTAssertEqual(comment.map { (text as NSString).substring(with: $0.range) }, "%%x\(newline)y\(newline)z%%")
+            // Переводы строк на своих местах, текст комментария закрашен.
+            XCTAssertEqual(masked.text.components(separatedBy: newline).count, text.components(separatedBy: newline).count)
+            XCTAssertEqual(masked.text.utf16.count, text.utf16.count)
+            XCTAssertFalse(masked.text.contains("x") || masked.text.contains("z"), masked.text)
+            XCTAssertTrue(masked.text.hasPrefix("a ") && masked.text.hasSuffix(" b\(newline)c"), masked.text)
         }
     }
 
@@ -71,21 +89,20 @@ final class MarkdownObsidianCommentTests: XCTestCase {
 
     func testHiddenKeepsLineCountAndPreview() {
         let text = "# Title\n\nbefore %%secret\nspread\n\nover lines%% after\n\nlast"
-        let hidden = MarkdownObsidianComment.hidden(text, syntax: syntax)
-        XCTAssertEqual(lineCount(hidden), lineCount(text))
-        let page = MarkdownRenderer.renderPage(text, darkMode: false, documentURL: vaultURL, includeSourcePositions: true)
+        XCTAssertEqual(lineCount(mask(text).text), lineCount(text))
+        let page = MarkdownHTMLRenderer.renderPage(text, darkMode: false, documentURL: vaultURL, includeSourcePositions: true)
         XCTAssertFalse(page.body.contains("secret"))
         XCTAssertFalse(page.body.contains("%%"))
         XCTAssertTrue(page.body.contains("before"))
         XCTAssertTrue(page.body.contains("after"))
         XCTAssertTrue(page.body.contains("data-sourcepos=\"8:1-8:4\""), page.body)
-        let plain = MarkdownRenderer.renderPage("# Title\n\nbefore \n\n\n after\n\nlast", darkMode: false, documentURL: vaultURL, includeSourcePositions: true)
+        let plain = MarkdownHTMLRenderer.renderPage("# Title\n\nbefore \n\n\n after\n\nlast", darkMode: false, documentURL: vaultURL, includeSourcePositions: true)
         XCTAssertEqual(lineCount(plain.body), lineCount(page.body))
     }
 
     func testHeadingCalloutAndEmbedInsideCommentAreNotRendered() {
         let text = "%%\n# Hidden heading\n> [!note] Hidden\n![[Other]]\n%%\n\nvisible"
-        let body = MarkdownRenderer.renderPage(text, darkMode: false, documentURL: vaultURL).body
+        let body = MarkdownHTMLRenderer.renderPage(text, darkMode: false, documentURL: vaultURL).body
         XCTAssertFalse(body.contains("Hidden"))
         XCTAssertFalse(body.contains("<h1"))
         XCTAssertFalse(body.contains("lac-callout"))
@@ -94,7 +111,7 @@ final class MarkdownObsidianCommentTests: XCTestCase {
     }
 
     func testExportKeepsCommentsHidden() {
-        let body = MarkdownRenderer.renderPage("a %%gone%% b", darkMode: false, documentURL: vaultURL, forExport: true).body
+        let body = MarkdownHTMLRenderer.renderPage("a %%gone%% b", darkMode: false, documentURL: vaultURL, forExport: true).body
         XCTAssertFalse(body.contains("gone"))
     }
 
@@ -105,31 +122,39 @@ final class MarkdownObsidianCommentTests: XCTestCase {
         XCTAssertFalse(MarkdownObsidianComment.appliesTo(documentURL: ordinary))
         XCTAssertTrue(MarkdownObsidianComment.appliesTo(documentURL: vaultURL))
         for url in [nil, ordinary] {
-            let body = MarkdownRenderer.renderPage(text, darkMode: false, documentURL: url).body
+            let body = MarkdownHTMLRenderer.renderPage(text, darkMode: false, documentURL: url).body
             XCTAssertTrue(body.contains("%%b%%") && body.contains("%%e"), body)
         }
-        let hidden = MarkdownRenderer.renderPage(text, darkMode: false, documentURL: vaultURL).body
+        let hidden = MarkdownHTMLRenderer.renderPage(text, darkMode: false, documentURL: vaultURL).body
         XCTAssertFalse(hidden.contains("%%") || hidden.contains(">b<"), hidden)
     }
 
     func testCommentLineDoesNotBreakParagraph() {
-        let hidden = MarkdownObsidianComment.hidden("para\n%%c%%\npara2", syntax: syntax)
-        XCTAssertEqual(hidden, "para\n\u{200B}\npara2")
-        XCTAssertEqual(lineCount(hidden), 2)
-        XCTAssertEqual(MarkdownObsidianComment.hidden("para\r\n  %%a\r\nb%%  \r\npara2", syntax: syntax), "para\r\n  \u{200B}\r\n\u{200B}  \r\npara2")
+        // [занимает строки целиком, не рвёт абзац]
+        XCTAssertEqual(flags("para\n%%c%%\npara2"), [true, true])
+        XCTAssertEqual(lineCount(mask("para\n%%c%%\npara2").text), 2)
+        XCTAssertEqual(flags("para\r\n  %%a\r\nb%%  \r\npara2"), [true, true])
         // Между блоками пустая строка остаётся пустой.
-        XCTAssertEqual(MarkdownObsidianComment.hidden("para\n\n%%c%%\n\npara2", syntax: syntax), "para\n\n\n\npara2")
-        XCTAssertEqual(MarkdownObsidianComment.hidden("%%c%%\npara2", syntax: syntax), "\npara2")
+        XCTAssertEqual(flags("para\n\n%%c%%\n\npara2"), [true, false])
+        XCTAssertEqual(flags("%%c%%\npara2"), [true, false])
         // Внутри цитаты и пункта списка префикс не мешает.
-        XCTAssertEqual(MarkdownObsidianComment.hidden("> a\n> %%c%%\n> b", syntax: syntax), "> a\n> \u{200B}\n> b")
-        XCTAssertEqual(MarkdownObsidianComment.hidden("> a\n>> %%c%%\n> b", syntax: syntax), "> a\n>> \u{200B}\n> b")
-        XCTAssertEqual(MarkdownObsidianComment.hidden("- a\n  %%c%%\n  b", syntax: syntax), "- a\n  \u{200B}\n  b")
-        XCTAssertEqual(MarkdownObsidianComment.hidden("- a\n- %%c%%\n- b", syntax: syntax), "- a\n- \u{200B}\n- b")
-        XCTAssertEqual(MarkdownObsidianComment.hidden("1. a\n2) %%c%%\n3. b", syntax: syntax), "1. a\n2) \u{200B}\n3. b")
+        XCTAssertEqual(flags("> a\n> %%c%%\n> b"), [true, true])
+        XCTAssertEqual(flags("> a\n>> %%c%%\n> b"), [true, true])
+        XCTAssertEqual(flags("- a\n  %%c%%\n  b"), [true, true])
+        XCTAssertEqual(flags("- a\n- %%c%%\n- b"), [true, true])
+        XCTAssertEqual(flags("1. a\n2) %%c%%\n3. b"), [true, true])
         // Пустая строка цитаты рвёт абзац и без нас.
-        XCTAssertEqual(MarkdownObsidianComment.hidden("> a\n>\n> %%c%%\n> b", syntax: syntax), "> a\n>\n> \n> b")
-        let body = MarkdownRenderer.renderPage("para\n%%c%%\npara2", darkMode: false, documentURL: vaultURL).body
-        XCTAssertEqual(body.components(separatedBy: "<p").count - 1, 1, body)
+        XCTAssertEqual(flags("> a\n>\n> %%c%%\n> b"), [true, false])
+        // Текст рядом с комментарием на строке: строка не занята целиком.
+        XCTAssertEqual(flags("para\nx %%c%%\npara2"), [false, false])
+        // Плотный список выводит текст пункта без `<p>`: абзац не разорван, если пункт один и `<p` нет вовсе.
+        for (text, tag, count) in [("para\n%%c%%\npara2", "<p", 1), ("para\r\n  %%c%%\r\npara2", "<p", 1),
+                                   ("> a\n> %%c%%\n> b", "<p", 1), ("- a\n  %%c%%\n  b", "<li", 1)] {
+            let body = MarkdownHTMLRenderer.renderPage(text, darkMode: false, documentURL: vaultURL).body
+            XCTAssertEqual(body.components(separatedBy: tag).count - 1, count, "\(text.debugDescription): \(body)")
+            if tag == "<li" { XCTAssertFalse(body.contains("<p"), body) }
+            XCTAssertFalse(body.contains("%%") || body.contains(">c<"), "\(text.debugDescription): \(body)")
+        }
     }
 
     func testRemovedForPandoc() {
@@ -149,7 +174,7 @@ final class MarkdownObsidianCommentTests: XCTestCase {
         XCTAssertTrue(MarkdownObsidianComment.mayContainComment("a %% b"))
         XCTAssertFalse(MarkdownObsidianComment.mayContainComment("just 50% text" as NSString))
         let big = String(repeating: "line of text without markers\n", count: 100_000)
-        XCTAssertEqual(MarkdownObsidianComment.hidden(big, syntax: syntax), big)
+        XCTAssertTrue(mask(big).isIdentity)
         XCTAssertEqual(MarkdownObsidianComment.removed(big, syntax: syntax), big)
     }
 
@@ -157,5 +182,11 @@ final class MarkdownObsidianCommentTests: XCTestCase {
         XCTAssertEqual(ranges("Привет %%скрыто%% мир"), ["%%скрыто%%"])
         XCTAssertEqual(ranges("Hello %%hidden%% world"), ["%%hidden%%"])
         XCTAssertEqual(ranges("你好 %%隐藏 🙂%% 世界"), ["%%隐藏 🙂%%"])
+    }
+
+    // Зоны исключения берутся из модели: `%%` в кодовом блоке, строчном коде и таблице комментарием не считается.
+    func testCommentRangesSkipCodeBlockInlineCodeAndTable() {
+        let text = "Заметка 😀 %%скрыто%% 中文\r\n\r\n```\r\n%%код%%\r\n```\r\n\r\n`%%строка%%`\r\n\r\n| a | b |\r\n| - | - |\r\n| %%в таблице%% | x |\r\n"
+        XCTAssertEqual(ranges(text), ["%%скрыто%%"])
     }
 }

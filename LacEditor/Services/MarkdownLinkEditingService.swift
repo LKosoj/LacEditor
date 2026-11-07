@@ -1,6 +1,4 @@
 import Foundation
-import cmark_gfm
-import cmark_gfm_extensions
 
 struct MarkdownLinkInput: Equatable {
     let label: String
@@ -118,70 +116,130 @@ enum MarkdownLinkEditingService {
     }
 
     private static func nodes(in text: String) -> [Node]? {
-        guard !text.utf8.contains(0), let parser = cmark_parser_new(CMARK_OPT_TABLE_SPANS) else { return nil }
-        defer { cmark_parser_free(parser) }
-        cmark_gfm_core_extensions_ensure_registered()
-        "table".withCString { if let ext = cmark_find_syntax_extension($0) { cmark_parser_attach_syntax_extension(parser, ext) } }
-        text.withCString { cmark_parser_feed(parser, $0, text.utf8.count) }
-        guard let root = cmark_parser_finish(parser) else { return nil }
-        defer { cmark_node_free(root) }
+        guard let model = MarkdownEditingNode.model(of: text) else { return nil }
         let ns = text as NSString
-        var lines: [(start: Int, text: String)] = [], start = 0, offset = 0
-        while offset < ns.length {
-            if ns.character(at: offset) == 10 || ns.character(at: offset) == 13 {
-                if ns.character(at: offset) == 13 && offset + 1 < ns.length && ns.character(at: offset + 1) == 10 { offset += 1 }
-                offset += 1
-                lines.append((start, ns.substring(with: NSRange(location: start, length: offset - start))))
-                start = offset
-            } else { offset += 1 }
-        }
-        lines.append((start, ns.substring(from: start)))
-        func position(_ line: Int, _ column: Int) -> Int? {
-            guard line > 0, line <= lines.count, column >= 0 else { return nil }
-            let item = lines[line - 1]
-            guard !item.text.contains("\t"), column <= item.text.utf8.count,
-                  let byte = item.text.utf8.index(item.text.utf8.startIndex, offsetBy: column, limitedBy: item.text.utf8.endIndex),
-                  let index = String.Index(byte, within: item.text) else { return nil }
-            return item.start + item.text[..<index].utf16.count
-        }
-        var result: [Node] = []
-        func visit(_ node: UnsafeMutablePointer<cmark_node>) {
-            if let name = cmark_node_get_type_string(node) {
-                let kind = String(cString: name)
-                if ["link", "image", "code", "code_block"].contains(kind) {
-                    func unresolved() {
-                        let first = Int(cmark_node_get_start_line(node)) - 1
-                        let last = Int(cmark_node_get_end_line(node)) - 1
-                        if first >= 0, last >= first, last < lines.count {
-                            let end = lines[last].start + (lines[last].text as NSString).length
-                            result.append(Node(kind: "unresolved", range: NSRange(location: lines[first].start, length: end - lines[first].start), address: "", title: ""))
-                        } else {
-                            result.append(Node(kind: "unresolved", range: NSRange(location: 0, length: ns.length), address: "", title: ""))
-                        }
-                    }
-                    guard let start = position(Int(cmark_node_get_start_line(node)), Int(cmark_node_get_start_column(node)) - 1),
-                          cmark_node_get_end_column(node) > 0,
-                          let end = position(Int(cmark_node_get_end_line(node)), Int(cmark_node_get_end_column(node))), end >= start else {
-                        unresolved()
-                        return
-                    }
-                    var range = NSRange(location: start, length: end - start)
-                    if kind == "code" {
-                        var left = start, right = end
-                        while left > 0 && ns.character(at: left - 1) == 96 { left -= 1 }
-                        while right < ns.length && ns.character(at: right) == 96 { right += 1 }
-                        guard start - left > 0, start - left == right - end else { unresolved(); return }
-                        range = NSRange(location: left, length: right - left)
-                    }
-                    let address = cmark_node_get_url(node).map { String(cString: $0) } ?? ""
-                    let title = cmark_node_get_title(node).map { String(cString: $0) } ?? ""
-                    result.append(Node(kind: kind, range: range, address: address, title: title))
-                }
+        return model.editingNodes(in: ns).map { item in
+            guard !item.isUnreliable else {
+                return Node(kind: "unresolved", range: item.unresolvedLines(in: ns), address: "", title: "")
             }
-            var child = cmark_node_first_child(node)
-            while let current = child { visit(current); child = cmark_node_next(current) }
+            return Node(kind: item.kind, range: item.range, address: item.address, title: item.title)
         }
-        visit(root)
+    }
+}
+
+/// Узел модели, который нужен сервисам ссылок и картинок: ссылка, картинка, код в строке или блок кода.
+/// `gap` — промежуток вокруг неподтверждённого узла (между подтверждёнными соседями или краями блока); его строки сервис помечает «unresolved».
+struct MarkdownEditingNode {
+    enum Content {
+        case inline(MarkdownInlineNode)
+        case codeBlock
+    }
+
+    /// Только то, что влияет на блоки и строчные узлы в редакторе (без индексов, эмодзи и данных TextKit).
+    static let includes: MarkdownDocumentModel.Includes = [.noteEmbeds, .criticMarkup]
+
+    /// Модель для сервисов правки; `nil` — в тексте NUL или разбор не удался. Типографские замены (`'` в `’`) выключены:
+    /// сервисам нужен буквальный текст исходника.
+    static func model(of text: String) -> MarkdownDocumentModel? {
+        guard !text.utf8.contains(0) else { return nil }
+        return MarkdownPresentationBuilder.model(of: text, syntax: MarkdownSyntaxOptions(smartPunctuation: false), includes: includes)
+    }
+
+    let content: Content
+    let range: NSRange
+    let gap: NSRange
+    let isUnreliable: Bool
+
+    var kind: String {
+        switch content {
+        case .codeBlock: "code_block"
+        case let .inline(node):
+            switch node.kind {
+            case .link: "link"
+            case .image: "image"
+            default: "code"
+            }
+        }
+    }
+
+    var address: String {
+        guard case let .inline(node) = content else { return "" }
+        switch node.kind {
+        case let .link(link): return link.url
+        case let .image(image): return image.url
+        default: return ""
+        }
+    }
+
+    var title: String {
+        guard case let .inline(node) = content else { return "" }
+        switch node.kind {
+        case let .link(link): return link.title ?? ""
+        case let .image(image): return image.title ?? ""
+        default: return ""
+        }
+    }
+
+    /// Строки промежутка целиком (с переводом строки в конце); не подошло — весь текст.
+    func unresolvedLines(in text: NSString) -> NSRange {
+        guard gap.location != NSNotFound, gap.location >= 0, gap.length >= 0,
+              gap.location <= text.length, gap.length <= text.length - gap.location else {
+            return NSRange(location: 0, length: text.length)
+        }
+        return text.lineRange(for: gap)
+    }
+}
+
+extension MarkdownDocumentModel {
+    /// Ссылки, картинки, код в строке и блоки кода документа в порядке обхода (родитель раньше вложенных).
+    /// HTML-формы (`<a>`, `<img>`) не берутся: cmark видит в них только сырой HTML.
+    /// Неподтверждённым считается сам узел (или блок кода); соседи с подтверждённой позицией остаются доступными.
+    func editingNodes(in text: NSString) -> [MarkdownEditingNode] {
+        var result: [MarkdownEditingNode] = []
+        // Абзац с неподтверждёнными позициями помечается целиком, а узлы в нём модель считает подтверждёнными. Узел недоступен,
+        // если его строки с табуляцией (как прежде: позиция cmark в такой строке не разбиралась); остальные строки правятся.
+        func inUnconfirmedLines(_ range: NSRange) -> Bool {
+            guard range.location >= 0, NSMaxRange(range) <= text.length,
+                  unreliableRanges.contains(where: { NSIntersectionRange($0, range).length > 0 || NSLocationInRange(range.location, $0) }) else { return false }
+            return text.substring(with: text.lineRange(for: range)).contains("\t")
+        }
+        func visit(_ inlines: [MarkdownInlineNode], owner: NSRange) {
+            for (index, node) in inlines.enumerated() {
+                var accepted = false
+                switch node.kind {
+                case let .link(link): accepted = link.form != .html
+                case let .image(image): accepted = image.syntax != .html
+                case .code: accepted = true
+                default: break
+                }
+                if accepted {
+                    var gap = node.range
+                    if node.isUnreliable {
+                        let before = inlines[..<index].last(where: { !$0.isUnreliable && $0.range.length > 0 })
+                        let after = inlines[(index + 1)...].first(where: { !$0.isUnreliable && $0.range.length > 0 })
+                        let lower = before.map { NSMaxRange($0.range) } ?? owner.location
+                        let upper = after.map { $0.range.location } ?? NSMaxRange(owner)
+                        gap = NSRange(location: lower, length: max(0, upper - lower))
+                    }
+                    result.append(MarkdownEditingNode(content: .inline(node), range: node.range, gap: gap,
+                                                      isUnreliable: node.isUnreliable || inUnconfirmedLines(node.range)))
+                }
+                visit(node.children, owner: owner)
+            }
+        }
+        func visit(_ blocks: [MarkdownBlockNode]) {
+            for block in blocks {
+                if case .codeBlock = block.kind {
+                    result.append(MarkdownEditingNode(content: .codeBlock, range: block.range, gap: block.range, isUnreliable: block.isUnreliable || inUnconfirmedLines(block.range)))
+                }
+                visit(block.inlines, owner: block.range)
+                if case let .table(table) = block.kind {
+                    for row in table.rows { for cell in row.cells { visit(cell.inlines, owner: row.range) } }
+                }
+                visit(block.children)
+            }
+        }
+        visit(blocks)
         return result
     }
 }

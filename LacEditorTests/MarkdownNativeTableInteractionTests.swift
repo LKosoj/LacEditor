@@ -3,6 +3,21 @@ import SwiftUI
 import XCTest
 @testable import LacEditor
 
+/// Пересчёт показа таблицы по строкам тем же путём, что в приложении (`tableRowDisplay`): без `previous` — все ячейки заново,
+/// с `previous` — переиспользуются все ячейки, кроме изменённой.
+private func rebuiltTableDisplay(_ table: MarkdownTable, text: NSString, previous: MarkdownTable? = nil,
+            changedRow: Int? = nil, changedColumn: Int = -1) -> MarkdownTable {
+    let labels = previous?.referenceLabels ?? table.referenceLabels
+    let rows = table.rows.enumerated().map { index, row -> MarkdownTableRow in
+        let old = previous.flatMap { index < $0.rows.count ? $0.rows[index] : nil } ?? MarkdownTableRow(range: row.range, cells: [])
+        return MarkdownPresentationBuilder.tableRowDisplay(row, text: text, previous: old,
+            changedColumn: row.range.location == changedRow ? changedColumn : -1, referenceLabels: labels)
+    }
+    return MarkdownTable(range: table.range, delimiterRange: table.delimiterRange, alignments: table.alignments, rows: rows,
+                         containerPrefix: table.containerPrefix, quoteDepth: table.quoteDepth, nestedList: table.nestedList,
+                         referenceLabels: labels)
+}
+
 @MainActor
 final class MarkdownNativeTableInteractionTests: XCTestCase {
     func testAnimatedTableImagePausesWhileCellEditorIsOpen() async throws {
@@ -29,7 +44,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
         coordinator.updateActivity(true)
         window.makeKeyAndOrderFront(nil)
         defer { coordinator.updateActivity(false); window.close() }
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         for _ in 0..<200 where view.subviews.compactMap({ $0 as? NSImageView }).count < 2 { try await Task.sleep(for: .milliseconds(20)) }
         let frame = try XCTUnwrap(layout.markdownTableFrame(for: cell, in: container)).offsetBy(dx: view.textContainerOrigin.x, dy: view.textContainerOrigin.y)
         let gifViews = view.subviews.compactMap { $0 as? NSImageView }
@@ -76,7 +91,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
         window.makeKeyAndOrderFront(nil)
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 250, height: 40), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         for _ in 0..<200 where !document.isMarkdownOutlineCurrent { try await Task.sleep(for: .milliseconds(20)) }
@@ -122,7 +137,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
             coordinator.updateActivity(true)
             defer { coordinator.updateActivity(false); window.close() }
             window.makeKeyAndOrderFront(nil)
-            let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.last)
+            let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.last)
             var opened = false
             for _ in 0..<200 {
                 if coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 180, height: 40), cell: cell) { opened = true; break }
@@ -183,7 +198,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
         view.setSelectedRange(NSRange(location: (source as NSString).length, length: 0))
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source, includeEmojiCandidates: true).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true).tables.first?.rows.last?.cells.first)
         func hasAttachment() -> Bool {
             layout.tableCellAttributedText(cell, text: storage.mutableString).string.contains("\u{fffc}")
         }
@@ -261,7 +276,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows[1].cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows[1].cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 150, height: 40), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         measure {
@@ -413,7 +428,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
     func testDragDoesNotApplyAfterSourceChanges() async throws {
         _ = NSApplication.shared
         let source = "| A | B |\n| --- | --- |\n| one | x |\n| two | y |"
-        let table = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first)
+        let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first)
         let first = table.rows[1].cells[0], last = table.rows[2].cells[0]
         let document = EditorDocument(text: source, language: .markdown)
         document.isMarkdownFormatted = true
@@ -460,7 +475,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
     func testClickOtherCellKeepsMarkedComposition() async throws {
         _ = NSApplication.shared
         let source = "| A | B |\n| --- | --- |\n| one | two |\n\noutside"
-        let table = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first)
+        let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first)
         let first = table.rows.last!.cells[0], second = table.rows.last!.cells[1]
         let document = EditorDocument(text: source, language: .markdown)
         document.isMarkdownFormatted = true
@@ -528,7 +543,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
     func testLeavingTableClosesCellAndHidesHandles() async throws {
         _ = NSApplication.shared
         let source = "| A | B |\n| --- | --- |\n| one | two |\n\noutside"
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         let document = EditorDocument(text: source, language: .markdown)
         document.isMarkdownFormatted = true
         let coordinator = EditorTextView.Coordinator(document: document)
@@ -578,7 +593,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
     func testRowHandleDragMovesTwoRowsWithOneUndo() async throws {
         _ = NSApplication.shared
         let source = "| A | B |\n| --- | --- |\n| one | x |\n| two | y |\n| three | z |"
-        let table = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first)
+        let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first)
         let first = table.rows[1].cells[0], target = table.rows[3].cells[0]
         let document = EditorDocument(text: source, language: .markdown)
         document.isMarkdownFormatted = true
@@ -633,7 +648,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
     func testColumnHandleDragAndCancellation() async throws {
         _ = NSApplication.shared
         let source = "| A | B | C |\n| --- | --- | --- |\n| x | y | z |"
-        let table = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first)
+        let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first)
         let first = table.rows[0].cells[0], last = table.rows[0].cells[2]
         let document = EditorDocument(text: source, language: .markdown)
         document.isMarkdownFormatted = true
@@ -687,7 +702,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
     }
     func testInactiveCellUsesCmarkTextAndAttributes() throws {
         let source = "| A |\n| --- |\n| **bold** *italic* ~~strike~~ `code` [label](https://example.com) a\\|b<br>中😀 |"
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         XCTAssertEqual(cell.displayText, "bold italic strike code label a|b\n中😀")
         let layout = FoldLayoutManager()
         let attributed = layout.tableCellAttributedText(cell, text: source as NSString)
@@ -706,11 +721,11 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
 
     func testLocalCellRefreshMatchesInitialSmartTextAndAutolink() throws {
         let source = "| A | B |\n| --- | --- |\n| \"test\" -- https://example.com | **unchanged** |"
-        let initial = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first)
+        let initial = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first)
         let row = try XCTUnwrap(initial.rows.last)
         let raw = try XCTUnwrap(MarkdownTableEditingService.presentationTable(in: source as NSString, range: initial.range))
-        let refreshed = MarkdownPresentationParser.tableDisplay(raw, text: source as NSString, previous: initial,
-                                                                 changedRow: row.range.location, changedColumn: 0)
+        let refreshed = rebuiltTableDisplay(raw, text: source as NSString, previous: initial,
+            changedRow: row.range.location, changedColumn: 0)
         XCTAssertEqual(refreshed.rows.last?.cells, initial.rows.last?.cells)
         let cell = try XCTUnwrap(refreshed.rows.last?.cells.first)
         XCTAssertTrue(cell.displayText?.contains("“test” –") == true)
@@ -720,12 +735,12 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
 
     func testLocalCellRefreshKeepsConfirmedReferenceLink() throws {
         let source = "| A | B |\n| --- | --- |\n| [текст][id] | **other** |\n\n[id]: https://example.com"
-        let initial = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first)
+        let initial = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first)
         XCTAssertEqual(initial.referenceLabels, ["id"])
         let changed = source.replacingOccurrences(of: "текст", with: "текст!")
-        let changedTable = try XCTUnwrap(MarkdownPresentationParser.parse(changed).tables.first)
+        let changedTable = try XCTUnwrap(MarkdownPresentationBuilder.parse(changed).tables.first)
         let raw = try XCTUnwrap(MarkdownTableEditingService.presentationTable(in: changed as NSString, range: changedTable.range))
-        let refreshed = MarkdownPresentationParser.tableDisplay(raw, text: changed as NSString, previous: initial,
+        let refreshed = rebuiltTableDisplay(raw, text: changed as NSString, previous: initial,
             changedRow: changedTable.rows.last?.range.location, changedColumn: 0)
         XCTAssertEqual(refreshed.rows.last?.cells, changedTable.rows.last?.cells)
         XCTAssertEqual(refreshed.rows.last?.cells.first?.displayText, "текст!")
@@ -759,7 +774,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
         coordinator.attachLiveTextProvider()
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 100, height: 40), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         XCTAssertEqual(child.string, " **中文😀** [label](https://example.com) `code` ")
@@ -793,7 +808,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
         coordinator.attachLiveTextProvider()
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 100, height: 80), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         XCTAssertEqual(child.string, " a|b\n中😀 ")
@@ -810,7 +825,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
         XCTAssertEqual(child.undoAction?(true), true)
         XCTAssertEqual(view.string, expected)
         coordinator.finishTableCell()
-        let updated = try XCTUnwrap(MarkdownPresentationParser.parse(expected).tables.first?.rows.last?.cells.first)
+        let updated = try XCTUnwrap(MarkdownPresentationBuilder.parse(expected).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(updated.range, frame: NSRect(x: 0, y: 0, width: 100, height: 80), cell: updated))
         let reopened = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         XCTAssertEqual(reopened.string, " a|b\n文中😀 ")
@@ -852,7 +867,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
     func testCellEnterAfterBackslashAndUndo() throws {
         _ = NSApplication.shared
         let source = "| A | B |\n| --- | --- |\n| a\\"
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         let document = EditorDocument(text: source, language: .markdown)
         document.isMarkdownFormatted = true
         let coordinator = EditorTextView.Coordinator(document: document)
@@ -888,7 +903,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
     func testVirtualCellUndoKeepsEnclosingQuoteMarkers() async throws {
         _ = NSApplication.shared
         let source = "> | A | B |\n> | --- | --- |\n> x\n\noutside"
-        let table = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first)
+        let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first)
         let cell = try XCTUnwrap(table.rows.last?.cells.last)
         XCTAssertEqual(cell.virtualSeparators, 1)
         let document = EditorDocument(text: source, language: .markdown)
@@ -938,7 +953,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
     func testNestedTableGridClickAndEditingPreserveQuote() async throws {
         _ = NSApplication.shared
         let source = "> before\n>\n> | A | B |\n> | --- | --- |\n> | one | two |\n>\n> after\n\noutside"
-        let table = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first)
+        let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first)
         let cell = try XCTUnwrap(table.rows.last?.cells.first)
         let document = EditorDocument(text: source, language: .markdown)
         document.isMarkdownFormatted = true
@@ -989,7 +1004,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
         let updatedAfter = (expected as NSString).range(of: "> after").location
         XCTAssertTrue(layout.isMarkdownMarkerHidden(at: beforeMarker))
         XCTAssertTrue(layout.isMarkdownMarkerHidden(at: updatedAfter))
-        let updated = try XCTUnwrap(MarkdownPresentationParser.parse(view.string).tables.first?.rows.last?.cells.first)
+        let updated = try XCTUnwrap(MarkdownPresentationBuilder.parse(view.string).tables.first?.rows.last?.cells.first)
         XCTAssertNotNil(layout.markdownTableFrame(for: updated, in: container))
         XCTAssertEqual(child.undoAction?(false), true)
         XCTAssertEqual(view.string, source)
@@ -1002,7 +1017,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
     func testTableMenuTargetsVirtualColumnAndUndo() throws {
         _ = NSApplication.shared
         let source = "| A | B | C |\n| --- | --- | --- |\n| x |"
-        let table = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first)
+        let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first)
         let cell = try XCTUnwrap(table.rows.last?.cells.last)
         XCTAssertEqual(cell.virtualSeparators, 2)
         let document = EditorDocument(text: source, language: .markdown)
@@ -1129,7 +1144,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
             ("A|", "---|", "x", "|   |")
         ] {
             let source = [header, delimiter, lastRow].joined(separator: "\r\n")
-            let table = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first)
+            let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first)
             let cell = try XCTUnwrap(table.rows.last?.cells.last)
             let document = EditorDocument(text: source, language: .markdown)
             document.isMarkdownFormatted = true
@@ -1155,7 +1170,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
             let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
             child.doCommand(by: #selector(NSTextView.insertTab(_:)))
             XCTAssertEqual(view.string, source + "\r\n" + inserted)
-            XCTAssertEqual(MarkdownPresentationParser.parse(view.string).tables.first?.rows.count, 3)
+            XCTAssertEqual(MarkdownPresentationBuilder.parse(view.string).tables.first?.rows.count, 3)
             let next = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
             XCTAssertFalse(next === child)
             XCTAssertEqual(next.string, "   ")
@@ -1166,7 +1181,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
 
     func testShortAndExtraRowsMatchVisibleColumns() throws {
         let source = "| A | B | C |\n| --- | --- | --- |\n| 中 |\n| a | b | c | hidden |"
-        let table = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first)
+        let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first)
         XCTAssertEqual(table.rows.map { $0.cells.count }, [3, 3, 3])
         let short = table.rows[1].cells
         XCTAssertEqual(short.map(\.virtualSeparators), [0, 1, 2])
@@ -1175,7 +1190,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
         let last = try XCTUnwrap(table.rows.last)
         XCTAssertEqual(last.cells.map { (source as NSString).substring(with: $0.range) }, [" a ", " b ", " c "])
         XCTAssertTrue((source as NSString).substring(with: last.range).contains(" hidden "))
-        let html = MarkdownRenderer.renderPage(source, darkMode: false).body
+        let html = MarkdownHTMLRenderer.renderPage(source, darkMode: false).body
         XCTAssertFalse(html.contains("hidden"))
     }
 
@@ -1184,7 +1199,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
         for newline in ["\n", "\r\n"] {
           for marked in [false, true] {
             let source = ["| A | B | C |", "| --- | --- | --- |", "| 中文😀 |"].joined(separator: newline)
-            let table = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first)
+            let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first)
             let row = try XCTUnwrap(table.rows.last)
             XCTAssertEqual(row.cells.count, 3)
             let cell = row.cells[2]
@@ -1233,7 +1248,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
             }
             XCTAssertEqual(view.string, expected)
             XCTAssertEqual(document.synchronizedSnapshot().text, expected)
-            XCTAssertEqual(MarkdownPresentationParser.parse(expected).tables.first?.rows.last?.cells.count, 3)
+            XCTAssertEqual(MarkdownPresentationBuilder.parse(expected).tables.first?.rows.last?.cells.count, 3)
             _ = child.undoAction?(false)
             XCTAssertEqual(view.string, source)
             _ = child.undoAction?(true)
@@ -1289,7 +1304,7 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
         XCTAssertEqual(document.synchronizedSnapshot().text, view.string)
         let visibleCell = try XCTUnwrap(layout.markdownTableCell(at: point, in: container))
         XCTAssertEqual((view.string as NSString).substring(with: visibleCell.0), " 中 ")
-        let current = MarkdownPresentationParser.parse(view.string)
+        let current = MarkdownPresentationBuilder.parse(view.string)
         XCTAssertEqual(current.tables.count, 2)
         let secondCell = try XCTUnwrap(current.tables.last?.rows.first?.cells.first)
         XCTAssertNotNil(layout.markdownTableFrame(for: secondCell.range, in: container))
@@ -1309,9 +1324,9 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
         child.insertNewline(nil)
         XCTAssertTrue(view.string.contains("中\\|😀<br>other<br>"))
         XCTAssertTrue(child.string.contains("中|😀\nother\n"))
-        XCTAssertEqual(MarkdownPresentationParser.parse(view.string).tables.first?.rows.first?.cells.count, 2)
+        XCTAssertEqual(MarkdownPresentationBuilder.parse(view.string).tables.first?.rows.first?.cells.count, 2)
         XCTAssertEqual(child.selectedRange().location, 12)
-        XCTAssertTrue(MarkdownRenderer.render(view.string, darkMode: false).contains("中|"))
+        XCTAssertTrue(MarkdownHTMLRenderer.renderPage(view.string, darkMode: false).html.contains("中|"))
         let oldWidth = child.frame.width
         scroll.frame.size.width = 240
         coordinator.updateLayout(wordWrap: true, force: true)
@@ -1328,9 +1343,9 @@ final class MarkdownNativeTableInteractionTests: XCTestCase {
         XCTAssertEqual(projection.text, "中😀|ab")
         XCTAssertEqual((value as NSString).substring(from: projection.rawBoundaries[4]), "ab")
         let document = "| A | B |\n| --- | --- |\n| " + value + " | end |"
-        let table = try XCTUnwrap(MarkdownPresentationParser.parse(document).tables.first)
+        let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(document).tables.first)
         XCTAssertEqual(table.rows.last?.cells.count, 2)
-        let html = MarkdownRenderer.render(document, darkMode: false)
+        let html = MarkdownHTMLRenderer.renderPage(document, darkMode: false).html
         XCTAssertTrue(html.contains("<table>"))
         XCTAssertTrue(html.contains("中😀|a"))
     }

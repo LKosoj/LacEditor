@@ -1,7 +1,5 @@
 import Foundation
 
-enum CriticMarkupKind: Equatable, Sendable { case insertion, deletion, substitution, comment, highlight }
-
 struct CriticMarkupItem: Equatable, Sendable {
     let kind: CriticMarkupKind
     /// От `{` до `}` включительно.

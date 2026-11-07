@@ -10,7 +10,7 @@ final class UIPolishJTests: XCTestCase {
     }
 
     private func html(_ markdown: String = "x", dark: Bool = false) -> String {
-        MarkdownRenderer.renderPage(markdown, darkMode: dark).html
+        MarkdownHTMLRenderer.renderPage(markdown, darkMode: dark).html
     }
 
     private func block(_ html: String, from marker: String) throws -> Substring {
@@ -36,11 +36,11 @@ final class UIPolishJTests: XCTestCase {
 
     func testAlertsGetWhitelistedClass() {
         for label in ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"] {
-            let body = MarkdownRenderer.renderPage("> [!\(label)]\n> text\n\n<script>bad()</script>", darkMode: false).body
+            let body = MarkdownHTMLRenderer.renderPage("> [!\(label)]\n> text\n\n<script>bad()</script>", darkMode: false).body
             XCTAssertTrue(body.contains("<aside class=\"lac-alert lac-alert-\(label.lowercased())\">"), label)
             XCTAssertFalse(body.contains("<script>"), label)
         }
-        let unknown = MarkdownRenderer.renderPage("> [!UNKNOWN]\n> text", darkMode: false).body
+        let unknown = MarkdownHTMLRenderer.renderPage("> [!UNKNOWN]\n> text", darkMode: false).body
         XCTAssertFalse(unknown.contains("<aside"))
     }
 
@@ -87,7 +87,7 @@ final class UIPolishJTests: XCTestCase {
     // MARK: D3
 
     func testPreviewAccentOnlyInDecorVariables() {
-        var page = MarkdownRenderer.renderPage("x", darkMode: false)
+        var page = MarkdownHTMLRenderer.renderPage("x", darkMode: false)
         XCTAssertNil(page.rootColorVariables["--lac-accent"])
         XCTAssertFalse(page.html.contains("--lac-accent:"))
         page.previewAccent = "rgba(1,2,3,1)"
@@ -97,7 +97,7 @@ final class UIPolishJTests: XCTestCase {
     }
 
     func testPreviewAccentIsSkippedWithCustomLinkColor() {
-        var page = MarkdownRenderer.renderPage("x", darkMode: false)
+        var page = MarkdownHTMLRenderer.renderPage("x", darkMode: false)
         var colors = MarkdownColorOverrides()
         colors.link = MarkdownSRGBColor(red: 1, green: 0, blue: 0)
         page.typography = MarkdownTypography(fontSize: 15, lineHeight: 24, lightColors: colors)
@@ -135,13 +135,13 @@ final class UIPolishJTests: XCTestCase {
 
     func testEmptyHintOnlyInPreview() {
         for text in ["", "  \n\t"] {
-            let body = MarkdownRenderer.renderPage(text, darkMode: false, isPreview: true).body
+            let body = MarkdownHTMLRenderer.renderPage(text, darkMode: false, isPreview: true).body
             XCTAssertTrue(body.contains("class=\"lac-empty\""))
             XCTAssertTrue(body.contains(L10n.tr(key)))
-            XCTAssertTrue(MarkdownRenderer.renderPage(text, darkMode: false).body.isEmpty)
-            XCTAssertTrue(MarkdownRenderer.renderPage(text, darkMode: false, forExport: true, isPreview: true).body.isEmpty)
+            XCTAssertTrue(MarkdownHTMLRenderer.renderPage(text, darkMode: false).body.isEmpty)
+            XCTAssertTrue(MarkdownHTMLRenderer.renderPage(text, darkMode: false, forExport: true, isPreview: true).body.isEmpty)
         }
-        XCTAssertFalse(MarkdownRenderer.renderPage("a", darkMode: false, isPreview: true).body.contains("lac-empty"))
+        XCTAssertFalse(MarkdownHTMLRenderer.renderPage("a", darkMode: false, isPreview: true).body.contains("lac-empty"))
     }
 
     func testRenderActorShowsEmptyHint() async {
@@ -161,34 +161,34 @@ final class UIPolishJTests: XCTestCase {
 
     func testCodeHighlightKeepsText() {
         let literal = "let s = \"中😀 <&>\"\n"
-        let body = MarkdownRenderer.renderPage("```swift\n\(literal)```", darkMode: false, highlightCode: true).body
+        let body = MarkdownHTMLRenderer.renderPage("```swift\n\(literal)```", darkMode: false, highlightCode: true).body
         XCTAssertTrue(body.contains("<span class=\"tok-k\">let</span>"))
         XCTAssertEqual(stripped(body).trimmingCharacters(in: .newlines), literal.trimmingCharacters(in: .newlines))
-        XCTAssertFalse(MarkdownRenderer.renderPage("```swift\n\(literal)```", darkMode: false).body.contains("tok-"))
+        XCTAssertFalse(MarkdownHTMLRenderer.renderPage("```swift\n\(literal)```", darkMode: false).body.contains("tok-"))
     }
 
     func testCodeHighlightSkipsOtherLanguages() {
         for source in ["```mermaid\ngraph TD\n```", "```unknownlang\nlet a = 1\n```", "```\nlet a = 1\n```"] {
-            XCTAssertFalse(MarkdownRenderer.renderPage(source, darkMode: false, highlightCode: true).body.contains("tok-"), source)
+            XCTAssertFalse(MarkdownHTMLRenderer.renderPage(source, darkMode: false, highlightCode: true).body.contains("tok-"), source)
         }
-        XCTAssertTrue(MarkdownRenderer.renderPage("```mermaid\ngraph TD\n```", darkMode: false, highlightCode: true).body.contains("language-mermaid"))
+        XCTAssertTrue(MarkdownHTMLRenderer.renderPage("```mermaid\ngraph TD\n```", darkMode: false, highlightCode: true).body.contains("language-mermaid"))
     }
 
     func testCodeHighlightSourcePositionsAndExport() {
         let source = "```swift\nlet a = 1\n```"
-        let preview = MarkdownRenderer.renderPage(source, darkMode: false, includeSourcePositions: true, highlightCode: true).body
+        let preview = MarkdownHTMLRenderer.renderPage(source, darkMode: false, includeSourcePositions: true, highlightCode: true).body
         XCTAssertTrue(preview.contains("<pre tabindex=\"0\""))
         XCTAssertTrue(preview.contains("data-sourcepos=\"1:1-3:3\""))
-        let export = MarkdownRenderer.renderPage(source, darkMode: false, forExport: true, includeSourcePositions: true, highlightCode: true).body
+        let export = MarkdownHTMLRenderer.renderPage(source, darkMode: false, forExport: true, includeSourcePositions: true, highlightCode: true).body
         XCTAssertFalse(export.contains("data-sourcepos"))
     }
 
     func testCodeHighlightInsideListAndQuoteWithoutNestedSpans() {
-        let nested = MarkdownRenderer.renderPage("- item\n\n  ```json\n  {\"a\": [1, true]}\n  ```\n\n> ```swift\n> let a = 1\n> ```", darkMode: false, highlightCode: true).body
+        let nested = MarkdownHTMLRenderer.renderPage("- item\n\n  ```json\n  {\"a\": [1, true]}\n  ```\n\n> ```swift\n> let a = 1\n> ```", darkMode: false, highlightCode: true).body
         XCTAssertTrue(nested.contains("tok-"))
         XCTAssertFalse(nested.contains("</span></span>"))
-        XCTAssertEqual(MarkdownRenderer.renderPage("```json\n{\"a\": 1}\n```", darkMode: false, highlightCode: true).body,
-                       MarkdownRenderer.renderPage("```json\n{\"a\": 1}\n```", darkMode: false, highlightCode: true).body)
+        XCTAssertEqual(MarkdownHTMLRenderer.renderPage("```json\n{\"a\": 1}\n```", darkMode: false, highlightCode: true).body,
+                       MarkdownHTMLRenderer.renderPage("```json\n{\"a\": 1}\n```", darkMode: false, highlightCode: true).body)
     }
 
     func testHighlightIsEnabledForPDFExceptPlainHTML() throws {

@@ -11,6 +11,24 @@ private final class MarkdownTableAccessibilityCell: NSAccessibilityElement {
     override func accessibilityFrameInParentSpace() -> NSRect { isCurrent?() == true ? super.accessibilityFrameInParentSpace() : .zero }
 }
 
+/// Заголовок, ссылка или картинка для VoiceOver: у них нет ни своего вида, ни атрибутов текста, поэтому они отдаются дочерними элементами.
+private final class MarkdownAccessibilityItemElement: NSAccessibilityElement {
+    var activate: (() -> Bool)?
+    var isCurrent: (() -> Bool)?
+
+    override func accessibilityPerformPress() -> Bool { isCurrent?() == true ? (activate?() ?? false) : false }
+    override func accessibilityFrame() -> NSRect { isCurrent?() == true ? super.accessibilityFrame() : .zero }
+    override func accessibilityFrameInParentSpace() -> NSRect { isCurrent?() == true ? super.accessibilityFrameInParentSpace() : .zero }
+}
+
+/// Элемент текущего разбора для VoiceOver; диапазон в координатах текста редактора, подпись готовит координатор.
+struct MarkdownAccessibilityItem: Equatable {
+    enum Kind: Equatable { case heading(level: Int), link(address: String), image }
+    let kind: Kind
+    let range: NSRange
+    let label: String
+}
+
 final class MarkdownTableAccessibilityRow: NSObject, NSAccessibilityRow {
     weak var owner: LacTextView?
     weak var table: MarkdownTableAccessibilityTable?
@@ -284,7 +302,65 @@ final class LacTextView: NSTextView {
             elements.append(table)
             index = end
         }
-        return existing + elements
+        return existing + elements + markdownAccessibilityItemElements()
+    }
+
+    /// Диапазоны длиннее этого VoiceOver читает как есть, с маркерами: построчный обход дороже пользы.
+    private static let readableAccessibilityLimit = 100_000
+
+    /// Текст диапазона без скрытых сейчас маркеров (то, что видно на экране). Раскрытые маркеры остаются: что видно, то и читается.
+    func accessibilityReadableText(in range: NSRange) -> String? {
+        guard let layout = layoutManager as? FoldLayoutManager, let storage = textStorage, !hasMarkedText(),
+              range.location != NSNotFound, range.location >= 0, range.length > 0,
+              range.length <= Self.readableAccessibilityLimit, NSMaxRange(range) <= storage.length else { return nil }
+        return layout.visibleMarkdownText(in: range, of: storage.string as NSString)
+    }
+
+    /// VoiceOver читает видимый текст без «звёздочка звёздочка»; `accessibilityValue` и диапазоны остаются исходником.
+    override func accessibilityString(for range: NSRange) -> String? {
+        accessibilityReadableText(in: range) ?? super.accessibilityString(for: range)
+    }
+
+    /// Заголовки, ссылки и картинки видимой области: роль, подпись и рамка из раскладки; устаревший элемент недействителен.
+    private func markdownAccessibilityItemElements() -> [Any] {
+        guard let provider = markdownAccessibilityItems, let layout = layoutManager as? FoldLayoutManager, let container = textContainer,
+              let window, let storage = textStorage, let revision = tableAccessibilityRevision?() else { return [] }
+        let origin = textContainerOrigin
+        let capturedVisibleRect = visibleRect
+        let glyphs = layout.glyphRange(forBoundingRect: capturedVisibleRect.offsetBy(dx: -origin.x, dy: -origin.y), in: container)
+        let visible = layout.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+        return provider(visible).compactMap { item -> Any? in
+            guard item.range.location != NSNotFound, item.range.location >= 0, NSMaxRange(item.range) <= storage.length else { return nil }
+            let glyphRange = layout.glyphRange(forCharacterRange: item.range, actualCharacterRange: nil)
+            guard glyphRange.length > 0 else { return nil }
+            var rect = layout.boundingRect(forGlyphRange: glyphRange, in: container)
+            if rect.isEmpty { rect = layout.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil) }
+            rect = rect.offsetBy(dx: origin.x, dy: origin.y)
+            let role: NSAccessibility.Role
+            switch item.kind {
+            case .heading: role = .headingRole
+            case .link: role = .link
+            case .image: role = .image
+            }
+            guard let element = MarkdownAccessibilityItemElement.element(withRole: role, frame: window.convertToScreen(convert(rect, to: nil)),
+                                                                         label: item.label, parent: self) as? MarkdownAccessibilityItemElement else { return nil }
+            element.isCurrent = { [weak self] in
+                guard let self else { return false }
+                return self.tableAccessibilityRevision?() == revision && self.visibleRect == capturedVisibleRect
+            }
+            switch item.kind {
+            case let .heading(level):
+                // Атрибута уровня у NSAccessibilityElement нет: уровень отдаётся описанием роли («Заголовок 2»).
+                element.setAccessibilityRoleDescription(L10n.tr("标题 %@ 级", String(level)))
+            case let .link(address):
+                if address != item.label { element.setAccessibilityValue(address) }
+                let range = item.range
+                element.activate = { [weak self] in self?.markdownLinkActivateHandler?(range) == true }
+            case .image:
+                break
+            }
+            return element
+        }
     }
 
     private func offscreenAccessibilityRow(model: MarkdownTable, rowIndex: Int, table: MarkdownTableAccessibilityTable,
@@ -350,6 +426,12 @@ final class LacTextView: NSTextView {
 
     var currentLineColor: NSColor = .lacCurrentLineBackground
     var selectionTrackingHandler: (() -> Void)?
+    /// Идёт цикл отслеживания мыши внутри `super.mouseDown` (клик или протяжка).
+    private(set) var isPointerTracking = false
+    /// Идёт `moveUp/moveDown/pageUp/pageDown`.
+    private(set) var isVerticalMove = false
+    /// Кнопка мыши отпущена: можно применить отложенное раскрытие и оформление.
+    var pointerTrackingEndedHandler: (() -> Void)?
     var compositionCompletionHandler: (() -> Void)?
     var compositionStartHandler: ((Bool) -> Void)?
     var appearanceChangedHandler: (() -> Void)?
@@ -357,6 +439,10 @@ final class LacTextView: NSTextView {
     var requestsFirstResponderWhenAttached = false
     var textTransformationHandler: ((TextTransformationOperation) -> Void)?
     var diagramMenuHandler: ((NSPoint) -> [NSMenuItem])?
+    /// Пункты форматирования Markdown и переключения источника для контекстного меню; пустой список — пунктов нет.
+    var markdownFormatMenuHandler: (() -> [NSMenuItem])?
+    /// Подменю «表格» для правого клика по ячейке (точка в координатах вида); пустой список — пунктов нет.
+    var tableMenuHandler: ((NSPoint) -> [NSMenuItem])?
     var imageTransferHandler: ((MarkdownImageTransfer) -> Bool)?
     var videoTransferHandler: ((URL) -> Bool)?
     /// Страница хранилища, собранная сервером: правки мимо делегата (Shift-Tab) спрашивают разрешение здесь.
@@ -377,15 +463,22 @@ final class LacTextView: NSTextView {
     var tableOfContentsHandler: ((NSRange, MarkdownHeading?) -> Bool)?
     var pageBreakHandler: ((NSRange) -> Bool)?
     var tableCellHandler: ((MarkdownTableCell, NSRect) -> Bool)?
+    /// Заголовки, ссылки и картинки готового разбора внутри диапазона символов (для VoiceOver); пусто, пока разбор не готов.
+    var markdownAccessibilityItems: ((NSRange) -> [MarkdownAccessibilityItem])?
+    /// «Нажатие» VoiceOver на ссылке: переход как по Cmd-клику; диапазон ссылки в координатах текста редактора.
+    var markdownLinkActivateHandler: ((NSRange) -> Bool)?
     var tableAccessibilityRevision: (() -> UInt?)?
     var tableAccessibilitySelection: (() -> (NSRange, Int?)?)?
     var tableAccessibilityActionHandler: ((MarkdownTableCell, NSRect, MarkdownTableAccessibilityMove) -> Bool)?
     var tableAccessibilityRevealHandler: ((MarkdownTableCell) -> Bool)?
     var tableOutsideClickHandler: (() -> Bool)?
+    /// Клик по кнопке «+» на краю таблицы; true — клик обработан.
+    var tableEdgeButtonHandler: ((FoldLayoutManager.TableEdgeButton) -> Bool)?
     var tableDragStartHandler: ((FoldLayoutManager.TableDragHandle) -> Bool)?
     var tableDragEndHandler: ((FoldLayoutManager.TableDragHandle, FoldLayoutManager.TableDragHandle?) -> Void)?
     private var pendingTableDrag: FoldLayoutManager.TableDragHandle?
     private var consumedTableMouseDown = false
+    private var hoverTrackingArea: NSTrackingArea?
     var completionText: String? { didSet { needsDisplay = true } }
     var acceptAICompletion: (() -> Bool)?
     var dismissAICompletion: (() -> Void)?
@@ -611,6 +704,34 @@ final class LacTextView: NSTextView {
         return super.readSelection(from: pboard, type: .string)
     }
 
+    private static let continuityImageTypes: [NSPasteboard.PasteboardType] = [.png, .tiff, NSPasteboard.PasteboardType("public.jpeg")]
+
+    /// Без регистрации типов система не спрашивает `validRequestor`, и пункт Continuity Camera не появляется. Достаточно одного раза на приложение.
+    private static let continuityTypesRegistered: Void = {
+        NSApplication.shared.registerServicesMenuSendTypes([], returnTypes: continuityImageTypes)
+    }()
+
+    private static func registerContinuityTypes() { _ = continuityTypesRegistered }
+
+    /// Continuity Camera («Импорт с iPhone или iPad»): система спрашивает, кто примет изображение; сканы PDF не поддерживаются.
+    override func validRequestor(forSendType sendType: NSPasteboard.PasteboardType?,
+                                 returnType: NSPasteboard.PasteboardType?) -> Any? {
+        if sendType == nil, let returnType, Self.continuityImageTypes.contains(returnType) {
+            return isEditable && !hasMarkedText() && imageTransferHandler != nil ? self : nil
+        }
+        return super.validRequestor(forSendType: sendType, returnType: returnType)
+    }
+
+    override func readSelection(from pboard: NSPasteboard) -> Bool {
+        guard pboard.string(forType: .string) == nil,
+              let type = Self.continuityImageTypes.first(where: { pboard.availableType(from: [$0]) != nil }) else {
+            return super.readSelection(from: pboard)
+        }
+        guard isEditable, !hasMarkedText(), let data = pboard.data(forType: type),
+              let reduced = MarkdownImageReducer.reduced(data), let handler = imageTransferHandler else { return false }
+        return handler(.data(reduced))
+    }
+
     /// NSTextView normally reports the fallback font used by the first glyph.
     /// When a document starts with Chinese, that can be PingFang even though
     /// the requested editor font is Menlo. Always expose the requested font so
@@ -671,6 +792,11 @@ final class LacTextView: NSTextView {
         if let layout = layoutManager as? FoldLayoutManager, let container = textContainer {
             let point = convert(event.locationInWindow, from: nil)
             let location = NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
+            if let button = layout.tableEdgeButton(at: location, in: container) {
+                consumedTableMouseDown = true
+                _ = tableEdgeButtonHandler?(button)
+                return
+            }
             if let handle = layout.tableDragHandle(at: location, in: container) {
                 consumedTableMouseDown = true
                 if tableDragStartHandler?(handle) == true { pendingTableDrag = handle }
@@ -696,7 +822,7 @@ final class LacTextView: NSTextView {
             }
             if isEditable, let character = layout.uppercaseHeadingSourcePosition(at: location, in: container) {
                 guard let window, let storage = textStorage else {
-                    super.mouseDown(with: event)
+                    trackedMouseDown(event)
                     return
                 }
                 window.makeFirstResponder(self)
@@ -705,17 +831,17 @@ final class LacTextView: NSTextView {
                 layout.ensureLayout(forCharacterRange: line)
                 let caret = firstRect(forCharacterRange: NSRange(location: character, length: 0), actualRange: nil)
                 guard caret.height > 0, caret.minX.isFinite, caret.minY.isFinite else {
-                    super.mouseDown(with: event)
+                    trackedMouseDown(event)
                     return
                 }
                 let target = window.convertPoint(fromScreen: NSPoint(x: caret.midX, y: caret.midY))
                 guard let translated = NSEvent.mouseEvent(with: .leftMouseDown, location: target,
                     modifierFlags: event.modifierFlags, timestamp: event.timestamp, windowNumber: window.windowNumber,
                     context: nil, eventNumber: event.eventNumber, clickCount: event.clickCount, pressure: event.pressure) else {
-                    super.mouseDown(with: event)
+                    trackedMouseDown(event)
                     return
                 }
-                super.mouseDown(with: translated)
+                trackedMouseDown(translated)
                 return
             }
             if let hit = layout.markdownRenderedHit(at: location, in: container) {
@@ -762,7 +888,59 @@ final class LacTextView: NSTextView {
                 return
             }
         }
+        trackedMouseDown(event)
+    }
+
+    /// Нажатая кнопка мыши: пока идёт цикл отслеживания внутри `NSTextView.mouseDown`, оформление не перестраивается (раскрытие откладывается до отпускания).
+    private func trackedMouseDown(_ event: NSEvent) {
+        isPointerTracking = true
+        defer {
+            isPointerTracking = false
+            pointerTrackingEndedHandler?()
+        }
         super.mouseDown(with: event)
+    }
+
+    // Вертикальное движение каретки выбирает позицию по ещё скрытой раскладке: координатор привязывает её к границе цепочки скрытых маркеров.
+    override func moveUp(_ sender: Any?) { verticalMove { super.moveUp(sender) } }
+    override func moveDown(_ sender: Any?) { verticalMove { super.moveDown(sender) } }
+    override func pageUp(_ sender: Any?) { verticalMove { super.pageUp(sender) } }
+    override func pageDown(_ sender: Any?) { verticalMove { super.pageDown(sender) } }
+
+    private func verticalMove(_ move: () -> Void) {
+        isVerticalMove = true
+        defer { isVerticalMove = false }
+        move()
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTrackingArea { removeTrackingArea(hoverTrackingArea) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                                  owner: self, userInfo: nil)
+        addTrackingArea(area)
+        hoverTrackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        updateHoveredTable(event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        updateHoveredTable(nil)
+    }
+
+    /// Таблица под указателем получает кнопки «+»; при правке недоступно (чтение, IME) кнопки не показываются.
+    func updateHoveredTable(_ event: NSEvent?) {
+        guard let layout = layoutManager as? FoldLayoutManager, let container = textContainer else { return }
+        guard let event, isEditable, !hasMarkedText(), pendingTableDrag == nil else {
+            layout.updateHoveredTable(at: nil, in: container)
+            return
+        }
+        let point = convert(event.locationInWindow, from: nil)
+        layout.updateHoveredTable(at: NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y), in: container)
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -822,6 +1000,7 @@ final class LacTextView: NSTextView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if window != nil { Self.registerContinuityTypes() }
         updateDragTypeRegistration()
         guard requestsFirstResponderWhenAttached,
               let window else { return }
@@ -911,6 +1090,16 @@ final class LacTextView: NSTextView {
         if !diagramItems.isEmpty {
             if !menu.items.isEmpty { menu.addItem(.separator()) }
             diagramItems.forEach { menu.addItem($0) }
+        }
+        let formatItems = markdownFormatMenuHandler?() ?? []
+        if !formatItems.isEmpty {
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            formatItems.forEach { menu.addItem($0) }
+        }
+        let tableItems = tableMenuHandler?(convert(event.locationInWindow, from: nil)) ?? []
+        if !tableItems.isEmpty {
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            tableItems.forEach { menu.addItem($0) }
         }
         if !menu.items.isEmpty { menu.addItem(.separator()) }
 

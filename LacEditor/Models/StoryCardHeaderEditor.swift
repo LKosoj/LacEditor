@@ -41,7 +41,7 @@ enum StoryCardHeaderEditor {
     /// Строит ОДНУ замену для всей шапки (одна отменяемая правка).
     static func patch(for edit: StoryCardHeaderEdit, in text: String, newID: () -> UUID) throws -> StoryCardHeaderPatch {
         let ns = text as NSString
-        guard let front = MarkdownPresentationParser.frontMatter(text), front.markers.count == 2 else {
+        guard let front = MarkdownFrontMatter.frontMatter(text), front.markers.count == 2 else {
             throw StoryCardHeaderEditError.noHeader
         }
         let opening = ns.lineRange(for: NSRange(location: front.markers[0].location, length: 0))

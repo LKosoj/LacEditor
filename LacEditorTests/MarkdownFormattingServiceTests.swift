@@ -33,7 +33,7 @@ final class MarkdownFormattingServiceTests: XCTestCase {
                 }
                 visit(root)
                 guard let item = items.last else { XCTFail("Missing item: \(text)"); return false }
-                let prefix = MarkdownPresentationParser.listContainerPrefixes(item, source: .init(text, root: root), text: text as NSString)
+                let prefix = MarkdownDocumentParser.listContainerPrefixes(item, source: .init(text, root: root), text: text as NSString)
                 XCTAssertEqual(prefix?.source, expected, text)
                 XCTAssertEqual(prefix?.continuation, continuation, text)
                 return true
@@ -83,7 +83,7 @@ final class MarkdownFormattingServiceTests: XCTestCase {
                 let result = apply(edit, to: source)
                 XCTAssertEqual(result, prefix + "$$" + newline + continuation + "中文😀" + newline + continuation + "$$" + separator + prefix + "sibling")
                 XCTAssertEqual((result as NSString).substring(with: edit.selectionRange), "中文😀")
-                XCTAssertEqual(MarkdownPresentationParser.parse(result).formulas.first?.source, "中文😀\n")
+                XCTAssertEqual(MarkdownPresentationBuilder.parse(result).formulas.first?.source, "中文😀\n")
             }
         }
         for source in ["> before text", "- before text", "> text\n> continued", "- `text`", "- $text$"] {
@@ -110,7 +110,7 @@ final class MarkdownFormattingServiceTests: XCTestCase {
             let result = apply(edit, to: source)
             XCTAssertEqual(result, source + "$$\n" + continuation + "\n" + continuation + "$$")
             XCTAssertEqual(edit.selectionRange, NSRange(location: (source as NSString).length + 3 + (continuation as NSString).length, length: 0))
-            let formula = try XCTUnwrap(MarkdownPresentationParser.parse(result).formulas.first)
+            let formula = try XCTUnwrap(MarkdownPresentationBuilder.parse(result).formulas.first)
             XCTAssertEqual(formula.source, "\n")
         }
     }
@@ -145,7 +145,7 @@ final class MarkdownFormattingServiceTests: XCTestCase {
                 let result = apply(edit, to: source)
                 XCTAssertEqual(result, prefix + "$$" + newline + continuation + rawBody + newline + continuation + "$$")
                 XCTAssertEqual((result as NSString).substring(with: edit.selectionRange), rawBody)
-                let formula = try XCTUnwrap(MarkdownPresentationParser.parse(result).formulas.first)
+                let formula = try XCTUnwrap(MarkdownPresentationBuilder.parse(result).formulas.first)
                 XCTAssertTrue(formula.source.utf16.elementsEqual("中文😀\ne\u{301}\n".utf16))
             }
         }
@@ -231,7 +231,7 @@ final class MarkdownFormattingServiceTests: XCTestCase {
         let edit = try XCTUnwrap(MarkdownFormattingService.edit(in: text as NSString, selection: selection, command: .bold))
         let result = apply(edit, to: text)
         XCTAssertEqual(result, "left  **word**  right")
-        XCTAssertTrue(MarkdownRenderer.render(result, darkMode: false).contains("<strong>word</strong>"))
+        XCTAssertTrue(MarkdownHTMLRenderer.render(result, darkMode: false).contains("<strong>word</strong>"))
         XCTAssertEqual((result as NSString).substring(with: edit.selectionRange), "word")
         XCTAssertNil(MarkdownFormattingService.edit(in: "   " as NSString, selection: NSRange(location: 0, length: 3), command: .bold))
         let paragraphs = "first\r\n \r\nsecond"
@@ -265,7 +265,7 @@ final class MarkdownFormattingServiceTests: XCTestCase {
         let even = "word\\\\"
         let evenRange = NSRange(location: 0, length: (even as NSString).length)
         let edit = try XCTUnwrap(MarkdownFormattingService.edit(in: even as NSString, selection: evenRange, command: .bold))
-        XCTAssertTrue(MarkdownRenderer.render(apply(edit, to: even), darkMode: false).contains("<strong>word\\</strong>"))
+        XCTAssertTrue(MarkdownHTMLRenderer.render(apply(edit, to: even), darkMode: false).contains("<strong>word\\</strong>"))
     }
 
     func testUnclosedQuotedFenceEndsWhenQuoteEnds() throws {
@@ -277,7 +277,7 @@ final class MarkdownFormattingServiceTests: XCTestCase {
             XCTAssertNotNil(MarkdownFormattingService.edit(in: text as NSString, selection: after, command: command))
         }
         let edit = try XCTUnwrap(MarkdownFormattingService.edit(in: text as NSString, selection: after, command: .heading(1)))
-        let rendered = MarkdownRenderer.render(apply(edit, to: text), darkMode: false)
+        let rendered = MarkdownHTMLRenderer.render(apply(edit, to: text), darkMode: false)
         XCTAssertTrue(rendered.contains("<code>inside"))
         XCTAssertTrue(rendered.contains("<h1>after</h1>"))
     }
@@ -319,7 +319,7 @@ final class MarkdownFormattingServiceTests: XCTestCase {
         XCTAssertEqual(apply(change, to: text), "## Title")
         let remove = try XCTUnwrap(MarkdownFormattingService.edit(in: text as NSString, selection: selection, command: .heading(1)))
         XCTAssertEqual(apply(remove, to: text), "Title")
-        XCTAssertTrue(MarkdownRenderer.render(text, darkMode: false).contains("<h1>Title</h1>"))
+        XCTAssertTrue(MarkdownHTMLRenderer.render(text, darkMode: false).contains("<h1>Title</h1>"))
     }
 
     func testQuoteAddsAndRemovesOneLevelIncludingMixedLines() throws {
@@ -568,7 +568,7 @@ final class MarkdownFormattingServiceTests: XCTestCase {
                 let result = apply(edit, to: source)
                 XCTAssertEqual(result, "```" + newline + "a" + separator + "b" + newline + "```" + newline + "next")
                 XCTAssertEqual((result as NSString).substring(with: edit.selectionRange), "b")
-                XCTAssertTrue(MarkdownRenderer.renderPage(result, darkMode: false).body.contains("<code>a" + separator + "b\n</code>"))
+                XCTAssertTrue(MarkdownHTMLRenderer.renderPage(result, darkMode: false).body.contains("<code>a" + separator + "b\n</code>"))
             }
         }
     }
@@ -625,6 +625,65 @@ final class MarkdownFormattingServiceTests: XCTestCase {
                 XCTAssertEqual(apply(edit, to: source), expected, "\(command)")
                 XCTAssertEqual(edit.selectionRange, (expected as NSString).range(of: selected), "\(command)")
             }
+        }
+    }
+
+    // U6.4a: цитата внутри пункта-задачи не мешает перевести соседние пункты в нумерованный список.
+    func testQuoteInsideTaskItemConvertsListOnModel() throws {
+        let source = "- [x] done 😀\r\n  > цитата\r\n- [ ] 中文"
+        let edit = try XCTUnwrap(MarkdownFormattingService.edit(in: source as NSString,
+            selection: NSRange(location: 0, length: (source as NSString).length), command: .numberedList))
+        XCTAssertEqual(apply(edit, to: source), "1. done 😀\r\n   > цитата\r\n2. 中文")
+    }
+
+    // U6.4a: номера нумерованного списка берутся из модели, пропуск номера не теряет остальные пункты.
+    func testNumberedListWithSkippedNumberConvertsToTasksAndBullets() throws {
+        let source = "1. один\n3. два 😀\n4. три"
+        let all = NSRange(location: 0, length: (source as NSString).length)
+        let tasks = try XCTUnwrap(MarkdownFormattingService.edit(in: source as NSString, selection: all, command: .taskList))
+        XCTAssertEqual(apply(tasks, to: source), "- [ ] один\n- [ ] два 😀\n- [ ] три")
+        let bullets = try XCTUnwrap(MarkdownFormattingService.edit(in: source as NSString, selection: all, command: .bulletList))
+        XCTAssertEqual(apply(bullets, to: source), "- один\n- два 😀\n- три")
+    }
+
+    // U6.4a: уже существующая формула в цитате остаётся на месте, новая добавляется рядом.
+    func testBlockMathInQuoteKeepsExistingFormula() throws {
+        let source = "> $$\n> x\n> $$\n>\n> текст"
+        let edit = try XCTUnwrap(MarkdownFormattingService.edit(in: source as NSString,
+            selection: (source as NSString).range(of: "текст"), command: .blockMath))
+        XCTAssertEqual(apply(edit, to: source), "> $$\n> x\n> $$\n>\n> $$\n> текст\n> $$")
+    }
+
+    // Задача после `>⇥` становится нумерованным пунктом, как без таба: флажок снимается, префикс цитаты с табом сохраняется.
+    func testTabbedQuotedTaskListConvertsToNumberedList() throws {
+        let source = ">\t- [x] a"
+        let edit = try XCTUnwrap(MarkdownFormattingService.edit(in: source as NSString,
+            selection: NSRange(location: 0, length: (source as NSString).length), command: .numberedList))
+        XCTAssertEqual(apply(edit, to: source), ">\t1. a")
+    }
+
+    // U6.4a: пустой пункт с табом после маркера. `>⇥- ` даёт пустую формулу, `-⇥- ` — отказ.
+    func testEmptyTabbedItemBlockMath() throws {
+        let quoted = ">\t- "
+        let edit = try XCTUnwrap(MarkdownFormattingService.edit(in: quoted as NSString,
+            selection: NSRange(location: (quoted as NSString).length, length: 0), command: .blockMath))
+        XCTAssertEqual(apply(edit, to: quoted), ">\t- $$\n>\t  \n>\t  $$")
+        let nested = "-\t- "
+        XCTAssertNil(MarkdownFormattingService.edit(in: nested as NSString,
+            selection: NSRange(location: (nested as NSString).length, length: 0), command: .blockMath))
+    }
+
+    // U6.4a: выноска — цитата; формула встаёт в абзац тела, заголовок выноски остаётся на месте.
+    // Без пустой строки после заголовка тело — продолжение его абзаца, `$$` его не прерывает: отказ.
+    func testBlockMathInCalloutBodyKeepsTitle() throws {
+        for newline in ["\n", "\r\n"] {
+            let source = "> [!note] Заголовок 😀" + newline + ">" + newline + "> текст"
+            let edit = try XCTUnwrap(MarkdownFormattingService.edit(in: source as NSString,
+                selection: (source as NSString).range(of: "текст"), command: .blockMath), newline)
+            XCTAssertEqual(apply(edit, to: source), "> [!note] Заголовок 😀" + newline + ">" + newline + "> $$" + newline + "> текст" + newline + "> $$")
+            let glued = "> [!note] Заголовок 😀" + newline + "> текст"
+            XCTAssertNil(MarkdownFormattingService.edit(in: glued as NSString,
+                selection: (glued as NSString).range(of: "текст"), command: .blockMath), newline)
         }
     }
 }

@@ -28,12 +28,12 @@ final class TaskListEditingTests: XCTestCase {
             ("- parent\r\n\t- [x]\tbody", "\t- [ ] "),
             ("7)\t[x] body", "8) [ ] ")
         ] {
-            XCTAssertEqual(MarkdownPresentationParser.parse(source).taskCheckboxes.count, 1, source)
+            XCTAssertEqual(MarkdownPresentationBuilder.parse(source).taskCheckboxes.count, 1, source)
             let (result, selection) = try newline(source, selection: NSRange(location: (source as NSString).length, length: 0))
             let ending = source.contains("\r\n") ? "\r\n" : "\n"
             XCTAssertEqual(result, source + ending + nextPrefix)
             XCTAssertEqual(selection, NSRange(location: (result as NSString).length, length: 0))
-            XCTAssertEqual(MarkdownPresentationParser.parse(result).taskCheckboxes.count, 2, source)
+            XCTAssertEqual(MarkdownPresentationBuilder.parse(result).taskCheckboxes.count, 2, source)
         }
     }
 
@@ -116,7 +116,7 @@ final class TaskListEditingTests: XCTestCase {
         view.unmarkText()
         view.string = "- lead\n- parent\n  - child\n- next"
         view.setSelectedRange(NSRange(location: 10, length: 0))
-        let originalHTML = MarkdownRenderer.renderPage(view.string, darkMode: false).body
+        let originalHTML = MarkdownHTMLRenderer.renderPage(view.string, darkMode: false).body
         XCTAssertTrue(originalHTML.contains("<li>lead</li>"))
         XCTAssertTrue(originalHTML.contains("<li>parent\n<ul>"))
         undo.removeAllActions()
@@ -126,7 +126,7 @@ final class TaskListEditingTests: XCTestCase {
         XCTAssertEqual(view.string, "- lead\n- parent\n  - child\n- next")
         undo.redo()
         XCTAssertEqual(view.string, "- lead\n    - parent\n      - child\n- next")
-        let nestedHTML = MarkdownRenderer.renderPage(view.string, darkMode: false).body
+        let nestedHTML = MarkdownHTMLRenderer.renderPage(view.string, darkMode: false).body
         XCTAssertTrue(nestedHTML.contains("<li>lead\n<ul>"))
         XCTAssertTrue(nestedHTML.contains("<li>parent\n<ul>"))
         XCTAssertFalse(nestedHTML.contains("<pre"))
@@ -212,7 +212,7 @@ final class TaskListEditingTests: XCTestCase {
                 let caret = (source as NSString).range(of: "item").location + 4
                 XCTAssertTrue(ListContinuationService.isListOutsideCode(in: source as NSString, at: caret))
                 XCTAssertNotNil(ListContinuationService.listNewlineEdit(in: source as NSString, selection: NSRange(location: caret, length: 0), indentUnit: "  "))
-                let html = MarkdownRenderer.renderPage(source, darkMode: false).body
+                let html = MarkdownHTMLRenderer.renderPage(source, darkMode: false).body
                 XCTAssertTrue(html.contains("<code>code\n</code>"))
                 XCTAssertTrue(html.contains("<li>item</li>"))
             }
@@ -220,7 +220,7 @@ final class TaskListEditingTests: XCTestCase {
             let caret = (source as NSString).length
             XCTAssertFalse(ListContinuationService.isListOutsideCode(in: source as NSString, at: caret))
             XCTAssertNil(ListContinuationService.listNewlineEdit(in: source as NSString, selection: NSRange(location: caret, length: 0), indentUnit: "  "))
-            XCTAssertTrue(MarkdownRenderer.renderPage(source, darkMode: false).body.contains("<code>- item\n</code>"))
+            XCTAssertTrue(MarkdownHTMLRenderer.renderPage(source, darkMode: false).body.contains("<code>- item\n</code>"))
         }
     }
     func testFenceInListContinuationEndsAtSibling() {
@@ -231,7 +231,7 @@ final class TaskListEditingTests: XCTestCase {
                 let caret = (source as NSString).range(of: "item").location + 4
                 XCTAssertTrue(ListContinuationService.isListOutsideCode(in: source as NSString, at: caret), source)
                 XCTAssertNotNil(ListContinuationService.listNewlineEdit(in: source as NSString, selection: NSRange(location: caret, length: 0), indentUnit: "  "))
-                let html = MarkdownRenderer.renderPage(source, darkMode: false).body
+                let html = MarkdownHTMLRenderer.renderPage(source, darkMode: false).body
                 XCTAssertTrue(html.contains("<code>code\n</code>"))
                 XCTAssertTrue(html.contains("<li>item</li>"))
             }
@@ -239,7 +239,7 @@ final class TaskListEditingTests: XCTestCase {
             let caret = (source as NSString).length
             XCTAssertFalse(ListContinuationService.isListOutsideCode(in: source as NSString, at: caret))
             XCTAssertNil(ListContinuationService.listNewlineEdit(in: source as NSString, selection: NSRange(location: caret, length: 0), indentUnit: "  "))
-            XCTAssertTrue(MarkdownRenderer.renderPage(source, darkMode: false).body.contains("<code>- item\n</code>"))
+            XCTAssertTrue(MarkdownHTMLRenderer.renderPage(source, darkMode: false).body.contains("<code>- item\n</code>"))
         }
     }
     func testTabAfterMarkerUsesActualColumn() throws {
@@ -248,14 +248,14 @@ final class TaskListEditingTests: XCTestCase {
             let caret = (nested as NSString).range(of: "child").location
             XCTAssertTrue(ListContinuationService.isListOutsideCode(in: nested as NSString, at: caret))
             XCTAssertNotNil(ListContinuationService.listNewlineEdit(in: nested as NSString, selection: NSRange(location: caret, length: 0), indentUnit: "    "))
-            let html = MarkdownRenderer.renderPage(nested, darkMode: false).body
+            let html = MarkdownHTMLRenderer.renderPage(nested, darkMode: false).body
             XCTAssertTrue(html.contains("<li>parent\n<ul>"))
             XCTAssertTrue(html.contains("<li>child</li>"))
             let source = "- \tparent" + ending + "- child"
             let position = (source as NSString).range(of: "child").location
             let edit = try XCTUnwrap(ListContinuationService.unorderedIndentEdit(in: source as NSString, selection: NSRange(location: position, length: 0), indentUnit: "    ", outdent: false))
             let result = (source as NSString).replacingCharacters(in: edit.range, with: edit.replacement)
-            XCTAssertTrue(MarkdownRenderer.renderPage(result, darkMode: false).body.contains("<li>parent\n<ul>"))
+            XCTAssertTrue(MarkdownHTMLRenderer.renderPage(result, darkMode: false).body.contains("<li>parent\n<ul>"))
         }
     }
     func testQuotedListMarkerTabUsesCommonMarkPadding() {
@@ -263,14 +263,14 @@ final class TaskListEditingTests: XCTestCase {
             let nested = "> - \tparent" + ending + ">     - child"
             let caret = (nested as NSString).range(of: "child").location
             XCTAssertTrue(ListContinuationService.isListOutsideCode(in: nested as NSString, at: caret))
-            let html = MarkdownRenderer.renderPage(nested, darkMode: false).body
+            let html = MarkdownHTMLRenderer.renderPage(nested, darkMode: false).body
             XCTAssertTrue(html.contains("<code>parent\n</code>"))
             XCTAssertTrue(html.contains("<ul>\n<li>child</li>"))
             XCTAssertTrue(html.contains("<li>child</li>"))
             let code = "> - \tparent" + ending + ">       - child"
             let position = (code as NSString).range(of: "child").location
             XCTAssertFalse(ListContinuationService.isListOutsideCode(in: code as NSString, at: position))
-            XCTAssertTrue(MarkdownRenderer.renderPage(code, darkMode: false).body.contains("<code>parent\n- child\n</code>"))
+            XCTAssertTrue(MarkdownHTMLRenderer.renderPage(code, darkMode: false).body.contains("<code>parent\n- child\n</code>"))
         }
     }
 }

@@ -2,30 +2,6 @@ import Foundation
 import cmark_gfm
 import cmark_gfm_extensions
 
-struct MarkdownSyntaxOptions: Equatable, Sendable {
-    let strictMode: Bool
-    let inlineMath: Bool
-    let legacyInlineMath: Bool
-    let smartPunctuation: Bool?
-    let preserveEditingWhitespace: Bool?
-    let preserveExportWhitespace: Bool
-    let preserveEditingSoftBreaks: Bool
-    let preserveExportSoftBreaks: Bool?
-
-    init(strictMode: Bool = true, inlineMath: Bool = true, legacyInlineMath: Bool = false, smartPunctuation: Bool? = nil,
-         preserveEditingWhitespace: Bool? = nil, preserveExportWhitespace: Bool = false,
-         preserveEditingSoftBreaks: Bool = true, preserveExportSoftBreaks: Bool? = nil) {
-        self.strictMode = strictMode
-        self.inlineMath = inlineMath
-        self.legacyInlineMath = legacyInlineMath
-        self.smartPunctuation = smartPunctuation
-        self.preserveEditingWhitespace = preserveEditingWhitespace
-        self.preserveExportWhitespace = preserveExportWhitespace
-        self.preserveEditingSoftBreaks = preserveEditingSoftBreaks
-        self.preserveExportSoftBreaks = preserveExportSoftBreaks
-    }
-}
-
 /// Per-parser cmark hooks. Positions are cmark's one-based byte columns;
 /// callers must translate them with the shared Markdown source mapping.
 final class MarkdownMathExtension {
@@ -204,12 +180,161 @@ final class MarkdownMathExtension {
         guard let root = cmark_parser_finish(parser) else { return nil }
         defer { cmark_node_free(root) }
         if !strictMode {
-            guard let changes = MarkdownPresentationParser.recoverLooseLists(OpaquePointer(root), text: sourceForPositions ?? source, isCancelled: isCancelled) else { return nil }
+            guard let changes = recoverLooseLists(OpaquePointer(root), text: sourceForPositions ?? source, isCancelled: isCancelled) else { return nil }
             if isCancelled() { return nil }
             context.looseListRanges = changes.ranges
             context.looseIndents = changes.indents
         }
         return body(OpaquePointer(root), OpaquePointer(ext), context.inline, OpaquePointer(parser))
+    }
+
+    // The two non-strict list forms use existing nodes and source positions.
+    private static func recoverLooseLists(_ root: OpaquePointer, text: String, isCancelled: () -> Bool) -> (ranges: [OpaquePointer: NSRange], indents: [MarkdownLooseIndent])? {
+        let source = MarkdownSourcePositions(text, interruptIndexing: true, isCancelled: isCancelled)
+        let raw = text as NSString
+        var ranges: [OpaquePointer: NSRange] = [:]
+        var indents: [MarkdownLooseIndent] = []
+        var adjacentLists: [(OpaquePointer, OpaquePointer)] = []
+
+        func plainParagraph(_ node: OpaquePointer) -> NSRange? {
+            guard cmark_node_get_type(node) == CMARK_NODE_PARAGRAPH,
+                  let child = cmark_node_first_child(node), cmark_node_next(child) == nil,
+                  cmark_node_get_type(child) == CMARK_NODE_TEXT,
+                  let literal = cmark_node_get_literal(child), let range = source.range(child),
+                  let paragraph = source.range(node), range == paragraph,
+                  range.location >= 0, range.length <= raw.length - range.location,
+                  raw.substring(with: range).utf16.elementsEqual(String(cString: literal).utf16) else { return nil }
+            return range
+        }
+
+        func marker(_ item: OpaquePointer) -> (start: Int, width: Int, number: Int)? {
+            guard let start = source.firstPosition(item), start >= 0, start < raw.length else { return nil }
+            var end = start
+            while end < raw.length, (48...57).contains(raw.character(at: end)), end - start < 9 { end += 1 }
+            guard end > start, end + 1 < raw.length, raw.character(at: end) == 46,
+                  raw.character(at: end + 1) == 32,
+                  let number = Int(raw.substring(with: NSRange(location: start, length: end - start))) else { return nil }
+            return (start, end + 2 - start, number)
+        }
+
+        func gap(from start: Int, to end: Int, breaks: Int) -> NSRange? {
+            guard start >= 0, end >= start, end <= raw.length else { return nil }
+            var position = start
+            for _ in 0..<breaks {
+                guard position < end else { return nil }
+                let unit = raw.character(at: position)
+                guard unit == 10 || unit == 13 else { return nil }
+                position += 1
+                if unit == 13, position < end, raw.character(at: position) == 10 { position += 1 }
+            }
+            let indent = position
+            while position < end, raw.character(at: position) == 32 {
+                if isCancelled() { return nil }
+                position += 1
+            }
+            return position == end ? NSRange(location: indent, length: end - indent) : nil
+        }
+
+        var node = cmark_node_first_child(root)
+        while let list = node {
+            if isCancelled() { break }
+            let next = cmark_node_next(list)
+            node = next
+            guard cmark_node_get_type(list) == CMARK_NODE_LIST,
+                  cmark_node_get_list_type(list) == CMARK_ORDERED_LIST,
+                  let first = cmark_node_first_child(list), cmark_node_get_type(first) == CMARK_NODE_ITEM,
+                  let firstMarker = marker(first), firstMarker.number == Int(cmark_node_get_list_start(list)),
+                  let paragraph = cmark_node_first_child(first), cmark_node_next(paragraph) == nil,
+                  let firstText = plainParagraph(paragraph), firstText.location == firstMarker.start + firstMarker.width,
+                  let firstRange = source.range(first), let listRange = source.range(list) else { continue }
+
+            if let second = cmark_node_next(first), cmark_node_next(second) == nil,
+               cmark_node_get_type(second) == CMARK_NODE_ITEM, let secondMarker = marker(second),
+               let secondParagraph = cmark_node_first_child(second), cmark_node_next(secondParagraph) == nil,
+               let secondText = plainParagraph(secondParagraph), secondText.location == secondMarker.start + secondMarker.width,
+               let secondRange = source.range(second),
+               let indent = gap(from: NSMaxRange(firstText), to: secondMarker.start, breaks: 1),
+               indent.length >= 2, indent.length < firstMarker.width,
+               let nested = cmark_node_new(CMARK_NODE_LIST) {
+                guard cmark_node_set_list_type(nested, CMARK_ORDERED_LIST) != 0,
+                      cmark_node_set_list_delim(nested, CMARK_PERIOD_DELIM) != 0,
+                      cmark_node_set_list_start(nested, Int32(secondMarker.number)) != 0,
+                      cmark_node_set_list_tight(nested, 1) != 0 else { cmark_node_free(nested); continue }
+                cmark_node_unlink(second)
+                guard cmark_node_append_child(nested, second) != 0 else {
+                    _ = cmark_node_insert_after(first, second); cmark_node_free(nested); continue
+                }
+                guard cmark_node_append_child(first, nested) != 0 else {
+                    cmark_node_unlink(second); _ = cmark_node_insert_after(first, second); cmark_node_free(nested); continue
+                }
+                ranges[first] = NSRange(location: firstRange.location, length: NSMaxRange(secondRange) - firstRange.location)
+                ranges[OpaquePointer(nested)] = secondRange
+                indents.append(.init(range: indent, replacement: String(repeating: " ", count: firstMarker.width)))
+            } else if cmark_node_next(first) == nil, let next,
+                      let secondText = plainParagraph(next),
+                      let indent = gap(from: NSMaxRange(firstText), to: secondText.location, breaks: 2),
+                      indent.length >= 2, indent.length < firstMarker.width {
+                let after = cmark_node_next(next)
+                var adjacent: OpaquePointer?
+                if let after, cmark_node_get_type(after) == CMARK_NODE_LIST,
+                   cmark_node_get_list_type(after) == cmark_node_get_list_type(list),
+                   cmark_node_get_list_delim(after) == cmark_node_get_list_delim(list) {
+                    guard let afterRange = source.range(after), afterRange.location >= NSMaxRange(secondText) else { continue }
+                    var position = NSMaxRange(secondText), hasNewline = false, valid = true
+                    while position < afterRange.location {
+                        if isCancelled() { return nil }
+                        let unit = raw.character(at: position)
+                        if unit == 10 || unit == 13 { hasNewline = true }
+                        else if unit != 32 && unit != 9 { valid = false; break }
+                        position += 1
+                    }
+                    if valid && hasNewline {
+                        var candidate = cmark_node_first_child(after), confirmed = candidate != nil
+                        var previousEnd = afterRange.location
+                        while let current = candidate {
+                            if isCancelled() { return nil }
+                            guard cmark_node_get_type(current) == CMARK_NODE_ITEM,
+                                  cmark_node_get_type_string(current).map({ String(cString: $0) == "item" }) == true,
+                                  let range = source.range(current), range.location >= previousEnd,
+                                  NSMaxRange(range) <= NSMaxRange(afterRange) else { confirmed = false; break }
+                            previousEnd = NSMaxRange(range)
+                            candidate = cmark_node_next(current)
+                        }
+                        guard confirmed else { continue }
+                        adjacent = after
+                    }
+                }
+                cmark_node_unlink(next)
+                guard cmark_node_append_child(first, next) != 0 else { _ = cmark_node_insert_after(list, next); continue }
+                _ = cmark_node_set_list_tight(list, 0)
+                ranges[first] = NSRange(location: firstRange.location, length: NSMaxRange(secondText) - firstRange.location)
+                ranges[list] = NSRange(location: listRange.location, length: NSMaxRange(secondText) - listRange.location)
+                indents.append(.init(range: indent, replacement: String(repeating: " ", count: firstMarker.width)))
+                if let adjacent { adjacentLists.append((list, adjacent)) }
+                node = after
+            }
+        }
+        for (list, adjacent) in adjacentLists.reversed() {
+            if isCancelled() { return nil }
+            guard cmark_node_next(list) == adjacent,
+                  let listRange = ranges[list], let adjacentRange = ranges[adjacent] ?? source.range(adjacent),
+                  adjacentRange.location >= NSMaxRange(listRange) else { return nil }
+            var item = cmark_node_first_child(adjacent)
+            while let current = item {
+                if isCancelled() { return nil }
+                item = cmark_node_next(current)
+                guard cmark_node_get_type(current) == CMARK_NODE_ITEM,
+                      let range = ranges[current] ?? source.range(current),
+                      range.location >= adjacentRange.location, NSMaxRange(range) <= NSMaxRange(adjacentRange) else { return nil }
+                cmark_node_unlink(current)
+                guard cmark_node_append_child(list, current) != 0 else { cmark_node_free(current); return nil }
+            }
+            ranges[list] = NSRange(location: listRange.location, length: NSMaxRange(adjacentRange) - listRange.location)
+            ranges.removeValue(forKey: adjacent)
+            cmark_node_unlink(adjacent)
+            cmark_node_free(adjacent)
+        }
+        return (ranges, indents)
     }
 
     static func textOrigins(in extensionPointer: OpaquePointer) -> [MarkdownTextSourceCapture.Origin] {

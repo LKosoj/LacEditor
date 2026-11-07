@@ -133,37 +133,41 @@ enum PandocExportService {
 
     static func markedExportSnapshot(_ text: String, syntax: MarkdownSyntaxOptions, includeTOC: Bool, wiki: MarkdownWikiLinkSource? = nil,
                                      isCancelled: @escaping () -> Bool) throws -> (text: String, math: [MathMarker], toc: [String]) {
-        let presentation = MarkdownPresentationParser.parse(text, includeEmojiCandidates: true, includeWikiLinks: wiki != nil, syntax: syntax, isCancelled: isCancelled)
+        var includes: MarkdownDocumentModel.Includes = [.emoji]
+        if !syntax.strictMode { includes.insert(.editorContext) }
+        if wiki != nil { includes.insert(.wikiLinks) }
+        let model = MarkdownDocumentParser.parseOrEmpty(text, syntax: syntax, includes: includes, isCancelled: isCancelled)
         if isCancelled() { throw CancellationError() }
-        let values = try EmojiShortcodeResolver.resolve(presentation.emojiCandidates.map(\.name), isCancelled: isCancelled)
-        var replacements: [(NSRange, String)] = presentation.emojiCandidates.compactMap { candidate in
+        // Запросы к модели — один обход на разбор.
+        guard let queries = model.queries(isCancelled: isCancelled) else { throw CancellationError() }
+        let values = try EmojiShortcodeResolver.resolve(queries.emojiCandidates.map(\.name), isCancelled: isCancelled)
+        var replacements: [(NSRange, String)] = queries.emojiCandidates.compactMap { candidate in
             values[candidate.name].map { (candidate.range, $0) }
         }
-        if let wiki, !presentation.wikiLinks.isEmpty {
+        if let wiki, !queries.wikiLinks.isEmpty {
             // Список файлов читается с диска заново; ссылки, пересекающиеся с эмодзи или формулой, остаются текстом.
             let context = try MarkdownWikiLinkContext.load(root: wiki.root, documentURL: wiki.documentURL, isCancelled: isCancelled)
-            let others = replacements.map(\.0) + (presentation.inlineFormulas.map(\.range) + presentation.formulas.map(\.range))
-            let links = presentation.wikiLinks.filter { link in !others.contains { NSIntersectionRange($0, link.range).length > 0 } }
+            let others = replacements.map(\.0) + (queries.inlineFormulas.map(\.range) + queries.formulas.map(\.range))
+            let links = queries.wikiLinks.filter { link in !others.contains { NSIntersectionRange($0, link.range).length > 0 } }
             replacements.append(contentsOf: MarkdownWikiLinkRewriter.replacements(links: links, context: context, in: text as NSString, isCancelled: isCancelled))
         }
-        let ranges = includeTOC ? presentation.tableOfContents : []
+        let ranges = includeTOC ? queries.tableOfContentsRanges : []
         var prefix: String
         repeat { prefix = "LACEDITORTOC" + UUID().uuidString.replacingOccurrences(of: "-", with: "") }
         while text.contains(prefix)
         let markers = ranges.indices.map { prefix + "X\($0)" }
         let raw = text as NSString
         if !syntax.strictMode {
-            for span in presentation.spans {
+            for marker in queries.headingMarkerRanges {
                 if isCancelled() { throw CancellationError() }
-                guard case .heading = span.kind, let marker = span.markerRanges.first,
-                      marker.length > 0, marker.location >= 0, marker.location <= raw.length,
+                guard marker.length > 0, marker.location >= 0, marker.location <= raw.length,
                       marker.length < raw.length - marker.location else { continue }
                 let hashes = raw.substring(with: marker)
                 guard hashes.utf16.allSatisfy({ $0 == 35 }),
                       ![9, 10, 13, 32].contains(Int(raw.character(at: NSMaxRange(marker)))) else { continue }
                 replacements.append((marker, hashes + " "))
             }
-            for indent in presentation.looseIndents {
+            for indent in model.looseIndents {
                 if isCancelled() { throw CancellationError() }
                 let range = indent.range
                 guard range.location >= 0, range.location <= raw.length, range.length > 0,
@@ -183,14 +187,14 @@ enum PandocExportService {
                   raw.substring(with: range) == "[toc]" else { throw PandocExportError.invalidConfiguration(L10n.tr("无法确认目录标记")) }
             replacements.append((range, markers[index]))
         }
-        let result = try markedMathSnapshot(text, presentation: presentation, additionalReplacements: replacements,
+        let result = try markedMathSnapshot(text, queries: queries, additionalReplacements: replacements,
                                             preserveWhitespace: syntax.preserveExportWhitespace, isCancelled: isCancelled)
         return (result.0, result.1, markers)
     }
 
     static func originalMathMetadata(_ text: String, executable: URL, source: URL?, temporary: URL,
                                      environment: [String: String] = [:], isCancelled: () -> Bool) throws -> [String: Any]? {
-        guard let frontMatter = MarkdownPresentationParser.frontMatter(text) else { return nil }
+        guard let frontMatter = MarkdownFrontMatter.frontMatter(text) else { return nil }
         let yaml = (text as NSString).substring(with: frontMatter.range)
         guard yaml.contains("$") else { return nil }
         if isCancelled() { throw CancellationError() }
@@ -211,7 +215,7 @@ enum PandocExportService {
         return metadata
     }
 
-    static func markedMathSnapshot(_ text: String, presentation: MarkdownPresentation,
+    static func markedMathSnapshot(_ text: String, queries: MarkdownDocumentQueries,
                                    additionalReplacements: [(NSRange, String)] = [],
                                    preserveWhitespace: Bool = false,
                                    isCancelled: () -> Bool) throws -> (String, [MathMarker]) {
@@ -219,7 +223,7 @@ enum PandocExportService {
         var prefix: String
         repeat { prefix = "LACMATH" + UUID().uuidString.replacingOccurrences(of: "-", with: "") + "X" }
         while text.contains(prefix)
-        let formulas = (presentation.inlineFormulas.map { ($0, false) } + presentation.formulas.map { ($0, true) })
+        let formulas = (queries.inlineFormulas.map { ($0, false) } + queries.formulas.map { ($0, true) })
             .sorted { $0.0.range.location < $1.0.range.location }
         var previousEnd = 0, markers: [MathMarker] = []
         for (index, entry) in formulas.enumerated() {
@@ -232,7 +236,7 @@ enum PandocExportService {
         }
         var replacements = formulas.indices.map { (formulas[$0].0.range, markers[$0].token) } + additionalReplacements
         if preserveWhitespace {
-            for range in presentation.emojiCompletionRanges {
+            for range in queries.emojiCompletionRanges {
                 if isCancelled() { throw CancellationError() }
                 guard range.location >= 0, range.location <= raw.length, range.length <= raw.length - range.location else {
                     throw PandocExportError.invalidConfiguration(L10n.tr("无法确认数学公式"))
@@ -708,7 +712,7 @@ enum PandocExportService {
     }
 
     static func yamlFrontMatter(_ text: String) throws -> Yams.Node.Mapping? {
-        guard let block = MarkdownPresentationParser.frontMatter(text), block.markers.count == 2 else { return nil }
+        guard let block = MarkdownFrontMatter.frontMatter(text), block.markers.count == 2 else { return nil }
         let source = text as NSString
         let start = NSMaxRange(block.markers[0]), end = block.markers[1].location
         guard end >= start else { throw PandocExportError.invalidConfiguration(L10n.tr("不支持此 defaults 文件内容")) }

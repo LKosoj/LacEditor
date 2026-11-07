@@ -9,6 +9,7 @@ import cmark_gfm_extensions
 @inline(__always) func cmark_node_get_url(_ node: OpaquePointer) -> UnsafePointer<CChar>? { cmark_node_get_url(UnsafeMutablePointer<cmark_node>(node)) }
 @inline(__always) func cmark_node_get_title(_ node: OpaquePointer) -> UnsafePointer<CChar>? { cmark_node_get_title(UnsafeMutablePointer<cmark_node>(node)) }
 @inline(__always) func cmark_node_get_fence_info(_ node: OpaquePointer) -> UnsafePointer<CChar>? { cmark_node_get_fence_info(UnsafeMutablePointer<cmark_node>(node)) }
+@inline(__always) func cmark_node_get_fenced(_ node: OpaquePointer, _ length: UnsafeMutablePointer<Int32>?, _ offset: UnsafeMutablePointer<Int32>?, _ character: UnsafeMutablePointer<CChar>?) -> Int32 { cmark_node_get_fenced(UnsafeMutablePointer<cmark_node>(node), length, offset, character) }
 @inline(__always) func cmark_node_set_literal(_ node: OpaquePointer, _ content: UnsafePointer<CChar>) -> Int32 { cmark_node_set_literal(UnsafeMutablePointer<cmark_node>(node), content) }
 @inline(__always) func cmark_node_set_string_content(_ node: OpaquePointer, _ content: UnsafePointer<CChar>) -> Int32 { cmark_node_set_string_content(UnsafeMutablePointer<cmark_node>(node), content) }
 @inline(__always) func cmark_node_next(_ node: OpaquePointer) -> OpaquePointer? { cmark_node_next(UnsafeMutablePointer<cmark_node>(node)).map(OpaquePointer.init) }

@@ -49,6 +49,9 @@ swiftc \
     LacEditor/Models/DocumentStatistics.swift \
     LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Models/EditorDocument.swift \
+    LacEditor/Models/MarkdownDocumentModel.swift \
+    LacEditor/Models/MarkdownBlockIndex.swift \
+    LacEditor/Models/MarkdownSyntaxOptions.swift \
     LacEditor/Models/VaultPath.swift \
     LacEditor/Models/VaultOwnerZone.swift \
     LacEditor/Models/VaultPageGuard.swift \
@@ -63,6 +66,8 @@ swiftc \
     LacEditor/Editor/ListContinuationService.swift \
     LacEditor/Editor/LogicalLineIndex.swift \
     LacEditor/Models/MarkdownPresentation.swift \
+    LacEditor/Models/MarkdownDecorationKinds.swift \
+    LacEditor/Models/MarkdownFormattingState.swift \
     LacEditor/Models/MarkdownColorOverrides.swift \
     LacEditor/Models/MarkdownListStyle.swift \
     LacEditor/Models/MarkdownMedia.swift \
@@ -71,6 +76,7 @@ swiftc \
     LacEditor/Services/MarkdownAutoPairService.swift \
     LacEditor/Services/FocusSentenceService.swift \
     LacEditor/Editor/LacTextView.swift \
+    LacEditor/Services/MarkdownImagePlacement.swift \
     LacEditor/Editor/CodeLexicalScanner.swift \
     LacEditor/Editor/DelimiterMatchingService.swift \
     LacEditor/Editor/SyntaxParser.swift \
@@ -84,6 +90,7 @@ swiftc \
     LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Editor/MarkdownMediaProjection.swift \
     LacEditor/Models/MarkdownPresentation.swift \
+    LacEditor/Models/MarkdownDecorationKinds.swift \
     LacEditor/Models/MarkdownColorOverrides.swift \
     LacEditor/Models/MarkdownListStyle.swift \
     LacEditor/Models/MarkdownMedia.swift \
@@ -94,6 +101,7 @@ swiftc \
     LacEditor/Services/MarkdownAutoPairService.swift \
     LacEditor/Services/FocusSentenceService.swift \
     LacEditor/Editor/LacTextView.swift \
+    LacEditor/Services/MarkdownImagePlacement.swift \
     LacEditor/Editor/LogicalLineIndex.swift \
     Verification/FoldLayoutVerification.swift \
     -o .build/fold-layout-verification
@@ -106,6 +114,7 @@ swiftc \
     LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Editor/MarkdownMediaProjection.swift \
     LacEditor/Models/MarkdownPresentation.swift \
+    LacEditor/Models/MarkdownDecorationKinds.swift \
     LacEditor/Models/MarkdownColorOverrides.swift \
     LacEditor/Models/MarkdownListStyle.swift \
     LacEditor/Models/MarkdownMedia.swift \
@@ -114,6 +123,7 @@ swiftc \
     LacEditor/Services/MarkdownAutoPairService.swift \
     LacEditor/Services/FocusSentenceService.swift \
     LacEditor/Editor/LacTextView.swift \
+    LacEditor/Services/MarkdownImagePlacement.swift \
     Verification/EditorInteractionVerification.swift \
     -o .build/editor-interaction-verification
 .build/editor-interaction-verification

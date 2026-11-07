@@ -1,13 +1,13 @@
 import Foundation
 
-struct MarkdownReadableText: Sendable {
+struct MarkdownReadableText: Equatable, Sendable {
     struct Piece: Equatable, Sendable {
         let sourceRange: NSRange
         let text: String
         let matchesSource: Bool
     }
 
-    struct Fragment: Sendable {
+    struct Fragment: Equatable, Sendable {
         let sourceRange: NSRange
         let text: String
         let matchesSource: Bool

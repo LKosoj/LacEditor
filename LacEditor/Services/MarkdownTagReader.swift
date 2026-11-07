@@ -91,7 +91,7 @@ extension MarkdownTagReader {
 
     static func read(text: String, isCancelled: () -> Bool = { false }) throws -> Parsed {
         if isCancelled() { throw CancellationError() }
-        let frontMatter = MarkdownPresentationParser.frontMatter(text)
+        let frontMatter = MarkdownFrontMatter.frontMatter(text)
         var yaml: Outcome?
         if let frontMatter {
             let id = UUID()
@@ -100,13 +100,14 @@ extension MarkdownTagReader {
         }
         var inline: [Inline] = []
         if try hasCandidate(text, isCancelled: isCancelled) {
-            let presentation = withoutActuallyEscaping(isCancelled) { escaping in
-                MarkdownPresentationParser.parse(text, includeEmojiCandidates: true, includeWikiLinks: true, isCancelled: escaping)
-            }
-            // При отмене разбор возвращает пустую презентацию: это не «тегов нет».
+            let queries = withoutActuallyEscaping(isCancelled) { escaping in
+                MarkdownDocumentParser.parseOrEmpty(text, includes: [.emoji, .wikiLinks], isCancelled: escaping)
+                    .queries([.emoji, .links, .wikiLinks], isCancelled: escaping)
+            } ?? MarkdownDocumentQueries.empty
+            // При отмене разбор возвращает пустую модель: это не «тегов нет».
             if isCancelled() { throw CancellationError() }
-            inline = try inlineTags(in: text as NSString, textRanges: presentation.emojiCompletionRanges,
-                                    excluding: presentation.links.map(\.range) + presentation.wikiLinks.map(\.range), isCancelled: isCancelled)
+            inline = try inlineTags(in: text as NSString, textRanges: queries.emojiCompletionRanges,
+                                    excluding: queries.linkEntries.map(\.link.range) + queries.wikiLinks.map(\.range), isCancelled: isCancelled)
         }
         return Parsed(frontMatterRange: frontMatter?.range, yaml: yaml, inline: inline)
     }

@@ -7,7 +7,7 @@ final class MarkdownEmojiCandidateExtractorTests: XCTestCase {
     private func extract(_ text: String, cancelled: Bool = false) throws -> [MarkdownEmojiCandidateExtractor.Candidate] {
         let options = CMARK_OPT_SMART | CMARK_OPT_TABLE_SPANS | CMARK_OPT_HARDBREAKS | CMARK_OPT_FOOTNOTES
         return try XCTUnwrap(MarkdownMathExtension.withDocument(text, options: options) { root, math, _ in
-            let source = MarkdownPresentationParser.Source(text, textOrigins: MarkdownMathExtension.textOrigins(in: math))
+            let source = MarkdownSourcePositions(text, textOrigins: MarkdownMathExtension.textOrigins(in: math))
             return MarkdownEmojiCandidateExtractor.candidates(in: root, source: source, text: text as NSString, isCancelled: { cancelled })
         })
     }
@@ -15,8 +15,8 @@ final class MarkdownEmojiCandidateExtractorTests: XCTestCase {
     func testPresentationCollectsCandidatesFromItsDocumentAndInvalidatesEditedTable() throws {
         let text = "中😀 :smile:\r\n\r\n| H |\r\n|---|\r\n| :heart: |\r\n\r\n:smile:"
         let raw = text as NSString
-        XCTAssertTrue(MarkdownPresentationParser.parse(text).emojiCandidates.isEmpty)
-        let presentation = MarkdownPresentationParser.parse(text, includeEmojiCandidates: true)
+        XCTAssertTrue(MarkdownPresentationBuilder.parse(text).emojiCandidates.isEmpty)
+        let presentation = MarkdownPresentationBuilder.parse(text, includeEmojiCandidates: true)
         XCTAssertEqual(presentation.emojiCandidates.map(\.name), ["smile", "heart", "smile"])
         XCTAssertEqual(presentation.emojiCandidates.map { raw.substring(with: $0.range) }, [":smile:", ":heart:", ":smile:"])
         let table = try XCTUnwrap(presentation.tables.first)
@@ -28,7 +28,7 @@ final class MarkdownEmojiCandidateExtractorTests: XCTestCase {
 
     func testPresentationCandidatesFollowSourceOrderWithFootnotes() {
         let text = "[^1]: :heart:\n\n:smile: [^1]"
-        let result = MarkdownPresentationParser.parse(text, includeEmojiCandidates: true)
+        let result = MarkdownPresentationBuilder.parse(text, includeEmojiCandidates: true)
         XCTAssertEqual(result.emojiCandidates.map(\.name), ["heart", "smile"])
         let locations = result.emojiCandidates.map { $0.range.location }
         XCTAssertEqual(locations, locations.sorted())
@@ -36,7 +36,7 @@ final class MarkdownEmojiCandidateExtractorTests: XCTestCase {
 
     func testTableDisplayMapsEmojiAfterEscapedPipeAndFormatting() throws {
         let text = "| H |\r\n|---|\r\n| 中😀\\|x **:smile:** :heart: |"
-        let result = MarkdownPresentationParser.parse(text, includeEmojiCandidates: true)
+        let result = MarkdownPresentationBuilder.parse(text, includeEmojiCandidates: true)
         let cell = try XCTUnwrap(result.tables.first?.rows.last?.cells.first)
         let display = try XCTUnwrap(cell.displayText) as NSString
         let raw = text as NSString
@@ -51,7 +51,7 @@ final class MarkdownEmojiCandidateExtractorTests: XCTestCase {
 
     func testHeadingEmojiRangesKeepCodeAndAnchorsUnchanged() throws {
         let text = "# 中😀 :smile: `:smile:` **:heart:**\r\n"
-        let presentation = MarkdownPresentationParser.parse(text, includeEmojiCandidates: true)
+        let presentation = MarkdownPresentationBuilder.parse(text, includeEmojiCandidates: true)
         let heading = try XCTUnwrap(presentation.headings.first)
         XCTAssertEqual(heading.title, "中😀 :smile: :smile: :heart:")
         XCTAssertEqual(heading.emoji.map(\.name), ["smile", "heart"])
@@ -97,7 +97,7 @@ final class MarkdownEmojiCandidateExtractorTests: XCTestCase {
         let stopped = try XCTUnwrap(MarkdownMathExtension.withDocument(text, options: options) { root, math, _ -> Bool in
             guard let table = cmark_node_first_child(root), let header = cmark_node_first_child(table),
                   let row = cmark_node_next(header), let cell = cmark_node_first_child(row) else { return false }
-            let source = MarkdownPresentationParser.Source(text, textOrigins: MarkdownMathExtension.textOrigins(in: math))
+            let source = MarkdownSourcePositions(text, textOrigins: MarkdownMathExtension.textOrigins(in: math))
             var checks = 0
             return source.tableCellPositions(cell, isCancelled: { checks += 1; return checks > 50 }) == nil && checks > 50
         })

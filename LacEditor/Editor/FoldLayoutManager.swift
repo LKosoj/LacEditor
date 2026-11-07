@@ -183,6 +183,8 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     private var markdownAlerts: [MarkdownPresentationSpan] = []
     private var markdownRevealedRange: NSRange?
     private var markdownInlineSelection: NSRange?
+    /// Что раскрыто прямо сейчас: единственный источник правды для карты «текст редактора ↔ видимый текст» и привязки каретки.
+    var markdownRevealState: (revealed: NSRange?, inline: NSRange?) { (markdownRevealedRange, markdownInlineSelection) }
     private var markdownTextReplacements: [MarkdownTextReplacement] = []
     private var markdownImages: [(range: NSRange, image: NSImage)] = []
     private var markdownMedia: [(range: NSRange, size: NSSize)] = []
@@ -281,6 +283,8 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         tableLines.tables.first { $0.range == range }
     }
     private var activeTableRange: NSRange?
+    /// Таблица под указателем мыши: у неё, как и у активной, рисуются кнопки «+» на краю.
+    private var hoveredTableRange: NSRange?
     private struct TableGeometryEntry {
         let row: MarkdownTableRow
         let columns: Int
@@ -299,6 +303,14 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         let row: Int
         let column: Int
         let axis: TableDragAxis
+    }
+
+    /// Кнопка «+» на краю таблицы: добавляет строку в конец или столбец справа от последнего (`cell` — ячейка, от которой считается команда).
+    struct TableEdgeButton {
+        let tableRange: NSRange
+        let cell: MarkdownTableCell
+        let command: MarkdownTableCommand
+        let rect: NSRect
     }
 
     struct TableAccessibilityCell {
@@ -547,6 +559,88 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             }
         }
         return nil
+    }
+
+    /// Кнопки края таблицы: «столбец» над правым краем заголовка, «строка» под первой ячейкой последней строки.
+    private func tableEdgeButtons(line: TableLine, item: TableCellGeometry, frame: NSRect) -> [TableEdgeButton] {
+        var result: [TableEdgeButton] = []
+        if line.rowIndex == 0, item.cell == line.row?.cells.last {
+            result.append(TableEdgeButton(tableRange: line.tableRange, cell: item.cell, command: .insertColumnAfter,
+                                          rect: NSRect(x: markdownRightToLeft ? frame.minX : frame.maxX - 12, y: frame.minY - 12, width: 12, height: 12)))
+        }
+        if line.rowIndex == line.rowCount - 1, item.cell.column == 0 {
+            result.append(TableEdgeButton(tableRange: line.tableRange, cell: item.cell, command: .insertRowAfter,
+                                          rect: NSRect(x: markdownRightToLeft ? frame.maxX : frame.minX - 12, y: frame.maxY, width: 12, height: 12)))
+        }
+        return result
+    }
+
+    /// Строки таблиц в видимой области вместе с ячейками (координаты контейнера); `body` возвращает true, чтобы остановить обход.
+    private func forEachVisibleTableRow(in container: NSTextContainer, _ body: (TableLine, [(item: TableCellGeometry, frame: NSRect)]) -> Bool) {
+        guard let view = container.textView else { return }
+        let visibleRect = view.visibleRect.offsetBy(dx: -view.textContainerOrigin.x, dy: -view.textContainerOrigin.y)
+        let visible = characterRange(forGlyphRange: glyphRange(forBoundingRect: visibleRect, in: container), actualGlyphRange: nil)
+        var index = upperBound(visible.location, count: tableLines.count) { tableLines.location(at: $0) }
+        if index > 0 { index -= 1 }
+        while index < tableLines.count {
+            let line = tableLines[index]
+            index += 1
+            if line.range.location >= NSMaxRange(visible) { break }
+            guard line.row != nil, NSIntersectionRange(line.range, visible).length > 0, tableLineIndex(at: line.range.location) != nil,
+                  line.range.location < (textStorage?.length ?? 0) else { continue }
+            let fragment = lineFragmentRect(forGlyphAt: glyphIndexForCharacter(at: line.range.location), effectiveRange: nil)
+            let (indent, width) = tableHorizontalGeometry(line, container: container)
+            let cells = tableLineGeometry(line, width: width).map {
+                (item: $0, frame: $0.rect.offsetBy(dx: fragment.minX + container.lineFragmentPadding + indent, dy: fragment.minY))
+            }
+            if body(line, cells) { return }
+        }
+    }
+
+    /// Кнопка «+» под точкой (координаты контейнера); только у активной таблицы и таблицы под указателем.
+    func tableEdgeButton(at point: NSPoint, in container: NSTextContainer) -> TableEdgeButton? {
+        guard activeTableRange != nil || hoveredTableRange != nil else { return nil }
+        var found: TableEdgeButton?
+        forEachVisibleTableRow(in: container) { line, cells in
+            guard line.tableRange == activeTableRange || line.tableRange == hoveredTableRange else { return false }
+            for entry in cells {
+                if let button = tableEdgeButtons(line: line, item: entry.item, frame: entry.frame).first(where: { $0.rect.contains(point) }) {
+                    found = button
+                    return true
+                }
+            }
+            return false
+        }
+        return found
+    }
+
+    /// Запоминает таблицу под указателем (с запасом 14 pt по краям, чтобы дотянуться до кнопок); nil — указатель вне таблиц.
+    func updateHoveredTable(at point: NSPoint?, in container: NSTextContainer) {
+        // Горячий путь (каждое движение мыши): без таблиц в документе ничего не считаем.
+        guard hoveredTableRange != nil || !tableLines.isEmpty else { return }
+        var found: NSRange?
+        if let point {
+            forEachVisibleTableRow(in: container) { line, cells in
+                guard let first = cells.first, let last = cells.last,
+                      first.frame.union(last.frame).insetBy(dx: -14, dy: -14).contains(point) else { return false }
+                found = line.tableRange
+                return true
+            }
+        }
+        setHoveredTableRange(found)
+    }
+
+    func setHoveredTableRange(_ range: NSRange?) {
+        guard hoveredTableRange != range else { return }
+        let old = hoveredTableRange
+        hoveredTableRange = range
+        // Перерисовывается только прямоугольник таблицы (с запасом под кнопки «+» за её краем).
+        guard let container = textContainers.first, let view = container.textView else { return }
+        for tableRange in [old, range].compactMap({ $0 }) where NSMaxRange(tableRange) <= (view.textStorage?.length ?? 0) {
+            let glyphs = glyphRange(forCharacterRange: tableRange, actualCharacterRange: nil)
+            let rect = boundingRect(forGlyphRange: glyphs, in: container)
+            view.setNeedsDisplay(rect.offsetBy(dx: view.textContainerOrigin.x, dy: view.textContainerOrigin.y).insetBy(dx: -16, dy: -16))
+        }
     }
 
     func tableDragTarget(at point: NSPoint, in container: NSTextContainer, axis: TableDragAxis) -> TableDragHandle? {
@@ -1751,7 +1845,14 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             alertIndex += 1
             if alert.range.location >= NSMaxRange(visible) { break }
             guard NSIntersectionRange(alert.range, visible).length > 0 else { continue }
-            guard case let .alert(label) = alert.kind, let marker = alert.markerRanges.first,
+            let label: String
+            let color: NSColor
+            switch alert.kind {
+            case .alert(let text): label = text; color = .controlAccentColor
+            case .callout(let text, let kind): label = text; color = Self.calloutColor(kind)
+            default: continue
+            }
+            guard let marker = alert.markerRanges.first,
                   isMarkdownMarkerHidden(at: marker.location),
                   !intersectsFoldedRange(marker),
                   marker.location < (textStorage?.length ?? 0) else { continue }
@@ -1760,7 +1861,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             let rect = NSRect(x: line.minX + container.lineFragmentPadding + origin.x, y: line.minY + origin.y,
                               width: max(1, container.size.width - 2 * container.lineFragmentPadding), height: line.height)
             let font = NSFontManager.shared.convert(textFont, toHaveTrait: .boldFontMask)
-            (label as NSString).draw(in: rect, withAttributes: [.font: font, .foregroundColor: NSColor.controlAccentColor])
+            (label as NSString).draw(in: rect, withAttributes: [.font: font, .foregroundColor: color])
         }
         var tableIndex = upperBound(visible.location, count: tableLines.count) { tableLines.location(at: $0) }
         if tableIndex > 0 { tableIndex -= 1 }
@@ -1796,6 +1897,21 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
                     } else { handle = nil }
                     if let handle {
                         ("⋮" as NSString).draw(in: handle, withAttributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
+                    }
+                }
+                if line.tableRange == activeTableRange || line.tableRange == hoveredTableRange {
+                    for button in tableEdgeButtons(line: line, item: cell, frame: rect) {
+                        NSColor.secondaryLabelColor.setStroke()
+                        let box = NSBezierPath(roundedRect: button.rect.insetBy(dx: 1, dy: 1), xRadius: 3, yRadius: 3)
+                        box.lineWidth = 1
+                        box.stroke()
+                        let plus = NSBezierPath()
+                        plus.move(to: NSPoint(x: button.rect.midX - 3, y: button.rect.midY))
+                        plus.line(to: NSPoint(x: button.rect.midX + 3, y: button.rect.midY))
+                        plus.move(to: NSPoint(x: button.rect.midX, y: button.rect.midY - 3))
+                        plus.line(to: NSPoint(x: button.rect.midX, y: button.rect.midY + 3))
+                        plus.lineWidth = 1
+                        plus.stroke()
                     }
                 }
             }
@@ -1898,6 +2014,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         }
         tableLines = TableLines(presentation?.tables ?? [])
         if let activeTableRange, !tableLines.tables.contains(where: { $0.range == activeTableRange }) { self.activeTableRange = nil }
+        if let hoveredTableRange, !tableLines.tables.contains(where: { $0.range == hoveredTableRange }) { self.hoveredTableRange = nil }
         markdownTaskCheckboxes = presentation?.taskCheckboxes ?? []
         markdownListMarkers = presentation?.listMarkers ?? []
         markdownParagraphs = presentation?.paragraphs ?? []
@@ -1915,11 +2032,11 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         markdownPageBreaks = (presentation?.pageBreaks ?? []).sorted { $0.location < $1.location }
         let spans = presentation?.spans ?? []
         markdownTextReplacements = presentation?.textReplacements ?? []
-        markdownAlerts = spans.filter { if case .alert = $0.kind { return true }; return false }.sorted { $0.range.location < $1.range.location }
+        markdownAlerts = spans.filter { switch $0.kind { case .alert, .callout: return true; default: return false } }.sorted { $0.range.location < $1.range.location }
         markdownMarkers = spans.flatMap { span in
             let inline: Bool
             switch span.kind {
-            case .strong, .emphasis, .strikethrough, .code, .keyboard, .link, .highlight, .subscriptText, .superscriptText, .underline, .inlineStyle: inline = true
+            case .strong, .emphasis, .strikethrough, .code, .keyboard, .link, .highlight, .subscriptText, .superscriptText, .underline, .inlineStyle, .critic, .obsidianComment: inline = true
             default: inline = false
             }
             return span.markerRanges.map { MarkdownMarker(range: $0, owner: span.range, inline: inline) }
@@ -2175,8 +2292,31 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         return result
     }
 
+    /// Цвет подписи выноски по группе цвета её вида; неизвестный тип рисуется как заметка.
+    static func calloutColor(_ kind: MarkdownCalloutKind?) -> NSColor {
+        switch kind?.colorGroup ?? "note" {
+        case "tip": return .systemGreen
+        case "warning": return .systemOrange
+        case "important": return .systemPurple
+        case "caution": return .systemRed
+        case "quote": return .secondaryLabelColor
+        default: return .systemBlue
+        }
+    }
+
     func isMarkdownMarkerHidden(at location: Int) -> Bool {
         isMarkdownMarkerHidden(at: location, hasMarkedText: textContainers.first?.textView?.hasMarkedText() == true)
+    }
+
+    /// Текст диапазона без скрытых маркеров (для VoiceOver); marked text проверяется один раз на весь диапазон.
+    func visibleMarkdownText(in range: NSRange, of text: NSString) -> String {
+        let hasMarkedText = textContainers.first?.textView?.hasMarkedText() == true
+        var units: [unichar] = []
+        units.reserveCapacity(range.length)
+        for index in range.location..<NSMaxRange(range) where !isMarkdownMarkerHidden(at: index, hasMarkedText: hasMarkedText) {
+            units.append(text.character(at: index))
+        }
+        return String(utf16CodeUnits: units, count: units.count)
     }
 
     private func isMarkdownMarkerHidden(at location: Int, hasMarkedText: Bool) -> Bool {
@@ -2610,9 +2750,18 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         let index = upperBound(character, count: markdownParagraphs.count) { markdownParagraphs[$0].lastLine.location }
         guard index > 0, NSLocationInRange(character, markdownParagraphs[index - 1].lastLine),
               glyphIndex == glyphIndexForCharacter(at: NSMaxRange(markdownParagraphs[index - 1].lastLine) - 1),
-              let separator = markdownParagraphs[index - 1].separatorAfter,
-              !(markdownRevealedRange.map { touches(NSUnionRange(markdownParagraphs[index - 1].range, separator), $0) } ?? false) else { return original }
+              let separator = markdownParagraphs[index - 1].separatorAfter else { return original }
+        if markdownRevealedRange.map({ touches(NSUnionRange(markdownParagraphs[index - 1].range, separator), $0) }) ?? false {
+            // Раскрытый абзац с одной пустой строкой: интервал переходит в высоту строки-разделителя, текст ниже не двигается.
+            return isSingleLineSeparator(separator: separator) ? 0 : original
+        }
         return markdownParagraphSpacing
+    }
+
+    /// Разделитель абзацев — ровно одна пустая строка (исключение: несколько строк при раскрытии сдвигают текст ниже).
+    private func isSingleLineSeparator(separator: NSRange?) -> Bool {
+        guard let separator, let text = textStorage?.mutableString, NSMaxRange(separator) <= text.length else { return false }
+        return text.lineRange(for: NSRange(location: separator.location, length: 0)).length == separator.length
     }
 
     func layoutManager(
@@ -2633,6 +2782,16 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
                    !isCharacterFolded(characters.location) {
                     lineFragmentRect.pointee.size.height = 0.01
                     lineFragmentUsedRect.pointee.size.height = 0.01
+                    return true
+                }
+                // Раскрытый разделитель из одной строки получает высоту интервала, как у свёрнутого (вместе с 0,01 pt схлопнутой строки),
+                // но не ниже обычной строки: иначе каретка на пустой строке не видна. Базовая линия остаётся от обычной строки (сверху).
+                // При интервале меньше строки текст ниже при раскрытии сдвигается на разницу.
+                if NSIntersectionRange(separator.range, characters).length > 0, !isCharacterFolded(characters.location),
+                   let spacing = markdownParagraphSpacing, isSingleLineSeparator(separator: separator.range) {
+                    let height = max(spacing + 0.01, editorLineHeight)
+                    lineFragmentRect.pointee.size.height = height
+                    lineFragmentUsedRect.pointee.size.height = height
                     return true
                 }
             }

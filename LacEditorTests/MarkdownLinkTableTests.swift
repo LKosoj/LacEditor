@@ -7,7 +7,7 @@ final class MarkdownLinkTableTests: XCTestCase {
     func testManyLinksInOneTableCellKeepExactRanges() {
         let items = (0..<400).map { "[x\($0)](file\($0).md)" }
         let source = "| A |\n|---|\n| 中\\|😀 " + items.joined(separator: " ") + " |"
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         let raw = source as NSString
         XCTAssertEqual(parsed.links.count, items.count)
         XCTAssertEqual(parsed.links.map { raw.substring(with: $0.range) }, items)
@@ -15,7 +15,7 @@ final class MarkdownLinkTableTests: XCTestCase {
 
     func testTableLinkRunsMapToOriginalUTF16Ranges() throws {
         let source = "| A |\r\n|---|\r\n| 中\\|😀 **[one](a.md)** [two][id] |\r\n\r\n[id]: b.md"
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         let cell = try XCTUnwrap(parsed.tables.first?.rows.last?.cells.first)
         let links = cell.displayRuns.filter { $0.kind == .link }
         XCTAssertEqual(links.count, 2)
@@ -31,7 +31,7 @@ final class MarkdownLinkTableTests: XCTestCase {
     func testVisibleTableLinkHitUsesRenderedFormulaAttachment() throws {
         _ = NSApplication.shared
         let source = "| A |\n|---|\n| 中\\|😀 [one](a.md) [$x$](b.md) |"
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         let cell = try XCTUnwrap(parsed.tables.first?.rows.last?.cells.first)
         let formula = try XCTUnwrap(parsed.inlineFormulas.first)
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
@@ -91,7 +91,7 @@ final class MarkdownLinkTableTests: XCTestCase {
         manager.activate(windowID: id)
         window.makeFirstResponder(view)
         defer { coordinator.updateActivity(false); manager.unregister(windowID: id); window.close() }
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         let row = try XCTUnwrap(parsed.tables.first?.rows.last)
         let cell = try XCTUnwrap(row.cells.last)
         let link = try XCTUnwrap(parsed.links.first), heading = try XCTUnwrap(parsed.headings.first)

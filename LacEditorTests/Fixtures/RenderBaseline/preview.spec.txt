@@ -1,0 +1,4199 @@
+=== spec/0001 | Tabs
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:2-1:13"><code>foo	baz		bim
+</code></pre>
+=== spec/0002 | Tabs
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:4-1:15"><code>foo	baz		bim
+</code></pre>
+=== spec/0003 | Tabs
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-2:9"><code>a	a
+ὐ	a
+</code></pre>
+=== spec/0004 | Tabs
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-3:4">
+<li data-sourcepos="1:1-3:4">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="1:5-1:7">foo</p>
+<p data-sourcepos="3:2-3:4">bar</p>
+</li>
+</ul>
+=== spec/0005 | Tabs
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-3:5">
+<li data-sourcepos="1:1-3:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="1:3-1:5">foo</p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="3:3-3:5"><code>  bar
+</code></pre>
+</li>
+</ul>
+=== spec/0006 | Tabs
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-1:6">
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:4-1:6"><code>  foo
+</code></pre>
+</blockquote>
+=== spec/0007 | Tabs
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-1:6">
+<li data-sourcepos="1:1-1:6">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:4-1:6"><code>  foo
+</code></pre>
+</li>
+</ul>
+=== spec/0008 | Tabs
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-2:4"><code>foo
+bar
+</code></pre>
+=== spec/0009 | Tabs
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1, 2, 3
+--- body
+<ul data-sourcepos="1:1-3:7">
+<li data-sourcepos="1:1-3:7">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+foo
+<ul data-sourcepos="2:1-3:7">
+<li data-sourcepos="2:1-3:7">
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+bar
+<ul data-sourcepos="3:1-3:7">
+<li data-sourcepos="3:1-3:7">
+<span hidden data-lac-list-depth="3" data-lac-list-kind="unordered"></span>
+baz</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+=== spec/0010 | Tabs
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo"
+--- body
+<span id="lac-heading-foo"></span>
+<h1 data-sourcepos="1:1-1:5"><span data-lac-heading-number="1. "></span>Foo</h1>
+=== spec/0011 | Tabs
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<hr data-sourcepos="1:1-1:6" />
+=== spec/0012 | Precedence
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-2:6">
+<li data-sourcepos="1:1-1:6">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+`one</li>
+<li data-sourcepos="2:1-2:6">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+two`</li>
+</ul>
+=== spec/0013 | Thematic breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<hr data-sourcepos="1:1-1:3" />
+<hr data-sourcepos="2:1-2:3" />
+<hr data-sourcepos="3:1-3:3" />
+=== spec/0014 | Thematic breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:3">+++</p>
+=== spec/0015 | Thematic breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:3">===</p>
+=== spec/0016 | Thematic breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-3:2">–<br />
+**<br />
+__</p>
+=== spec/0017 | Thematic breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<hr data-sourcepos="1:2-1:4" />
+<hr data-sourcepos="2:3-2:5" />
+<hr data-sourcepos="3:4-3:6" />
+=== spec/0018 | Thematic breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-1:7"><code>***
+</code></pre>
+=== spec/0019 | Thematic breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:7">Foo<br />
+***</p>
+=== spec/0020 | Thematic breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<hr data-sourcepos="1:1-1:37" />
+=== spec/0021 | Thematic breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<hr data-sourcepos="1:2-1:6" />
+=== spec/0022 | Thematic breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<hr data-sourcepos="1:2-1:19" />
+=== spec/0023 | Thematic breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<hr data-sourcepos="1:1-1:21" />
+=== spec/0024 | Thematic breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<hr data-sourcepos="1:1-1:11" />
+=== spec/0025 | Thematic breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:9">_ _ _ _ a</p>
+<p data-sourcepos="3:1-3:7">a——</p>
+<p data-sourcepos="5:1-5:7">—a—</p>
+=== spec/0026 | Thematic breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:2-1:4"><em>-</em></p>
+=== spec/0027 | Thematic breaks
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-1:5">
+<li data-sourcepos="1:1-1:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+foo</li>
+</ul>
+<hr data-sourcepos="2:1-2:3" />
+<ul data-sourcepos="3:1-3:5">
+<li data-sourcepos="3:1-3:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+bar</li>
+</ul>
+=== spec/0028 | Thematic breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:3">Foo</p>
+<hr data-sourcepos="2:1-2:3" />
+<p data-sourcepos="3:1-3:3">bar</p>
+=== spec/0029 | Thematic breaks
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo"
+--- body
+<span id="lac-heading-foo"></span>
+<h2 data-sourcepos="1:1-3:3"><span data-lac-heading-number="0.1. "></span>Foo</h2>
+<p data-sourcepos="3:1-3:3">bar</p>
+=== spec/0030 | Thematic breaks
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-1:5">
+<li data-sourcepos="1:1-1:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+Foo</li>
+</ul>
+<hr data-sourcepos="2:1-2:5" />
+<ul data-sourcepos="3:1-3:5">
+<li data-sourcepos="3:1-3:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+Bar</li>
+</ul>
+=== spec/0031 | Thematic breaks
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-2:7">
+<li data-sourcepos="1:1-1:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+Foo</li>
+<li data-sourcepos="2:1-2:7">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<hr data-sourcepos="2:3-2:7" />
+</li>
+</ul>
+=== spec/0032 | ATX headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo", "lac-heading-foo-1", "lac-heading-foo-2", "lac-heading-foo-3", "lac-heading-foo-4", "lac-heading-foo-5"
+--- body
+<span id="lac-heading-foo"></span>
+<h1 data-sourcepos="1:1-1:5"><span data-lac-heading-number="1. "></span>foo</h1>
+<span id="lac-heading-foo-1"></span>
+<h2 data-sourcepos="2:1-2:6"><span data-lac-heading-number="1.1. "></span>foo</h2>
+<span id="lac-heading-foo-2"></span>
+<h3 data-sourcepos="3:1-3:7"><span data-lac-heading-number="1.1.1. "></span>foo</h3>
+<span id="lac-heading-foo-3"></span>
+<h4 data-sourcepos="4:1-4:8"><span data-lac-heading-number="1.1.1.1. "></span>foo</h4>
+<span id="lac-heading-foo-4"></span>
+<h5 data-sourcepos="5:1-5:9"><span data-lac-heading-number="1.1.1.1.1. "></span>foo</h5>
+<span id="lac-heading-foo-5"></span>
+<h6 data-sourcepos="6:1-6:10"><span data-lac-heading-number="1.1.1.1.1.1. "></span>foo</h6>
+=== spec/0033 | ATX headings
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11">####### foo</p>
+=== spec/0034 | ATX headings
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7">#5 bolt</p>
+<p data-sourcepos="3:1-3:8">#hashtag</p>
+=== spec/0035 | ATX headings
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7">## foo</p>
+=== spec/0036 | ATX headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo-bar-baz"
+--- body
+<span id="lac-heading-foo-bar-baz"></span>
+<h1 data-sourcepos="1:1-1:19"><span data-lac-heading-number="1. "></span>foo <em>bar</em> *baz*</h1>
+=== spec/0037 | ATX headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo"
+--- body
+<span id="lac-heading-foo"></span>
+<h1 data-sourcepos="1:1-1:22"><span data-lac-heading-number="1. "></span>foo</h1>
+=== spec/0038 | ATX headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo", "lac-heading-foo-1", "lac-heading-foo-2"
+--- body
+<span id="lac-heading-foo"></span>
+<h3 data-sourcepos="1:2-1:8"><span data-lac-heading-number="0.0.1. "></span>foo</h3>
+<span id="lac-heading-foo-1"></span>
+<h2 data-sourcepos="2:3-2:8"><span data-lac-heading-number="0.1. "></span>foo</h2>
+<span id="lac-heading-foo-2"></span>
+<h1 data-sourcepos="3:4-3:8"><span data-lac-heading-number="1. "></span>foo</h1>
+=== spec/0039 | ATX headings
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-1:9"><code># foo
+</code></pre>
+=== spec/0040 | ATX headings
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:9">foo<br />
+# bar</p>
+=== spec/0041 | ATX headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-bar", "lac-heading-foo"
+--- body
+<span id="lac-heading-foo"></span>
+<h2 data-sourcepos="1:1-1:9"><span data-lac-heading-number="0.1. "></span>foo</h2>
+<span id="lac-heading-bar"></span>
+<h3 data-sourcepos="2:3-2:18"><span data-lac-heading-number="0.1.1. "></span>bar</h3>
+=== spec/0042 | ATX headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo", "lac-heading-foo-1"
+--- body
+<span id="lac-heading-foo"></span>
+<h1 data-sourcepos="1:1-1:40"><span data-lac-heading-number="1. "></span>foo</h1>
+<span id="lac-heading-foo-1"></span>
+<h5 data-sourcepos="2:1-2:12"><span data-lac-heading-number="1.0.0.0.1. "></span>foo</h5>
+=== spec/0043 | ATX headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo"
+--- body
+<span id="lac-heading-foo"></span>
+<h3 data-sourcepos="1:1-1:16"><span data-lac-heading-number="0.0.1. "></span>foo</h3>
+=== spec/0044 | ATX headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo-b"
+--- body
+<span id="lac-heading-foo-b"></span>
+<h3 data-sourcepos="1:1-1:13"><span data-lac-heading-number="0.0.1. "></span>foo ### b</h3>
+=== spec/0045 | ATX headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo"
+--- body
+<span id="lac-heading-foo"></span>
+<h1 data-sourcepos="1:1-1:6"><span data-lac-heading-number="1. "></span>foo#</h1>
+=== spec/0046 | ATX headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo", "lac-heading-foo-1", "lac-heading-foo-2"
+--- body
+<span id="lac-heading-foo"></span>
+<h3 data-sourcepos="1:1-1:12"><span data-lac-heading-number="0.0.1. "></span>foo ###</h3>
+<span id="lac-heading-foo-1"></span>
+<h2 data-sourcepos="2:1-2:11"><span data-lac-heading-number="0.1. "></span>foo ###</h2>
+<span id="lac-heading-foo-2"></span>
+<h1 data-sourcepos="3:1-3:8"><span data-lac-heading-number="1. "></span>foo #</h1>
+=== spec/0047 | ATX headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo"
+--- body
+<hr data-sourcepos="1:1-1:4" />
+<span id="lac-heading-foo"></span>
+<h2 data-sourcepos="2:1-2:6"><span data-lac-heading-number="0.1. "></span>foo</h2>
+<hr data-sourcepos="3:1-3:4" />
+=== spec/0048 | ATX headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-baz"
+--- body
+<p data-sourcepos="1:1-1:7">Foo bar</p>
+<span id="lac-heading-baz"></span>
+<h1 data-sourcepos="2:1-2:5"><span data-lac-heading-number="1. "></span>baz</h1>
+<p data-sourcepos="3:1-3:7">Bar foo</p>
+=== spec/0049 | ATX headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-section", "lac-heading-section-1", "lac-heading-section-2"
+--- body
+<span id="lac-heading-section"></span>
+<h2 data-sourcepos="1:1-1:3"><span data-lac-heading-number="0.1. "></span></h2>
+<span id="lac-heading-section-1"></span>
+<h1 data-sourcepos="2:1-2:1"><span data-lac-heading-number="1. "></span></h1>
+<span id="lac-heading-section-2"></span>
+<h3 data-sourcepos="3:1-3:7"><span data-lac-heading-number="1.0.1. "></span></h3>
+=== spec/0050 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo-bar", "lac-heading-foo-bar-1"
+--- body
+<span id="lac-heading-foo-bar"></span>
+<h1 data-sourcepos="1:1-2:9"><span data-lac-heading-number="1. "></span>Foo <em>bar</em></h1>
+<span id="lac-heading-foo-bar-1"></span>
+<h2 data-sourcepos="4:1-5:9"><span data-lac-heading-number="1.1. "></span>Foo <em>bar</em></h2>
+=== spec/0051 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo-bar-baz"
+--- body
+<span id="lac-heading-foo-bar-baz"></span>
+<h1 data-sourcepos="1:1-3:4"><span data-lac-heading-number="1. "></span>Foo <em>bar<br />
+baz</em></h1>
+=== spec/0052 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo-bar-baz"
+--- body
+<span id="lac-heading-foo-bar-baz"></span>
+<h1 data-sourcepos="1:1-3:4"><span data-lac-heading-number="1. "></span>Foo <em>bar<br />
+baz</em></h1>
+=== spec/0053 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo", "lac-heading-foo-1"
+--- body
+<span id="lac-heading-foo"></span>
+<h2 data-sourcepos="1:1-2:25"><span data-lac-heading-number="0.1. "></span>Foo</h2>
+<span id="lac-heading-foo-1"></span>
+<h1 data-sourcepos="4:1-5:1"><span data-lac-heading-number="1. "></span>Foo</h1>
+=== spec/0054 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo", "lac-heading-foo-1", "lac-heading-foo-2"
+--- body
+<span id="lac-heading-foo"></span>
+<h2 data-sourcepos="1:4-2:3"><span data-lac-heading-number="0.1. "></span>Foo</h2>
+<span id="lac-heading-foo-1"></span>
+<h2 data-sourcepos="4:3-5:5"><span data-lac-heading-number="0.2. "></span>Foo</h2>
+<span id="lac-heading-foo-2"></span>
+<h1 data-sourcepos="7:3-8:5"><span data-lac-heading-number="1. "></span>Foo</h1>
+=== spec/0055 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-4:7"><code>Foo
+---
+
+Foo
+</code></pre>
+<hr data-sourcepos="5:1-5:3" />
+=== spec/0056 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo"
+--- body
+<span id="lac-heading-foo"></span>
+<h2 data-sourcepos="1:1-2:13"><span data-lac-heading-number="0.1. "></span>Foo</h2>
+=== spec/0057 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:7">Foo<br />
+—</p>
+=== spec/0058 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:3">Foo<br />
+\= =</p>
+<p data-sourcepos="4:1-4:3">Foo</p>
+<hr data-sourcepos="5:1-5:5" />
+=== spec/0059 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo"
+--- body
+<span id="lac-heading-foo"></span>
+<h2 data-sourcepos="1:1-2:5"><span data-lac-heading-number="0.1. "></span>Foo</h2>
+=== spec/0060 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo"
+--- body
+<span id="lac-heading-foo"></span>
+<h2 data-sourcepos="1:1-2:4"><span data-lac-heading-number="0.1. "></span>Foo\</h2>
+=== spec/0061 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-a-titlea-lot", "lac-heading-foo"
+--- body
+<span id="lac-heading-foo"></span>
+<h2 data-sourcepos="1:1-3:1"><span data-lac-heading-number="0.1. "></span>`Foo</h2>
+<p data-sourcepos="3:1-3:1">`</p>
+<span id="lac-heading-a-titlea-lot"></span>
+<h2 data-sourcepos="5:1-7:12"><span data-lac-heading-number="0.2. "></span>&lt;a title=“a lot</h2>
+<p data-sourcepos="7:1-7:12">of dashes”/&gt;</p>
+=== spec/0062 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-1:5">
+<p data-sourcepos="1:3-1:5">Foo</p>
+</blockquote>
+<hr data-sourcepos="2:1-2:3" />
+=== spec/0063 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-3:3">
+<p data-sourcepos="1:3-3:3">foo<br />
+bar<br />
+\===</p>
+</blockquote>
+=== spec/0064 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-1:5">
+<li data-sourcepos="1:1-1:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+Foo</li>
+</ul>
+<hr data-sourcepos="2:1-2:3" />
+=== spec/0065 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo-bar"
+--- body
+<span id="lac-heading-foo-bar"></span>
+<h2 data-sourcepos="1:1-3:3"><span data-lac-heading-number="0.1. "></span>Foo<br />
+Bar</h2>
+=== spec/0066 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-bar"
+--- body
+<span id="lac-heading-bar"></span>
+<h2 data-sourcepos="4:1-6:3"><span data-lac-heading-number="0.1. "></span>Bar</h2>
+<p data-sourcepos="6:1-6:3">Baz</p>
+=== spec/0067 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="2:1-2:4">====</p>
+=== spec/0068 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+=== spec/0069 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-1:5">
+<li data-sourcepos="1:1-1:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+foo</li>
+</ul>
+<hr data-sourcepos="2:1-2:5" />
+=== spec/0070 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-1:7"><code>foo
+</code></pre>
+<hr data-sourcepos="2:1-2:3" />
+=== spec/0071 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-1:5">
+<p data-sourcepos="1:3-1:5">foo</p>
+</blockquote>
+<hr data-sourcepos="2:1-2:5" />
+=== spec/0072 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo"
+--- body
+<span id="lac-heading-foo"></span>
+<h2 data-sourcepos="1:1-2:6"><span data-lac-heading-number="0.1. "></span>&gt; foo</h2>
+=== spec/0073 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-bar"
+--- body
+<p data-sourcepos="1:1-1:3">Foo</p>
+<span id="lac-heading-bar"></span>
+<h2 data-sourcepos="3:1-5:3"><span data-lac-heading-number="0.1. "></span>bar</h2>
+<p data-sourcepos="5:1-5:3">baz</p>
+=== spec/0074 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:3">Foo<br />
+bar</p>
+<hr data-sourcepos="4:1-4:3" />
+<p data-sourcepos="6:1-6:3">baz</p>
+=== spec/0075 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:3">Foo<br />
+bar</p>
+<hr data-sourcepos="3:1-3:5" />
+<p data-sourcepos="4:1-4:3">baz</p>
+=== spec/0076 | Setext headings
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-4:3">Foo<br />
+bar<br />
+-–<br />
+baz</p>
+=== spec/0077 | Indented code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-2:25"><code>a simple
+  indented code block
+</code></pre>
+=== spec/0078 | Indented code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:3-3:7">
+<li data-sourcepos="1:3-3:7">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="1:5-1:7">foo</p>
+<p data-sourcepos="3:5-3:7">bar</p>
+</li>
+</ul>
+=== spec/0079 | Indented code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1, 2
+--- body
+<ol data-sourcepos="1:1-3:9">
+<li data-sourcepos="1:1-3:9">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<p data-sourcepos="1:5-1:7">foo</p>
+<ul data-sourcepos="3:5-3:9">
+<li data-sourcepos="3:5-3:9">
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+bar</li>
+</ul>
+</li>
+</ol>
+=== spec/0080 | Indented code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-4:9"><code>&lt;a/&gt;
+*hi*
+
+- one
+</code></pre>
+=== spec/0081 | Indented code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-7:10"><code>chunk1
+
+chunk2
+
+
+
+chunk3
+</code></pre>
+=== spec/0082 | Indented code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-3:12"><code>chunk1
+\u{20}\u{20}
+  chunk2
+</code></pre>
+=== spec/0083 | Indented code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:7">Foo<br />
+bar</p>
+=== spec/0084 | Indented code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-1:7"><code>foo
+</code></pre>
+<p data-sourcepos="2:1-2:3">bar</p>
+=== spec/0085 | Indented code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-heading", "lac-heading-heading-1"
+--- body
+<span id="lac-heading-heading"></span>
+<h1 data-sourcepos="1:1-1:9"><span data-lac-heading-number="1. "></span>Heading</h1>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="2:5-2:7"><code>foo
+</code></pre>
+<span id="lac-heading-heading-1"></span>
+<h2 data-sourcepos="3:1-5:7"><span data-lac-heading-number="1.1. "></span>Heading</h2>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="5:5-5:7"><code>foo
+</code></pre>
+<hr data-sourcepos="6:1-6:4" />
+=== spec/0086 | Indented code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-2:7"><code>    foo
+bar
+</code></pre>
+=== spec/0087 | Indented code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="3:5-3:7"><code>foo
+</code></pre>
+=== spec/0088 | Indented code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-1:9"><code>foo\u{20}\u{20}
+</code></pre>
+=== spec/0089 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-4:3"><code>&lt;
+ &gt;
+</code></pre>
+=== spec/0090 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-4:3"><code>&lt;
+ &gt;
+</code></pre>
+=== spec/0091 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-3:2"><code>foo</code></p>
+=== spec/0092 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-4:3"><code>aaa
+~~~
+</code></pre>
+=== spec/0093 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-4:3"><code>aaa
+```
+</code></pre>
+=== spec/0094 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-4:6"><code>aaa
+```
+</code></pre>
+=== spec/0095 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-4:4"><code>aaa
+~~~
+</code></pre>
+=== spec/0096 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-1:3"><code></code></pre>
+=== spec/0097 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-4:3"><code>
+```
+aaa
+</code></pre>
+=== spec/0098 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-2:5">
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:3-2:5"><code>aaa
+</code></pre>
+</blockquote>
+<p data-sourcepos="4:1-4:3">bbb</p>
+=== spec/0099 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-4:3"><code>
+\u{20}\u{20}
+</code></pre>
+=== spec/0100 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-2:3"><code></code></pre>
+=== spec/0101 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:2-4:3"><code>aaa
+aaa
+</code></pre>
+=== spec/0102 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:3-5:5"><code>aaa
+aaa
+aaa
+</code></pre>
+=== spec/0103 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:4-5:6"><code>aaa
+ aaa
+aaa
+</code></pre>
+=== spec/0104 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-3:7"><code>```
+aaa
+```
+</code></pre>
+=== spec/0105 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-3:5"><code>aaa
+</code></pre>
+=== spec/0106 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:4-3:5"><code>aaa
+</code></pre>
+=== spec/0107 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-3:7"><code>aaa
+    ```
+</code></pre>
+=== spec/0108 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:3"><code> </code><br />
+aaa</p>
+=== spec/0109 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-3:6"><code>aaa
+~~~ ~~
+</code></pre>
+=== spec/0110 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:3">foo</p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="2:1-4:3"><code>bar
+</code></pre>
+<p data-sourcepos="5:1-5:3">baz</p>
+=== spec/0111 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-baz", "lac-heading-foo"
+--- body
+<span id="lac-heading-foo"></span>
+<h2 data-sourcepos="1:1-3:3"><span data-lac-heading-number="0.1. "></span>foo</h2>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="3:1-5:3"><code>bar
+</code></pre>
+<span id="lac-heading-baz"></span>
+<h1 data-sourcepos="6:1-6:5"><span data-lac-heading-number="1. "></span>baz</h1>
+=== spec/0112 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-5:3"><code class="language-ruby">def foo(x)
+  return 3
+end
+</code></pre>
+=== spec/0113 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-5:7"><code class="language-ruby">def foo(x)
+  return 3
+end
+</code></pre>
+=== spec/0114 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-2:4"><code class="language-;"></code></pre>
+=== spec/0115 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:3"><code>aa</code><br />
+foo</p>
+=== spec/0116 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-3:3"><code class="language-aa">foo
+</code></pre>
+=== spec/0117 | Fenced code blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-3:3"><code>``` aaa
+</code></pre>
+=== spec/0118 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+<p data-sourcepos="5:1-6:6"><em>world</em>.<br />
+<!-- raw HTML omitted --></p>
+<!-- raw HTML omitted -->
+=== spec/0119 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+<p data-sourcepos="9:1-9:5">okay.</p>
+=== spec/0120 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0121 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0122 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+<p data-sourcepos="3:1-3:10"><em>Markdown</em></p>
+<!-- raw HTML omitted -->
+=== spec/0123 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0124 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0125 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+<p data-sourcepos="4:1-4:5"><em>bar</em></p>
+=== spec/0126 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0127 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0128 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0129 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0130 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0131 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0132 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0133 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0134 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0135 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0136 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0137 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+<p data-sourcepos="3:1-3:5"><em>foo</em></p>
+<!-- raw HTML omitted -->
+=== spec/0138 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:16"><del><em>foo</em></del></p>
+=== spec/0139 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+<p data-sourcepos="7:1-7:4">okay</p>
+=== spec/0140 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+<p data-sourcepos="6:1-6:4">okay</p>
+=== spec/0141 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+<p data-sourcepos="7:1-7:4">okay</p>
+=== spec/0142 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0143 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-2:5">
+<!-- raw HTML omitted -->
+</blockquote>
+<p data-sourcepos="4:1-4:3">bar</p>
+=== spec/0144 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-2:5">
+<li data-sourcepos="1:1-1:7">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<!-- raw HTML omitted -->
+</li>
+<li data-sourcepos="2:1-2:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+foo</li>
+</ul>
+=== spec/0145 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+<p data-sourcepos="2:1-2:5"><em>foo</em></p>
+=== spec/0146 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+<p data-sourcepos="2:1-2:5"><em>baz</em></p>
+=== spec/0147 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0148 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+<p data-sourcepos="5:1-5:4">okay</p>
+=== spec/0149 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+<p data-sourcepos="6:1-6:4">okay</p>
+=== spec/0150 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0151 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+<p data-sourcepos="13:1-13:4">okay</p>
+=== spec/0152 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="3:5-3:16"><code>&lt;!-- foo --&gt;
+</code></pre>
+=== spec/0153 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="3:5-3:9"><code>&lt;div&gt;
+</code></pre>
+=== spec/0154 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:3">Foo</p>
+<!-- raw HTML omitted -->
+=== spec/0155 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0156 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-3:3">Foo<br />
+<!-- raw HTML omitted --><br />
+baz</p>
+=== spec/0157 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+<p data-sourcepos="3:1-3:18"><em>Emphasized</em> text.</p>
+<!-- raw HTML omitted -->
+=== spec/0158 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0159 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+<!-- raw HTML omitted -->
+<!-- raw HTML omitted -->
+<!-- raw HTML omitted -->
+<!-- raw HTML omitted -->
+=== spec/0160 | HTML blocks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+<!-- raw HTML omitted -->
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="5:5-7:9"><code>&lt;td&gt;
+  Hi
+&lt;/td&gt;
+</code></pre>
+<!-- raw HTML omitted -->
+<!-- raw HTML omitted -->
+=== spec/0161 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="3:1-3:5"><a href="/url" title="title">foo</a></p>
+=== spec/0162 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="5:1-5:5"><a href="/url" title="the title">foo</a></p>
+=== spec/0163 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="3:1-3:11"><a href="my_(url)" title="title (with parens)">Foo*bar]</a></p>
+=== spec/0164 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="5:1-5:9"><a href="my%20url" title="title">Foo bar</a></p>
+=== spec/0165 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="7:1-7:5"><a href="/url" title="
+title
+line1
+line2
+">foo</a></p>
+=== spec/0166 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:18">[foo]: /url ’title</p>
+<p data-sourcepos="3:1-3:16">with blank line’</p>
+<p data-sourcepos="5:1-5:5">[foo]</p>
+=== spec/0167 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="4:1-4:5"><a href="/url">foo</a></p>
+=== spec/0168 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:6">[foo]:</p>
+<p data-sourcepos="3:1-3:5">[foo]</p>
+=== spec/0169 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="3:1-3:5"><a href="">foo</a></p>
+=== spec/0170 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:17">[foo]: <!-- raw HTML omitted -->(baz)</p>
+<p data-sourcepos="3:1-3:5">[foo]</p>
+=== spec/0171 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="3:1-3:5"><a href="/url%5Cbar*baz" title="foo&quot;bar\baz">foo</a></p>
+=== spec/0172 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:5"><a href="url">foo</a></p>
+=== spec/0173 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:5"><a href="first">foo</a></p>
+=== spec/0174 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="3:1-3:5"><a href="/url">Foo</a></p>
+=== spec/0175 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="3:1-3:8"><a href="/%CF%86%CE%BF%CF%85">αγω</a></p>
+=== spec/0176 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+=== spec/0177 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-4:3">bar</p>
+=== spec/0178 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:22">[foo]: /url “title” ok</p>
+=== spec/0179 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:10">“title” ok</p>
+=== spec/0180 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-1:23"><code>[foo]: /url &quot;title&quot;
+</code></pre>
+<p data-sourcepos="3:1-3:5">[foo]</p>
+=== spec/0181 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-3:3"><code>[foo]: /url
+</code></pre>
+<p data-sourcepos="5:1-5:5">[foo]</p>
+=== spec/0182 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:11">Foo<br />
+[bar]: /baz</p>
+<p data-sourcepos="4:1-4:5">[bar]</p>
+=== spec/0183 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo"
+--- body
+<span id="lac-heading-foo"></span>
+<h1 data-sourcepos="1:1-1:7"><span data-lac-heading-number="1. "></span><a href="/url">Foo</a></h1>
+<blockquote data-sourcepos="3:1-3:5">
+<p data-sourcepos="3:3-3:5">bar</p>
+</blockquote>
+=== spec/0184 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-bar"
+--- body
+<span id="lac-heading-bar"></span>
+<h1 data-sourcepos="1:1-4:5"><span data-lac-heading-number="1. "></span>bar</h1>
+<p data-sourcepos="4:1-4:5"><a href="/url">foo</a></p>
+=== spec/0185 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-3:5">===<br />
+<a href="/url">foo</a></p>
+=== spec/0186 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="6:1-8:5"><a href="/foo-url" title="foo">foo</a>,<br />
+<a href="/bar-url" title="bar">bar</a>,<br />
+<a href="/baz-url">baz</a></p>
+=== spec/0187 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:5"><a href="/url">foo</a></p>
+<blockquote data-sourcepos="3:1-3:13">
+</blockquote>
+=== spec/0188 | Link reference definitions
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+=== spec/0189 | Paragraphs
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:3">aaa</p>
+<p data-sourcepos="3:1-3:3">bbb</p>
+=== spec/0190 | Paragraphs
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:3">aaa<br />
+bbb</p>
+<p data-sourcepos="4:1-5:3">ccc<br />
+ddd</p>
+=== spec/0191 | Paragraphs
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:3">aaa</p>
+<p data-sourcepos="4:1-4:3">bbb</p>
+=== spec/0192 | Paragraphs
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:3-2:4">aaa<br />
+bbb</p>
+=== spec/0193 | Paragraphs
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-3:42">aaa<br />
+bbb<br />
+ccc</p>
+=== spec/0194 | Paragraphs
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:4-2:3">aaa<br />
+bbb</p>
+=== spec/0195 | Paragraphs
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-1:7"><code>aaa
+</code></pre>
+<p data-sourcepos="2:1-2:3">bbb</p>
+=== spec/0196 | Paragraphs
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:8">aaa<br />
+bbb</p>
+=== spec/0197 | Blank lines
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-aaa"
+--- body
+<p data-sourcepos="3:1-3:3">aaa</p>
+<span id="lac-heading-aaa"></span>
+<h1 data-sourcepos="6:1-6:5"><span data-lac-heading-number="1. "></span>aaa</h1>
+=== spec/0198 | Tables (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table data-sourcepos="1:1-3:13">
+<thead>
+<tr data-sourcepos="1:1-1:13">
+<th data-sourcepos="1:3-1:5">foo</th>
+<th data-sourcepos="1:9-1:11">bar</th>
+</tr>
+</thead>
+<tbody>
+<tr data-sourcepos="3:1-3:13">
+<td data-sourcepos="3:3-3:5">baz</td>
+<td data-sourcepos="3:9-3:11">bim</td>
+</tr>
+</tbody>
+</table></div>
+=== spec/0199 | Tables (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table data-sourcepos="1:1-3:9">
+<thead>
+<tr data-sourcepos="1:1-1:16">
+<th align="center" data-sourcepos="1:3-1:5">abc</th>
+<th align="right" data-sourcepos="1:9-1:14">defghi</th>
+</tr>
+</thead>
+<tbody>
+<tr data-sourcepos="3:1-3:9">
+<td align="center" data-sourcepos="3:1-3:3">bar</td>
+<td align="right" data-sourcepos="3:7-3:9">baz</td>
+</tr>
+</tbody>
+</table></div>
+=== spec/0200 | Tables (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table data-sourcepos="1:1-4:15">
+<thead>
+<tr data-sourcepos="1:1-1:10">
+<th data-sourcepos="1:3-1:7">f|oo</th>
+</tr>
+</thead>
+<tbody>
+<tr data-sourcepos="3:1-3:13">
+<td data-sourcepos="3:3-3:11">b <code>|</code> az</td>
+</tr>
+<tr data-sourcepos="4:1-4:15">
+<td data-sourcepos="4:3-4:13">b <strong>|</strong> im</td>
+</tr>
+</tbody>
+</table></div>
+=== spec/0201 | Tables (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table data-sourcepos="1:1-3:13">
+<thead>
+<tr data-sourcepos="1:1-1:13">
+<th data-sourcepos="1:3-1:5">abc</th>
+<th data-sourcepos="1:9-1:11">def</th>
+</tr>
+</thead>
+<tbody>
+<tr data-sourcepos="3:1-3:13">
+<td data-sourcepos="3:3-3:5">bar</td>
+<td data-sourcepos="3:9-3:11">baz</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote data-sourcepos="4:1-4:5">
+<p data-sourcepos="4:3-4:5">bar</p>
+</blockquote>
+=== spec/0202 | Tables (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table data-sourcepos="1:1-4:3">
+<thead>
+<tr data-sourcepos="1:1-1:13">
+<th data-sourcepos="1:3-1:5">abc</th>
+<th data-sourcepos="1:9-1:11">def</th>
+</tr>
+</thead>
+<tbody>
+<tr data-sourcepos="3:1-3:13">
+<td data-sourcepos="3:3-3:5">bar</td>
+<td data-sourcepos="3:9-3:11">baz</td>
+</tr>
+<tr data-sourcepos="4:1-4:3">
+<td data-sourcepos="4:1-4:3">bar</td>
+<td data-sourcepos="4:1-4:3"></td>
+</tr>
+</tbody>
+</table></div>
+<p data-sourcepos="6:1-6:3">bar</p>
+=== spec/0203 | Tables (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-3:7">| abc | def |<br />
+| — |<br />
+| bar |</p>
+=== spec/0204 | Tables (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table data-sourcepos="1:1-4:19">
+<thead>
+<tr data-sourcepos="1:1-1:13">
+<th data-sourcepos="1:3-1:5">abc</th>
+<th data-sourcepos="1:9-1:11">def</th>
+</tr>
+</thead>
+<tbody>
+<tr data-sourcepos="3:1-3:7">
+<td data-sourcepos="3:3-3:5">bar</td>
+<td data-sourcepos="3:1-3:7"></td>
+</tr>
+<tr data-sourcepos="4:1-4:19">
+<td data-sourcepos="4:3-4:5">bar</td>
+<td data-sourcepos="4:9-4:11">baz</td>
+</tr>
+</tbody>
+</table></div>
+=== spec/0205 | Tables (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table data-sourcepos="1:1-2:13">
+<thead>
+<tr data-sourcepos="1:1-1:13">
+<th data-sourcepos="1:3-1:5">abc</th>
+<th data-sourcepos="1:9-1:11">def</th>
+</tr>
+</thead>
+</table></div>
+=== spec/0206 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo"
+--- body
+<blockquote data-sourcepos="1:1-3:5">
+<span id="lac-heading-foo"></span>
+<h1 data-sourcepos="1:3-1:7"><span data-lac-heading-number="1. "></span>Foo</h1>
+<p data-sourcepos="2:3-3:5">bar<br />
+baz</p>
+</blockquote>
+=== spec/0207 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo"
+--- body
+<blockquote data-sourcepos="1:1-3:5">
+<span id="lac-heading-foo"></span>
+<h1 data-sourcepos="1:2-1:6"><span data-lac-heading-number="1. "></span>Foo</h1>
+<p data-sourcepos="2:2-3:5">bar<br />
+baz</p>
+</blockquote>
+=== spec/0208 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo"
+--- body
+<blockquote data-sourcepos="1:4-3:6">
+<span id="lac-heading-foo"></span>
+<h1 data-sourcepos="1:6-1:10"><span data-lac-heading-number="1. "></span>Foo</h1>
+<p data-sourcepos="2:6-3:6">bar<br />
+baz</p>
+</blockquote>
+=== spec/0209 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-3:9"><code>&gt; # Foo
+&gt; bar
+&gt; baz
+</code></pre>
+=== spec/0210 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo"
+--- body
+<blockquote data-sourcepos="1:1-3:3">
+<span id="lac-heading-foo"></span>
+<h1 data-sourcepos="1:3-1:7"><span data-lac-heading-number="1. "></span>Foo</h1>
+<p data-sourcepos="2:3-3:3">bar<br />
+baz</p>
+</blockquote>
+=== spec/0211 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-3:5">
+<p data-sourcepos="1:3-3:5">bar<br />
+baz<br />
+foo</p>
+</blockquote>
+=== spec/0212 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-1:5">
+<p data-sourcepos="1:3-1:5">foo</p>
+</blockquote>
+<hr data-sourcepos="2:1-2:3" />
+=== spec/0213 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<blockquote data-sourcepos="1:1-1:7">
+<ul data-sourcepos="1:3-1:7">
+<li data-sourcepos="1:3-1:7">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+foo</li>
+</ul>
+</blockquote>
+<ul data-sourcepos="2:1-2:5">
+<li data-sourcepos="2:1-2:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+bar</li>
+</ul>
+=== spec/0214 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-1:9">
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:7-1:9"><code>foo
+</code></pre>
+</blockquote>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="2:5-2:7"><code>bar
+</code></pre>
+=== spec/0215 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-1:5">
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:3-1:5"><code></code></pre>
+</blockquote>
+<p data-sourcepos="2:1-2:3">foo</p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="3:1-3:3"><code></code></pre>
+=== spec/0216 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-2:9">
+<p data-sourcepos="1:3-2:9">foo<br />
+- bar</p>
+</blockquote>
+=== spec/0217 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-1:1">
+</blockquote>
+=== spec/0218 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-3:2">
+</blockquote>
+=== spec/0219 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-3:3">
+<p data-sourcepos="2:3-2:5">foo</p>
+</blockquote>
+=== spec/0220 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-1:5">
+<p data-sourcepos="1:3-1:5">foo</p>
+</blockquote>
+<blockquote data-sourcepos="3:1-3:5">
+<p data-sourcepos="3:3-3:5">bar</p>
+</blockquote>
+=== spec/0221 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-2:5">
+<p data-sourcepos="1:3-2:5">foo<br />
+bar</p>
+</blockquote>
+=== spec/0222 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-3:5">
+<p data-sourcepos="1:3-1:5">foo</p>
+<p data-sourcepos="3:3-3:5">bar</p>
+</blockquote>
+=== spec/0223 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:3">foo</p>
+<blockquote data-sourcepos="2:1-2:5">
+<p data-sourcepos="2:3-2:5">bar</p>
+</blockquote>
+=== spec/0224 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-1:5">
+<p data-sourcepos="1:3-1:5">aaa</p>
+</blockquote>
+<hr data-sourcepos="2:1-2:3" />
+<blockquote data-sourcepos="3:1-3:5">
+<p data-sourcepos="3:3-3:5">bbb</p>
+</blockquote>
+=== spec/0225 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-2:3">
+<p data-sourcepos="1:3-2:3">bar<br />
+baz</p>
+</blockquote>
+=== spec/0226 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-1:5">
+<p data-sourcepos="1:3-1:5">bar</p>
+</blockquote>
+<p data-sourcepos="3:1-3:3">baz</p>
+=== spec/0227 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-2:1">
+<p data-sourcepos="1:3-1:5">bar</p>
+</blockquote>
+<p data-sourcepos="3:1-3:3">baz</p>
+=== spec/0228 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-2:3">
+<blockquote data-sourcepos="1:3-2:3">
+<blockquote data-sourcepos="1:5-2:3">
+<p data-sourcepos="1:7-2:3">foo<br />
+bar</p>
+</blockquote>
+</blockquote>
+</blockquote>
+=== spec/0229 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-3:5">
+<blockquote data-sourcepos="1:2-3:5">
+<blockquote data-sourcepos="1:3-3:5">
+<p data-sourcepos="1:5-3:5">foo<br />
+bar<br />
+baz</p>
+</blockquote>
+</blockquote>
+</blockquote>
+=== spec/0230 | Block quotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<blockquote data-sourcepos="1:1-1:10">
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:7-1:10"><code>code
+</code></pre>
+</blockquote>
+<blockquote data-sourcepos="3:1-3:13">
+<p data-sourcepos="3:6-3:13">not code</p>
+</blockquote>
+=== spec/0231 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:15">A paragraph<br />
+with two lines.</p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="4:5-4:17"><code>indented code
+</code></pre>
+<blockquote data-sourcepos="6:1-6:16">
+<p data-sourcepos="6:3-6:16">A block quote.</p>
+</blockquote>
+=== spec/0232 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ol data-sourcepos="1:1-6:20">
+<li data-sourcepos="1:1-6:20">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<p data-sourcepos="1:5-2:19">A paragraph<br />
+with two lines.</p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="4:9-4:21"><code>indented code
+</code></pre>
+<blockquote data-sourcepos="6:5-6:20">
+<p data-sourcepos="6:7-6:20">A block quote.</p>
+</blockquote>
+</li>
+</ol>
+=== spec/0233 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-1:5">
+<li data-sourcepos="1:1-1:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+one</li>
+</ul>
+<p data-sourcepos="3:2-3:4">two</p>
+=== spec/0234 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-3:5">
+<li data-sourcepos="1:1-3:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="1:3-1:5">one</p>
+<p data-sourcepos="3:3-3:5">two</p>
+</li>
+</ul>
+=== spec/0235 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:2-1:9">
+<li data-sourcepos="1:2-1:9">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+one</li>
+</ul>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="3:5-3:8"><code> two
+</code></pre>
+=== spec/0236 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:2-3:9">
+<li data-sourcepos="1:2-3:9">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="1:7-1:9">one</p>
+<p data-sourcepos="3:7-3:9">two</p>
+</li>
+</ul>
+=== spec/0237 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<blockquote data-sourcepos="1:4-3:10">
+<blockquote data-sourcepos="1:6-3:10">
+<ol data-sourcepos="1:8-3:10">
+<li data-sourcepos="1:8-3:10">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<p data-sourcepos="1:12-1:14">one</p>
+<p data-sourcepos="3:8-3:10">two</p>
+</li>
+</ol>
+</blockquote>
+</blockquote>
+=== spec/0238 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<blockquote data-sourcepos="1:1-3:10">
+<blockquote data-sourcepos="1:2-3:10">
+<ul data-sourcepos="1:3-2:2">
+<li data-sourcepos="1:3-2:2">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+one</li>
+</ul>
+<p data-sourcepos="3:8-3:10">two</p>
+</blockquote>
+</blockquote>
+=== spec/0239 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:4">-one</p>
+<p data-sourcepos="3:1-3:5">2.two</p>
+=== spec/0240 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-4:5">
+<li data-sourcepos="1:1-4:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="1:3-1:5">foo</p>
+<p data-sourcepos="4:3-4:5">bar</p>
+</li>
+</ul>
+=== spec/0241 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ol data-sourcepos="1:1-9:9">
+<li data-sourcepos="1:1-9:9">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<p data-sourcepos="1:5-1:7">foo</p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="3:5-5:7"><code>bar
+</code></pre>
+<p data-sourcepos="7:5-7:7">baz</p>
+<blockquote data-sourcepos="9:5-9:9">
+<p data-sourcepos="9:7-9:9">bam</p>
+</blockquote>
+</li>
+</ol>
+=== spec/0242 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-6:9">
+<li data-sourcepos="1:1-6:9">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="1:3-1:5">Foo</p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="3:7-6:9"><code>bar
+
+
+baz
+</code></pre>
+</li>
+</ul>
+=== spec/0243 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ol start="123456789" data-sourcepos="1:1-1:13">
+<li data-sourcepos="1:1-1:13">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+ok</li>
+</ol>
+=== spec/0244 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:18">1234567890. not ok</p>
+=== spec/0245 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ol start="0" data-sourcepos="1:1-1:5">
+<li data-sourcepos="1:1-1:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+ok</li>
+</ol>
+=== spec/0246 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ol start="3" data-sourcepos="1:1-1:7">
+<li data-sourcepos="1:1-1:7">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+ok</li>
+</ol>
+=== spec/0247 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10">-1. not ok</p>
+=== spec/0248 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-3:9">
+<li data-sourcepos="1:1-3:9">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="1:3-1:5">foo</p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="3:7-3:9"><code>bar
+</code></pre>
+</li>
+</ul>
+=== spec/0249 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ol start="10" data-sourcepos="1:3-3:14">
+<li data-sourcepos="1:3-3:14">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<p data-sourcepos="1:8-1:10">foo</p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="3:12-3:14"><code>bar
+</code></pre>
+</li>
+</ol>
+=== spec/0250 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-1:17"><code>indented code
+</code></pre>
+<p data-sourcepos="3:1-3:9">paragraph</p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="5:5-5:13"><code>more code
+</code></pre>
+=== spec/0251 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ol data-sourcepos="1:1-5:16">
+<li data-sourcepos="1:1-5:16">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:8-1:20"><code>indented code
+</code></pre>
+<p data-sourcepos="3:4-3:12">paragraph</p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="5:8-5:16"><code>more code
+</code></pre>
+</li>
+</ol>
+=== spec/0252 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ol data-sourcepos="1:1-5:16">
+<li data-sourcepos="1:1-5:16">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:8-1:21"><code> indented code
+</code></pre>
+<p data-sourcepos="3:4-3:12">paragraph</p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="5:8-5:16"><code>more code
+</code></pre>
+</li>
+</ol>
+=== spec/0253 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:4-1:6">foo</p>
+<p data-sourcepos="3:1-3:3">bar</p>
+=== spec/0254 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-1:8">
+<li data-sourcepos="1:1-1:8">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+foo</li>
+</ul>
+<p data-sourcepos="3:3-3:5">bar</p>
+=== spec/0255 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-3:6">
+<li data-sourcepos="1:1-3:6">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="1:4-1:6">foo</p>
+<p data-sourcepos="3:4-3:6">bar</p>
+</li>
+</ul>
+=== spec/0256 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-8:9">
+<li data-sourcepos="1:1-2:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+foo</li>
+<li data-sourcepos="3:1-6:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="4:3-6:5"><code>bar
+</code></pre>
+</li>
+<li data-sourcepos="7:1-8:9">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="8:7-8:9"><code>baz
+</code></pre>
+</li>
+</ul>
+=== spec/0257 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-2:5">
+<li data-sourcepos="1:1-2:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+foo</li>
+</ul>
+=== spec/0258 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-1:1">
+<li data-sourcepos="1:1-1:1">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+</li>
+</ul>
+<p data-sourcepos="3:3-3:5">foo</p>
+=== spec/0259 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-3:5">
+<li data-sourcepos="1:1-1:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+foo</li>
+<li data-sourcepos="2:1-2:1">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+</li>
+<li data-sourcepos="3:1-3:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+bar</li>
+</ul>
+=== spec/0260 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-3:5">
+<li data-sourcepos="1:1-1:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+foo</li>
+<li data-sourcepos="2:1-2:4">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+</li>
+<li data-sourcepos="3:1-3:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+bar</li>
+</ul>
+=== spec/0261 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ol data-sourcepos="1:1-3:6">
+<li data-sourcepos="1:1-1:6">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+foo</li>
+<li data-sourcepos="2:1-2:2">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+</li>
+<li data-sourcepos="3:1-3:6">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+bar</li>
+</ol>
+=== spec/0262 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-1:1">
+<li data-sourcepos="1:1-1:1">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+</li>
+</ul>
+=== spec/0263 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:1">foo<br />
+*</p>
+<p data-sourcepos="4:1-5:2">foo<br />
+1.</p>
+=== spec/0264 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ol data-sourcepos="1:2-6:21">
+<li data-sourcepos="1:2-6:21">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<p data-sourcepos="1:6-2:20">A paragraph<br />
+with two lines.</p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="4:10-4:22"><code>indented code
+</code></pre>
+<blockquote data-sourcepos="6:6-6:21">
+<p data-sourcepos="6:8-6:21">A block quote.</p>
+</blockquote>
+</li>
+</ol>
+=== spec/0265 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ol data-sourcepos="1:3-6:22">
+<li data-sourcepos="1:3-6:22">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<p data-sourcepos="1:7-2:21">A paragraph<br />
+with two lines.</p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="4:11-4:23"><code>indented code
+</code></pre>
+<blockquote data-sourcepos="6:7-6:22">
+<p data-sourcepos="6:9-6:22">A block quote.</p>
+</blockquote>
+</li>
+</ol>
+=== spec/0266 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ol data-sourcepos="1:4-6:23">
+<li data-sourcepos="1:4-6:23">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<p data-sourcepos="1:8-2:22">A paragraph<br />
+with two lines.</p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="4:12-4:24"><code>indented code
+</code></pre>
+<blockquote data-sourcepos="6:8-6:23">
+<p data-sourcepos="6:10-6:23">A block quote.</p>
+</blockquote>
+</li>
+</ol>
+=== spec/0267 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-6:24"><code>1.  A paragraph
+    with two lines.
+
+        indented code
+
+    &gt; A block quote.
+</code></pre>
+=== spec/0268 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ol data-sourcepos="1:3-6:22">
+<li data-sourcepos="1:3-6:22">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<p data-sourcepos="1:7-2:15">A paragraph<br />
+with two lines.</p>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="4:11-4:23"><code>indented code
+</code></pre>
+<blockquote data-sourcepos="6:7-6:22">
+<p data-sourcepos="6:9-6:22">A block quote.</p>
+</blockquote>
+</li>
+</ol>
+=== spec/0269 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ol data-sourcepos="1:3-2:19">
+<li data-sourcepos="1:3-2:19">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+A paragraph<br />
+with two lines.</li>
+</ol>
+=== spec/0270 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<blockquote data-sourcepos="1:1-2:15">
+<ol data-sourcepos="1:3-2:15">
+<li data-sourcepos="1:3-2:15">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<blockquote data-sourcepos="1:6-2:15">
+<p data-sourcepos="1:8-2:15">Blockquote<br />
+continued here.</p>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+=== spec/0271 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<blockquote data-sourcepos="1:1-2:17">
+<ol data-sourcepos="1:3-2:17">
+<li data-sourcepos="1:3-2:17">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<blockquote data-sourcepos="1:6-2:17">
+<p data-sourcepos="1:8-2:17">Blockquote<br />
+continued here.</p>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+=== spec/0272 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1, 2, 3, 4
+--- body
+<ul data-sourcepos="1:1-4:11">
+<li data-sourcepos="1:1-4:11">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+foo
+<ul data-sourcepos="2:3-4:11">
+<li data-sourcepos="2:3-4:11">
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+bar
+<ul data-sourcepos="3:5-4:11">
+<li data-sourcepos="3:5-4:11">
+<span hidden data-lac-list-depth="3" data-lac-list-kind="unordered"></span>
+baz
+<ul data-sourcepos="4:7-4:11">
+<li data-sourcepos="4:7-4:11">
+<span hidden data-lac-list-depth="4" data-lac-list-kind="unordered"></span>
+boo</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+=== spec/0273 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-4:8">
+<li data-sourcepos="1:1-1:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+foo</li>
+<li data-sourcepos="2:2-2:6">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+bar</li>
+<li data-sourcepos="3:3-3:7">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+baz</li>
+<li data-sourcepos="4:4-4:8">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+boo</li>
+</ul>
+=== spec/0274 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1, 2
+--- body
+<ol start="10" data-sourcepos="1:1-2:9">
+<li data-sourcepos="1:1-2:9">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+foo
+<ul data-sourcepos="2:5-2:9">
+<li data-sourcepos="2:5-2:9">
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+bar</li>
+</ul>
+</li>
+</ol>
+=== spec/0275 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ol start="10" data-sourcepos="1:1-1:7">
+<li data-sourcepos="1:1-1:7">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+foo</li>
+</ol>
+<ul data-sourcepos="2:4-2:8">
+<li data-sourcepos="2:4-2:8">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+bar</li>
+</ul>
+=== spec/0276 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1, 2
+--- body
+<ul data-sourcepos="1:1-1:7">
+<li data-sourcepos="1:1-1:7">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<ul data-sourcepos="1:3-1:7">
+<li data-sourcepos="1:3-1:7">
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+foo</li>
+</ul>
+</li>
+</ul>
+=== spec/0277 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1, 2, 3
+--- body
+<ol data-sourcepos="1:1-1:11">
+<li data-sourcepos="1:1-1:11">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<ul data-sourcepos="1:4-1:11">
+<li data-sourcepos="1:4-1:11">
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+<ol start="2" data-sourcepos="1:6-1:11">
+<li data-sourcepos="1:6-1:11">
+<span hidden data-lac-list-depth="3" data-lac-list-kind="ordered"></span>
+foo</li>
+</ol>
+</li>
+</ul>
+</li>
+</ol>
+=== spec/0278 | List items
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-bar", "lac-heading-foo"
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-4:5">
+<li data-sourcepos="1:1-1:7">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<span id="lac-heading-foo"></span>
+<h1 data-sourcepos="1:3-1:7"><span data-lac-heading-number="1. "></span>Foo</h1>
+</li>
+<li data-sourcepos="2:1-4:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<span id="lac-heading-bar"></span>
+<h2 data-sourcepos="2:3-4:5"><span data-lac-heading-number="1.1. "></span>Bar</h2>
+baz</li>
+</ul>
+=== spec/0279 | Task list items (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<ul data-sourcepos="1:1-2:9">
+<li data-sourcepos="1:1-1:9"><input type="checkbox" disabled="" /> foo</li>
+<li data-sourcepos="2:1-2:9"><input type="checkbox" checked="" disabled="" />\u{20}
+<span data-lac-checked-task></span>
+bar</li>
+</ul>
+=== spec/0280 | Task list items (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<ul data-sourcepos="1:1-4:9">
+<li data-sourcepos="1:1-3:11"><input type="checkbox" checked="" disabled="" />\u{20}
+<span data-lac-checked-task></span>
+foo
+<ul data-sourcepos="2:3-3:11">
+<li data-sourcepos="2:3-2:11"><input type="checkbox" disabled="" /> bar</li>
+<li data-sourcepos="3:3-3:11"><input type="checkbox" checked="" disabled="" />\u{20}
+<span data-lac-checked-task></span>
+baz</li>
+</ul>
+</li>
+<li data-sourcepos="4:1-4:9"><input type="checkbox" disabled="" /> bim</li>
+</ul>
+=== spec/0281 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-2:5">
+<li data-sourcepos="1:1-1:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+foo</li>
+<li data-sourcepos="2:1-2:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+bar</li>
+</ul>
+<ul data-sourcepos="3:1-3:5">
+<li data-sourcepos="3:1-3:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+baz</li>
+</ul>
+=== spec/0282 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ol data-sourcepos="1:1-2:6">
+<li data-sourcepos="1:1-1:6">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+foo</li>
+<li data-sourcepos="2:1-2:6">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+bar</li>
+</ol>
+<ol start="3" data-sourcepos="3:1-3:6">
+<li data-sourcepos="3:1-3:6">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+baz</li>
+</ol>
+=== spec/0283 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<p data-sourcepos="1:1-1:3">Foo</p>
+<ul data-sourcepos="2:1-3:5">
+<li data-sourcepos="2:1-2:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+bar</li>
+<li data-sourcepos="3:1-3:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+baz</li>
+</ul>
+=== spec/0284 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:30">The number of windows in my house is<br />
+14.  The number of doors is 6.</p>
+=== spec/0285 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<p data-sourcepos="1:1-1:36">The number of windows in my house is</p>
+<ol data-sourcepos="2:1-2:29">
+<li data-sourcepos="2:1-2:29">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+The number of doors is 6.</li>
+</ol>
+=== spec/0286 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-6:5">
+<li data-sourcepos="1:1-1:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="1:3-1:5">foo</p>
+</li>
+<li data-sourcepos="3:1-3:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="3:3-3:5">bar</p>
+</li>
+<li data-sourcepos="6:1-6:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="6:3-6:5">baz</p>
+</li>
+</ul>
+=== spec/0287 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1, 2, 3
+--- body
+<ul data-sourcepos="1:1-6:9">
+<li data-sourcepos="1:1-6:9">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+foo
+<ul data-sourcepos="2:3-6:9">
+<li data-sourcepos="2:3-6:9">
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+bar
+<ul data-sourcepos="3:5-6:9">
+<li data-sourcepos="3:5-6:9">
+<span hidden data-lac-list-depth="3" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="3:7-3:9">baz</p>
+<p data-sourcepos="6:7-6:9">bim</p>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+=== spec/0288 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-2:5">
+<li data-sourcepos="1:1-1:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+foo</li>
+<li data-sourcepos="2:1-2:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+bar</li>
+</ul>
+<!-- raw HTML omitted -->
+<ul data-sourcepos="6:1-7:5">
+<li data-sourcepos="6:1-6:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+baz</li>
+<li data-sourcepos="7:1-7:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+bim</li>
+</ul>
+=== spec/0289 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-5:7">
+<li data-sourcepos="1:1-3:11">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="1:5-1:7">foo</p>
+<p data-sourcepos="3:5-3:11">notcode</p>
+</li>
+<li data-sourcepos="5:1-5:7">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="5:5-5:7">foo</p>
+</li>
+</ul>
+<!-- raw HTML omitted -->
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="9:5-9:8"><code>code
+</code></pre>
+=== spec/0290 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-7:3">
+<li data-sourcepos="1:1-1:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+a</li>
+<li data-sourcepos="2:2-2:4">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+b</li>
+<li data-sourcepos="3:3-3:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+c</li>
+<li data-sourcepos="4:4-4:6">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+d</li>
+<li data-sourcepos="5:3-5:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+e</li>
+<li data-sourcepos="6:2-6:4">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+f</li>
+<li data-sourcepos="7:1-7:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+g</li>
+</ul>
+=== spec/0291 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ol data-sourcepos="1:1-5:7">
+<li data-sourcepos="1:1-1:4">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<p data-sourcepos="1:4-1:4">a</p>
+</li>
+<li data-sourcepos="3:3-3:6">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<p data-sourcepos="3:6-3:6">b</p>
+</li>
+<li data-sourcepos="5:4-5:7">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<p data-sourcepos="5:7-5:7">c</p>
+</li>
+</ol>
+=== spec/0292 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-5:7">
+<li data-sourcepos="1:1-1:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+a</li>
+<li data-sourcepos="2:2-2:4">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+b</li>
+<li data-sourcepos="3:3-3:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+c</li>
+<li data-sourcepos="4:4-5:7">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+d<br />
+- e</li>
+</ul>
+=== spec/0293 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ol data-sourcepos="1:1-3:6">
+<li data-sourcepos="1:1-1:4">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<p data-sourcepos="1:4-1:4">a</p>
+</li>
+<li data-sourcepos="3:3-3:6">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<p data-sourcepos="3:6-3:6">b</p>
+</li>
+</ol>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="5:5-5:8"><code>3. c
+</code></pre>
+=== spec/0294 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-4:3">
+<li data-sourcepos="1:1-1:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="1:3-1:3">a</p>
+</li>
+<li data-sourcepos="2:1-2:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="2:3-2:3">b</p>
+</li>
+<li data-sourcepos="4:1-4:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="4:3-4:3">c</p>
+</li>
+</ul>
+=== spec/0295 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-4:3">
+<li data-sourcepos="1:1-1:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="1:3-1:3">a</p>
+</li>
+<li data-sourcepos="2:1-2:1">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+</li>
+<li data-sourcepos="4:1-4:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="4:3-4:3">c</p>
+</li>
+</ul>
+=== spec/0296 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-5:3">
+<li data-sourcepos="1:1-1:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="1:3-1:3">a</p>
+</li>
+<li data-sourcepos="2:1-4:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="2:3-2:3">b</p>
+<p data-sourcepos="4:3-4:3">c</p>
+</li>
+<li data-sourcepos="5:1-5:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="5:3-5:3">d</p>
+</li>
+</ul>
+=== spec/0297 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-5:3">
+<li data-sourcepos="1:1-1:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="1:3-1:3">a</p>
+</li>
+<li data-sourcepos="2:1-4:13">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="2:3-2:3">b</p>
+</li>
+<li data-sourcepos="5:1-5:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="5:3-5:3">d</p>
+</li>
+</ul>
+=== spec/0298 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-7:3">
+<li data-sourcepos="1:1-1:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+a</li>
+<li data-sourcepos="2:1-6:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="2:3-6:5"><code>b
+
+
+</code></pre>
+</li>
+<li data-sourcepos="7:1-7:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+c</li>
+</ul>
+=== spec/0299 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1, 2
+--- body
+<ul data-sourcepos="1:1-5:3">
+<li data-sourcepos="1:1-4:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+a
+<ul data-sourcepos="2:3-4:5">
+<li data-sourcepos="2:3-4:5">
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="2:5-2:5">b</p>
+<p data-sourcepos="4:5-4:5">c</p>
+</li>
+</ul>
+</li>
+<li data-sourcepos="5:1-5:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+d</li>
+</ul>
+=== spec/0300 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-4:3">
+<li data-sourcepos="1:1-3:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+a
+<blockquote data-sourcepos="2:3-3:3">
+<p data-sourcepos="2:5-2:5">b</p>
+</blockquote>
+</li>
+<li data-sourcepos="4:1-4:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+c</li>
+</ul>
+=== spec/0301 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-6:3">
+<li data-sourcepos="1:1-5:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+a
+<blockquote data-sourcepos="2:3-2:5">
+<p data-sourcepos="2:5-2:5">b</p>
+</blockquote>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="3:3-5:5"><code>c
+</code></pre>
+</li>
+<li data-sourcepos="6:1-6:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+d</li>
+</ul>
+=== spec/0302 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ul data-sourcepos="1:1-1:3">
+<li data-sourcepos="1:1-1:3">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+a</li>
+</ul>
+=== spec/0303 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1, 2
+--- body
+<ul data-sourcepos="1:1-2:5">
+<li data-sourcepos="1:1-2:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+a
+<ul data-sourcepos="2:3-2:5">
+<li data-sourcepos="2:3-2:5">
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+b</li>
+</ul>
+</li>
+</ul>
+=== spec/0304 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<ol data-sourcepos="1:1-5:6">
+<li data-sourcepos="1:1-5:6">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="ordered"></span>
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:4-3:6"><code>foo
+</code></pre>
+<p data-sourcepos="5:4-5:6">bar</p>
+</li>
+</ol>
+=== spec/0305 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1, 2
+--- body
+<ul data-sourcepos="1:1-4:5">
+<li data-sourcepos="1:1-4:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="1:3-1:5">foo</p>
+<ul data-sourcepos="2:3-2:7">
+<li data-sourcepos="2:3-2:7">
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+bar</li>
+</ul>
+<p data-sourcepos="4:3-4:5">baz</p>
+</li>
+</ul>
+=== spec/0306 | Lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1, 2
+--- body
+<ul data-sourcepos="1:1-7:5">
+<li data-sourcepos="1:1-3:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="1:3-1:3">a</p>
+<ul data-sourcepos="2:3-3:5">
+<li data-sourcepos="2:3-2:5">
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+b</li>
+<li data-sourcepos="3:3-3:5">
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+c</li>
+</ul>
+</li>
+<li data-sourcepos="5:1-7:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+<p data-sourcepos="5:3-5:3">d</p>
+<ul data-sourcepos="6:3-7:5">
+<li data-sourcepos="6:3-6:5">
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+e</li>
+<li data-sourcepos="7:3-7:5">
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+f</li>
+</ul>
+</li>
+</ul>
+=== spec/0307 | Inlines
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7"><code>hi</code>lo`</p>
+=== spec/0308 | Backslash escapes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:64">!&quot;#$%&amp;'()*+,-./:;&lt;=&gt;?@[\]^_`{|}~</p>
+=== spec/0309 | Backslash escapes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:16">\	\A\a\ \3\φ\«</p>
+=== spec/0310 | Backslash escapes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-9:30">*not emphasized*<br />
+&lt;br/&gt; not a tag<br />
+[not a link](/foo)<br />
+`not code`<br />
+1. not a list<br />
+* not a list<br />
+# not a heading<br />
+[foo]: /url “not a reference”<br />
+&amp;ouml; not a character entity</p>
+=== spec/0311 | Backslash escapes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:12">\<em>emphasis</em></p>
+=== spec/0312 | Backslash escapes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:3">foo<br />
+bar</p>
+=== spec/0313 | Backslash escapes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10"><code>\[\`</code></p>
+=== spec/0314 | Backslash escapes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-1:8"><code>\[\]
+</code></pre>
+=== spec/0315 | Backslash escapes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-3:3"><code>\[\]
+</code></pre>
+=== spec/0316 | Backslash escapes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:28"><a href="http://example.com?find=%5C*">http://example.com?find=\*</a></p>
+=== spec/0317 | Backslash escapes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0318 | Backslash escapes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:23"><a href="/bar*" title="ti*tle">foo</a></p>
+=== spec/0319 | Backslash escapes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:5"><a href="/bar*" title="ti*tle">foo</a></p>
+=== spec/0320 | Backslash escapes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-3:3"><code class="language-foo+bar">foo
+</code></pre>
+=== spec/0321 | Entity and numeric character references
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-3:32">\u{A0} &amp; © Æ Ď<br />
+¾ ℋ ⅆ<br />
+∲ ≧̸</p>
+=== spec/0322 | Entity and numeric character references
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:25"># Ӓ Ϡ �</p>
+=== spec/0323 | Entity and numeric character references
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:22">&quot; ആ ಫ</p>
+=== spec/0324 | Entity and numeric character references
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-4:24">&amp;nbsp &amp;x; &amp;#; &amp;#x;<br />
+&amp;#987654321;<br />
+&amp;#abcdef0;<br />
+&amp;ThisIsNotDefined; &amp;hi?;</p>
+=== spec/0325 | Entity and numeric character references
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:5">&amp;copy</p>
+=== spec/0326 | Entity and numeric character references
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:14">&amp;MadeUpEntity;</p>
+=== spec/0327 | Entity and numeric character references
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<!-- raw HTML omitted -->
+=== spec/0328 | Entity and numeric character references
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:37"><a href="/f%C3%B6%C3%B6" title="föö">foo</a></p>
+=== spec/0329 | Entity and numeric character references
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:5"><a href="/f%C3%B6%C3%B6" title="föö">foo</a></p>
+=== spec/0330 | Entity and numeric character references
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:1-3:3"><code class="language-föö">foo
+</code></pre>
+=== spec/0331 | Entity and numeric character references
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15"><code>f&amp;ouml;&amp;ouml;</code></p>
+=== spec/0332 | Entity and numeric character references
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="1:5-1:18"><code>f&amp;ouml;f&amp;ouml;
+</code></pre>
+=== spec/0333 | Entity and numeric character references
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:5">*foo*<br />
+<em>foo</em></p>
+=== spec/0334 | Entity and numeric character references
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<p data-sourcepos="1:1-1:9">* foo</p>
+<ul data-sourcepos="3:1-3:5">
+<li data-sourcepos="3:1-3:5">
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+foo</li>
+</ul>
+=== spec/0335 | Entity and numeric character references
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:16">foo
+
+bar</p>
+=== spec/0336 | Entity and numeric character references
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7">	foo</p>
+=== spec/0337 | Entity and numeric character references
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:24">[a](url &quot;tit&quot;)</p>
+=== spec/0338 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:5"><code>foo</code></p>
+=== spec/0339 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15"><code>foo ` bar</code></p>
+=== spec/0340 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:6"><code>``</code></p>
+=== spec/0341 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8"><code> `` </code></p>
+=== spec/0342 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:4"><code> a</code></p>
+=== spec/0343 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7"><code>\u{A0}b\u{A0}</code></p>
+=== spec/0344 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:4"><code>\u{A0}</code><br />
+<code>  </code></p>
+=== spec/0345 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-5:2"><code>foo bar   baz</code></p>
+=== spec/0346 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-3:2"><code>foo </code></p>
+=== spec/0347 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:4"><code>foo   bar  baz</code></p>
+=== spec/0348 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10"><code>foo\</code>bar`</p>
+=== spec/0349 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11"><code>foo`bar</code></p>
+=== spec/0350 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:14"><code>foo `` bar</code></p>
+=== spec/0351 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7">*foo<code>*</code></p>
+=== spec/0352 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:20">[not a <code>link](/foo</code>)</p>
+=== spec/0353 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:14"><code>&lt;a href=&quot;</code>”&gt;`</p>
+=== spec/0354 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:13"><!-- raw HTML omitted -->`</p>
+=== spec/0355 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:23"><code>&lt;http://foo.bar.</code>baz&gt;`</p>
+=== spec/0356 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:22"><a href="http://foo.bar.%60baz">http://foo.bar.`baz</a>`</p>
+=== spec/0357 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8">```foo``</p>
+=== spec/0358 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:4">`foo</p>
+=== spec/0359 | Code spans
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11">`foo<code>bar</code></p>
+=== spec/0360 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:9"><em>foo bar</em></p>
+=== spec/0361 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:12">a * foo bar*</p>
+=== spec/0362 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8">a*“foo”*</p>
+=== spec/0363 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7">*\u{A0}a\u{A0}*</p>
+=== spec/0364 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8">foo<em>bar</em></p>
+=== spec/0365 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:6">5<em>6</em>78</p>
+=== spec/0366 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:9"><em>foo bar</em></p>
+=== spec/0367 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10">_ foo bar_</p>
+=== spec/0368 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8">a_“foo”_</p>
+=== spec/0369 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8">foo_bar_</p>
+=== spec/0370 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:6">5_6_78</p>
+=== spec/0371 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:38">пристаням_стремятся_</p>
+=== spec/0372 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10">aa_“bb”_cc</p>
+=== spec/0373 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11">foo-<em>(bar)</em></p>
+=== spec/0374 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:5">_foo*</p>
+=== spec/0375 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10">*foo bar *</p>
+=== spec/0376 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:1">*foo bar<br />
+*</p>
+=== spec/0377 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7">*(*foo)</p>
+=== spec/0378 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:9"><em>(<em>foo</em>)</em></p>
+=== spec/0379 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8"><em>foo</em>bar</p>
+=== spec/0380 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10">_foo bar _</p>
+=== spec/0381 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7">_(_foo)</p>
+=== spec/0382 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:9"><em>(<em>foo</em>)</em></p>
+=== spec/0383 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8">_foo_bar</p>
+=== spec/0384 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:38">_пристаням_стремятся</p>
+=== spec/0385 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:13"><em>foo_bar_baz</em></p>
+=== spec/0386 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8"><em>(bar)</em>.</p>
+=== spec/0387 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11"><strong>foo bar</strong></p>
+=== spec/0388 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:12">** foo bar**</p>
+=== spec/0389 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10">a**“foo”**</p>
+=== spec/0390 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10">foo<strong>bar</strong></p>
+=== spec/0391 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11"><strong>foo bar</strong></p>
+=== spec/0392 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:12">__ foo bar__</p>
+=== spec/0393 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:9">__<br />
+foo bar__</p>
+=== spec/0394 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10">a__“foo”__</p>
+=== spec/0395 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10">foo__bar__</p>
+=== spec/0396 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8">5__6__78</p>
+=== spec/0397 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:40">пристаням__стремятся__</p>
+=== spec/0398 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:21"><strong>foo, bar, baz</strong></p>
+=== spec/0399 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:13">foo-<strong>(bar)</strong></p>
+=== spec/0400 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:12">**foo bar **</p>
+=== spec/0401 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:9">**(**foo)</p>
+=== spec/0402 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11"><em>(<strong>foo</strong>)</em></p>
+=== spec/0403 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:25"><strong>Gomphocarpus (<em>Gomphocarpus physocarpus</em>, syn.<br />
+<em>Asclepias physocarpa</em>)</strong></p>
+=== spec/0404 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:19"><strong>foo “<em>bar</em>” foo</strong></p>
+=== spec/0405 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10"><strong>foo</strong>bar</p>
+=== spec/0406 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:12">__foo bar __</p>
+=== spec/0407 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:9">__(__foo)</p>
+=== spec/0408 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11"><em>(<strong>foo</strong>)</em></p>
+=== spec/0409 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10">__foo__bar</p>
+=== spec/0410 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:40">__пристаням__стремятся</p>
+=== spec/0411 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:17"><strong>foo__bar__baz</strong></p>
+=== spec/0412 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10"><strong>(bar)</strong>.</p>
+=== spec/0413 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:17"><em>foo <a href="/url">bar</a></em></p>
+=== spec/0414 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:4"><em>foo<br />
+bar</em></p>
+=== spec/0415 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:17"><em>foo <strong>bar</strong> baz</em></p>
+=== spec/0416 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15"><em>foo <em>bar</em> baz</em></p>
+=== spec/0417 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11"><em><em>foo</em> bar</em></p>
+=== spec/0418 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11"><em>foo <em>bar</em></em></p>
+=== spec/0419 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:17"><em>foo <strong>bar</strong> baz</em></p>
+=== spec/0420 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15"><em>foo<strong>bar</strong>baz</em></p>
+=== spec/0421 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10"><em>foo**bar</em></p>
+=== spec/0422 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:13"><em><strong>foo</strong> bar</em></p>
+=== spec/0423 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:13"><em>foo <strong>bar</strong></em></p>
+=== spec/0424 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:12"><em>foo<strong>bar</strong></em></p>
+=== spec/0425 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15">foo<em><strong>bar</strong></em>baz</p>
+=== spec/0426 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:24">foo<strong>bar</strong>***baz</p>
+=== spec/0427 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:27"><em>foo <strong>bar <em>baz</em> bim</strong> bop</em></p>
+=== spec/0428 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:19"><em>foo <a href="/url"><em>bar</em></a></em></p>
+=== spec/0429 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:27">** is not an empty emphasis</p>
+=== spec/0430 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:36">**** is not an empty strong emphasis</p>
+=== spec/0431 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:19"><strong>foo <a href="/url">bar</a></strong></p>
+=== spec/0432 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:5"><strong>foo<br />
+bar</strong></p>
+=== spec/0433 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:17"><strong>foo <em>bar</em> baz</strong></p>
+=== spec/0434 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:19"><strong>foo bar baz</strong></p>
+=== spec/0435 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15"><strong>foo bar</strong></p>
+=== spec/0436 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15"><strong>foo bar</strong></p>
+=== spec/0437 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:17"><strong>foo <em>bar</em> baz</strong></p>
+=== spec/0438 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15"><strong>foo<em>bar</em>baz</strong></p>
+=== spec/0439 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:13"><strong><em>foo</em> bar</strong></p>
+=== spec/0440 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:13"><strong>foo <em>bar</em></strong></p>
+=== spec/0441 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:10"><strong>foo <em>bar <strong>baz</strong><br />
+bim</em> bop</strong></p>
+=== spec/0442 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:21"><strong>foo <a href="/url"><em>bar</em></a></strong></p>
+=== spec/0443 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:27">__ is not an empty emphasis</p>
+=== spec/0444 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:36">____ is not an empty strong emphasis</p>
+=== spec/0445 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7">foo ***</p>
+=== spec/0446 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8">foo <em>*</em></p>
+=== spec/0447 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7">foo <em>_</em></p>
+=== spec/0448 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:9">foo *****</p>
+=== spec/0449 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10">foo <strong>*</strong></p>
+=== spec/0450 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:9">foo <strong>_</strong></p>
+=== spec/0451 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:6">*<em>foo</em></p>
+=== spec/0452 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:6"><em>foo</em>*</p>
+=== spec/0453 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8">*<strong>foo</strong></p>
+=== spec/0454 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8">***<em>foo</em></p>
+=== spec/0455 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8"><strong>foo</strong>*</p>
+=== spec/0456 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8"><em>foo</em>***</p>
+=== spec/0457 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7">foo ___</p>
+=== spec/0458 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8">foo <em>_</em></p>
+=== spec/0459 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7">foo <em>*</em></p>
+=== spec/0460 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:9">foo _____</p>
+=== spec/0461 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10">foo <strong>_</strong></p>
+=== spec/0462 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:9">foo <strong>*</strong></p>
+=== spec/0463 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:6">_<em>foo</em></p>
+=== spec/0464 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:6"><em>foo</em>_</p>
+=== spec/0465 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8">_<strong>foo</strong></p>
+=== spec/0466 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8">___<em>foo</em></p>
+=== spec/0467 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8"><strong>foo</strong>_</p>
+=== spec/0468 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8"><em>foo</em>___</p>
+=== spec/0469 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7"><strong>foo</strong></p>
+=== spec/0470 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7"><em><em>foo</em></em></p>
+=== spec/0471 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7"><strong>foo</strong></p>
+=== spec/0472 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7"><em><em>foo</em></em></p>
+=== spec/0473 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11"><strong>foo</strong></p>
+=== spec/0474 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11"><strong>foo</strong></p>
+=== spec/0475 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15"><strong>foo</strong></p>
+=== spec/0476 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:9"><em><strong>foo</strong></em></p>
+=== spec/0477 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:13"><em><strong>foo</strong></em></p>
+=== spec/0478 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15"><em>foo _bar</em> baz_</p>
+=== spec/0479 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:26"><em>foo <strong>bar *baz bim</strong> bam</em></p>
+=== spec/0480 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:17">**foo <strong>bar baz</strong></p>
+=== spec/0481 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:14">*foo <em>bar baz</em></p>
+=== spec/0482 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:13">*<a href="/url">bar*</a></p>
+=== spec/0483 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:17">_foo <a href="/url">bar_</a></p>
+=== spec/0484 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:27">*<img src="foo" alt="" title="*" data-sourcepos="1:2-1:27"></p>
+=== spec/0485 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15">**<!-- raw HTML omitted --></p>
+=== spec/0486 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15">__<!-- raw HTML omitted --></p>
+=== spec/0487 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7"><em>a <code>*</code></em></p>
+=== spec/0488 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7"><em>a <code>_</code></em></p>
+=== spec/0489 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:25">**a<a href="http://foo.bar/?q=**">http://foo.bar/?q=**</a></p>
+=== spec/0490 | Emphasis and strong emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:25">__a<a href="http://foo.bar/?q=__">http://foo.bar/?q=__</a></p>
+=== spec/0491 | Strikethrough (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:20"><del>Hi</del> Hello, world!</p>
+=== spec/0492 | Strikethrough (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:12">This ~~has a</p>
+<p data-sourcepos="3:1-3:16">new paragraph~~.</p>
+=== spec/0493 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:20"><a href="/uri" title="title">link</a></p>
+=== spec/0494 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:12"><a href="/uri">link</a></p>
+=== spec/0495 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8"><a href="">link</a></p>
+=== spec/0496 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10"><a href="">link</a></p>
+=== spec/0497 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15">[link](/my uri)</p>
+=== spec/0498 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:17"><a href="/my%20uri">link</a></p>
+=== spec/0499 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:4">[link](foo<br />
+bar)</p>
+=== spec/0500 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:5">[link](<!-- raw HTML omitted -->)</p>
+=== spec/0501 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10"><a href="b)c">a</a></p>
+=== spec/0502 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:14">[link](&lt;foo&gt;)</p>
+=== spec/0503 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-3:9">[a](&lt;b)c<br />
+[a](&lt;b)c&gt;<br />
+[a](<!-- raw HTML omitted -->c)</p>
+=== spec/0504 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15"><a href="(foo)">link</a></p>
+=== spec/0505 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:21"><a href="foo(and(bar))">link</a></p>
+=== spec/0506 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:23"><a href="foo(and(bar)">link</a></p>
+=== spec/0507 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:22"><a href="foo(and(bar)">link</a></p>
+=== spec/0508 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15"><a href="foo):">link</a></p>
+=== spec/0509 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:17"><a href="#fragment">link</a></p>
+<p data-sourcepos="3:1-3:35"><a href="http://example.com#fragment">link</a></p>
+<p data-sourcepos="5:1-5:37"><a href="http://example.com?foo=3#frag">link</a></p>
+=== spec/0510 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15"><a href="foo%5Cbar">link</a></p>
+=== spec/0511 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:21"><a href="foo%20b%C3%A4">link</a></p>
+=== spec/0512 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15"><a href="%22title%22">link</a></p>
+=== spec/0513 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-3:20"><a href="/url" title="title">link</a><br />
+<a href="/url" title="title">link</a><br />
+<a href="/url" title="title">link</a></p>
+=== spec/0514 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:29"><a href="/url" title="title &quot;&quot;">link</a></p>
+=== spec/0515 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:21"><a href="/url%C2%A0%22title%22">link</a></p>
+=== spec/0516 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:32">[link](/url “title “and” title”)</p>
+=== spec/0517 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:32"><a href="/url" title="title &quot;and&quot; title">link</a></p>
+=== spec/0518 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:12"><a href="/uri" title="title">link</a></p>
+=== spec/0519 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:13">[link] (/uri)</p>
+=== spec/0520 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:24"><a href="/uri">link [foo [bar]]</a></p>
+=== spec/0521 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:17">[link] bar](/uri)</p>
+=== spec/0522 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:17">[link <a href="/uri">bar</a></p>
+=== spec/0523 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:18"><a href="/uri">link [bar</a></p>
+=== spec/0524 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:30"><a href="/uri">link <em>foo <strong>bar</strong> <code>#</code></em></a></p>
+=== spec/0525 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:25"><a href="/uri"><img src="moon.jpg" alt="moon" /></a></p>
+=== spec/0526 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:23">[foo <a href="/uri">bar</a>](/uri)</p>
+=== spec/0527 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:37">[foo <em>[bar <a href="/uri">baz</a>](/uri)</em>](/uri)</p>
+=== spec/0528 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:28"><span data-lac-centered-image><img src="uri3" alt="[foo](uri2)" /></span></p>
+=== spec/0529 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:13">*<a href="/uri">foo*</a></p>
+=== spec/0530 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:16"><a href="baz*">foo *bar</a></p>
+=== spec/0531 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15"><em>foo [bar</em> baz]</p>
+=== spec/0532 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:24">[foo <!-- raw HTML omitted --></p>
+=== spec/0533 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:13">[foo<code>](/uri)</code></p>
+=== spec/0534 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:39">[foo<a href="http://example.com/?search=%5D(uri)">http://example.com/?search=](uri)</a></p>
+=== spec/0535 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10"><a href="/url" title="title">foo</a></p>
+=== spec/0536 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:23"><a href="/uri">link [foo [bar]]</a></p>
+=== spec/0537 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:17"><a href="/uri">link [bar</a></p>
+=== spec/0538 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:29"><a href="/uri">link <em>foo <strong>bar</strong> <code>#</code></em></a></p>
+=== spec/0539 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:24"><a href="/uri"><img src="moon.jpg" alt="moon" /></a></p>
+=== spec/0540 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:22">[foo <a href="/uri">bar</a>]<a href="/uri">ref</a></p>
+=== spec/0541 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:27">[foo <em>bar <a href="/uri">baz</a></em>]<a href="/uri">ref</a></p>
+=== spec/0542 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:12">*<a href="/uri">foo*</a></p>
+=== spec/0543 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15"><a href="/uri">foo *bar</a></p>
+=== spec/0544 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:24">[foo <!-- raw HTML omitted --></p>
+=== spec/0545 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:12">[foo<code>][ref]</code></p>
+=== spec/0546 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:39">[foo<a href="http://example.com/?search=%5D%5Bref%5D">http://example.com/?search=][ref]</a></p>
+=== spec/0547 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10"><a href="/url" title="title">foo</a></p>
+=== spec/0548 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:47"><a href="/url">Толпой</a> is a Russian word.</p>
+=== spec/0549 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="4:1-4:14"><a href="/url">Baz</a></p>
+=== spec/0550 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11">[foo] <a href="/url" title="title">bar</a></p>
+=== spec/0551 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:5">[foo]<br />
+<a href="/url" title="title">bar</a></p>
+=== spec/0552 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="5:1-5:10"><a href="/url1">bar</a></p>
+=== spec/0553 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:12">[bar][foo!]</p>
+=== spec/0554 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11">[foo][ref[]</p>
+<p data-sourcepos="3:1-3:12">[ref[]: /uri</p>
+=== spec/0555 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15">[foo][ref[bar]]</p>
+<p data-sourcepos="3:1-3:16">[ref[bar]]: /uri</p>
+=== spec/0556 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:9">[[[foo]]]</p>
+<p data-sourcepos="3:1-3:15">[[[foo]]]: /url</p>
+=== spec/0557 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:12"><a href="/uri">foo</a></p>
+=== spec/0558 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="3:1-3:7"><a href="/uri">bar\</a></p>
+=== spec/0559 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:2">[]</p>
+<p data-sourcepos="3:1-3:8">[]: /uri</p>
+=== spec/0560 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:2">[<br />
+]</p>
+<p data-sourcepos="4:1-5:8">[<br />
+]: /uri</p>
+=== spec/0561 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7"><a href="/url" title="title">foo</a></p>
+=== spec/0562 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:13"><a href="/url" title="title"><em>foo</em> bar</a></p>
+=== spec/0563 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7"><a href="/url" title="title">Foo</a></p>
+=== spec/0564 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:2"><a href="/url" title="title">foo</a><br />
+[]</p>
+=== spec/0565 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:5"><a href="/url" title="title">foo</a></p>
+=== spec/0566 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11"><a href="/url" title="title"><em>foo</em> bar</a></p>
+=== spec/0567 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:13">[<a href="/url" title="title"><em>foo</em> bar</a>]</p>
+=== spec/0568 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11">[[bar <a href="/url">foo</a></p>
+=== spec/0569 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:5"><a href="/url" title="title">Foo</a></p>
+=== spec/0570 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:9"><a href="/url">foo</a> bar</p>
+=== spec/0571 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:6">[foo]</p>
+=== spec/0572 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="3:1-3:7">*<a href="/url">foo*</a></p>
+=== spec/0573 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:10"><a href="/url2">foo</a></p>
+=== spec/0574 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7"><a href="/url1">foo</a></p>
+=== spec/0575 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7"><a href="">foo</a></p>
+=== spec/0576 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:17"><a href="/url1">foo</a>(not a link)</p>
+=== spec/0577 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15">[foo]<a href="/url">bar</a></p>
+=== spec/0578 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15"><a href="/url2">foo</a><a href="/url1">baz</a></p>
+=== spec/0579 | Links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15">[foo]<a href="/url1">bar</a></p>
+=== spec/0580 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:20"><span data-lac-centered-image><img src="/url" alt="foo" title="title" /></span></p>
+=== spec/0581 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:12"><span data-lac-centered-image><img src="train.jpg" alt="foo bar" title="train &amp; tracks" /></span></p>
+=== spec/0582 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:26"><span data-lac-centered-image><img src="/url2" alt="foo bar" /></span></p>
+=== spec/0583 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:25"><span data-lac-centered-image><img src="/url2" alt="foo bar" /></span></p>
+=== spec/0584 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:14"><span data-lac-centered-image><img src="train.jpg" alt="foo bar" title="train &amp; tracks" /></span></p>
+=== spec/0585 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:20"><span data-lac-centered-image><img src="train.jpg" alt="foo bar" title="train &amp; tracks" /></span></p>
+=== spec/0586 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:17"><span data-lac-centered-image><img src="train.jpg" alt="foo" /></span></p>
+=== spec/0587 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:45">My <img src="/path/to/train.jpg" alt="foo bar" title="title" /></p>
+=== spec/0588 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:13"><span data-lac-centered-image><img src="url" alt="foo" /></span></p>
+=== spec/0589 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:9"><span data-lac-centered-image><img src="/url" alt="" /></span></p>
+=== spec/0590 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11"><span data-lac-centered-image><img src="/url" alt="foo" /></span></p>
+=== spec/0591 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11"><span data-lac-centered-image><img src="/url" alt="foo" /></span></p>
+=== spec/0592 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8"><span data-lac-centered-image><img src="/url" alt="foo" title="title" /></span></p>
+=== spec/0593 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:14"><span data-lac-centered-image><img src="/url" alt="foo bar" title="title" /></span></p>
+=== spec/0594 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8"><span data-lac-centered-image><img src="/url" alt="Foo" title="title" /></span></p>
+=== spec/0595 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:2"><img src="/url" alt="foo" title="title" /><br />
+[]</p>
+=== spec/0596 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:6"><span data-lac-centered-image><img src="/url" alt="foo" title="title" /></span></p>
+=== spec/0597 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:12"><span data-lac-centered-image><img src="/url" alt="foo bar" title="title" /></span></p>
+=== spec/0598 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:8">![[foo]]</p>
+<p data-sourcepos="3:1-3:21">[[foo]]: /url “title”</p>
+=== spec/0599 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:6"><span data-lac-centered-image><img src="/url" alt="Foo" title="title" /></span></p>
+=== spec/0600 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7">![foo]</p>
+=== spec/0601 | Images
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7">!<a href="/url" title="title">foo</a></p>
+=== spec/0602 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:20"><a href="http://foo.bar.baz">http://foo.bar.baz</a></p>
+=== spec/0603 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:47"><a href="http://foo.bar.baz/test?q=hello&amp;id=22&amp;boolean">http://foo.bar.baz/test?q=hello&amp;id=22&amp;boolean</a></p>
+=== spec/0604 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:24"><a href="irc://foo.bar:2233/baz">irc://foo.bar:2233/baz</a></p>
+=== spec/0605 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:20"><a href="MAILTO:FOO@BAR.BAZ">MAILTO:FOO@BAR.BAZ</a></p>
+=== spec/0606 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:9"><a href="a+b+c:d">a+b+c:d</a></p>
+=== spec/0607 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:26"><a href="made-up-scheme://foo,bar">made-up-scheme://foo,bar</a></p>
+=== spec/0608 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:12"><a href="http://../">http://../</a></p>
+=== spec/0609 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:20"><a href="localhost:5001/foo">localhost:5001/foo</a></p>
+=== spec/0610 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:24">&lt;<a href="http://foo.bar/baz">http://foo.bar/baz</a> bim&gt;</p>
+=== spec/0611 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:24"><a href="http://example.com/%5C%5B%5C">http://example.com/\[\</a></p>
+=== spec/0612 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:21"><a href="mailto:foo@bar.example.com">foo@bar.example.com</a></p>
+=== spec/0613 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:30"><a href="mailto:foo+special@Bar.baz-bar0.com">foo+special@Bar.baz-bar0.com</a></p>
+=== spec/0614 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:23">&lt;<a href="mailto:foo+@bar.example.com">foo+@bar.example.com</a>&gt;</p>
+=== spec/0615 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:2">&lt;&gt;</p>
+=== spec/0616 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:18">&lt; <a href="http://foo.bar">http://foo.bar</a> &gt;</p>
+=== spec/0617 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:7">&lt;m:abc&gt;</p>
+=== spec/0618 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:13">&lt;foo.bar.baz&gt;</p>
+=== spec/0619 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:18"><a href="http://example.com">http://example.com</a></p>
+=== spec/0620 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:19"><a href="mailto:foo@bar.example.com">foo@bar.example.com</a></p>
+=== spec/0621 | Autolinks (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:18"><a href="http://www.commonmark.org">www.commonmark.org</a></p>
+=== spec/0622 | Autolinks (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:51">Visit <a href="http://www.commonmark.org/help">www.commonmark.org/help</a> for more information.</p>
+=== spec/0623 | Autolinks (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:25">Visit <a href="http://www.commonmark.org">www.commonmark.org</a>.</p>
+<p data-sourcepos="3:1-3:29">Visit <a href="http://www.commonmark.org/a.b">www.commonmark.org/a.b</a>.</p>
+=== spec/0624 | Autolinks (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:41"><a href="http://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a></p>
+<p data-sourcepos="3:1-3:43"><a href="http://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a>))</p>
+<p data-sourcepos="5:1-5:43">(<a href="http://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a>)</p>
+<p data-sourcepos="7:1-7:42">(<a href="http://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a></p>
+=== spec/0625 | Autolinks (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:38"><a href="http://www.google.com/search?q=(business))+ok">www.google.com/search?q=(business))+ok</a></p>
+=== spec/0626 | Autolinks (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:40"><a href="http://www.google.com/search?q=commonmark&amp;hl=en">www.google.com/search?q=commonmark&amp;hl=en</a></p>
+<p data-sourcepos="3:1-3:38"><a href="http://www.google.com/search?q=commonmark">www.google.com/search?q=commonmark</a>&amp;hl;</p>
+=== spec/0627 | Autolinks (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:24"><a href="http://www.commonmark.org/he">www.commonmark.org/he</a>&lt;lp</p>
+=== spec/0628 | Autolinks (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:21"><a href="http://commonmark.org">http://commonmark.org</a></p>
+<p data-sourcepos="3:1-3:63">(Visit <a href="https://encrypted.google.com/search?q=Markup+(business)">https://encrypted.google.com/search?q=Markup+(business)</a>)</p>
+<p data-sourcepos="5:1-5:48">Anonymous FTP is available at <a href="ftp://foo.bar.baz">ftp://foo.bar.baz</a>.</p>
+=== spec/0629 | Autolinks (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11"><a href="mailto:foo@bar.baz">foo@bar.baz</a></p>
+=== spec/0630 | Autolinks (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:66">hello@mail+xyz.example isn’t valid, but <a href="mailto:hello+xyz@mail.example">hello+xyz@mail.example</a> is.</p>
+=== spec/0631 | Autolinks (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11"><a href="mailto:a.b-c_d@a.b">a.b-c_d@a.b</a></p>
+<p data-sourcepos="3:1-3:12"><a href="mailto:a.b-c_d@a.b">a.b-c_d@a.b</a>.</p>
+<p data-sourcepos="5:1-5:12">a.b-c_d@a.b-</p>
+<p data-sourcepos="7:1-7:12">a.b-c_d@a.b_</p>
+=== spec/0632 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:13"><!-- raw HTML omitted --><!-- raw HTML omitted --><!-- raw HTML omitted --></p>
+=== spec/0633 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:9"><!-- raw HTML omitted --><!-- raw HTML omitted --></p>
+=== spec/0634 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:12"><!-- raw HTML omitted --><!-- raw HTML omitted --></p>
+=== spec/0635 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:27"><!-- raw HTML omitted --></p>
+=== spec/0636 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:38">Foo <!-- raw HTML omitted --></p>
+=== spec/0637 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:9">&lt;33&gt; &lt;__&gt;</p>
+=== spec/0638 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15">&lt;a h*#ref=“hi”&gt;</p>
+=== spec/0639 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:26">&lt;a href=“hi’&gt; &lt;a href=hi’&gt;</p>
+=== spec/0640 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-4:10">&lt; a&gt;&lt;<br />
+foo&gt;&lt;bar/ &gt;<br />
+&lt;foo bar=baz<br />
+bim!bop /&gt;</p>
+=== spec/0641 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:25">&lt;a href=‘bar’title=title&gt;</p>
+=== spec/0642 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:11"><!-- raw HTML omitted --><!-- raw HTML omitted --></p>
+=== spec/0643 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15">&lt;/a href=“foo”&gt;</p>
+=== spec/0644 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:26">foo <!-- raw HTML omitted --></p>
+=== spec/0645 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:17">foo <!-- raw HTML omitted --> foo –&gt;</p>
+<p data-sourcepos="3:1-3:18">foo <!-- raw HTML omitted --> foo –&gt;</p>
+=== spec/0646 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:21">foo <!-- raw HTML omitted --></p>
+=== spec/0647 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:23">foo <!-- raw HTML omitted --></p>
+=== spec/0648 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:19">foo <!-- raw HTML omitted --></p>
+=== spec/0649 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:21">foo <!-- raw HTML omitted --></p>
+=== spec/0650 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:17">foo <!-- raw HTML omitted --></p>
+=== spec/0651 | Raw HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:13">&lt;a href=”&quot;”&gt;</p>
+=== spec/0652 | Disallowed Raw HTML (extension)
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:29"><!-- raw HTML omitted --> <!-- raw HTML omitted --> <!-- raw HTML omitted --> <!-- raw HTML omitted --></p>
+<!-- raw HTML omitted -->
+=== spec/0653 | Hard line breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:3">foo<br />
+baz</p>
+=== spec/0654 | Hard line breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:3">foo<br />
+baz</p>
+=== spec/0655 | Hard line breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:3">foo<br />
+baz</p>
+=== spec/0656 | Hard line breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:8">foo<br />
+bar</p>
+=== spec/0657 | Hard line breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:8">foo<br />
+bar</p>
+=== spec/0658 | Hard line breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:4"><em>foo<br />
+bar</em></p>
+=== spec/0659 | Hard line breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:4"><em>foo<br />
+bar</em></p>
+=== spec/0660 | Hard line breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:5"><code>code   span</code></p>
+=== spec/0661 | Hard line breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:5"><code>code\ span</code></p>
+=== spec/0662 | Hard line breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:5"><!-- raw HTML omitted --></p>
+=== spec/0663 | Hard line breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:5"><!-- raw HTML omitted --></p>
+=== spec/0664 | Hard line breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:4">foo\</p>
+=== spec/0665 | Hard line breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:5">foo</p>
+=== spec/0666 | Hard line breaks
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo"
+--- body
+<span id="lac-heading-foo"></span>
+<h3 data-sourcepos="1:1-1:8"><span data-lac-heading-number="0.0.1. "></span>foo\</h3>
+=== spec/0667 | Hard line breaks
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-foo"
+--- body
+<span id="lac-heading-foo"></span>
+<h3 data-sourcepos="1:1-1:7"><span data-lac-heading-number="0.0.1. "></span>foo</h3>
+=== spec/0668 | Soft line breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:3">foo<br />
+baz</p>
+=== spec/0669 | Soft line breaks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-2:4">foo<br />
+baz</p>
+=== spec/0670 | Textual content
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:15">hello $.;’there</p>
+=== spec/0671 | Textual content
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:13">Foo χρῆν</p>
+=== spec/0672 | Textual content
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p data-sourcepos="1:1-1:19">Multiple     spaces</p>

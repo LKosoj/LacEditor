@@ -55,7 +55,7 @@ final class MarkdownNoteEmbedTests: XCTestCase {
     private func render(_ text: String, provider: StubProvider?, forExport: Bool = false, vault: Bool = false) -> String {
         let context = MarkdownWikiLinkContext(resolver: MarkdownWikiLinkResolver(base: nil, paths: []), documentURL: nil)
         let url = vault ? VaultStateStore.defaultRoot(vaultID: UUID()).appendingPathComponent("open/note.md") : nil
-        return MarkdownRenderer.renderPage(text, darkMode: false, documentURL: url, forExport: forExport, wiki: provider == nil ? nil : context, embeds: provider).body
+        return MarkdownHTMLRenderer.renderPage(text, darkMode: false, documentURL: url, forExport: forExport, wiki: provider == nil ? nil : context, embeds: provider).body
     }
 
     // MARK: Поиск
@@ -135,13 +135,16 @@ final class MarkdownNoteEmbedTests: XCTestCase {
 
     // MARK: Подстановка
 
-    func testPrepareKeepsLineCount() {
+    func testEmbedKeepsLineNumbersOfNeighbours() {
         let provider = StubProvider(["a": "text"])
+        let context = MarkdownWikiLinkContext(resolver: MarkdownWikiLinkResolver(base: nil, paths: []), documentURL: nil)
         let text = "one\n\n![[a]]\n\nthree\n![[x.png]]\n"
-        let prepared = MarkdownNoteEmbed.prepare(text, syntax: syntax, context: nil, provider: provider)
-        XCTAssertEqual(prepared.blocks.count, 1)
-        XCTAssertEqual(prepared.text.components(separatedBy: "\n").count, text.components(separatedBy: "\n").count)
-        XCTAssertFalse(prepared.text.contains("![[a]]"))
+        let html = MarkdownHTMLRenderer.renderPage(text, darkMode: false, includeSourcePositions: true, wiki: context, embeds: provider).body
+        XCTAssertEqual(html.components(separatedBy: "class=\"lac-embed\"").count - 1, 1, html)
+        XCTAssertFalse(html.contains("![[a]]"), html)
+        // Строки соседних абзацев прежние: «one» на 1-й, «three» с 5-й.
+        XCTAssertTrue(html.contains("data-sourcepos=\"1:1-1:3\""), html)
+        XCTAssertTrue(html.contains("data-sourcepos=\"5:1-"), html)
     }
 
     func testEmbedRendersCard() {
@@ -239,15 +242,18 @@ final class MarkdownNoteEmbedTests: XCTestCase {
         try Data([1]).write(to: directory.appendingPathComponent("pic.png"))
         try Data([1]).write(to: directory.appendingPathComponent("doc.pdf"))
         let document = directory.appendingPathComponent("note.md")
-        func prepared(_ text: String, url: URL? = document) -> String {
-            MarkdownNoteEmbed.prepare(text, syntax: syntax, context: nil, provider: nil, documentURL: url).text
+        let context = MarkdownWikiLinkContext(resolver: MarkdownWikiLinkResolver(base: nil, paths: []), documentURL: nil)
+        func page(_ text: String, url: URL? = document) -> String {
+            MarkdownHTMLRenderer.renderPage(text, darkMode: false, documentURL: url, wiki: context).body
         }
-        XCTAssertEqual(prepared("a ![[pic.png]] b"), "a ![pic.png](pic.png) b")
-        XCTAssertEqual(prepared("![[pic.png|300]]"), "![pic.png](pic.png)")
-        XCTAssertEqual(prepared("![[doc.pdf]]"), "[doc.pdf](doc.pdf)")
-        XCTAssertEqual(prepared("![[missing.png]]"), "*Attachment unavailable: missing\\.png*".replacingOccurrences(of: "\\.", with: "."))
-        XCTAssertEqual(prepared("![[pic.png]]", url: nil), "*Attachment unavailable: pic.png*")
-        XCTAssertEqual(prepared("![[a*b_c].png]]"), "*Attachment unavailable: a\\*b\\_c].png*".replacingOccurrences(of: "c]", with: "c\\]"))
+        let image = page("a ![[pic.png]] b")
+        XCTAssertTrue(image.contains("<img src=\"pic.png\" alt=\"pic.png\" />"), image)
+        XCTAssertTrue(image.contains("a ") && image.contains(" b"), image)
+        XCTAssertTrue(page("![[pic.png|300]]").contains("<img src=\"pic.png\" alt=\"pic.png\" />"))
+        XCTAssertTrue(page("![[doc.pdf]]").contains("<a href=\"doc.pdf\">doc.pdf</a>"))
+        XCTAssertTrue(page("![[missing.png]]").contains("<em>Attachment unavailable: missing.png</em>"))
+        XCTAssertTrue(page("![[pic.png]]", url: nil).contains("<em>Attachment unavailable: pic.png</em>"))
+        XCTAssertTrue(page("![[a*b_c].png]]").contains("<em>Attachment unavailable: a*b_c].png</em>"))
     }
 
     func testImageFromRootDirectory() throws {
@@ -256,8 +262,8 @@ final class MarkdownNoteEmbedTests: XCTestCase {
         try FileManager.default.createDirectory(at: sub, withIntermediateDirectories: true)
         try Data([1]).write(to: root.appendingPathComponent("pic.png"))
         let context = MarkdownWikiLinkContext(resolver: MarkdownWikiLinkResolver(base: root, paths: []), documentURL: sub.appendingPathComponent("n.md"))
-        let result = MarkdownNoteEmbed.prepare("![[pic.png]]", syntax: syntax, context: context, provider: nil).text
-        XCTAssertEqual(result, "![pic.png](../pic.png)")
+        let result = MarkdownHTMLRenderer.renderPage("![[pic.png]]", darkMode: false, wiki: context).body
+        XCTAssertTrue(result.contains("<img src=\"../pic.png\" alt=\"pic.png\" />"), result)
     }
 
     // MARK: Провайдер папки
@@ -300,7 +306,7 @@ final class MarkdownNoteEmbedTests: XCTestCase {
         let root = try temporaryDirectory()
         try "From disk".write(to: root.appendingPathComponent("a.md"), atomically: true, encoding: .utf8)
         let context = MarkdownWikiLinkContext(resolver: MarkdownWikiLinkResolver(base: root, paths: ["a.md"]), documentURL: root.appendingPathComponent("d.md"))
-        let html = MarkdownRenderer.renderPage("![[a]]", darkMode: false, wiki: context).body
+        let html = MarkdownHTMLRenderer.renderPage("![[a]]", darkMode: false, wiki: context).body
         XCTAssertTrue(html.contains("From disk"))
         XCTAssertTrue(html.contains("href=\"a.md\""))
     }

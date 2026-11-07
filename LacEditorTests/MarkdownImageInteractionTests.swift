@@ -29,7 +29,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         controller.setUppercaseHeadingLevels([1])
         controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
         controller.viewportChanged()
-        let range = try XCTUnwrap(MarkdownPresentationParser.parse(source).images.first?.range)
+        let range = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).images.first?.range)
         func imageView() -> NSImageView? { view.subviews.compactMap { $0 as? NSImageView }.first }
         func imageRect() -> NSRect? {
             layout.ensureLayout(for: container)
@@ -95,7 +95,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         let controller = MarkdownPresentationController(textView: view, layout: layout)
         defer { controller.cancel(); window.close(); withExtendedLifetime(scroll) {} }
         controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
-        let image = try XCTUnwrap(MarkdownPresentationParser.parse(source).images.first)
+        let image = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).images.first)
         func rect() -> NSRect? {
             layout.ensureLayout(for: container)
             return layout.markdownRenderedImageRects(for: [image.paragraphRange], in: container)[image.paragraphRange]
@@ -137,7 +137,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         view.layoutSubtreeIfNeeded()
         view.displayIfNeeded()
         layout.ensureLayout(for: container)
-        let image = try XCTUnwrap(MarkdownPresentationParser.parse(source).images.first)
+        let image = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).images.first)
         XCTAssertTrue(image.isInline)
         let selection = raw.range(of: "after")
         view.setSelectedRange(selection)
@@ -181,7 +181,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         let controller = MarkdownPresentationController(textView: view, layout: layout)
         defer { controller.cancel() }
         controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
-        let range = try XCTUnwrap(MarkdownPresentationParser.parse(source).images.first?.range)
+        let range = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).images.first?.range)
         func measured() -> CGFloat? {
             layout.ensureLayout(for: container)
             return layout.markdownRenderedImageRects(for: [range], in: container)[range]?.width
@@ -226,7 +226,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         let controller = MarkdownPresentationController(textView: view, layout: layout)
         defer { controller.cancel() }
         controller.update(document: document, enabled: true, isActive: true, revision: 0, currentRevision: { 0 })
-        let image = try XCTUnwrap(MarkdownPresentationParser.parse(source).images.first)
+        let image = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).images.first)
         let key = image.isInline ? image.range : image.paragraphRange
         var rect: NSRect?
         for _ in 0..<30 {
@@ -251,7 +251,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
         view.string = source
         let range = (source as NSString).range(of: "<img src='x.png' width='0'>")
-        layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: nil)
+        layout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(source), revealedRange: nil)
         let image = NSImage(size: NSSize(width: 20, height: 10))
         image.size = .zero
         XCTAssertTrue(layout.setMarkdownInlineImage(image, for: range))
@@ -260,7 +260,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         XCTAssertEqual(rect.size, .zero)
         XCTAssertEqual(layout.markdownImageLocation(at: rect.origin, in: container), nil)
         XCTAssertEqual(storage.string, source)
-        layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: range)
+        layout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(source), revealedRange: range)
         XCTAssertNil(layout.markdownRenderedImageRects(for: [range], in: container)[range])
         withExtendedLifetime(view) {}
     }
@@ -272,7 +272,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 400, height: 200))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200), textContainer: container)
-        let result = MarkdownPresentationParser.parse(source)
+        let result = MarkdownPresentationBuilder.parse(source)
         let range = try XCTUnwrap(result.images.first?.range)
         let cell = try XCTUnwrap(result.tables.first?.rows.last?.cells.first)
         XCTAssertTrue(cell.displayRuns.contains { if case .tableImage = $0.kind { return true }; return false })
@@ -296,7 +296,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 600), textContainer: container)
         let first = (source as NSString).range(of: "![a](a.png)")
         let second = (source as NSString).range(of: "![b](b.png)")
-        layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: nil)
+        layout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(source), revealedRange: nil)
         layout.setMarkdownImage(NSImage(size: NSSize(width: 100, height: 40)), for: first)
         layout.setMarkdownImage(NSImage(size: NSSize(width: 100, height: 40)), for: second)
         layout.ensureLayout(for: container)
@@ -345,7 +345,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         coordinator.updateActivity(true)
         window.makeKeyAndOrderFront(nil)
         defer { coordinator.updateActivity(false); manager.unregister(windowID: id); window.close() }
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.last)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.last)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 100, height: 40), cell: cell))
         var generation = 0, attempts = 0
         var completed = false, timedOut = false
@@ -435,7 +435,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         coordinator.updateActivity(true)
         window.makeKeyAndOrderFront(nil)
         defer { coordinator.updateActivity(false); manager.unregister(windowID: id); window.close() }
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.last)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.last)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 100, height: 40), cell: cell))
         var timedOut = false
         var waitingForDialog = false
@@ -507,7 +507,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
-        let cells = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells)
+        let cells = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells)
         func selection() -> EditorTextSelectionSnapshot? {
             let request = EditorTextExtractionRequest(documentID: document.id, allowsTokenAtCaret: false, allowsInsertionPoint: true, requiresEditable: true)
             NotificationCenter.default.post(name: EditorCommandNotification.extractTextSelection, object: request)
@@ -582,7 +582,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         coordinator.attachLiveTextProvider()
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 100, height: 40), cell: cell))
         var child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         let emoji = (child.string as NSString).range(of: "😀")
@@ -667,7 +667,7 @@ final class MarkdownImageInteractionTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 100, height: 40), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         child.setSelectedRange((child.string as NSString).range(of: "😀"))

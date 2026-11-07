@@ -1,13 +1,4 @@
 import Foundation
-import cmark_gfm
-import cmark_gfm_extensions
-
-enum MarkdownTableCommand: Equatable {
-    case create(rows: Int, columns: Int)
-    case insertRowBefore, insertRowAfter, deleteRow, moveRowUp, moveRowDown
-    case insertColumnBefore, insertColumnAfter, deleteColumn, moveColumnLeft, moveColumnRight
-    case align(MarkdownTableAlignment)
-}
 
 enum MarkdownTableEditingService {
     static func move(in text: NSString, selection: NSRange, rows: Bool, positions: Int) -> MarkdownFormattingEdit? {
@@ -67,7 +58,7 @@ enum MarkdownTableEditingService {
             let line = lines[index]
             guard line.content.trimmingCharacters(in: .whitespaces).isEmpty,
                   !line.content.contains("\t"), (line.content as NSString).length < 4,
-                  isOutsideBlocks(text as String, line: index + 1) else { return nil }
+                  isOutsideBlocks(text as String, lines: lines, line: index) else { return nil }
             let newline = line.ending.isEmpty ? (lines.first(where: { !$0.ending.isEmpty })?.ending ?? "\n") : line.ending
             let header = "|" + String(repeating: "   |", count: columns)
             let delimiter = "|" + String(repeating: " --- |", count: columns)
@@ -329,40 +320,35 @@ enum MarkdownTableEditingService {
     private static func tableLines(_ text: String, selection: NSRange, lines: [Line]) -> TableBounds? {
         guard !text.utf8.contains(0), let selected = lines.firstIndex(where: {
             selection.location >= $0.start && NSMaxRange(selection) <= $0.start + ($0.content as NSString).length
-        }) else { return nil }
-        cmark_gfm_core_extensions_ensure_registered()
-        guard let parser = cmark_parser_new(CMARK_OPT_TABLE_SPANS) else { return nil }
-        defer { cmark_parser_free(parser) }
-        "table".withCString { if let ext = cmark_find_syntax_extension($0) { cmark_parser_attach_syntax_extension(parser, ext) } }
-        text.withCString { cmark_parser_feed(parser, $0, text.utf8.count) }
-        guard let root = cmark_parser_finish(parser) else { return nil }
-        defer { cmark_node_free(root) }
-        func find(_ current: UnsafeMutablePointer<cmark_node>, quotes: Int, nestedList: Bool) -> TableBounds? {
-            guard let name = cmark_node_get_type_string(current) else { return nil }
-            let type = String(cString: name)
-            if type == "table" {
-                let first = Int(cmark_node_get_start_line(current)) - 1
-                let last = Int(cmark_node_get_end_line(current)) - 1
-                guard first >= 0, last >= first, last < lines.count, selected >= first, selected <= last,
-                      !lines[first...last].contains(where: { $0.content.contains("\t") }) else { return nil }
-                let column = Int(cmark_node_get_start_column(current)) - 1
-                let bytes = Array(lines[first].content.utf8)
-                guard column >= 0, column <= bytes.count,
-                      let prefix = String(bytes: bytes.prefix(column), encoding: .utf8) else { return nil }
-                return TableBounds(first: first, last: last, selected: selected,
-                                   firstPrefix: (prefix as NSString).length, quoteDepth: quotes, nestedList: nestedList)
-            }
-            guard ["document", "block_quote", "list", "item"].contains(type) else { return nil }
-            let nextQuotes = quotes + (type == "block_quote" ? 1 : 0)
-            let nextList = nestedList || type == "list" || type == "item"
-            var child = cmark_node_first_child(current)
-            while let node = child {
-                if let found = find(node, quotes: nextQuotes, nestedList: nextList) { return found }
-                child = cmark_node_next(node)
+        }), let model = MarkdownEditingNode.model(of: text) else { return nil }
+        let selectedStart = lines[selected].start, selectedEnd = selectedStart + (lines[selected].content as NSString).length
+        // Номер строки, в которой лежит позиция.
+        func lineIndex(_ position: Int) -> Int? { lines.lastIndex(where: { $0.start <= position }) }
+        func find(_ blocks: [MarkdownBlockNode], quotes: Int, nestedList: Bool) -> TableBounds? {
+            for block in blocks {
+                switch block.kind {
+                case .table:
+                    // Диапазон таблицы начинается со строки заголовка (в том числе когда таблица прервала абзац) и может захватить перевод строки.
+                    let range = block.range
+                    // Другая таблица: строки номеров не ищем, просто идём дальше.
+                    guard range.length > 0, range.location <= selectedEnd, NSMaxRange(range) > selectedStart else { continue }
+                    guard !block.isUnreliable, let first = lineIndex(range.location),
+                          let last = lineIndex(NSMaxRange(range) - 1), last >= first,
+                          selected >= first, selected <= last,
+                          !lines[first...last].contains(where: { $0.content.contains("\t") }) else { return nil }
+                    return TableBounds(first: first, last: last, selected: selected, firstPrefix: range.location - lines[first].start,
+                                       quoteDepth: quotes, nestedList: nestedList)
+                case .quote, .callout, .alert:
+                    if let found = find(block.children, quotes: quotes + 1, nestedList: nestedList) { return found }
+                case .list, .listItem:
+                    if let found = find(block.children, quotes: quotes, nestedList: true) { return found }
+                default:
+                    break
+                }
             }
             return nil
         }
-        return find(root, quotes: 0, nestedList: false)
+        return find(model.blocks, quotes: 0, nestedList: false)
     }
 
     private static func parseTableRow(_ line: Line, prefix: Int?, quoteDepth: Int, nestedList: Bool) -> Row? {
@@ -388,18 +374,16 @@ enum MarkdownTableEditingService {
         return offset
     }
 
-    private static func isOutsideBlocks(_ text: String, line: Int) -> Bool {
-        guard !text.utf8.contains(0), let parser = cmark_parser_new(CMARK_OPT_TABLE_SPANS) else { return false }
-        defer { cmark_parser_free(parser) }
-        cmark_gfm_core_extensions_ensure_registered()
-        "table".withCString { if let ext = cmark_find_syntax_extension($0) { cmark_parser_attach_syntax_extension(parser, ext) } }
-        text.withCString { cmark_parser_feed(parser, $0, text.utf8.count) }
-        guard let root = cmark_parser_finish(parser) else { return false }
-        defer { cmark_node_free(root) }
-        var node = cmark_node_first_child(root)
-        while let current = node {
-            if Int(cmark_node_get_start_line(current)) <= line && line <= Int(cmark_node_get_end_line(current)) { return false }
-            node = cmark_node_next(current)
+    /// Строка `line` (с нуля) не лежит ни в одном блоке верхнего уровня.
+    private static func isOutsideBlocks(_ text: String, lines: [Line], line: Int) -> Bool {
+        guard lines.indices.contains(line), let model = MarkdownEditingNode.model(of: text) else { return false }
+        // Строка занимает [start, end) вместе с переводом строки; у последней строки без него конец включается.
+        let start = lines[line].start
+        let end = start + (lines[line].content as NSString).length + (lines[line].ending as NSString).length
+        let limit = lines[line].ending.isEmpty ? end + 1 : end
+        for block in model.blocks where block.range.length > 0 {
+            if block.range.location >= limit { break }
+            if NSMaxRange(block.range) > start { return false }
         }
         return true
     }

@@ -1054,13 +1054,7 @@ final class EditorWindowToolbarController: NSObject, NSToolbarDelegate, NSMenuDe
     }
 
     @objc private func toggleMarkdownPresentation() {
-        guard let document = appState?.selectedDocument,
-              document.language == .markdown else { return }
-        if document.isReadingMode {
-            appState?.exitReadingModeToSource()
-        } else {
-            document.isMarkdownFormatted.toggle()
-        }
+        appState?.toggleMarkdownPresentation()
         update()
     }
 }

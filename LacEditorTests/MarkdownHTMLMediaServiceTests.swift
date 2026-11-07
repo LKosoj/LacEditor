@@ -17,8 +17,8 @@ final class MarkdownHTMLMediaServiceTests: XCTestCase {
                 let literal = String(cString: pointer) as NSString
                 var end = literal.length
                 while end > 0 && [9, 10, 12, 13, 32].contains(Int(literal.character(at: end - 1))) { end -= 1 }
-                let candidate = MarkdownHTMLMediaService.TwitterProofCandidate(node: node, start: 0, end: end, widget: widget)
-                let accepted = MarkdownHTMLMediaService.provenTwitter(root: root, mathExtension: ext, options: CMARK_OPT_DEFAULT,
+                let candidate = MarkdownHTMLProof.TwitterProofCandidate(node: node, start: 0, end: end, widget: widget)
+                let accepted = MarkdownHTMLProof.provenTwitter(root: root, mathExtension: ext, options: CMARK_OPT_DEFAULT,
                     text: source as NSString, candidates: [candidate], isCancelled: { false })
                 return accepted == Set([0]) && cmark_node_get_literal(node).map { String(cString: $0) } == literal as String
             }
@@ -40,17 +40,17 @@ final class MarkdownHTMLMediaServiceTests: XCTestCase {
             guard let paragraph = cmark_node_first_child(root), let opening = cmark_node_first_child(paragraph),
                   let closing = cmark_node_last_child(paragraph), let pointer = cmark_node_get_literal(closing) else { return false }
             let original = String(cString: pointer)
-            let candidate = MarkdownHTMLMediaService.SVGProofCandidate(opening: opening, openingOffset: 0, closing: closing,
+            let candidate = MarkdownHTMLProof.SVGProofCandidate(opening: opening, openingOffset: 0, closing: closing,
                 closingOffset: (original as NSString).length, literal: source)
-            let accepted = MarkdownHTMLMediaService.provenSVG(root: root, mathExtension: ext, options: CMARK_OPT_DEFAULT,
+            let accepted = MarkdownHTMLProof.provenSVG(root: root, mathExtension: ext, options: CMARK_OPT_DEFAULT,
                 text: source as NSString, candidates: [candidate], isCancelled: { false })
-            let mismatch = MarkdownHTMLMediaService.SVGProofCandidate(opening: opening, openingOffset: 0, closing: closing,
+            let mismatch = MarkdownHTMLProof.SVGProofCandidate(opening: opening, openingOffset: 0, closing: closing,
                 closingOffset: (original as NSString).length, literal: source.replacingOccurrences(of: "red", with: "black"))
-            let rejected = MarkdownHTMLMediaService.provenSVG(root: root, mathExtension: ext, options: CMARK_OPT_DEFAULT,
+            let rejected = MarkdownHTMLProof.provenSVG(root: root, mathExtension: ext, options: CMARK_OPT_DEFAULT,
                 text: source as NSString, candidates: [mismatch], isCancelled: { false })
-            let trailing = MarkdownHTMLMediaService.SVGProofCandidate(opening: opening, openingOffset: 0, closing: closing,
+            let trailing = MarkdownHTMLProof.SVGProofCandidate(opening: opening, openingOffset: 0, closing: closing,
                 closingOffset: (original as NSString).length, literal: source + "extra")
-            let extra = MarkdownHTMLMediaService.provenSVG(root: root, mathExtension: ext, options: CMARK_OPT_DEFAULT,
+            let extra = MarkdownHTMLProof.provenSVG(root: root, mathExtension: ext, options: CMARK_OPT_DEFAULT,
                 text: source as NSString, candidates: [trailing], isCancelled: { false })
             return accepted == Set([0]) && rejected.isEmpty && extra.isEmpty && cmark_node_get_literal(closing).map { String(cString: $0) } == original
         }
@@ -88,7 +88,7 @@ final class MarkdownHTMLMediaServiceTests: XCTestCase {
         }
         let proved = MarkdownMathExtension.withDocument(source) { root, ext, _ -> Bool in
             guard let node = cmark_node_first_child(root) else { return false }
-            return MarkdownHTMLMediaService.provenDetails(root: root, mathExtension: ext, options: CMARK_OPT_DEFAULT,
+            return MarkdownHTMLProof.provenDetails(root: root, mathExtension: ext, options: CMARK_OPT_DEFAULT,
                 text: source as NSString, candidates: [(node, 0, value.summary, value.body)], isCancelled: { false }).contains(node)
         }
         XCTAssertEqual(proved, true)
@@ -101,9 +101,9 @@ final class MarkdownHTMLMediaServiceTests: XCTestCase {
             let range = (source as NSString).range(of: value)
             let result = MarkdownMathExtension.withDocument(source) { root, ext, _ -> [Int: MarkdownHTMLMediaService.ProvenText]? in
                 guard let node = cmark_node_first_child(root), cmark_node_get_type(node) == CMARK_NODE_HTML_BLOCK else { return nil }
-                let candidate = MarkdownHTMLMediaService.TextProofCandidate(node: node, start: range.location,
+                let candidate = MarkdownHTMLProof.TextProofCandidate(node: node, start: range.location,
                     end: NSMaxRange(range), text: value)
-                return MarkdownHTMLMediaService.provenTextStyles(root: root, mathExtension: ext, options: CMARK_OPT_DEFAULT,
+                return MarkdownHTMLProof.provenTextStyles(root: root, mathExtension: ext, options: CMARK_OPT_DEFAULT,
                     text: source as NSString, candidates: [candidate], isCancelled: { false })
             }
             let proven: [Int: MarkdownHTMLMediaService.ProvenText] = (result ?? nil) ?? [:]
@@ -129,9 +129,9 @@ final class MarkdownHTMLMediaServiceTests: XCTestCase {
                 child = cmark_node_next(node)
             }
             guard let opening, let closing, let literal = cmark_node_get_literal(closing) else { return nil }
-            let candidate = MarkdownHTMLMediaService.MediaProofCandidate(openingNode: opening, openingOffset: 0,
+            let candidate = MarkdownHTMLProof.MediaProofCandidate(openingNode: opening, openingOffset: 0,
                 closingNode: closing, closingOffset: (String(cString: literal) as NSString).length, expected: .media(expected))
-            let accepted = MarkdownHTMLMediaService.provenMediaIndices(root: root, mathExtension: ext, options: CMARK_OPT_DEFAULT,
+            let accepted = MarkdownHTMLProof.provenMediaIndices(root: root, mathExtension: ext, options: CMARK_OPT_DEFAULT,
                 text: source as NSString, candidates: [candidate], isCancelled: { false })
             guard let restored = cmark_node_get_literal(opening) else { return nil }
             return (accepted, String(cString: restored))
@@ -156,9 +156,9 @@ final class MarkdownHTMLMediaServiceTests: XCTestCase {
                     child = cmark_node_next(node)
                 }
                 guard let opening, let closing, let pointer = cmark_node_get_literal(closing) else { return nil }
-                let candidate = MarkdownHTMLMediaService.MediaProofCandidate(openingNode: opening, openingOffset: 0,
+                let candidate = MarkdownHTMLProof.MediaProofCandidate(openingNode: opening, openingOffset: 0,
                     closingNode: closing, closingOffset: (String(cString: pointer) as NSString).length, expected: expected)
-                return MarkdownHTMLMediaService.provenMediaIndices(root: root, mathExtension: ext, options: CMARK_OPT_DEFAULT,
+                return MarkdownHTMLProof.provenMediaIndices(root: root, mathExtension: ext, options: CMARK_OPT_DEFAULT,
                     text: source as NSString, candidates: duplicate ? [candidate, candidate] : [candidate], isCancelled: { false })
             } ?? nil)
         }
@@ -173,7 +173,7 @@ final class MarkdownHTMLMediaServiceTests: XCTestCase {
     func testInlineAndNestedMediaUseExactSourceRanges() {
         let source = "中文😀 before <video controls><source src='a.mp4'>fallback **bold**</video> after\r\n\r\ntext <iframe src='https://example.invalid'>fallback</iframe> end\r\n\r\n<div>before <audio src='sound.wav'></audio> after</div>"
         let text = source as NSString
-        let presentation = MarkdownPresentationParser.parse(source)
+        let presentation = MarkdownPresentationBuilder.parse(source)
         XCTAssertEqual(presentation.audioBlocks.count, 2)
         XCTAssertEqual(presentation.audioBlocks.map { text.substring(with: $0.range) }, ["<video controls><source src='a.mp4'>fallback **bold**</video>", "<audio src='sound.wav'></audio>"])
         XCTAssertTrue(presentation.audioBlocks.allSatisfy(\.isInline))
@@ -182,28 +182,28 @@ final class MarkdownHTMLMediaServiceTests: XCTestCase {
         XCTAssertTrue(presentation.iframeBlocks.first?.html.contains(">fallback</iframe>") == true)
         XCTAssertTrue(presentation.iframeBlocks.first?.html.contains("sandbox=\"allow-scripts\"") == true)
         let inert = "before <select><video src='hidden.mp4'></video></select> and <template><audio src='hidden.wav'></audio></template> after"
-        let rejected = MarkdownPresentationParser.parse(inert)
+        let rejected = MarkdownPresentationBuilder.parse(inert)
         XCTAssertTrue(rejected.audioBlocks.isEmpty)
         XCTAssertTrue(rejected.iframeBlocks.isEmpty)
         let split = "before <video src='a.mp4'>\n\ntext\n\n</video> after"
-        XCTAssertTrue(MarkdownPresentationParser.parse(split).audioBlocks.isEmpty)
+        XCTAssertTrue(MarkdownPresentationBuilder.parse(split).audioBlocks.isEmpty)
         let fallback = "before <video src='a.mp4'><img src='fallback.png'></video> after"
-        let fallbackPresentation = MarkdownPresentationParser.parse(fallback)
+        let fallbackPresentation = MarkdownPresentationBuilder.parse(fallback)
         XCTAssertEqual(fallbackPresentation.audioBlocks.count, 1)
         XCTAssertTrue(fallbackPresentation.images.isEmpty)
         let standalone = "<video src='a.mp4'><img src='fallback.png'></video>"
-        let standalonePresentation = MarkdownPresentationParser.parse(standalone)
+        let standalonePresentation = MarkdownPresentationBuilder.parse(standalone)
         XCTAssertEqual(standalonePresentation.audioBlocks.count, 1)
         XCTAssertTrue(standalonePresentation.images.isEmpty)
         let audioFallback = "before <audio src='a.wav'><img src='fallback.png'></audio> after"
-        let audioFallbackPresentation = MarkdownPresentationParser.parse(audioFallback)
+        let audioFallbackPresentation = MarkdownPresentationBuilder.parse(audioFallback)
         XCTAssertEqual(audioFallbackPresentation.audioBlocks.count, 1)
         XCTAssertTrue(audioFallbackPresentation.images.isEmpty)
         let objectFallback = "before <object data='movie.mp4'><img src='fallback.png'></object> after"
-        XCTAssertTrue(MarkdownPresentationParser.parse(objectFallback).images.isEmpty)
+        XCTAssertTrue(MarkdownPresentationBuilder.parse(objectFallback).images.isEmpty)
         XCTAssertEqual(try? MarkdownImageUploadService.images(in: objectFallback).map(\.address), ["fallback.png"])
         let mixedFallback = "before <video src='a.mp4'>![x](x.png) $x$ :smile:</video> after\n\n:smile:"
-        let mixedPresentation = MarkdownPresentationParser.parse(mixedFallback, includeEmojiCandidates: true)
+        let mixedPresentation = MarkdownPresentationBuilder.parse(mixedFallback, includeEmojiCandidates: true)
         XCTAssertEqual(mixedPresentation.audioBlocks.count, 1)
         XCTAssertTrue(mixedPresentation.images.isEmpty)
         XCTAssertTrue(mixedPresentation.inlineFormulas.isEmpty)
@@ -556,9 +556,9 @@ final class MarkdownHTMLMediaServiceTests: XCTestCase {
         let checked = try XCTUnwrap(MarkdownMathExtension.withDocument(source) { root, extensionNode, _ -> Bool in
             guard let node = cmark_node_first_child(root), let literal = cmark_node_get_literal(node) else { return false }
             let original = String(cString: literal)
-            let accepted = MarkdownHTMLMediaService.provenPageBreaks(root: root, mathExtension: extensionNode, options: 0,
+            let accepted = MarkdownHTMLProof.provenPageBreaks(root: root, mathExtension: extensionNode, options: 0,
                 text: source as NSString, candidates: [(node, 0, "page-break-after: always")], isCancelled: { false })
-            let changed = MarkdownHTMLMediaService.provenPageBreaks(root: root, mathExtension: extensionNode, options: 0,
+            let changed = MarkdownHTMLProof.provenPageBreaks(root: root, mathExtension: extensionNode, options: 0,
                 text: source as NSString, candidates: [(node, 0, "page-break-after:always")], isCancelled: { false })
             return accepted.contains(node) && changed.isEmpty && cmark_node_get_literal(node).map { String(cString: $0) } == original
         })

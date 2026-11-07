@@ -5,7 +5,7 @@ final class MarkdownEmojiStatisticsTests: XCTestCase {
     func testResolvedEmojiChangesReadableWordsAndKeepsSourceSelection() throws {
         let source = "Hi :smile: and :wave: 中文"
         let raw = source as NSString
-        let base = try XCTUnwrap(MarkdownPresentationParser.parse(source, includeReadableText: true).readableText)
+        let base = try XCTUnwrap(MarkdownPresentationBuilder.parse(source, includeReadableText: true).readableText)
         let mapped = try XCTUnwrap(base.replacingEmojiText([
             (raw.range(of: ":smile:"), "😄"), (raw.range(of: ":wave:"), "👋")
         ]))
@@ -22,7 +22,7 @@ final class MarkdownEmojiStatisticsTests: XCTestCase {
 
     func testEntitySpellingAndAtomicBoundaries() throws {
         let source = "Hi &colon;smile&colon;!", raw = source as NSString
-        let base = try XCTUnwrap(MarkdownPresentationParser.parse(source, includeReadableText: true).readableText)
+        let base = try XCTUnwrap(MarkdownPresentationBuilder.parse(source, includeReadableText: true).readableText)
         let token = raw.range(of: "&colon;smile&colon;")
         let mapped = try XCTUnwrap(base.replacingEmojiText([(token, "😄")]))
         XCTAssertEqual(mapped.text()?.trimmingCharacters(in: .whitespacesAndNewlines), "Hi 😄!")

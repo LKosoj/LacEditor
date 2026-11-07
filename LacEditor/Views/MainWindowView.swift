@@ -330,6 +330,14 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         )
         vaultNewerAccessory.isHidden = true
         contentItem.addTopAlignedAccessoryViewController(vaultNewerAccessory)
+        let formattingBarAccessory = FindBarAccessoryController(
+            rootView: AnyView(
+                MarkdownFormattingBarHost()
+                    .environmentObject(appState)
+            )
+        )
+        formattingBarAccessory.isHidden = true
+        contentItem.addTopAlignedAccessoryViewController(formattingBarAccessory)
         controller.splitView.dividerStyle = .thin
         controller.splitView.isVertical = true
         controller.view.wantsLayer = true
@@ -355,6 +363,8 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         context.coordinator.observeVaultPage(appState: appState)
         context.coordinator.vaultNewerAccessory = vaultNewerAccessory
         context.coordinator.observeVaultNewer(appState: appState)
+        context.coordinator.formattingBarAccessory = formattingBarAccessory
+        context.coordinator.observeMarkdownFormattingBar(appState: appState)
         context.coordinator.applyCollapseState(
             isVisible: appState.isSidebarEffectivelyVisible
         )
@@ -396,6 +406,8 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
         private var vaultPageObservation: AnyCancellable?
         weak var vaultNewerAccessory: NSSplitViewItemAccessoryViewController?
         private var vaultNewerObservation: AnyCancellable?
+        weak var formattingBarAccessory: NSSplitViewItemAccessoryViewController?
+        private var formattingBarObservation: AnyCancellable?
         private var writerProjectObservation: AnyCancellable?
         private var writerNoticeObservation: AnyCancellable?
         private var findBarObservation: AnyCancellable?
@@ -483,6 +495,36 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
                 }
         }
 
+        /// Панель форматирования видна у оформленного Markdown выбранной вкладки; значение читается после изменения.
+        func observeMarkdownFormattingBar(appState: AppState) {
+            func visible(_ appState: AppState?) -> Bool {
+                guard let appState, let document = appState.selectedDocument else { return false }
+                return MarkdownFormattingBar.isVisible(document: document, isDistractionFree: appState.isDistractionFree)
+            }
+            formattingBarAccessory?.isHidden = !visible(appState)
+            // Документы сами не сообщают AppState об изменениях, поэтому следим за выбранным документом.
+            // `@Published` сообщает до записи значения: документ берём из пришедших значений, а видимость читаем на следующем проходе main.
+            formattingBarObservation = Publishers.CombineLatest3(appState.$selectedDocumentID, appState.$documents, appState.$isDistractionFree)
+                .map { id, documents, _ -> AnyPublisher<Void, Never> in
+                    guard let document = documents.first(where: { $0.id == id }) else { return Just(()).eraseToAnyPublisher() }
+                    // Только поля, от которых зависит видимость: изменения текста и каретки сюда не попадают.
+                    return Publishers.MergeMany(
+                        document.$language.map { _ in () }.eraseToAnyPublisher(),
+                        document.$isMarkdownFormatted.map { _ in () }.eraseToAnyPublisher(),
+                        document.$isReadingMode.map { _ in () }.eraseToAnyPublisher(),
+                        document.$performanceProfile.map { _ in () }.eraseToAnyPublisher(),
+                        document.$ioState.map { _ in () }.eraseToAnyPublisher()
+                    ).eraseToAnyPublisher()
+                }
+                .switchToLatest()
+                .receive(on: DispatchQueue.main)
+                .map { [weak appState] in visible(appState) }
+                .removeDuplicates()
+                .sink { [weak self] isVisible in
+                    self?.formattingBarAccessory?.isHidden = !isVisible
+                }
+        }
+
         /// Плашка «Проект не найден» видна, пока у вкладки есть `writerProjectIssue`.
         func observeWriterProjectIssue(appState: AppState) {
             writerProjectObservation = appState.$writerProjectIssue
@@ -521,6 +563,7 @@ private struct NativeSidebarSplitView: NSViewControllerRepresentable {
             externalChangeObservation = nil
             vaultPageObservation = nil
             vaultNewerObservation = nil
+            formattingBarObservation = nil
             writerProjectObservation = nil
             writerNoticeObservation = nil
             collapseObservation?.invalidate()
@@ -721,7 +764,9 @@ private struct DocumentEditorPane: View {
             },
             wikiSource: { [weak document, weak appState] in
                 MarkdownWikiLinkSource(root: appState?.folderWorkspace.rootURL, documentURL: document?.url)
-            }
+            },
+            requestMarkdownLink: { appState.presentMarkdownLink() },
+            requestToggleMarkdownPresentation: { appState.toggleMarkdownPresentation() }
         )
         .disabled(appState.isOpeningPlaceholder(document))
     }

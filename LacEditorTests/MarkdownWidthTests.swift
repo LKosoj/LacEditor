@@ -115,7 +115,7 @@ final class MarkdownWidthTests: XCTestCase {
         let styled = await waitFor { (view.textStorage?.attribute(.font, at: heading.location, effectiveRange: nil) as? NSFont)?.fontDescriptor.object(forKey: .featureSettings) != nil }
         XCTAssertTrue(styled)
         let afterParent = view.string
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(afterParent).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(afterParent).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 180, height: 40), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         child.setMarkedText("文", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: 0, length: 0))
@@ -166,7 +166,7 @@ final class MarkdownWidthTests: XCTestCase {
         view.unmarkText()
         let stillCentered = await waitFor { alignment(1) == .center }
         XCTAssertTrue(stillCentered)
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(view.string).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(view.string).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 180, height: 40), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         child.setMarkedText("文", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: 0, length: 1))
@@ -250,7 +250,7 @@ final class MarkdownWidthTests: XCTestCase {
         let applied = await waitFor { coordinator.uppercaseHeadingLevels == [1] }
         XCTAssertTrue(applied)
         XCTAssertEqual(view.string, composing)
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(view.string).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(view.string).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 180, height: 40), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         child.setMarkedText("文", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: 0, length: 0))
@@ -313,7 +313,7 @@ final class MarkdownWidthTests: XCTestCase {
             let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
             scroll.documentView = view
             view.setLayoutOrientation(orientation)
-            let parsed = MarkdownPresentationParser.parse(source)
+            let parsed = MarkdownPresentationBuilder.parse(source)
             let range = try XCTUnwrap(parsed.pageBreaks.first)
             XCTAssertEqual(raw.substring(with: range), markup)
             let after = raw.range(of: "after")
@@ -393,10 +393,10 @@ final class MarkdownWidthTests: XCTestCase {
     func testNativePageBreakRequiresConfirmedHTMLContext() {
         let markup = "<div style='page-break-after:always'></div>"
         for source in ["`" + markup + "`", "<script>" + markup + "</script>", "<template>" + markup + "</template>", "<select>" + markup + "</select>", "<div style='page-break-after:always' onclick='x'></div>"] {
-            XCTAssertTrue(MarkdownPresentationParser.parse(source).pageBreaks.isEmpty, source)
+            XCTAssertTrue(MarkdownPresentationBuilder.parse(source).pageBreaks.isEmpty, source)
         }
         let source = "😀\r\n\r\n" + markup + "\r\n\r\n" + markup
-        let ranges = MarkdownPresentationParser.parse(source).pageBreaks
+        let ranges = MarkdownPresentationBuilder.parse(source).pageBreaks
         XCTAssertEqual(ranges.count, 2)
         XCTAssertTrue(ranges.allSatisfy { (source as NSString).substring(with: $0) == markup })
     }
@@ -1058,7 +1058,7 @@ final class MarkdownWidthTests: XCTestCase {
         let container = try XCTUnwrap(view.textContainer)
         let range = (source as NSString).range(of: "![图](a.png)")
         view.setSelectedRange(NSRange(location: (source as NSString).length, length: 0))
-        layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: nil)
+        layout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(source), revealedRange: nil)
         layout.setMarkdownImage(NSImage(size: NSSize(width: 120, height: 80)), for: range)
         layout.ensureLayout(for: container)
         let rect = try XCTUnwrap(layout.markdownRenderedImageRects(for: [range], in: container)[range])
@@ -1092,7 +1092,7 @@ final class MarkdownWidthTests: XCTestCase {
         let container = NSTextContainer(containerSize: NSSize(width: 500, height: 600))
         layout.addTextContainer(container)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 400), textContainer: container)
-        let result = MarkdownPresentationParser.parse(source)
+        let result = MarkdownPresentationBuilder.parse(source)
         XCTAssertEqual(result.inlineFormulas.count, 2)
         let ranges = result.inlineFormulas.map(\.range)
         XCTAssertNotEqual(ranges.first, ranges.last)
@@ -1131,7 +1131,7 @@ final class MarkdownWidthTests: XCTestCase {
         window.makeKeyAndOrderFront(nil)
         view.setLayoutOrientation(.vertical)
         view.setSelectedRange((source as NSString).range(of: "after"))
-        let result = MarkdownPresentationParser.parse(source)
+        let result = MarkdownPresentationBuilder.parse(source)
         layout.setMarkdownPresentation(result, revealedRange: (source as NSString).range(of: "after"))
         let formula = try XCTUnwrap(result.inlineFormulas.first)
         XCTAssertTrue(layout.setMarkdownInlineImage(NSImage(size: NSSize(width: 80, height: 30)), for: formula.range))
@@ -1174,7 +1174,7 @@ final class MarkdownWidthTests: XCTestCase {
         view.unmarkText()
         let parentApplied = await waitFor { coordinator.listStyles.orderedStyle(at: 1) == .upperRoman }
         XCTAssertTrue(parentApplied)
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(view.string).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(view.string).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 180, height: 40), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         child.setMarkedText("文", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: 0, length: 1))
@@ -1206,7 +1206,7 @@ final class MarkdownWidthTests: XCTestCase {
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView)
         let scroll = try XCTUnwrap(coordinator.scrollView)
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(view.string).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(view.string).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 180, height: 40), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         child.setMarkedText("中", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: 0, length: 1))
@@ -1235,7 +1235,7 @@ final class MarkdownWidthTests: XCTestCase {
         show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView)
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(view.string).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(view.string).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 180, height: 40), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         child.setMarkedText("中", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: 0, length: 1))
@@ -1260,7 +1260,7 @@ final class MarkdownWidthTests: XCTestCase {
         view.setSelectedRange(NSRange(location: (view.string as NSString).length, length: 0))
         let layout = try XCTUnwrap(coordinator.foldLayoutManager)
         let container = try XCTUnwrap(view.textContainer)
-        let updatedCell = try XCTUnwrap(MarkdownPresentationParser.parse(view.string).tables.first?.rows.last?.cells.first)
+        let updatedCell = try XCTUnwrap(MarkdownPresentationBuilder.parse(view.string).tables.first?.rows.last?.cells.first)
         let ready = await waitFor { layout.markdownTableFrame(for: updatedCell, in: container) != nil }
         XCTAssertTrue(ready)
         let frame = try XCTUnwrap(layout.markdownTableFrame(for: updatedCell, in: container))
@@ -1294,7 +1294,7 @@ final class MarkdownWidthTests: XCTestCase {
         let ready = await waitFor { coordinator.foldLayoutManager?.markdownRightToLeft == true }
         XCTAssertTrue(ready)
         let view = try XCTUnwrap(coordinator.textView)
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(view.string).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(view.string).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 180, height: 40), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         XCTAssertEqual(child.defaultParagraphStyle?.baseWritingDirection, .rightToLeft)
@@ -1333,7 +1333,7 @@ final class MarkdownWidthTests: XCTestCase {
         let ready = await waitFor { coordinator.textView != nil }
         XCTAssertTrue(ready)
         let view = try XCTUnwrap(coordinator.textView), layout = try XCTUnwrap(coordinator.foldLayoutManager)
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         let parsed = await waitFor { coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 180, height: 40), cell: cell) }
         XCTAssertTrue(parsed)
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
@@ -1374,7 +1374,7 @@ final class MarkdownWidthTests: XCTestCase {
         let ready = await waitFor { coordinator.strikeCompletedTasks && coordinator.textView != nil }
         XCTAssertTrue(ready)
         let view = try XCTUnwrap(coordinator.textView)
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 180, height: 40), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         let layout = try XCTUnwrap(child.layoutManager)
@@ -1428,7 +1428,7 @@ final class MarkdownWidthTests: XCTestCase {
         let parentApplied = await waitFor { coordinator.editorLigatures == 2 }
         XCTAssertTrue(parentApplied)
         XCTAssertEqual((storage.attribute(.ligature, at: 2, effectiveRange: nil) as? NSNumber)?.intValue, 2)
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(view.string).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(view.string).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 180, height: 40), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         let childStorage = try XCTUnwrap(child.textStorage)
@@ -1596,7 +1596,7 @@ final class MarkdownWidthTests: XCTestCase {
         let parentApplied = await waitFor { layout.markdownTOCMaxLevel == 1 }
         XCTAssertTrue(parentApplied)
         let current = view.string
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(current).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(current).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 180, height: 40), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         child.setMarkedText("文", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: 0, length: 0))

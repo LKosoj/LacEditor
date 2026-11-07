@@ -43,13 +43,13 @@ final class MarkdownMathExtensionTests: XCTestCase {
 
     func testInlineMathOptionsKeepBlockMathAndUseLegacyDelimiters() throws {
         let source = "正常 $x$ and $ spaced $5\n\n$$\ny\n$$"
-        let modern = MarkdownPresentationParser.parse(source)
+        let modern = MarkdownPresentationBuilder.parse(source)
         XCTAssertEqual(modern.inlineFormulas.map(\.source), ["x"])
         XCTAssertEqual(modern.formulas.count, 1)
-        let legacy = MarkdownPresentationParser.parse(source, syntax: .init(legacyInlineMath: true))
+        let legacy = MarkdownPresentationBuilder.parse(source, syntax: .init(legacyInlineMath: true))
         XCTAssertEqual(legacy.inlineFormulas.map(\.source), ["x", " spaced "])
         XCTAssertEqual(legacy.formulas.count, 1)
-        let disabled = MarkdownPresentationParser.parse(source, syntax: .init(inlineMath: false))
+        let disabled = MarkdownPresentationBuilder.parse(source, syntax: .init(inlineMath: false))
         XCTAssertTrue(disabled.inlineFormulas.isEmpty)
         XCTAssertEqual(disabled.formulas.count, 1)
         XCTAssertEqual(source, "正常 $x$ and $ spaced $5\n\n$$\ny\n$$")
@@ -82,10 +82,10 @@ final class MarkdownMathExtensionTests: XCTestCase {
             let syntax = AppPreferences(defaults: defaults).markdownSyntax
             XCTAssertEqual(syntax.inlineMath, enabled)
             XCTAssertEqual(syntax.legacyInlineMath, legacy)
-            let parsed = MarkdownPresentationParser.parse(source, syntax: syntax)
+            let parsed = MarkdownPresentationBuilder.parse(source, syntax: syntax)
             XCTAssertEqual(parsed.inlineFormulas.map(\.source), expected)
             XCTAssertEqual(parsed.formulas.map(\.source), ["y\n"])
-            let page = MarkdownRenderer.renderPage(source, darkMode: false, syntax: syntax)
+            let page = MarkdownHTMLRenderer.renderPage(source, darkMode: false, syntax: syntax)
             XCTAssertEqual(page.formulas.filter { !$0.display }.map(\.source), expected)
             XCTAssertEqual(page.formulas.filter(\.display).map(\.source), ["y\n"])
             let copied = try XCTUnwrap(MarkdownClipboardCopyService.project(source, selection: selection, syntax: syntax))
@@ -100,27 +100,27 @@ final class MarkdownMathExtensionTests: XCTestCase {
 
     func testSmartPunctuationUsesSnapshotWithoutChangingSource() {
         let source = "# \"Hello\" -- 世界"
-        XCTAssertEqual(MarkdownPresentationParser.parse(source).headings.first?.title, "“Hello” – 世界")
-        XCTAssertEqual(MarkdownPresentationParser.parse(source, syntax: .init(smartPunctuation: false)).headings.first?.title, "\"Hello\" -- 世界")
+        XCTAssertEqual(MarkdownPresentationBuilder.parse(source).headings.first?.title, "“Hello” – 世界")
+        XCTAssertEqual(MarkdownPresentationBuilder.parse(source, syntax: .init(smartPunctuation: false)).headings.first?.title, "\"Hello\" -- 世界")
         XCTAssertEqual(source, "# \"Hello\" -- 世界")
     }
 
     func testClosingDollarImmediatelyAfterBackslashDoesNotCloseInEitherRule() {
         for syntax in [MarkdownSyntaxOptions(), MarkdownSyntaxOptions(legacyInlineMath: true)] {
-            XCTAssertTrue(MarkdownPresentationParser.parse("$a\\$", syntax: syntax).inlineFormulas.isEmpty)
-            XCTAssertTrue(MarkdownPresentationParser.parse("$a\\\\$", syntax: syntax).inlineFormulas.isEmpty)
-            XCTAssertEqual(MarkdownPresentationParser.parse("$a\\\\$b$", syntax: syntax).inlineFormulas.map(\.source), ["a\\\\$b"])
+            XCTAssertTrue(MarkdownPresentationBuilder.parse("$a\\$", syntax: syntax).inlineFormulas.isEmpty)
+            XCTAssertTrue(MarkdownPresentationBuilder.parse("$a\\\\$", syntax: syntax).inlineFormulas.isEmpty)
+            XCTAssertEqual(MarkdownPresentationBuilder.parse("$a\\\\$b$", syntax: syntax).inlineFormulas.map(\.source), ["a\\\\$b"])
             let mixed = "`$code$` $x$ and $y$\n\n<div>$raw$</div>"
-            XCTAssertEqual(MarkdownPresentationParser.parse(mixed, syntax: syntax).inlineFormulas.map(\.source), ["x", "y"])
+            XCTAssertEqual(MarkdownPresentationBuilder.parse(mixed, syntax: syntax).inlineFormulas.map(\.source), ["x", "y"])
         }
     }
 
     func testChangedTableCellUsesSyntaxSnapshot() throws {
         let source = "| A |\n|---|\n| $x$ |"
         let syntax = MarkdownSyntaxOptions(inlineMath: false)
-        let table = try XCTUnwrap(MarkdownPresentationParser.parse(source, syntax: syntax).tables.first)
+        let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(source, syntax: syntax).tables.first)
         let row = try XCTUnwrap(table.rows.last)
-        let changed = MarkdownPresentationParser.tableRowDisplay(row, text: source as NSString, previous: row,
+        let changed = MarkdownPresentationBuilder.tableRowDisplay(row, text: source as NSString, previous: row,
                                                                   changedColumn: 0, referenceLabels: [], syntax: syntax)
         let cell = try XCTUnwrap(changed.cells.first)
         XCTAssertEqual(cell.displayText?.trimmingCharacters(in: .whitespaces), "$x$")
@@ -187,7 +187,7 @@ final class MarkdownMathExtensionTests: XCTestCase {
     func testQuotedMathSourceRangeAndSemanticTextRemainDistinct() throws {
         let source = "😀\r\n\r\n> $$\r\n> 中文😀\r\n> $$\r\n\r\n# real"
         let parsed: (NSRange, String)? = MarkdownMathExtension.withDocument(source) { root, ext, _ in
-            let mapping = MarkdownPresentationParser.Source(source)
+            let mapping = MarkdownSourcePositions(source)
             func find(_ node: OpaquePointer) -> (NSRange, String)? {
                 if cmark_node_get_syntax_extension(node) == ext, let range = mapping.range(node),
                    let literal = cmark_node_get_literal(node) { return (range, String(cString: literal)) }
@@ -226,7 +226,7 @@ final class MarkdownMathExtensionTests: XCTestCase {
             let result = try XCTUnwrap(Self.inspect(source))
             XCTAssertEqual(result.blocks, ["中文😀\n"])
             XCTAssertEqual(result.headings, ["real"])
-            let parsed = MarkdownPresentationParser.parse(source)
+            let parsed = MarkdownPresentationBuilder.parse(source)
             let formula = try XCTUnwrap(parsed.formulas.first)
             XCTAssertEqual((source as NSString).substring(with: formula.range), "$$" + newline + "    中文😀" + newline + "    $$")
         }
@@ -238,7 +238,7 @@ final class MarkdownMathExtensionTests: XCTestCase {
             let result = try XCTUnwrap(Self.inspect(source))
             XCTAssertEqual(result.blocks, ["中文😀\n"])
             XCTAssertEqual(result.headings, ["real"])
-            let formula = try XCTUnwrap(MarkdownPresentationParser.parse(source).formulas.first)
+            let formula = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).formulas.first)
             XCTAssertEqual((source as NSString).substring(with: formula.range), "$$" + newline + ">   中文😀" + newline + ">   $$")
             let unclosed = ["> - $$", ">   text", "", "  $$", "", "# real"].joined(separator: newline)
             XCTAssertTrue(try XCTUnwrap(Self.inspect(unclosed)).blocks.isEmpty)
@@ -251,7 +251,7 @@ final class MarkdownMathExtensionTests: XCTestCase {
                 let source = ["- \(marker) $$", "  中文😀", "  $$", "- sibling"].joined(separator: newline)
                 let result = try XCTUnwrap(Self.inspect(source))
                 XCTAssertEqual(result.blocks, ["中文😀\n"], source)
-                let parsed = MarkdownPresentationParser.parse(source)
+                let parsed = MarkdownPresentationBuilder.parse(source)
                 let formula = try XCTUnwrap(parsed.formulas.first, source)
                 XCTAssertEqual((source as NSString).substring(with: formula.range), "$$" + newline + "  中文😀" + newline + "  $$")
                 let checkbox = try XCTUnwrap(parsed.taskCheckboxes.first, source)
@@ -264,7 +264,7 @@ final class MarkdownMathExtensionTests: XCTestCase {
             for marker in ["[ ]", "[x]", "[X]"] {
                 let quoted = ["> - \(marker) $$", ">   中文😀", ">   $$"].joined(separator: newline)
                 XCTAssertEqual(try XCTUnwrap(Self.inspect(quoted)).blocks, ["中文😀\n"], quoted)
-                let parsed = MarkdownPresentationParser.parse(quoted)
+                let parsed = MarkdownPresentationBuilder.parse(quoted)
                 let formula = try XCTUnwrap(parsed.formulas.first, quoted)
                 XCTAssertEqual((quoted as NSString).substring(with: formula.range), "$$" + newline + ">   中文😀" + newline + ">   $$")
                 let checkbox = try XCTUnwrap(parsed.taskCheckboxes.first, quoted)
@@ -315,7 +315,7 @@ final class MarkdownMathExtensionTests: XCTestCase {
                     let result = try XCTUnwrap(Self.inspect(source))
                     XCTAssertEqual(result.blocks, ["中文😀\n"])
                     XCTAssertEqual(result.headings, ["real"])
-                    let formula = try XCTUnwrap(MarkdownPresentationParser.parse(source).formulas.first)
+                    let formula = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).formulas.first)
                     XCTAssertEqual((source as NSString).substring(with: formula.range), "$$" + newline + indent + "中文😀" + newline + indent + "$$")
                     let unclosed = [marker + "$$", indent + "x", "- sibling", indent + "$$", "", "# real"].joined(separator: newline)
                     XCTAssertTrue(try XCTUnwrap(Self.inspect(unclosed)).blocks.isEmpty)
@@ -333,7 +333,7 @@ final class MarkdownMathExtensionTests: XCTestCase {
                 let result = try XCTUnwrap(Self.inspect(source))
                 XCTAssertEqual(result.blocks, ["中文😀\n"])
                 XCTAssertEqual(result.headings, ["real"])
-                let formula = try XCTUnwrap(MarkdownPresentationParser.parse(source).formulas.first)
+                let formula = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).formulas.first)
                 XCTAssertEqual((source as NSString).substring(with: formula.range), "$$" + newline + indent + "中文😀" + newline + indent + "$$")
                 let unclosed = ["> -\t$$", indent + "x", "> - sibling", indent + "$$"].joined(separator: newline)
                 XCTAssertTrue(try XCTUnwrap(Self.inspect(unclosed)).blocks.isEmpty)
@@ -347,7 +347,7 @@ final class MarkdownMathExtensionTests: XCTestCase {
             let result = try XCTUnwrap(Self.inspect(source))
             XCTAssertEqual(result.blocks, ["中文😀\n"])
             XCTAssertEqual(result.headings, ["real"])
-            let formula = try XCTUnwrap(MarkdownPresentationParser.parse(source).formulas.first)
+            let formula = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).formulas.first)
             XCTAssertEqual((source as NSString).substring(with: formula.range), "$$" + newline + ">\t中文😀" + newline + ">\t$$")
         }
     }
@@ -358,7 +358,7 @@ final class MarkdownMathExtensionTests: XCTestCase {
             let result = try XCTUnwrap(Self.inspect(source))
             XCTAssertEqual(result.blocks, ["  中文😀\n"])
             XCTAssertEqual(result.headings, ["real"])
-            let formula = try XCTUnwrap(MarkdownPresentationParser.parse(source).formulas.first)
+            let formula = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).formulas.first)
             XCTAssertEqual(formula.source, "  中文😀\n")
             XCTAssertEqual((source as NSString).substring(with: formula.range), "$$" + newline + "\t中文😀" + newline + "\t$$")
             let unclosed = ["- $$", "\tx", "- sibling", "\t$$"].joined(separator: newline)
@@ -373,7 +373,7 @@ final class MarkdownMathExtensionTests: XCTestCase {
                 let result = try XCTUnwrap(Self.inspect(source))
                 XCTAssertEqual(result.blocks, ["中文😀\n"])
                 XCTAssertEqual(result.headings, ["real"])
-                let formula = try XCTUnwrap(MarkdownPresentationParser.parse(source).formulas.first)
+                let formula = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).formulas.first)
                 XCTAssertEqual((source as NSString).substring(with: formula.range), "$$" + newline + indent + "中文😀" + newline + indent + "$$")
                 let unclosed = ["> 1.\t$$", indent + "x", "> 2. sibling", indent + "$$"].joined(separator: newline)
                 XCTAssertTrue(try XCTUnwrap(Self.inspect(unclosed)).blocks.isEmpty)
@@ -392,7 +392,7 @@ final class MarkdownMathExtensionTests: XCTestCase {
                 let result = try XCTUnwrap(Self.inspect(source))
                 XCTAssertEqual(result.blocks, ["中文😀\n"])
                 XCTAssertEqual(result.headings, ["real"])
-                let formula = try XCTUnwrap(MarkdownPresentationParser.parse(source).formulas.first)
+                let formula = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).formulas.first)
                 XCTAssertEqual((source as NSString).substring(with: formula.range), "$$" + newline + indent + "中文😀" + newline + indent + "$$")
                 let unclosed = ((before.isEmpty ? [] : [before]) + [marker + "$$", indent + "x", sibling, indent + "$$"]).joined(separator: newline)
                 XCTAssertTrue(try XCTUnwrap(Self.inspect(unclosed)).blocks.isEmpty)
@@ -407,7 +407,7 @@ final class MarkdownMathExtensionTests: XCTestCase {
                 let result = try XCTUnwrap(Self.inspect(source))
                 XCTAssertEqual(result.blocks, ["中文😀\n"])
                 XCTAssertEqual(result.headings, ["real"])
-                let formula = try XCTUnwrap(MarkdownPresentationParser.parse(source).formulas.first)
+                let formula = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).formulas.first)
                 XCTAssertEqual((source as NSString).substring(with: formula.range), "$$" + newline + indent + "中文😀" + newline + indent + "$$")
                 let unclosed = ["- parent", "  -\t$$", indent + "x", "  - sibling", indent + "$$"].joined(separator: newline)
                 XCTAssertTrue(try XCTUnwrap(Self.inspect(unclosed)).blocks.isEmpty)
@@ -422,7 +422,7 @@ final class MarkdownMathExtensionTests: XCTestCase {
                 let result = try XCTUnwrap(Self.inspect(source))
                 XCTAssertEqual(result.blocks, ["中文😀\n"])
                 XCTAssertEqual(result.headings, ["real"])
-                let formula = try XCTUnwrap(MarkdownPresentationParser.parse(source).formulas.first)
+                let formula = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).formulas.first)
                 XCTAssertEqual((source as NSString).substring(with: formula.range), "$$" + newline + indent + "中文😀" + newline + indent + "$$")
                 let unclosed = ["- parent", "    -\t$$", indent + "x", "    - sibling", indent + "$$"].joined(separator: newline)
                 XCTAssertTrue(try XCTUnwrap(Self.inspect(unclosed)).blocks.isEmpty)
@@ -437,7 +437,7 @@ final class MarkdownMathExtensionTests: XCTestCase {
                 let result = try XCTUnwrap(Self.inspect(source))
                 XCTAssertEqual(result.blocks, ["中文😀\n"])
                 XCTAssertEqual(result.headings, ["real"])
-                let formula = try XCTUnwrap(MarkdownPresentationParser.parse(source).formulas.first)
+                let formula = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).formulas.first)
                 XCTAssertEqual((source as NSString).substring(with: formula.range), "$$" + newline + indent + "中文😀" + newline + indent + "$$")
                 let unclosed = ["- parent", marker + "$$", indent + "x", "\t- sibling", indent + "$$"].joined(separator: newline)
                 XCTAssertTrue(try XCTUnwrap(Self.inspect(unclosed)).blocks.isEmpty)
@@ -452,7 +452,7 @@ final class MarkdownMathExtensionTests: XCTestCase {
                 let result = try XCTUnwrap(Self.inspect(source))
                 XCTAssertEqual(result.blocks, ["中文😀\n"])
                 XCTAssertEqual(result.headings, ["real"])
-                let formula = try XCTUnwrap(MarkdownPresentationParser.parse(source).formulas.first)
+                let formula = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).formulas.first)
                 XCTAssertEqual((source as NSString).substring(with: formula.range), "$$" + newline + indent + "中文😀" + newline + indent + "$$")
                 let unclosed = [marker + "$$", indent + "x", ">\t- sibling", indent + "$$"].joined(separator: newline)
                 XCTAssertTrue(try XCTUnwrap(Self.inspect(unclosed)).blocks.isEmpty)
@@ -468,7 +468,7 @@ final class MarkdownMathExtensionTests: XCTestCase {
                 let result = try XCTUnwrap(Self.inspect(source))
                 XCTAssertEqual(result.blocks, ["中文😀\n"])
                 XCTAssertEqual(result.headings, ["real"])
-                let formula = try XCTUnwrap(MarkdownPresentationParser.parse(source).formulas.first)
+                let formula = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).formulas.first)
                 XCTAssertEqual((source as NSString).substring(with: formula.range), "$$" + newline + indent + "中文😀" + newline + indent + "$$")
             }
         }

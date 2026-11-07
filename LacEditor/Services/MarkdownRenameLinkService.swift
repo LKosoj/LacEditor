@@ -83,12 +83,13 @@ enum MarkdownRenameLinkService {
         let source = text as NSString
         guard MarkdownBacklinkScanner.mayLink(source, needles: needles) else { return [] }
         // разбор принимает замыкание отмены как escaping, но не сохраняет его после возврата
-        let presentation = withoutActuallyEscaping(isCancelled) {
-            MarkdownPresentationParser.parse(text, includeWikiLinks: true, syntax: context.target.syntax, isCancelled: $0)
-        }
+        let queries = withoutActuallyEscaping(isCancelled) {
+            MarkdownDocumentParser.parseOrEmpty(text, syntax: context.target.syntax, includes: [.wikiLinks], isCancelled: $0)
+                .queries([.wikiLinks, .links], isCancelled: $0)
+        } ?? MarkdownDocumentQueries.empty
         if isCancelled() { throw CancellationError() }
         var result: [FolderReplaceService.Edit] = []
-        for link in presentation.wikiLinks {
+        for link in queries.wikiLinks {
             if isCancelled() { throw CancellationError() }
             switch context.oldResolver.resolve(target: link.target) {
             case let .file(path) where path == context.oldPath: break
@@ -103,9 +104,10 @@ enum MarkdownRenameLinkService {
             }
         }
         var tails: [NSRange: NSRange] = [:]
-        for span in presentation.spans where span.kind == .link && span.markerRanges.count == 2 { tails[span.range] = span.markerRanges[1] }
-        for link in presentation.links {
+        for entry in queries.linkEntries where entry.form == .inline && entry.markers.count == 2 { tails[entry.link.range] = entry.markers[1] }
+        for entry in queries.linkEntries {
             if isCancelled() { throw CancellationError() }
+            let link = entry.link
             guard MarkdownBacklinkScanner.isLink(link.url, from: file.url, to: context.target) else { continue }
             if let tail = tails[link.range], let edit = linkEdit(link, tail: tail, in: source, file: file, context: context) {
                 result.append(edit)

@@ -75,7 +75,7 @@ final class MarkdownFormattingInteractionTests: XCTestCase {
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
         window.makeKeyAndOrderFront(nil)
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         var opened = false
         for _ in 0..<200 {
             if coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 180, height: 40), cell: cell) {
@@ -92,7 +92,7 @@ final class MarkdownFormattingInteractionTests: XCTestCase {
         child.unmarkText()
         for _ in 0..<200 where !document.isMarkdownOutlineCurrent { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertTrue(document.isMarkdownOutlineCurrent)
-        let expected = try XCTUnwrap(MarkdownPresentationParser.parse(view.string, syntax: preferences.markdownSyntax).tables.first?.rows.last?.cells.last)
+        let expected = try XCTUnwrap(MarkdownPresentationBuilder.parse(view.string, syntax: preferences.markdownSyntax).tables.first?.rows.last?.cells.last)
         let frame = try XCTUnwrap(layout.markdownTableFrame(for: expected, in: container))
         let other = try XCTUnwrap(layout.markdownTableCellInfo(at: NSPoint(x: frame.midX, y: frame.midY), in: container)?.0)
         XCTAssertFalse(other.displayRuns.contains { if case .tableMath = $0.kind { return true }; return false })
@@ -134,7 +134,7 @@ final class MarkdownFormattingInteractionTests: XCTestCase {
         window.makeKeyAndOrderFront(nil)
         for _ in 0..<200 where !document.isMarkdownOutlineCurrent { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertTrue(document.isMarkdownOutlineCurrent)
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         var opened = false
         for _ in 0..<200 where !opened {
             opened = coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 180, height: 40), cell: cell)
@@ -189,7 +189,7 @@ final class MarkdownFormattingInteractionTests: XCTestCase {
         coordinator.updateStrikeCompletedTasks(true)
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 180, height: 40), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         XCTAssertNotNil(child.layoutManager?.temporaryAttribute(.strikethroughStyle, atCharacterIndex: 0, effectiveRange: nil))

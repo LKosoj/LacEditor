@@ -1,6 +1,6 @@
 import Foundation
 
-/// Комментарии Obsidian `%%…%%`: поиск, скрытие в предпросмотре и вырезание при экспорте.
+/// Комментарии Obsidian `%%…%%`: поиск диапазонов и вырезание при экспорте (скрытие в предпросмотре — адаптер `MarkdownHTMLRenderer`).
 enum MarkdownObsidianComment {
     /// Корень локальных копий заметок хранилища: `Application Support/<приложение>/Vaults/`.
     private static let vaultsRootPath: String = {
@@ -85,85 +85,17 @@ enum MarkdownObsidianComment {
     static func commentRanges(in text: String, syntax: MarkdownSyntaxOptions) -> [NSRange] {
         guard mayContainComment(text) else { return [] }
         let source = text as NSString
-        let index = MarkdownPresentationParser.parse(text, syntax: syntax, isCancelled: { false }).elements
-        guard index.textLength == source.length else { return [] }
+        // Без `.criticMarkup` и без `isVaultNote`: зоны исключения не должны зависеть от самих комментариев.
+        guard let index = MarkdownDocumentParser.parseOrEmpty(text, syntax: syntax, includes: [.elementIndex]).elements,
+              index.textLength == source.length else { return [] }
         let excluded = index.excludedRanges(intersecting: NSRange(location: 0, length: source.length))
         return ranges(in: source, excluded: excluded)
-    }
-
-    /// Предпросмотр, HTML, PDF: текст комментария удаляется, переводы строки сохраняются (число строк прежнее).
-    /// Строки внутри абзаца, целиком занятые комментарием, получают невидимый знак, чтобы абзац не разорвался.
-    static func hidden(_ text: String, syntax: MarkdownSyntaxOptions) -> String {
-        let found = commentRanges(in: text, syntax: syntax)
-        return found.isEmpty ? text : hidden(text as NSString, ranges: found)
     }
 
     /// Экспорт Pandoc: комментарий вырезается целиком; строка, где кроме комментария только пробелы, удаляется с переводом строки.
     static func removed(_ text: String, syntax: MarkdownSyntaxOptions) -> String {
         let found = commentRanges(in: text, syntax: syntax)
         return found.isEmpty ? text : removed(text as NSString, ranges: found)
-    }
-
-    /// Тот же расчёт на готовых диапазонах (чистая часть для тестов).
-    static func hidden(_ text: NSString, ranges: [NSRange]) -> String {
-        guard !ranges.isEmpty else { return text as String }
-        let sorted = ranges.sorted(by: { $0.location < $1.location })
-        func isBlank(_ unit: unichar) -> Bool { unit == 32 || unit == 9 }
-        func insideComment(_ index: Int) -> Bool { sorted.contains { NSLocationInRange(index, $0) } }
-        /// Первая позиция после префикса строки: пробелы, `>` цитаты и маркеры списка (`-`, `*`, `+`, `1.`, `1)`).
-        func afterPrefix(_ start: Int, _ end: Int) -> Int {
-            var index = start
-            while index < end {
-                let unit = text.character(at: index)
-                if isBlank(unit) || unit == 62 { index += 1; continue }
-                if unit == 45 || unit == 42 || unit == 43, index + 1 >= end || isBlank(text.character(at: index + 1)) { index += 1; continue }
-                var digits = index
-                while digits < end, text.character(at: digits) >= 48, text.character(at: digits) <= 57 { digits += 1 }
-                if digits > index, digits < end, text.character(at: digits) == 46 || text.character(at: digits) == 41,
-                   digits + 1 >= end || isBlank(text.character(at: digits + 1)) { index = digits + 1; continue }
-                break
-            }
-            return index
-        }
-        /// Строка, где нет ничего кроме пробелов и префикса цитаты или списка (или её нет совсем).
-        func isBlankLine(at location: Int) -> Bool {
-            guard location >= 0, location < text.length else { return true }
-            let line = text.lineRange(for: NSRange(location: location, length: 0))
-            var contentsEnd = 0
-            text.getLineStart(nil, end: nil, contentsEnd: &contentsEnd, for: NSRange(location: line.location, length: 0))
-            return afterPrefix(line.location, contentsEnd) == contentsEnd
-        }
-        /// Комментарий занимает строки целиком и стоит внутри абзаца: пустая строка разорвала бы абзац.
-        func isInsideParagraph(_ range: NSRange) -> Bool {
-            let startLine = text.lineRange(for: NSRange(location: range.location, length: 0))
-            let endLine = text.lineRange(for: NSRange(location: max(range.location, NSMaxRange(range) - 1), length: 0))
-            var contentsEnd = 0
-            text.getLineStart(nil, end: nil, contentsEnd: &contentsEnd, for: NSRange(location: endLine.location, length: 0))
-            let before = (afterPrefix(startLine.location, range.location)..<range.location).allSatisfy { isBlank(text.character(at: $0)) || insideComment($0) }
-            let after = (NSMaxRange(range)..<max(NSMaxRange(range), contentsEnd)).allSatisfy { isBlank(text.character(at: $0)) || insideComment($0) }
-            guard before, after, startLine.location > 0, NSMaxRange(endLine) < text.length else { return false }
-            return !isBlankLine(at: startLine.location - 1) && !isBlankLine(at: NSMaxRange(endLine))
-        }
-        let result = NSMutableString()
-        var position = 0
-        for range in sorted {
-            guard range.location >= position, NSMaxRange(range) <= text.length else { continue }
-            result.append(text.substring(with: NSRange(location: position, length: range.location - position)))
-            // Невидимый знак на каждой строке комментария не даёт строке стать пустой; на вид и в тексте абзаца он ничего не меняет.
-            let keepsParagraph = isInsideParagraph(range)
-            if keepsParagraph { result.append("\u{200B}") }
-            // CRLF остаётся парой, одиночные CR и LF — как были.
-            for index in range.location..<NSMaxRange(range) {
-                let unit = text.character(at: index)
-                guard unit == 10 || unit == 13 else { continue }
-                result.append(unit == 10 ? "\n" : "\r")
-                let isCRBeforeLF = unit == 13 && index + 1 < NSMaxRange(range) && text.character(at: index + 1) == 10
-                if keepsParagraph, !isCRBeforeLF { result.append("\u{200B}") }
-            }
-            position = NSMaxRange(range)
-        }
-        result.append(text.substring(from: position))
-        return result as String
     }
 
     static func removed(_ text: NSString, ranges: [NSRange]) -> String {

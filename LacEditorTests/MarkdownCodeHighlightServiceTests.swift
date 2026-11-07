@@ -40,7 +40,7 @@ final class MarkdownCodeHighlightServiceTests: XCTestCase {
     func testNestedParserSegmentsHighlightWithoutContainerMarkers() throws {
         let source = "> - ```js\r\n>   /* 中文\r\n>   😀 end */\r\n>   ```\r\n"
         let raw = source as NSString
-        let block = try XCTUnwrap(MarkdownPresentationParser.parse(source).codeBlocks.first)
+        let block = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).codeBlocks.first)
         let segments = block.bodySegments.map { MarkdownCodeHighlightService.Segment(sourceLocation: $0.location, text: raw.substring(with: $0)) }
         let tokens = try XCTUnwrap(MarkdownCodeHighlightService.tokens(segments: segments, literal: block.literal,
             info: block.info, visible: block.bodyRange))
@@ -51,7 +51,7 @@ final class MarkdownCodeHighlightServiceTests: XCTestCase {
     func testPartiallyConsumedTabMapsOnlyRealCodeCharacters() throws {
         let source = ">\t```js\n>\tlet x = 42\n>\t```\n"
         let raw = source as NSString
-        let block = try XCTUnwrap(MarkdownPresentationParser.parse(source).codeBlocks.first)
+        let block = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).codeBlocks.first)
         let segments = zip(block.bodySegments, block.bodyPadding).map {
             MarkdownCodeHighlightService.Segment(sourceLocation: $0.0.location, text: raw.substring(with: $0.0), leadingSpaces: $0.1)
         }

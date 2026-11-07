@@ -82,7 +82,7 @@ final class MarkdownPresentationTests: XCTestCase {
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), textContainer: container)
         view.font = lacEditorFont(size: 14)
         view.setSelectedRange(NSRange(location: 1, length: 0))
-        layout.setMarkdownPresentation(MarkdownPresentationParser.parse(source), revealedRange: nil)
+        layout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(source), revealedRange: nil)
         layout.ensureLayout(for: container)
         let image = NSImage(size: NSSize(width: 400, height: 300))
         image.lockFocus()
@@ -176,23 +176,23 @@ final class MarkdownPresentationTests: XCTestCase {
     }
 
     func testHasOnlyTextStructureRejectsStatefulElements() {
-        let plain = MarkdownPresentationParser.parse("# Title\n\nSome **bold** text\n", includeEmojiCandidates: true)
+        let plain = MarkdownPresentationBuilder.parse("# Title\n\nSome **bold** text\n", includeEmojiCandidates: true)
         XCTAssertTrue(plain.hasOnlyTextStructure)
         // Сноски быстрый путь не закрывают: ссылки и определения сдвигаются вместе с текстом.
-        XCTAssertTrue(MarkdownPresentationParser.parse("text[^1]\n\n[^1]: note\n", includeEmojiCandidates: true).hasOnlyTextStructure)
+        XCTAssertTrue(MarkdownPresentationBuilder.parse("text[^1]\n\n[^1]: note\n", includeEmojiCandidates: true).hasOnlyTextStructure)
         // Диаграммы и вставки (аудио, iframe, details, HTML-блоки, ruby) быстрый путь не закрывают.
         for source in ["```mermaid\ngraph TD; A-->B\n```\n", "<audio src=\"a.mp3\" controls></audio>\n",
                        "<iframe src=\"https://example.invalid\" width=\"50%\" height=\"60\"></iframe>\n",
                        "<details>\n<summary>Sum</summary>\n\nbody\n</details>\n", "<div>\nraw html\n</div>\n",
                        "Words <ruby>漢字<rt>kanji</rt></ruby> end\n"] {
-            XCTAssertTrue(MarkdownPresentationParser.parse(source, includeEmojiCandidates: true).hasOnlyTextStructure, source)
+            XCTAssertTrue(MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true).hasOnlyTextStructure, source)
         }
         // Картинки, эмодзи и формулы, в том числе в таблицах, быстрый путь не закрывают.
         for source in ["![a](b.png)\n", "text :smile: text\n", "Math $y$ end\n", "| a |\n|---|\n| ![i](b.png) $y$ :smile: |\n"] {
-            XCTAssertTrue(MarkdownPresentationParser.parse(source, includeEmojiCandidates: true).hasOnlyTextStructure, source)
+            XCTAssertTrue(MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true).hasOnlyTextStructure, source)
         }
-        XCTAssertFalse(MarkdownPresentationParser.parse("# Title\n", includeEmojiCandidates: false).hasOnlyTextStructure)
-        XCTAssertTrue(MarkdownPresentationParser.parse("text\n\n```\ncode\n```\n", includeEmojiCandidates: true).hasOnlyTextStructure)
+        XCTAssertFalse(MarkdownPresentationBuilder.parse("# Title\n", includeEmojiCandidates: false).hasOnlyTextStructure)
+        XCTAssertTrue(MarkdownPresentationBuilder.parse("text\n\n```\ncode\n```\n", includeEmojiCandidates: true).hasOnlyTextStructure)
     }
 
     func testShiftedForTextEditMatchesReparse() throws {
@@ -207,11 +207,11 @@ final class MarkdownPresentationTests: XCTestCase {
             (NSRange(location: 11, length: 0), "x"),
             (NSRange(location: 12, length: 1), "")
         ]
-        let presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
+        let presentation = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
         for (edit, replacement) in edits {
-            let shifted = try XCTUnwrap(presentation.shiftedForTextEdit(edit, replacementLength: (replacement as NSString).length, textLength: raw.length), "\(edit)")
+            let shifted = try XCTUnwrap(shiftedByEdit(presentation, edit, replacementLength: (replacement as NSString).length, textLength: raw.length), "\(edit)")
             let changed = raw.replacingCharacters(in: edit, with: replacement)
-            let reparsed = MarkdownPresentationParser.parse(changed, includeEmojiCandidates: true, includeWikiLinks: true)
+            let reparsed = MarkdownPresentationBuilder.parse(changed, includeEmojiCandidates: true, includeWikiLinks: true)
             XCTAssertEqual(shifted.spans, reparsed.spans, "\(edit)")
             XCTAssertEqual(shifted.paragraphs, reparsed.paragraphs, "\(edit)")
             XCTAssertEqual(shifted.links, reparsed.links, "\(edit)")
@@ -305,9 +305,9 @@ final class MarkdownPresentationTests: XCTestCase {
         let source = "- item one\nparagraph after\n"
         let raw = source as NSString
         let edit = NSRange(location: raw.range(of: "paragraph").location, length: 0)
-        let presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
-        let shifted = try XCTUnwrap(presentation.shiftedForTextEdit(edit, replacementLength: 1, textLength: raw.length))
-        let reparsed = MarkdownPresentationParser.parse(raw.replacingCharacters(in: edit, with: "x"), includeEmojiCandidates: true, includeWikiLinks: true)
+        let presentation = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
+        let shifted = try XCTUnwrap(shiftedByEdit(presentation, edit, replacementLength: 1, textLength: raw.length))
+        let reparsed = MarkdownPresentationBuilder.parse(raw.replacingCharacters(in: edit, with: "x"), includeEmojiCandidates: true, includeWikiLinks: true)
         XCTAssertEqual(shifted.listMarkers, reparsed.listMarkers)
     }
 
@@ -315,23 +315,23 @@ final class MarkdownPresentationTests: XCTestCase {
         let source = "- item"
         let raw = source as NSString
         let edit = NSRange(location: raw.length, length: 0)
-        let presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
-        let shifted = try XCTUnwrap(presentation.shiftedForTextEdit(edit, replacementLength: 1, textLength: raw.length))
-        let reparsed = MarkdownPresentationParser.parse(raw.replacingCharacters(in: edit, with: "x"), includeEmojiCandidates: true, includeWikiLinks: true)
+        let presentation = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
+        let shifted = try XCTUnwrap(shiftedByEdit(presentation, edit, replacementLength: 1, textLength: raw.length))
+        let reparsed = MarkdownPresentationBuilder.parse(raw.replacingCharacters(in: edit, with: "x"), includeEmojiCandidates: true, includeWikiLinks: true)
         XCTAssertEqual(shifted.listMarkers, reparsed.listMarkers)
     }
 
     func testAllowedTypingShiftMatchesReparse() throws {
         let source = "# Title\n\nFirst line of text\nsecond line here\n\n> quote words\n\nLast one, with text\n"
         let raw = source as NSString
-        let presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
+        let presentation = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
         var checked = 0
         for (marker, insert, remove) in [("First", "x", 0), ("Firs", ",", 0), ("\nsecond", ".", 0), ("\n\nLast", "я", 0), ("quote", "", 1), ("one", ",", 0), ("with", "", 2), ("\nsecond", "x", 0)] {
             let edit = NSRange(location: NSMaxRange(raw.range(of: marker)), length: remove)
             guard MarkdownPresentation.allowsTypingEdit(in: raw, range: edit, replacement: insert),
-                  let shifted = presentation.shiftedForTextEdit(edit, replacementLength: (insert as NSString).length, textLength: raw.length) else { continue }
+                  let shifted = shiftedByEdit(presentation, edit, replacementLength: (insert as NSString).length, textLength: raw.length) else { continue }
             checked += 1
-            let reparsed = MarkdownPresentationParser.parse(raw.replacingCharacters(in: edit, with: insert), includeEmojiCandidates: true, includeWikiLinks: true)
+            let reparsed = MarkdownPresentationBuilder.parse(raw.replacingCharacters(in: edit, with: insert), includeEmojiCandidates: true, includeWikiLinks: true)
             XCTAssertEqual(shifted.spans, reparsed.spans, "\(edit)")
             XCTAssertEqual(shifted.paragraphs, reparsed.paragraphs, "\(edit)")
             XCTAssertEqual(shifted.links, reparsed.links, "\(edit)")
@@ -343,7 +343,7 @@ final class MarkdownPresentationTests: XCTestCase {
     func testShiftedForTextEditRejectsMarkersAndBoundaries() {
         let source = "# Title\n\nSome **bold** text [link](https://a.b)\n"
         let raw = source as NSString
-        let presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true)
+        let presentation = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true)
         let bold = raw.range(of: "**bold**")
         let link = raw.range(of: "[link](https://a.b)")
         let rejected = [
@@ -357,14 +357,24 @@ final class MarkdownPresentationTests: XCTestCase {
             NSRange(location: 8, length: 2)
         ]
         for edit in rejected {
-            XCTAssertNil(presentation.shiftedForTextEdit(edit, replacementLength: 1, textLength: raw.length), "\(edit)")
+            XCTAssertNil(shiftedByEdit(presentation, edit, replacementLength: 1, textLength: raw.length), "\(edit)")
         }
     }
 
     private static let shiftSource = "# Title\n\nSome **bold** text with [link](https://a.b) and [[wiki]] end\n\n> quote words\n> second line\n\n- item one\n- [x] done task\n  - [x] inner done\n- [ ] open task\n\nLast paragraph, with text\n"
 
+    /// Копия с оформлением, сдвинутым под правку (`canShift` + `shift`); nil, если сдвиг отказал.
+    private func shiftedByEdit(_ presentation: MarkdownPresentation, _ edit: NSRange, replacementLength: Int, textLength: Int) -> MarkdownPresentation? {
+        var copy = presentation
+        copy.prepareForEditing()
+        let change = MarkdownTextEdit(range: edit, replacementLength: replacementLength, textLength: textLength)
+        guard copy.canShift(change) else { return nil }
+        copy.shift(change)
+        return copy
+    }
+
     private func parsedForShift(_ source: String) -> MarkdownPresentation {
-        var presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
+        var presentation = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
         presentation.prepareForEditing()
         return presentation
     }
@@ -765,18 +775,18 @@ final class MarkdownPresentationTests: XCTestCase {
         // Ruby в ячейке таблицы не распознаётся и остаётся исходником, поэтому быстрый путь не закрывает.
         let source = "Intro words\n\n| a | b |\n|---|---|\n| <ruby>漢字<rt>kanji</rt></ruby> | 2 |\n\nTail words\n"
         let raw = source as NSString
-        var presentation = MarkdownPresentationParser.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
+        var presentation = MarkdownPresentationBuilder.parse(source, includeEmojiCandidates: true, includeWikiLinks: true)
         presentation.prepareForEditing()
         XCTAssertTrue(presentation.ruby.isEmpty)
         let edit = NSRange(location: NSMaxRange(raw.range(of: "Intro wor")), length: 0)
-        XCTAssertNotNil(presentation.shiftedForTextEdit(edit, replacementLength: 1, textLength: raw.length))
+        XCTAssertNotNil(shiftedByEdit(presentation, edit, replacementLength: 1, textLength: raw.length))
         // Ruby вне таблицы при таблице в документе быстрый путь не закрывает.
         let outside = "Intro words\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nRuby <ruby>漢字<rt>kanji</rt></ruby> end\n\nTail words\n"
         let rawOutside = outside as NSString
-        var other = MarkdownPresentationParser.parse(outside, includeEmojiCandidates: true, includeWikiLinks: true)
+        var other = MarkdownPresentationBuilder.parse(outside, includeEmojiCandidates: true, includeWikiLinks: true)
         other.prepareForEditing()
         XCTAssertFalse(other.ruby.isEmpty)
-        XCTAssertNotNil(other.shiftedForTextEdit(NSRange(location: NSMaxRange(rawOutside.range(of: "Intro wor")), length: 0), replacementLength: 1, textLength: rawOutside.length))
+        XCTAssertNotNil(shiftedByEdit(other, NSRange(location: NSMaxRange(rawOutside.range(of: "Intro wor")), length: 0), replacementLength: 1, textLength: rawOutside.length))
     }
 
     func testShiftRejectsEditsTouchingElements() {
@@ -838,7 +848,7 @@ final class MarkdownPresentationTests: XCTestCase {
             presentation.shift(change)
             let reparsed = parsedForShift(raw.replacingCharacters(in: edit, with: insert))
             assertSameLists(presentation, reparsed, "\(edit) \(insert)")
-            let wrapped = try XCTUnwrap(parsedForShift(source).shiftedForTextEdit(edit, replacementLength: length, textLength: raw.length))
+            let wrapped = try XCTUnwrap(shiftedByEdit(parsedForShift(source), edit, replacementLength: length, textLength: raw.length))
             assertSameLists(wrapped, presentation, "wrapper \(edit)")
         }
         XCTAssertGreaterThan(checked, 8)

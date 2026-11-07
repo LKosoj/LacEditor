@@ -8,16 +8,16 @@ enum MarkdownEmojiCandidateExtractor {
         let range: NSRange
     }
 
-    static func candidates(in root: OpaquePointer, source: MarkdownPresentationParser.Source,
+    static func candidates(in root: OpaquePointer, source: MarkdownSourcePositions,
                            text: NSString, isCancelled: () -> Bool = { false },
                            onSmartRange: ((NSRange) -> Void)? = nil,
                            onTextRange: ((OpaquePointer, NSRange) -> Void)? = nil,
                            onCandidate: ((OpaquePointer, Int, Candidate) -> Void)? = nil) -> [Candidate] {
         var result: [Candidate] = []
-        var tablePositions: [OpaquePointer: MarkdownPresentationParser.Source.TableCellPositions] = [:]
+        var tablePositions: [OpaquePointer: MarkdownSourcePositions.TableCellPositions] = [:]
         var failedTablePositions: Set<OpaquePointer> = []
         var htmlContext = MarkdownImageUploadService.HTMLContext()
-        func positions(_ node: OpaquePointer) -> (OpaquePointer?, MarkdownPresentationParser.Source.TableCellPositions?) {
+        func positions(_ node: OpaquePointer) -> (OpaquePointer?, MarkdownSourcePositions.TableCellPositions?) {
             var current = cmark_node_parent(UnsafeMutablePointer<cmark_node>(node)).map { OpaquePointer($0) }
             while let item = current {
                 if isCancelled() { return (nil, nil) }
@@ -129,9 +129,9 @@ enum MarkdownEmojiCandidateExtractor {
             }
             var suppressChildren = suppress
             if !htmlNodes.isEmpty {
-                let pairs = MarkdownPresentationParser.underlines(in: node, source: source, text: text, isCancelled: isCancelled)
+                let pairs = MarkdownDocumentParser.underlines(in: node, source: source, text: text, isCancelled: isCancelled)
                 let links = withoutActuallyEscaping(isCancelled) { check in
-                    MarkdownPresentationParser.inlineHTMLPairs(in: node, confirmed: Set(htmlNodes), source: source, text: text,
+                    MarkdownDocumentParser.inlineHTMLPairs(in: node, confirmed: Set(htmlNodes), source: source, text: text,
                                                                isCancelled: check).filter { $0.kind == .link }
                 }
                 let confirmed = Set(pairs.flatMap { [$0.0, $0.1] } + links.flatMap { [$0.opening, $0.closing] })

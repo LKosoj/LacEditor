@@ -11,6 +11,31 @@ private final class MarkdownAnimatedImageView: NSImageView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
+/// Дописывает в меню вью-вставки пункты текстового вида («编辑源代码»): WebKit, PDF и плеер показывают своё меню и не передают клик дальше.
+private func menuAppendingSourceItems(_ menu: NSMenu?, for view: NSView, event: NSEvent) -> NSMenu? {
+    guard let textView = view.superview as? LacTextView,
+          let items = textView.diagramMenuHandler?(textView.convert(event.locationInWindow, from: nil)), !items.isEmpty else { return menu }
+    let result = menu ?? NSMenu()
+    if !result.items.isEmpty { result.addItem(.separator()) }
+    items.forEach { result.addItem($0) }
+    return result
+}
+
+private final class MarkdownIframeWebView: WKWebView {
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        super.willOpenMenu(menu, with: event)
+        _ = menuAppendingSourceItems(menu, for: self, event: event)
+    }
+}
+
+private final class MarkdownPDFView: PDFView {
+    override func menu(for event: NSEvent) -> NSMenu? { menuAppendingSourceItems(super.menu(for: event), for: self, event: event) }
+}
+
+private final class MarkdownPlayerView: AVPlayerView {
+    override func menu(for event: NSEvent) -> NSMenu? { menuAppendingSourceItems(super.menu(for: event), for: self, event: event) }
+}
+
 private final class MarkdownDetailsButton: NSButton {
     var revealSource: (() -> Void)?
     override func mouseDown(with event: NSEvent) {
@@ -291,6 +316,15 @@ final class MarkdownPresentationController {
         let revision: UInt
         let generation: UInt
     }
+    /// Блок «только просмотр» под мышью: исходник раскрывается выделением блока, а у изображения (раскрыть на месте нельзя) документ переключается в исходный вид.
+    struct BlockSource {
+        enum Action { case reveal, switchToSource }
+        let range: NSRange
+        let action: Action
+        let document: EditorDocument
+        let revision: UInt
+        let generation: UInt
+    }
     private var diagramCompleted: Set<NSRange> = []
     var emojiResolver: ([String], BlockOperation) -> [String: String]? = { names, operation in
         try? EmojiShortcodeResolver.resolve(names, isCancelled: { operation.isCancelled })
@@ -352,8 +386,19 @@ final class MarkdownPresentationController {
     private var footnoteTooltips: [(tag: NSView.ToolTipTag, rect: NSRect, owner: NSString)] = []
     var footnoteTooltipRects: [NSRect] { footnoteTooltips.map(\.rect) }
     private var lastFootnote: MarkdownFootnote?
-    private var presentation: MarkdownPresentation?
-    private var parsedResult: MarkdownPresentation?
+    private var presentation: MarkdownPresentation? {
+        // Без `oldValue`: наблюдатель срабатывает и на сдвиге на месте, копировать структуру на каждой клавише нельзя.
+        didSet { displayMapCache = nil }
+    }
+    /// Карта «текст редактора ↔ видимый текст» с `Reveal.none` для привязки каретки; строится лениво на клик и шаг ↑/↓, сбрасывается с презентацией.
+    private var displayMapCache: MarkdownDisplayMap?
+    /// Результат разбора, пришедший при зажатой кнопке мыши: ставится при отпускании.
+    private var deferredInstall: (result: MarkdownPresentation, revision: UInt?)?
+    private var parsedResult: MarkdownPresentation? {
+        didSet { decorationSpans = nil }
+    }
+    /// Правки CriticMarkup и комментарии `%%` последнего разбора (по позиции: сноски в модели идут вне порядка текста) и накопленные концы для двоичного поиска; сбрасываются с результатом.
+    private var decorationSpans: (spans: [MarkdownPresentationSpan], ends: [Int])?
     private var parsedResultToken = UUID()
     private struct FenceContainerOpening {
         var line: NSRange
@@ -420,6 +465,16 @@ final class MarkdownPresentationController {
     private var keptEdit: (revision: UInt, length: Int, inserted: NSRange)?
     /// На экране сдвинутое оформление предыдущего разбора: при установке нового разбора стили видимой области снимаются.
     private var presentationKept = false
+    /// База локального разбора (T5): последний полный или слитый результат без нумерации заголовков; сбрасывается вместе с оформлением.
+    private var parseBase: MarkdownParseBase?
+    /// Длина документа, с которой разбор после правки может быть локальным; тесты понижают порог.
+    var localParseMinimumLength = MarkdownLocalParser.defaultMinimumLength
+    private var localParseCount = 0
+    /// Причина последнего полного разбора (nil — разбор был локальным) и расхождение, найденное сверкой; для тестов и диагностики.
+    private(set) var lastParseFallback: String?
+    /// Сколько полных разборов установлено (T10): локальные и отброшенные устаревшие не считаются; для тестов и замеров.
+    private(set) var fullParseCount = 0
+    private(set) var lastParseDivergence: String?
     /// Оформление пережило правку разметки (`shiftAroundEdit`): расходится ли оно с текстом вне экрана, покажет только новый разбор.
     private var structureEditPending = false
     // При полном переразборе не убираем готовые медиа до появления нового результата.
@@ -427,6 +482,7 @@ final class MarkdownPresentationController {
     private var deferredReadyClear = false
     private var mediaPlacementPending = false
     private var lastRevealedRange: NSRange?
+    private var selectionChangedWhilePointerDown = false
     var emojiCompletionReady: (() -> Void)?
     var parsedResultDidChange: (() -> Void)?
     var geometryDidChange: (() -> Void)?
@@ -448,6 +504,10 @@ final class MarkdownPresentationController {
     private var emojiCompletionEnabled: Bool { document?.language == .markdown && (emojiCompletionRequested || wikiCompletionRequested) }
     private var mathPairEnabled: Bool { document?.language == .markdown && mathPairRequested }
     private var elementPathEnabled: Bool { document?.language == .markdown && elementPathRequested }
+    /// Панель предпросмотра видна: она берёт готовую модель документа, иначе разбирает текст сама. С токенами media модель не публикуется.
+    private var needsPreviewModel: Bool {
+        document?.language == .markdown && document?.isPreviewEffectivelyEnabled == true && (sourceMap?().isEmpty ?? true)
+    }
 
     func setMathPairContextEnabled(_ enabled: Bool) {
         guard mathPairRequested != enabled else { return }
@@ -467,13 +527,16 @@ final class MarkdownPresentationController {
         elementPathRequested = enabled
         guard !enabled else { return }
         clearElementPath()
-        if !self.enabled && !outlineVisible && !readableEnabled && !emojiCompletionEnabled && !mathPairEnabled { cancel() }
+        if !self.enabled && !outlineVisible && !readableEnabled && !emojiCompletionEnabled && !mathPairEnabled && !needsPreviewModel { cancel() }
     }
 
     /// Снимает показанный путь на следующем проходе главного потока: вызывается и из обновления SwiftUI.
     private func clearElementPath() {
-        guard let document, document.markdownElementPath != nil else { return }
-        DispatchQueue.main.async { [weak document] in document?.setMarkdownElementPath(nil) }
+        guard let document, document.markdownElementPath != nil || document.markdownFormattingState != nil else { return }
+        DispatchQueue.main.async { [weak document] in
+            document?.setMarkdownElementPath(nil)
+            document?.setMarkdownFormattingState(nil)
+        }
     }
 
     /// Показанный путь не стирается при наборе: он обновляется, когда готов новый разбор. Стирается при непустом выделении.
@@ -481,14 +544,24 @@ final class MarkdownPresentationController {
         guard elementPathEnabled, isActive, let document, let textView else { return }
         if editingTableCell == nil {
             let ranges = textView.selectedRanges
-            guard ranges.count == 1, ranges[0].rangeValue.length == 0 else { document.setMarkdownElementPath(nil); return }
+            guard ranges.count == 1 else {
+                document.setMarkdownElementPath(nil)
+                document.setMarkdownFormattingState(nil)
+                return
+            }
+            // Путь в строке состояния при выделении стирается, а состояние панели форматирования считается и для выделения.
+            if ranges[0].rangeValue.length > 0 { document.setMarkdownElementPath(nil) }
         }
         guard !hasMarkedText, let parsedResult, parsedRevision == revision, currentRevision?() == revision,
               let storage = textView.textStorage, parsedResult.elements.textLength == storage.length else { return }
         if let cell = editingTableCell {
             document.setMarkdownElementPath(parsedResult.elements.path(at: cell.location, blocksOnly: true))
+            document.setMarkdownFormattingState(MarkdownFormattingState(presentation: parsedResult,
+                                                                        selection: NSRange(location: cell.location, length: 0)))
         } else {
-            document.setMarkdownElementPath(parsedResult.elements.path(at: textView.selectedRange().location))
+            let selection = textView.selectedRange()
+            if selection.length == 0 { document.setMarkdownElementPath(parsedResult.elements.path(at: selection.location)) }
+            document.setMarkdownFormattingState(MarkdownFormattingState(presentation: parsedResult, selection: selection))
         }
     }
 
@@ -597,7 +670,7 @@ final class MarkdownPresentationController {
             appliedReadingMode = document.isReadingMode
             if enabled && presentation != nil { selectionChanged() }
         }
-        guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled else {
+        guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled || needsPreviewModel else {
             cancel()
             return
         }
@@ -614,7 +687,7 @@ final class MarkdownPresentationController {
                 schedule(revision: revision)
             }
         } else if (activated || (work == nil && operation == nil)) &&
-                    (enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || elementPathEnabled ||
+                    (enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || elementPathEnabled || needsPreviewModel ||
                      (mathPairEnabled && mathPairContext?.revision != revision)) {
             schedule(revision: revision)
         }
@@ -841,7 +914,7 @@ final class MarkdownPresentationController {
         guard wikiCompletionRequested else { return }
         wikiCompletionRequested = false
         if !emojiCompletionRequested { emojiCompletionContext = nil }
-        if !enabled && !outlineVisible && !readableEnabled && !mathPairEnabled && !elementPathEnabled && !emojiCompletionRequested { cancel() }
+        if !enabled && !outlineVisible && !readableEnabled && !mathPairEnabled && !elementPathEnabled && !needsPreviewModel && !emojiCompletionRequested { cancel() }
     }
 
     /// Диапазон от `[[` до курсора должен целиком лежать в подтверждённом тексте текущей версии.
@@ -875,7 +948,7 @@ final class MarkdownPresentationController {
     func endEmojiCompletion() {
         emojiCompletionRequested = false
         emojiCompletionContext = nil
-        if !enabled && !outlineVisible && !readableEnabled && !mathPairEnabled && !elementPathEnabled { cancel() }
+        if !enabled && !outlineVisible && !readableEnabled && !mathPairEnabled && !elementPathEnabled && !needsPreviewModel { cancel() }
     }
 
     private func noteEmojiCompletionEdit(range: NSRange, replacement: String, in text: NSString, revision: UInt) {
@@ -950,7 +1023,7 @@ final class MarkdownPresentationController {
     }
 
     func beforeEdit(range: NSRange, replacementLength: Int, replacement: String? = nil) {
-        guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled || presentation != nil || parsedResult != nil else { return }
+        guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled || needsPreviewModel || presentation != nil || parsedResult != nil else { return }
         // Прошлая правка сдвинула оформление, но текст так и не изменился: сдвиг ничем не подтверждён.
         if keptEdit != nil {
             keptEdit = nil
@@ -960,6 +1033,7 @@ final class MarkdownPresentationController {
         if document?.isMarkdownOutlineCurrent == true { document?.isMarkdownOutlineCurrent = false }
         parsedResult = nil
         parsedSource = nil
+        deferredInstall = nil
         // `cancelPending` вызывается до сдвига placement. Если оформление уже
         // показано, незавершённые загрузки неизменившихся картинок должны
         // пережить эту клавишу; их ключи будут перенесены в `shiftInstalledMedia`.
@@ -1023,7 +1097,7 @@ final class MarkdownPresentationController {
     }
 
     func edited(revision: UInt) {
-        guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled || presentation != nil || parsedResult != nil else { return }
+        guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled || needsPreviewModel || presentation != nil || parsedResult != nil else { return }
         document?.invalidateMarkdownReadableText()
         if document?.isMarkdownOutlineCurrent == true { document?.isMarkdownOutlineCurrent = false }
         parsedResult = nil
@@ -1057,7 +1131,7 @@ final class MarkdownPresentationController {
             if !animatedImages.isEmpty { notifyGeometryChanged() }
             placeMediaAfterEdit()
         }
-        if enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || elementPathEnabled || (mathPairEnabled && mathPairContext?.revision != revision) { schedule(revision: revision) }
+        if enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || elementPathEnabled || needsPreviewModel || (mathPairEnabled && mathPairContext?.revision != revision) { schedule(revision: revision) }
     }
 
     func projectionChanged(revision: UInt) {
@@ -1071,7 +1145,7 @@ final class MarkdownPresentationController {
 
     func compositionFinished(revision: UInt) {
         if !hasMarkedText, let pendingSyntaxOptions { setSyntaxOptions(pendingSyntaxOptions) }
-        guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled || presentation != nil || needsCompositionRefresh else { return }
+        guard enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled || needsPreviewModel || presentation != nil || needsCompositionRefresh else { return }
         if self.revision != revision { expandedDetails.removeAll() }
         self.revision = revision
         guard !hasMarkedText else { return }
@@ -1080,8 +1154,8 @@ final class MarkdownPresentationController {
         if needsRefresh {
             needsRefresh = false
             if presentation != nil || !styledRanges.isEmpty { clear() }
-            if enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || elementPathEnabled || (mathPairEnabled && mathPairContext?.revision != revision) { schedule(revision: revision) }
-        } else if enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled {
+            if enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || elementPathEnabled || needsPreviewModel || (mathPairEnabled && mathPairContext?.revision != revision) { schedule(revision: revision) }
+        } else if enabled || outlineVisible || readableEnabled || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled || needsPreviewModel {
             invalidatePresentation(in: visibleRange())
             schedule(revision: revision)
         } else if presentation != nil || !styledRanges.isEmpty {
@@ -1151,12 +1225,62 @@ final class MarkdownPresentationController {
         return parsedResult
     }
 
-    /// Индекс текущего разбора для правок CriticMarkup: только для актуальной версии, длины текста и без незавершённого ввода.
-    func criticElementIndex(document: EditorDocument, revision: UInt, textLength: Int) -> MarkdownElementIndex? {
+    /// Индекс элементов текущего разбора (для правок CriticMarkup): только для актуальной версии, длины текста и без незавершённого ввода.
+    func currentElementIndex(document: EditorDocument, revision: UInt, textLength: Int) -> MarkdownElementIndex? {
         guard isActive, self.document === document, self.revision == revision, parsedRevision == revision,
               currentRevision?() == revision, !hasMarkedText,
               let elements = parsedResult?.elements, elements.textLength == textLength else { return nil }
         return elements
+    }
+
+    private func criticColor(_ kind: CriticMarkupKind) -> NSColor {
+        switch kind {
+        case .insertion: .lacCriticInsertText
+        case .deletion: .lacCriticDeleteText
+        case .substitution: .lacCriticSubstituteText
+        case .comment: .lacCriticCommentText
+        case .highlight: .lacCriticHighlightText
+        }
+    }
+
+    /// Цвет правок CriticMarkup и комментариев `%%` заметок хранилища поверх подсветки синтаксиса (временным атрибутом).
+    /// Берёт span-ы готового разбора актуальной версии, поэтому работает и в режиме исходника; без разбора ничего не меняет.
+    /// Возвращает true, если что-то покрасил: вызывающий тогда помнит, что цвета нужно снять при смене режима.
+    @discardableResult
+    func reapplyDecorationColors(in range: NSRange) -> Bool {
+        guard isActive, document?.language == .markdown, document?.isLargeFileMode == false, document?.hasPendingLiveEdits == false,
+              !hasMarkedText, currentRevision?() == revision, parsedRevision == revision, let layout, let result = parsedResult,
+              let length = textView?.textStorage?.length, result.elements.textLength == length else { return false }
+        let bounded = NSIntersectionRange(range, NSRange(location: 0, length: length))
+        guard bounded.length > 0 else { return false }
+        if decorationSpans == nil {
+            var peak = 0
+            let own = result.spans.filter { span in
+                switch span.kind { case .critic, .obsidianComment: return true; default: return false }
+            }.enumerated().sorted { $0.element.range.location == $1.element.range.location ? $0.offset < $1.offset : $0.element.range.location < $1.element.range.location }.map(\.element)
+            decorationSpans = (own, own.map { peak = max(peak, NSMaxRange($0.range)); return peak })
+        }
+        guard let cache = decorationSpans, !cache.spans.isEmpty else { return false }
+        var low = 0, high = cache.ends.count
+        while low < high {
+            let middle = (low + high) / 2
+            if cache.ends[middle] <= bounded.location { low = middle + 1 } else { high = middle }
+        }
+        var painted = false
+        while low < cache.spans.count && cache.spans[low].range.location < NSMaxRange(bounded) {
+            let span = cache.spans[low]
+            low += 1
+            let part = NSIntersectionRange(span.range, bounded)
+            guard part.length > 0 else { continue }
+            let color: NSColor
+            switch span.kind {
+            case .critic(let kind): color = criticColor(kind)
+            default: color = .lacCommentText
+            }
+            layout.addTemporaryAttribute(.foregroundColor, value: color, forCharacterRange: part)
+            painted = true
+        }
+        return painted
     }
 
     func mathReference(at point: NSPoint, document: EditorDocument, revision: UInt) -> NSRange? {
@@ -1214,7 +1338,47 @@ final class MarkdownPresentationController {
             currentRevision?() == revision && !hasMarkedText && presentation?.pageBreaks.contains(range) == true
     }
 
+    /// Кнопка мыши отпущена: ставится отложенный разбор и применяется отложенное раскрытие. true — что-то было отложено.
+    @discardableResult
+    func pointerTrackingEnded() -> Bool {
+        var changed = false
+        if let deferred = deferredInstall {
+            deferredInstall = nil
+            if isActive, enabled, !hasMarkedText, deferred.revision == currentRevision?() {
+                install(deferred.result)
+                changed = true
+            }
+        }
+        if selectionChangedWhilePointerDown {
+            selectionChangedWhilePointerDown = false
+            selectionChanged()
+            changed = true
+        }
+        return changed
+    }
+
+    /// Куда поставить каретку, оказавшуюся в цепочке скрытых маркеров после клика или шага ↑/↓ (см. `MarkdownDisplayMap.settledCaret`); nil — не трогать.
+    func settledCaret(_ point: Int) -> Int? {
+        guard isActive, enabled, !hasMarkedText, !presentationKept, document?.isReadingMode != true,
+              let presentation, let layout, let length = textView?.textStorage?.length,
+              presentation.elements.textLength == length else { return nil }
+        let map: MarkdownDisplayMap
+        if let cached = displayMapCache, cached.sourceLength == length {
+            map = cached
+        } else {
+            map = MarkdownDisplayMap(presentation: presentation, textLength: length)
+            displayMapCache = map
+        }
+        let state = layout.markdownRevealState
+        return map.settledCaret(atSource: point, reveal: MarkdownDisplayMap.Reveal(revealedRange: state.revealed, inlineSelection: state.inline))
+    }
+
     func selectionChanged() {
+        // Пока кнопка мыши зажата, раскрытие и перестройка откладываются до `pointerTrackingEnded`.
+        if (textView as? LacTextView)?.isPointerTracking == true {
+            selectionChangedWhilePointerDown = true
+            return
+        }
         refreshElementPath()
         if let selection = textView?.selectedRange(), selection.location != NSNotFound,
            let layout {
@@ -1245,7 +1409,12 @@ final class MarkdownPresentationController {
             // Selection can move inside the same revealed line while a
             // pending audio probe finishes. Reconcile media views anyway so
             // a player cannot reappear after source selection.
-            if let visible = visibleRange() { updateAudio(in: visible); updateIframes(in: visible) }
+            if let visible = visibleRange() {
+                updateAudio(in: visible); updateIframes(in: visible)
+                // Команда «编辑源代码» выделяет следующий блок, пока раскрытая строка осталась nil (выделение «непрозрачное»).
+                // При обычном вводе строка не nil, и горячий путь блоки не пересчитывает.
+                if range == nil { updateDetails(in: visible); updateHTMLBlocks(in: visible) }
+            }
             return
         }
         lastRevealedRange = range
@@ -1504,6 +1673,8 @@ final class MarkdownPresentationController {
 
     /// Старый путь: отмена незавершённого и очистка готового.
     func cancel() {
+        deferredInstall = nil
+        selectionChangedWhilePointerDown = false
         clearReady()
         deferredReadyClear = false
         cancelPending()
@@ -1667,7 +1838,7 @@ final class MarkdownPresentationController {
     private func schedule(revision: UInt) {
         let generation = self.generation
         let item = DispatchWorkItem { [weak self] in
-            guard let self, (self.enabled || self.outlineVisible || self.readableEnabled || self.emojiCompletionEnabled || self.mathPairEnabled || self.elementPathEnabled), self.isActive, self.generation == generation,
+            guard let self, (self.enabled || self.outlineVisible || self.readableEnabled || self.emojiCompletionEnabled || self.mathPairEnabled || self.elementPathEnabled || self.needsPreviewModel), self.isActive, self.generation == generation,
                   let document = self.document, let textView = self.textView,
                   !self.hasMarkedText, self.currentRevision?() == revision else { return }
             self.work = nil
@@ -1679,15 +1850,27 @@ final class MarkdownPresentationController {
             let headingNumbering = self.headingNumbering
             let includeUppercaseRuns = self.enabled && !self.uppercaseHeadingLevels.isEmpty
             let includeEmojiCandidates = self.enabled || self.outlineVisible || self.readableEnabled || self.emojiCompletionEnabled || self.mathPairEnabled
+            let parseOptions = MarkdownParseOptions(includeReadableText: includeReadableText, includeEmojiCandidates: includeEmojiCandidates,
+                                                    includeUppercaseRuns: includeUppercaseRuns, includeWikiLinks: true, syntax: syntax,
+                                                    isVaultNote: MarkdownObsidianComment.appliesTo(documentURL: sourceURL))
+            let parseBase = self.parseBase
+            let localMinimumLength = self.localParseMinimumLength
+            // В отладочной сборке каждый локальный разбор сверяется с полным, в Release — каждый 20-й.
+            self.localParseCount += 1
+            #if DEBUG
+            let verifiesLocal = true
+            #else
+            let verifiesLocal = self.localParseCount % 20 == 0
+            #endif
             let taskGeneration = document.taskCoordinator.begin(.markdownPresentation)
             let operation = BlockOperation()
             operation.addExecutionBlock { [weak self, weak operation, weak document] in
                 guard let operation, !operation.isCancelled, let document else { return }
                 let signpost = OSSignpostID(log: markdownEditorPerformanceLog)
                 os_signpost(.begin, log: markdownEditorPerformanceLog, name: "MarkdownPresentationParse", signpostID: signpost)
-                let parsed = MarkdownPresentationParser.parse(text, includeReadableText: includeReadableText, includeEmojiCandidates: includeEmojiCandidates,
-                                                              includeUppercaseRuns: includeUppercaseRuns, includeWikiLinks: true, syntax: syntax,
-                                                              isCancelled: { operation.isCancelled })
+                let outcome = MarkdownLocalParser.parse(text, options: parseOptions, base: parseBase, minimumLength: localMinimumLength,
+                                                        verifies: verifiesLocal, isCancelled: { operation.isCancelled })
+                let parsed = outcome.presentation
                 os_signpost(.end, log: markdownEditorPerformanceLog, name: "MarkdownPresentationParse", signpostID: signpost)
                 let result = headingNumbering ? parsed.numberingHeadings(true) : parsed
                 let needsRoot = result.images.contains { MarkdownResourcePaths.requiresRoot($0.url) } || result.audioBlocks.contains { $0.media.sources.contains(where: { MarkdownResourcePaths.requiresRoot($0) }) }
@@ -1751,12 +1934,21 @@ final class MarkdownPresentationController {
                 let openings = (paragraphOpenings + codeOpenings).sorted { $0.line.location < $1.line.location }
                 guard !operation.isCancelled else { return }
                 DispatchQueue.main.async { [weak self, weak document] in
-                    guard let self, let document, self.document === document, document.url == sourceURL, (self.enabled || self.outlineVisible || self.readableEnabled || self.emojiCompletionEnabled || self.mathPairEnabled || self.elementPathEnabled), self.isActive,
+                    guard let self, let document, self.document === document, document.url == sourceURL, (self.enabled || self.outlineVisible || self.readableEnabled || self.emojiCompletionEnabled || self.mathPairEnabled || self.elementPathEnabled || self.needsPreviewModel), self.isActive,
                           self.generation == generation, self.currentRevision?() == revision,
                           document.taskCoordinator.isCurrent(taskGeneration, for: .markdownPresentation),
                           !self.hasMarkedText else { return }
                     document.taskCoordinator.finish(.markdownPresentation, generation: taskGeneration)
                     self.operation = nil
+                    self.parseBase = outcome.base
+                    self.lastParseFallback = outcome.fallbackReason
+                    if outcome.fallbackReason != nil { self.fullParseCount += 1 }
+                    self.lastParseDivergence = outcome.divergence
+                    if let divergence = outcome.divergence {
+                        os_log(.error, log: markdownEditorPerformanceLog, "Локальный разбор разошёлся с полным: %{public}@", divergence)
+                    } else if let reason = outcome.fallbackReason, reason != "нет базы" {
+                        os_log(.debug, log: markdownEditorPerformanceLog, "Полный разбор: %{public}@", reason)
+                    }
                     self.emojiOperation?.cancel()
                     self.emojiOperation = nil
                     self.emojiValues = nil
@@ -1777,10 +1969,17 @@ final class MarkdownPresentationController {
                     if self.readableEnabled, result.emojiCandidates.isEmpty, let readableText = result.readableText {
                         self.installReadableText(readableText, source: text, in: document)
                     }
+                    // Модель — только из полного разбора и только без токенов media; поздний результат сюда не доходит (guard выше).
+                    if let model = outcome.model, self.sourceMap?().isEmpty ?? true {
+                        document.installMarkdownModel(model, source: text)
+                    }
                     if (self.readableEnabled && !includeReadableText) || (self.enabled && !includeEmojiCandidates) || (self.mathPairEnabled && !includeMathPair) {
                         self.schedule(revision: revision)
                     }
                     if self.outlineVisible { self.publishOutline(result, revision: revision) }
+                    // Разбор только ради модели панели: побочных действий (эмодзи, каталог wiki, путь элемента) нет, ставится лишь модель.
+                    let modelOnly = !(self.enabled || self.outlineVisible || self.readableEnabled || self.emojiCompletionEnabled || self.mathPairEnabled || self.elementPathEnabled)
+                    if modelOnly { return }
                     if self.enabled { self.install(result) }
                     else { self.startEmojiResolution() }
                     if self.emojiCompletionRequested { self.emojiCompletionReady?() }
@@ -1796,7 +1995,7 @@ final class MarkdownPresentationController {
         }
         work = item
         // Когда разбор нужен только ради пути, пауза длиннее: короткие остановки при наборе не должны его запускать.
-        let pathOnly = !enabled && !outlineVisible && !readableEnabled && !emojiCompletionEnabled && !mathPairEnabled
+        let pathOnly = !enabled && !outlineVisible && !readableEnabled && !emojiCompletionEnabled && !mathPairEnabled && (elementPathEnabled || !needsPreviewModel)
         // Полный разбор форматированного документа не должен запускаться на каждой клавише:
         // при непрерывном вводе ждём короткую паузу, оставляя уже установленное оформление.
         let needsFresh = outlineVisible || emojiCompletionEnabled || mathPairEnabled || elementPathEnabled
@@ -1805,6 +2004,12 @@ final class MarkdownPresentationController {
     }
 
     private func install(_ result: MarkdownPresentation) {
+        // Пока кнопка мыши зажата, раскладка не перестраивается: пользователь кликает по той, что видит.
+        if (textView as? LacTextView)?.isPointerTracking == true {
+            deferredInstall = (result, currentRevision?())
+            return
+        }
+        deferredInstall = nil
         if deferredReadyClear {
             deferredReadyClear = false
             // Полный разбор уже подготовлен, но готовые медиа нельзя снимать до
@@ -1847,6 +2052,9 @@ final class MarkdownPresentationController {
     }
 
     private func clear() {
+        deferredInstall = nil
+        selectionChangedWhilePointerDown = false
+        parseBase = nil
         keptEdit = nil
         deferredReadyClear = false
         presentationKept = false
@@ -2969,7 +3177,7 @@ final class MarkdownPresentationController {
                 let configuration = WKWebViewConfiguration()
                 configuration.websiteDataStore = .nonPersistent()
                 configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
-                let view = WKWebView(frame: NSRect(x: 0, y: 0, width: width, height: height), configuration: configuration)
+                let view = MarkdownIframeWebView(frame: NSRect(x: 0, y: 0, width: width, height: height), configuration: configuration)
                 // Вью переживает правки выше него: запись ищем по самому вью, запомненные блок и позиция устарели бы после первого сдвига.
                 let navigation = MarkdownIframeNavigation { [weak self, weak document, weak view] in
                     guard let self, let document, let view, let entry = self.iframeViews.values.first(where: { $0.view === view }) else { return false }
@@ -3093,14 +3301,14 @@ final class MarkdownPresentationController {
                 let view: NSView
                 let frame = NSRect(x: 0, y: 0, width: width, height: height)
                 if let pdf = selectedPDF {
-                    let pdfView = PDFView(frame: frame)
+                    let pdfView = MarkdownPDFView(frame: frame)
                     pdfView.displayMode = .singlePageContinuous
                     pdfView.autoScales = true
                     pdfView.displaysPageBreaks = true
                     pdfView.document = pdf
                     view = pdfView
                 } else if let asset = selected {
-                    let player = AVPlayerView(frame: frame)
+                    let player = MarkdownPlayerView(frame: frame)
                     player.controlsStyle = block.media.controls ? .inline : .none
                     player.player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
                     view = player
@@ -3563,6 +3771,34 @@ final class MarkdownPresentationController {
         isActive && enabled && !hasMarkedText && document === resource.document && revision == resource.revision
             && generation == resource.generation && currentRevision?() == resource.revision
             && presentation?.images.contains(resource.image) == true
+    }
+
+    /// Блок «только просмотр» (аудио/видео/PDF, iframe, details, HTML-блок, изображение) под точкой в координатах текстового вида.
+    func blockSource(at point: NSPoint) -> BlockSource? {
+        guard let view = textView, let layout, let document,
+              isActive, enabled, !hasMarkedText, currentRevision?() == revision else { return nil }
+        func inside(_ child: NSView) -> Bool { child.superview === view && child.bounds.contains(child.convert(point, from: view)) }
+        let shown = audioViews.first { inside($0.value) }?.key ?? iframeViews.first { inside($0.value.view) }?.key
+            ?? detailsViews.first { inside($0.value) }?.key ?? htmlBlockViews.first { inside($0.value.view) }?.key
+        if let range = shown, layout.canDisplayMarkdownMedia(range) {
+            return BlockSource(range: range, action: .reveal, document: document, revision: revision, generation: generation)
+        }
+        // Строчный raw SVG раскрывается выделением (как в `revealedRange`), команда ему не нужна.
+        guard let image = imageResource(at: point),
+              !(image.image.isInline && image.image.url.hasPrefix("data:image/svg+xml")) else { return nil }
+        return BlockSource(range: image.image.range, action: .switchToSource, document: document, revision: revision, generation: generation)
+    }
+
+    func isCurrentBlockSource(_ source: BlockSource) -> Bool {
+        guard isActive, enabled, !hasMarkedText, document === source.document, revision == source.revision,
+              generation == source.generation, currentRevision?() == source.revision, let presentation,
+              layout?.canDisplayMarkdownMedia(source.range) == true else { return false }
+        switch source.action {
+        case .switchToSource: return presentation.images.contains { $0.range == source.range }
+        case .reveal:
+            return presentation.audioBlocks.contains { $0.range == source.range } || presentation.iframeBlocks.contains { $0.range == source.range }
+                || presentation.detailsBlocks.contains { $0.range == source.range } || presentation.htmlBlocks.contains { $0.range == source.range }
+        }
     }
 
     func isCurrentDiagramResource(_ resource: DiagramResource) -> Bool {

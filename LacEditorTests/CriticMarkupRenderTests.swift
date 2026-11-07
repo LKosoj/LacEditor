@@ -3,7 +3,7 @@ import XCTest
 
 final class CriticMarkupRenderTests: XCTestCase {
     private func body(_ text: String, _ mode: CriticMarkupRenderMode?) -> String {
-        MarkdownRenderer.renderPage(text, darkMode: false, critic: mode).body
+        MarkdownHTMLRenderer.renderPage(text, darkMode: false, critic: mode).body
     }
 
     func testShowWrapsEditsInTags() {
@@ -31,15 +31,16 @@ final class CriticMarkupRenderTests: XCTestCase {
 
     func testNilModeAndPlainTextAreUnchanged() {
         XCTAssertTrue(body("{++a++}", nil).contains("{++a++}"))
-        let prepared = CriticMarkupRender.prepare("plain", mode: .show, syntax: .init())
-        XCTAssertNil(prepared.markerBase)
-        XCTAssertEqual(prepared.text, "plain")
+        // Без правок HTML режима «показать» равен обычному.
+        XCTAssertEqual(body("plain", .show), body("plain", nil))
     }
 
     func testShowKeepsLineCount() {
-        let text = "a {>>one\ntwo\nthree<<} b\n{++x\ny++}\n"
-        let prepared = CriticMarkupRender.prepare(text, mode: .show, syntax: .init())
-        XCTAssertEqual(prepared.text.filter { $0 == "\n" }.count, text.filter { $0 == "\n" }.count)
+        let text = "a {>>one\ntwo\nthree<<} b\n{++x\ny++}\n\nafter"
+        let html = MarkdownHTMLRenderer.renderPage(text, darkMode: false, includeSourcePositions: true, critic: .show).body
+        // Абзац после правок остаётся на своей 7-й строке.
+        XCTAssertTrue(html.contains("data-sourcepos=\"1:1-5:"), html)
+        XCTAssertTrue(html.contains("data-sourcepos=\"7:1-7:5\""), html)
     }
 
     func testCommentLabelIsEscaped() {
@@ -83,7 +84,7 @@ final class CriticMarkupRenderTests: XCTestCase {
     }
 
     func testMarkersNeverLeakAndHeadingIdsStayPlain() {
-        let page = MarkdownRenderer.renderPage("# Title {++add++}\n\n[l](#title-add)\n", darkMode: false, critic: .show)
+        let page = MarkdownHTMLRenderer.renderPage("# Title {++add++}\n\n[l](#title-add)\n", darkMode: false, critic: .show)
         let leaked = page.body.unicodeScalars.contains { (0xE000...0xF8FF).contains($0.value) }
         XCTAssertFalse(leaked)
         for id in page.headingIDs {
@@ -102,8 +103,17 @@ final class CriticMarkupRenderTests: XCTestCase {
 
     func testTablesFrontMatterAndMathAreUntouched() {
         let text = "---\ntitle: {++x++}\n---\n\n| A |\n|---|\n| {--b--} |\n\n$$\n{++m++}\n$$\n"
-        let prepared = CriticMarkupRender.prepare(text, mode: .result, syntax: .init())
-        XCTAssertEqual(prepared.text, text)
+        // Умная пунктуация выключена, чтобы `--` в ячейке остался буквальным.
+        let syntax = MarkdownSyntaxOptions(smartPunctuation: false)
+        // В режиме «показать» любая обработанная правка дала бы `critic-`.
+        for mode in [CriticMarkupRenderMode.show, .result, .original] {
+            let html = MarkdownHTMLRenderer.renderPage(text, darkMode: false, syntax: syntax, critic: mode).body
+            XCTAssertFalse(html.contains("critic-"), "\(mode): \(html)")
+            // Front matter в страницу не попадает.
+            XCTAssertFalse(html.contains("title") || html.contains("{++x++}") || html.contains(">x<"), "\(mode): \(html)")
+            // В таблице и формуле правки остаются буквально.
+            for edit in ["{--b--}", "{++m++}"] { XCTAssertTrue(html.contains(edit), "\(mode) \(edit): \(html)") }
+        }
     }
 
     func testMarkerInLinkTargetAndAltIsRemoved() {
@@ -111,9 +121,9 @@ final class CriticMarkupRenderTests: XCTestCase {
         XCTAssertFalse(html.unicodeScalars.contains { (0xE000...0xF8FF).contains($0.value) })
     }
 
-    func testUnsavedTextGoesThroughPrepare() {
-        let prepared = CriticMarkupRender.prepare("not saved {++yet++}", mode: .result, syntax: .init())
-        XCTAssertEqual(prepared.text, "not saved yet")
+    func testUnsavedTextIsResolvedInResultMode() {
+        let html = body("not saved {++yet++}", .result)
+        XCTAssertTrue(html.contains("<p>not saved yet</p>"), html)
     }
 
     func testStageSixStringsExistInAllCatalogs() throws {
@@ -125,5 +135,13 @@ final class CriticMarkupRenderTests: XCTestCase {
             let dictionary = try XCTUnwrap(NSDictionary(contentsOf: url) as? [String: String])
             for key in keys { XCTAssertFalse(dictionary[key]?.isEmpty ?? true, "\(language): \(key)") }
         }
+    }
+
+    // Зоны исключения берутся из модели: правки в кодовом блоке, строчном коде и таблице не находятся.
+    func testItemsSkipCodeBlockInlineCodeAndTable() {
+        let text = "Текст 😀 {++вставка++} 中文\r\n\r\n```\r\n{++код++}\r\n```\r\n\r\n`{--строка--}`\r\n\r\n| a | b |\r\n| - | - |\r\n| {++в таблице++} | x |\r\n"
+        let source = text as NSString
+        let found = CriticMarkupRender.items(in: text, syntax: MarkdownSyntaxOptions())
+        XCTAssertEqual(found.map { source.substring(with: $0.range) }, ["{++вставка++}"])
     }
 }

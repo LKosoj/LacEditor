@@ -22,8 +22,8 @@ final class PandocExportTests: XCTestCase {
 
     func testMathMarkersRestoreAdjacentTextAndRejectWrongLocations() throws {
         let source = "前$x$後\n\n$$\ny\n$$"
-        let presentation = MarkdownPresentationParser.parse(source)
-        let (marked, markers) = try PandocExportService.markedMathSnapshot(source, presentation: presentation, isCancelled: { false })
+        let queries = try XCTUnwrap(MarkdownDocumentParser.parseOrEmpty(source).queries())
+        let (marked, markers) = try PandocExportService.markedMathSnapshot(source, queries: queries, isCancelled: { false })
         XCTAssertEqual(markers.count, 2)
         XCTAssertTrue(marked.contains("前" + markers[0].token + "後"))
         let tree: [String: Any] = ["meta": [:], "blocks": [
@@ -90,7 +90,7 @@ final class PandocExportTests: XCTestCase {
         XCTAssertNil(syntax.preserveEditingWhitespace)
         XCTAssertNil(syntax.preserveExportSoftBreaks)
         let source = "\"a\"\nb"
-        let native = MarkdownRenderer.renderPage(source, darkMode: false, syntax: syntax, forExport: true)
+        let native = MarkdownHTMLRenderer.renderPage(source, darkMode: false, syntax: syntax, forExport: true)
         XCTAssertTrue(native.body.contains("<br"))
         let executable = try XCTUnwrap(PandocExportService.findPandoc())
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -144,7 +144,7 @@ final class PandocExportTests: XCTestCase {
         XCTAssertTrue(html.contains(">Header</h3>"))
         XCTAssertTrue(html.contains("<p>bbb</p>"))
         XCTAssertTrue(html.contains("<li>ccc</li>"))
-        let preview = MarkdownRenderer.renderPage(source, darkMode: false, syntax: .init(strictMode: false)).body
+        let preview = MarkdownHTMLRenderer.renderPage(source, darkMode: false, syntax: .init(strictMode: false)).body
         XCTAssertEqual(preview.components(separatedBy: "<ol").count - 1, 2)
         XCTAssertEqual(html.components(separatedBy: "<ol").count - 1, 2)
         XCTAssertEqual(source, "###Header\n\n1. aaa\n\n  bbb\n\n10. aaa\n  1. ccc\n")
@@ -152,14 +152,14 @@ final class PandocExportTests: XCTestCase {
         let separateOutput = try PandocExportService.prepare(text: separated, source: nil, destination: directory.appendingPathComponent("separated.html"), format: .html, title: "Test", executable: executable, syntax: .init(strictMode: false))
         defer { try? FileManager.default.removeItem(at: separateOutput.preparedURL.deletingLastPathComponent()) }
         let separateHTML = try String(contentsOf: separateOutput.preparedURL, encoding: .utf8)
-        let separatePreview = MarkdownRenderer.renderPage(separated, darkMode: false, syntax: .init(strictMode: false)).body
+        let separatePreview = MarkdownHTMLRenderer.renderPage(separated, darkMode: false, syntax: .init(strictMode: false)).body
         XCTAssertEqual(separatePreview.components(separatedBy: "<ol").count - 1, 3)
         XCTAssertEqual(separateHTML.components(separatedBy: "<ol").count - 1, 3)
         let differentDelimiter = "1. aaa\n\n  bbb\n\n1) ccc\n"
         let delimiterOutput = try PandocExportService.prepare(text: differentDelimiter, source: nil, destination: directory.appendingPathComponent("delimiter.html"), format: .html, title: "Test", executable: executable, syntax: .init(strictMode: false))
         defer { try? FileManager.default.removeItem(at: delimiterOutput.preparedURL.deletingLastPathComponent()) }
         let delimiterHTML = try String(contentsOf: delimiterOutput.preparedURL, encoding: .utf8)
-        let delimiterPreview = MarkdownRenderer.renderPage(differentDelimiter, darkMode: false, syntax: .init(strictMode: false)).body
+        let delimiterPreview = MarkdownHTMLRenderer.renderPage(differentDelimiter, darkMode: false, syntax: .init(strictMode: false)).body
         XCTAssertEqual(delimiterPreview.components(separatedBy: "<ol").count - 1, 2)
         XCTAssertEqual(delimiterHTML.components(separatedBy: "<ol").count - 1, 2)
     }

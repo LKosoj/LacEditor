@@ -216,6 +216,7 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         didSet {
             if isMarkdownOutlineCurrent { isMarkdownOutlineCurrent = false }
             markdownReadableText = nil
+            markdownModel = nil
             hasPendingLiveEdits = false
             pendingLiveTextIsEmpty = nil
             textRevision &+= 1
@@ -233,7 +234,9 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         didSet {
             if language != oldValue {
                 markdownReadableText = nil
+                markdownModel = nil
                 if markdownElementPath != nil { markdownElementPath = nil }
+                if markdownFormattingState != nil { markdownFormattingState = nil }
                 scheduleMetricsRefresh()
             }
         }
@@ -252,6 +255,8 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     @Published var isMarkdownOutlineCurrent = false
     /// Путь элементов Markdown под курсором для строки состояния; временный, в сессию не пишется.
     @Published private(set) var markdownElementPath: MarkdownElementPath?
+    /// Оформление под выделением для панели форматирования; nil — не Markdown или разбора нет. Временное, в сессию не пишется.
+    @Published private(set) var markdownFormattingState: MarkdownFormattingState?
     @Published var isPreviewVisible: Bool
     /// Предпросмотр выключил профиль, а не пользователь: при возврате к обычному профилю он включается снова.
     private var isPreviewHiddenByProfile = false
@@ -313,6 +318,8 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
     private var metricsGeneration: UInt = 0
     private var statisticsReadingSpeed = 200
     private var markdownReadableText: (revision: UInt, value: MarkdownReadableText)?
+    /// Единая модель Markdown текущей версии текста; номер версии лежит в `model.revision`.
+    private var markdownModel: MarkdownDocumentModel?
     private var metricsSuspended = false
     private var isTakingMetricsSnapshot = false
     private var metricsDebounceWorkItem: DispatchWorkItem?
@@ -691,10 +698,16 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         markdownElementPath = value
     }
 
+    func setMarkdownFormattingState(_ value: MarkdownFormattingState?) {
+        guard markdownFormattingState != value else { return }
+        markdownFormattingState = value
+    }
+
     func noteLiveEdit(isEmpty: Bool) {
         lastLiveEditTime = .now()
         invalidateRecoveryCopy()
         if markdownReadableText != nil { markdownReadableText = nil }
+        if markdownModel != nil { markdownModel = nil }
         if !hasPendingLiveEdits { hasPendingLiveEdits = true }
         if pendingLiveTextIsEmpty != isEmpty { pendingLiveTextIsEmpty = isEmpty }
         scheduleMetricsRefresh()
@@ -806,6 +819,30 @@ final class EditorDocument: ObservableObject, Identifiable, @unchecked Sendable 
         markdownReadableText = (snapshot.revision, value)
         scheduleMetricsRefresh()
         return true
+    }
+
+    /// Модель кладётся только если источник совпадает с текущим текстом побайтно (UTF-16); метрики она не трогает.
+    @discardableResult
+    func installMarkdownModel(_ model: MarkdownDocumentModel, source: String) -> Bool {
+        guard language == .markdown, !hasPendingLiveEdits, !isLargeFileMode else { return false }
+        isTakingMetricsSnapshot = true
+        let snapshot = synchronizedSnapshot()
+        isTakingMetricsSnapshot = false
+        guard snapshot.text.utf16.elementsEqual(source.utf16), model.textLength == source.utf16.count else { return false }
+        var installed = model
+        installed.revision = snapshot.revision
+        markdownModel = installed
+        return true
+    }
+
+    /// Модель только для текущей версии текста; только на главном потоке.
+    func markdownModel(forRevision revision: UInt) -> MarkdownDocumentModel? {
+        guard !hasPendingLiveEdits, let model = markdownModel, model.revision == revision, textRevision == revision else { return nil }
+        return model
+    }
+
+    func invalidateMarkdownModel() {
+        markdownModel = nil
     }
 
     /// Снимок для оглавления по символам. Флаг не даёт записи живого текста снова запускать пересчёты.

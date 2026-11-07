@@ -58,8 +58,8 @@ final class MarkdownLinkNavigationTests: XCTestCase {
 
     func testSharedHeadingAnchorsKeepRendererIDsAndDuplicateAliases() throws {
         let source = "# A\n# A\n# A-1\n# 中文 😀\n# !!!\n# é\n# É"
-        let headings = MarkdownPresentationParser.parse(source).headings
-        let page = MarkdownRenderer.renderPage(source, darkMode: false)
+        let headings = MarkdownPresentationBuilder.parse(source).headings
+        let page = MarkdownHTMLRenderer.renderPage(source, darkMode: false)
         XCTAssertEqual(page.headingIDs, ["lac-heading-a", "lac-heading-a-1", "lac-heading-a-1-1", "lac-heading-中文", "lac-heading-section", "lac-heading-é", "lac-heading-é-1"])
         XCTAssertEqual(MarkdownHeadingAnchors.target(for: "a-1", in: headings), headings[1])
         XCTAssertEqual(MarkdownHeadingAnchors.target(for: "a-1-1", in: headings), headings[2])
@@ -70,7 +70,7 @@ final class MarkdownLinkNavigationTests: XCTestCase {
 
     func testSharedParserConfirmsInlineReferenceAndAutolinks() {
         let source = "😀 [**label**](https://example.com/a 'title') [ref][id] <a@example.com> `code [x](bad)` ![picture](image.png)\r\n\r\n[id]: other.md#part"
-        let links = MarkdownPresentationParser.parse(source).links
+        let links = MarkdownPresentationBuilder.parse(source).links
         XCTAssertEqual(links.map(\.url), ["https://example.com/a", "other.md#part", "mailto:a@example.com"])
         XCTAssertEqual(links.map { (source as NSString).substring(with: $0.range) },
                        ["[**label**](https://example.com/a 'title')", "[ref][id]", "<a@example.com>"])
@@ -83,7 +83,7 @@ final class MarkdownLinkNavigationTests: XCTestCase {
             ("| A |\n|---|\n| 中\\|😀 https://example.com |", ["https://example.com"], ["https://example.com"])
         ]
         for (source, expectedRanges, expectedURLs) in cases {
-            let links = MarkdownPresentationParser.parse(source).links
+            let links = MarkdownPresentationBuilder.parse(source).links
             XCTAssertEqual(links.map { (source as NSString).substring(with: $0.range) }, expectedRanges)
             XCTAssertEqual(links.map(\.url), expectedURLs)
         }
@@ -91,7 +91,7 @@ final class MarkdownLinkNavigationTests: XCTestCase {
 
     func testTableLinkRangeUsesEscapedPipeByteMap() throws {
         let source = "| A |\r\n|---|\r\n| 中\\|😀 **[link](other.md#part)** |"
-        let link = try XCTUnwrap(MarkdownPresentationParser.parse(source).links.first)
+        let link = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).links.first)
         XCTAssertEqual(link.url, "other.md#part")
         XCTAssertEqual((source as NSString).substring(with: link.range), "[link](other.md#part)")
     }

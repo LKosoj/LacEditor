@@ -17,7 +17,7 @@ final class MarkdownElementPathTests: XCTestCase {
     }
 
     private func path(_ source: String, _ marker: String, offset: Int = 0, wiki: Bool = false) -> [Kind] {
-        let result = MarkdownPresentationParser.parse(source, includeWikiLinks: wiki)
+        let result = MarkdownPresentationBuilder.parse(source, includeWikiLinks: wiki)
         return kinds(result.elements.path(at: location(source, marker, offset: offset)))
     }
 
@@ -112,7 +112,7 @@ final class MarkdownElementPathTests: XCTestCase {
         XCTAssertEqual(path(source, "ссылка"), [.heading(2), .link])
         XCTAssertEqual(path(source, "Заголовок"), [.heading(2)])
         let newline = (source as NSString).range(of: "\n").location
-        XCTAssertEqual(kinds(MarkdownPresentationParser.parse(source).elements.path(at: newline)), [.heading(2)])
+        XCTAssertEqual(kinds(MarkdownPresentationBuilder.parse(source).elements.path(at: newline)), [.heading(2)])
         XCTAssertEqual(path(source, "\n\nтекст", offset: 1), [])
         XCTAssertEqual(path(source, "текст"), [])
     }
@@ -198,7 +198,7 @@ final class MarkdownElementPathTests: XCTestCase {
 
     func testResultSurvivesHeadingNumberingAndEmojiResolution() {
         let source = "# Title **b**\n"
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         let at = location(source, "b**")
         XCTAssertEqual(kinds(parsed.elements.path(at: at)), [.heading(1), .strong])
         XCTAssertEqual(kinds(parsed.numberingHeadings(true).elements.path(at: at)), [.heading(1), .strong])

@@ -147,8 +147,11 @@ final class MarkdownClipboardCopyTests: XCTestCase {
         let unmatched = "<strong>selected" as NSString
         XCTAssertNil(MarkdownClipboardCopyService.project(unmatched as String, selection: NSRange(location: 0, length: unmatched.length)))
         let inert = "before <script><strong>hidden</strong></script> after\n\nbefore <template><strong>inert</strong></template> after" as NSString
-        XCTAssertNil(MarkdownClipboardCopyService.project(inert as String, selection: inert.range(of: "hidden")))
-        XCTAssertNil(MarkdownClipboardCopyService.project(inert as String, selection: inert.range(of: "inert")))
+        // Текст внутри скрытых тегов виден в панели: копируется обычным текстом, без оформления `<strong>`.
+        XCTAssertEqual(MarkdownClipboardCopyService.project(inert as String, selection: inert.range(of: "hidden"))?.text, "hidden")
+        XCTAssertEqual(MarkdownClipboardCopyService.project(inert as String, selection: inert.range(of: "hidden"))?.html, "hidden")
+        XCTAssertEqual(MarkdownClipboardCopyService.project(inert as String, selection: inert.range(of: "inert"))?.text, "inert")
+        XCTAssertEqual(MarkdownClipboardCopyService.project(inert as String, selection: inert.range(of: "inert"))?.html, "inert")
         XCTAssertEqual(MarkdownClipboardCopyService.project(inert as String, selection: inert.range(of: "before"))?.text, "before")
     }
     func testPairedInlineHTMLStylesShareNestedProjection() throws {
@@ -575,6 +578,19 @@ final class MarkdownClipboardCopyTests: XCTestCase {
             let full = try XCTUnwrap(MarkdownClipboardCopyService.project(source, selection: NSRange(location: 0, length: raw.length)), source)
             XCTAssertTrue(full.text.contains("中文"))
             XCTAssertTrue(full.text.contains("$x$"))
+        }
+    }
+
+    /// spec 9 (абзац на строке с табом) и spec 518 (многострочная ссылка с заголовком): копирование с оформлением не отказывает и не добавляет лишних переводов строки.
+    func testTabbedParagraphAndMultilineLinkCopyWithFormatting() throws {
+        for newline in ["\n", "\r\n"] {
+            let tabbed = [" - foo", "   - bar", "\t - baz 中文"].joined(separator: newline) + newline
+            let baz = (tabbed as NSString).range(of: "baz 中文")
+            XCTAssertEqual(try XCTUnwrap(MarkdownClipboardCopyService.project(tabbed, selection: baz), tabbed).text, "baz 中文")
+            let link = ["[link](   /uri", "  \"title 中文😀\"  )"].joined(separator: newline) + newline
+            let fragment = try XCTUnwrap(MarkdownClipboardCopyService.project(link, selection: NSRange(location: 0, length: (link as NSString).length - newline.utf16.count)), link)
+            XCTAssertEqual(fragment.text, "link")
+            XCTAssertTrue(fragment.html.contains("href=\"/uri\""))
         }
     }
 
@@ -1375,7 +1391,7 @@ final class MarkdownClipboardCopyTests: XCTestCase {
     func testFenceCopyIncludesSpacesFromSelectedPartialTab() throws {
         let source = "  ```js\n\tlet x = 1\n  ```"
         let raw = source as NSString
-        let block = try XCTUnwrap(MarkdownPresentationParser.parse(source).codeBlocks.first)
+        let block = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).codeBlocks.first)
         XCTAssertEqual(block.bodyPadding, [2])
         XCTAssertEqual(block.literal, "  let x = 1\n")
         let whole = try XCTUnwrap(MarkdownClipboardCopyService.project(source, selection: NSRange(location: 0, length: raw.length)))

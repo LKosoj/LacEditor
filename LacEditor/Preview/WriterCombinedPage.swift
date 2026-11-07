@@ -1,7 +1,7 @@
 import Foundation
 
 /// Страница сводного просмотра: тексты сцен подряд, у каждой части подпись-ссылка «Название · Открыть».
-/// Чистая сборка HTML без окон: рендер каждой части делает `MarkdownRenderer`, шапка, CSP и стили берутся у `MarkdownRenderedPage`.
+/// Чистая сборка HTML без окон: рендер каждой части делает `MarkdownHTMLRenderer`, шапка, CSP и стили берутся у `MarkdownRenderedPage`.
 enum WriterCombinedPage {
     struct PartInput: Sendable {
         let title: String
@@ -31,9 +31,9 @@ enum WriterCombinedPage {
     static func html(parts: [PartInput], token: String, darkMode: Bool, syntax: MarkdownSyntaxOptions, openLabel: String) -> String {
         var sections: [String] = []
         for (index, part) in parts.enumerated() {
-            var page = MarkdownRenderer.renderPage(part.text, darkMode: darkMode, renderEmoji: true, resolveLocalImages: true,
-                                                   documentURL: part.documentURL, prepareRemoteImages: true, syntax: syntax,
-                                                   highlightCode: true)
+            var page = MarkdownHTMLRenderer.renderPage(part.text, darkMode: darkMode, renderEmoji: true, resolveLocalImages: true,
+                                                       documentURL: part.documentURL, prepareRemoteImages: true, syntax: syntax,
+                                                       highlightCode: true)
             // CSP страницы пускает только `data:`: внешние картинки скрываются, локальные встраиваются.
             try? page.hideRemoteImages()
             try? page.prepareLocalMedia(load: true)

@@ -1,0 +1,573 @@
+=== ext/0001 | Tables
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>abc</th>
+<th>def</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ghi</td>
+<td>jkl</td>
+</tr>
+<tr>
+<td>mno</td>
+<td>pqr</td>
+</tr>
+</tbody>
+</table></div>
+=== ext/0002 | Tables
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p>Hello!</p>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th><em>abc</em></th>
+<th>セン</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Block elements inside cells don’t work.</td>
+<td></td>
+</tr>
+<tr>
+<td>But <em><strong>inline elements do</strong></em>.</td>
+<td>x</td>
+</tr>
+</tbody>
+</table></div>
+<p>Hi!</p>
+=== ext/0003 | Tables
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p>| Not enough table | to be considered table |</p>
+<p>| Not enough table | to be considered table |<br />
+| Not enough table | to be considered table |</p>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>Just enough table</th>
+<th>to be considered table</th>
+</tr>
+</thead>
+</table></div>
+<p>| –– | — |</p>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>x</th>
+</tr>
+</thead>
+</table></div>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>xyz</th>
+</tr>
+</thead>
+</table></div>
+=== ext/0004 | Tables
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>abc</th>
+<th>def</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>xyz</td>
+<td>ghi</td>
+</tr>
+</tbody>
+</table></div>
+=== ext/0005 | Tables
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p>Hello!</p>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th><em>abc</em></th>
+<th>セン</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>this row has a space at the end</td>
+<td></td>
+</tr>
+<tr>
+<td>But <em><strong>inline elements do</strong></em>.</td>
+<td>x</td>
+</tr>
+</tbody>
+</table></div>
+<p>Hi!</p>
+=== ext/0006 | Tables
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th align="left">aaa</th>
+<th>bbb</th>
+<th align="center">ccc</th>
+<th>ddd</th>
+<th align="right">eee</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="left">fff</td>
+<td>ggg</td>
+<td align="center">hhh</td>
+<td>iii</td>
+<td align="right">jjj</td>
+</tr>
+</tbody>
+</table></div>
+=== ext/0007 | Table cell count mismatches
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p>| a | b | c |<br />
+| — | — |<br />
+| this | isn’t | okay |</p>
+=== ext/0008 | Table cell count mismatches
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>a</th>
+<th>b</th>
+<th>c</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>x</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>a</td>
+<td>b</td>
+<td></td>
+</tr>
+<tr>
+<td>1</td>
+<td>2</td>
+<td>3</td>
+</tr>
+</tbody>
+</table></div>
+=== ext/0009 | Embedded pipes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>a</th>
+<th>b</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Escaped pipes are |okay|.</td>
+<td>Like | this.</td>
+</tr>
+<tr>
+<td>Within <code>|code| is okay</code> too.</td>
+<td></td>
+</tr>
+<tr>
+<td><em><strong><code>c|</code></strong></em> | complex</td>
+<td></td>
+</tr>
+<tr>
+<td>don’t <strong>_reparse_</strong></td>
+<td></td>
+</tr>
+</tbody>
+</table></div>
+=== ext/0010 | Oddly-formatted markers
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>a</th>
+</tr>
+</thead>
+</table></div>
+=== ext/0011 | Escaping
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>a</th>
+<th>b</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>\</td>
+<td><code>\\</code></td>
+</tr>
+<tr>
+<td>\\</td>
+<td><code>\\\\</code></td>
+</tr>
+<tr>
+<td>_</td>
+<td><code>\_</code></td>
+</tr>
+<tr>
+<td>|</td>
+<td><code>|</code></td>
+</tr>
+<tr>
+<td>\a</td>
+<td><code>\a</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>\ <code>\\</code></p>
+<p>\\ <code>\\\\</code></p>
+<p>_ <code>\_</code></p>
+<p>| <code>\|</code></p>
+<p>\a <code>\a</code></p>
+=== ext/0012 | Embedded HTML
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>a</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><!-- raw HTML omitted -->hello<!-- raw HTML omitted --></td>
+</tr>
+<tr>
+<td>ok <br> sure</td>
+</tr>
+</tbody>
+</table></div>
+=== ext/0013 | Reference-style links
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p>Here’s a link to <a href="http://www.freedomplanet2.com/">Freedom Planet 2</a>.</p>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>Here’s a link to <a href="http://www.freedomplanet2.com/">Freedom Planet 2</a> in a table header.</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Here’s a link to <a href="http://www.freedomplanet2.com/">Freedom Planet 2</a> in a table row.</td>
+</tr>
+</tbody>
+</table></div>
+=== ext/0014 | Sequential cells
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>a</th>
+<th>b</th>
+<th>c</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td colspan="2">d</td>
+<td>e</td>
+</tr>
+</tbody>
+</table></div>
+=== ext/0015 | Interaction with emphasis
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>a</th>
+<th>b</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><em><strong>(a)</strong></em></td>
+<td></td>
+</tr>
+</tbody>
+</table></div>
+=== ext/0016 | a table can be recognised when separated from a paragraph of text without an empty line
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p>123<br />
+456</p>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>a</th>
+<th>b</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>d</td>
+<td>e</td>
+</tr>
+</tbody>
+</table></div>
+=== ext/0017 | Strikethroughs
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p>A proper <sub>strikethrough</sub>.</p>
+=== ext/0018 | Strikethroughs
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p>These are ~not strikethroughs.</p>
+<p>No, they are not~</p>
+<p>This <del>is ~ legit</del> isn’t ~ legit.</p>
+<p>This is not ~~~~~one~~~~~ huge strikethrough.</p>
+<p><sub>one</sub> <del>two</del> ~~~three~~~</p>
+<p>No ~mismatch~~</p>
+=== ext/0019 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+[remote] LACREMOTE#0 -> "http://inline.com/image"
+--- body
+<p>: <a href="http://google.com">http://google.com</a> <a href="https://google.com">https://google.com</a></p>
+<p><a href="http://google.com/%C3%A5">http://google.com/å</a> <a href="http://google.com/%C3%A5">http://google.com/å</a></p>
+<p><a href="mailto:scyther@pokemon.com">scyther@pokemon.com</a></p>
+<p><a href="mailto:scy.the_rbe-edr+ill@pokemon.com">scy.the_rbe-edr+ill@pokemon.com</a></p>
+<p><a href="mailto:scyther@pokemon.com">scyther@pokemon.com</a>.</p>
+<p><a href="mailto:scyther@pokemon.com">scyther@pokemon.com</a>/</p>
+<p><a href="mailto:scyther@pokemon.com">scyther@pokemon.com</a>/<a href="mailto:beedrill@pokemon.com">beedrill@pokemon.com</a></p>
+<p><a href="mailto:scyther@pokemon.com">mailto:scyther@pokemon.com</a></p>
+<p>This is a <a href="mailto:scyther@pokemon.com">mailto:scyther@pokemon.com</a></p>
+<p><a href="mailto:scyther@pokemon.com">mailto:scyther@pokemon.com</a>.</p>
+<p>mmmmailto:<a href="mailto:scyther@pokemon.com">scyther@pokemon.com</a></p>
+<p><a href="mailto:scyther@pokemon.com">mailto:scyther@pokemon.com</a>/</p>
+<p><a href="mailto:scyther@pokemon.com">mailto:scyther@pokemon.com</a>/message</p>
+<p><a href="mailto:scyther@pokemon.com">mailto:scyther@pokemon.com</a>/<a href="mailto:beedrill@pokemon.com">mailto:beedrill@pokemon.com</a></p>
+<p><a href="xmpp:scyther@pokemon.com">xmpp:scyther@pokemon.com</a></p>
+<p><a href="xmpp:scyther@pokemon.com">xmpp:scyther@pokemon.com</a>.</p>
+<p><a href="xmpp:scyther@pokemon.com/message">xmpp:scyther@pokemon.com/message</a></p>
+<p><a href="xmpp:scyther@pokemon.com/message">xmpp:scyther@pokemon.com/message</a>.</p>
+<p>Email me at:<a href="mailto:scyther@pokemon.com">scyther@pokemon.com</a></p>
+<p><a href="http://www.github.com">www.github.com</a> <a href="http://www.github.com/%C3%A1">www.github.com/á</a></p>
+<p><a href="http://www.google.com/a_b">www.google.com/a_b</a></p>
+<p>Underscores not allowed in host name www.xxx.yyy._zzz</p>
+<p>Underscores not allowed in host name www.xxx._yyy.zzz</p>
+<p>Underscores allowed in domain name <a href="http://www._xxx.yyy.zzz">www._xxx.yyy.zzz</a></p>
+<p><strong>Autolink and <a href="http://inlines">http://inlines</a></strong></p>
+<p><span data-lac-centered-image><img src="LACREMOTE#0" alt="http://inline.com/image" /></span></p>
+<p><a href="mailto:a.w@b.c">a.w@b.c</a></p>
+<p>Full stop outside parens shouldn’t be included <a href="http://google.com/ok">http://google.com/ok</a>.</p>
+<p>(Full stop inside parens shouldn’t be included <a href="http://google.com/ok">http://google.com/ok</a>.)</p>
+<p>“<a href="http://google.com">http://google.com</a>”</p>
+<p>‘<a href="http://google.com">http://google.com</a>’</p>
+<p><a href="http://%F0%9F%8D%84.ga/">http://🍄.ga/</a> <a href="http://x%F0%9F%8D%84.ga/">http://x🍄.ga/</a></p>
+=== ext/0020 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p>This shouldn’t crash everything: (<em>A</em>@_.A</p>
+=== ext/0021 | Autolinks
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1
+--- body
+<p>These should not link:</p>
+<ul>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+@a.b.c@. x</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+n@.  b</li>
+</ul>
+=== ext/0022 | HTML tag filter
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p>This is <!-- raw HTML omitted --> not okay, but <strong>this</strong> <!-- raw HTML omitted -->is<!-- raw HTML omitted -->.</p>
+<!-- raw HTML omitted -->
+<p>Nope, I won’t have <!-- raw HTML omitted -->.</p>
+<!-- raw HTML omitted -->
+<!-- raw HTML omitted -->
+<p>Yep, <!-- raw HTML omitted -->okay<!-- raw HTML omitted -->.</p>
+<!-- raw HTML omitted -->
+<p>&lt;!- But we’re strict. -&gt;<br />
+&lt;! No nonsense. &gt;</p>
+<!-- raw HTML omitted -->
+<!-- raw HTML omitted -->
+<!-- raw HTML omitted -->
+<!-- raw HTML omitted -->
+=== ext/0023 | Footnotes
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p>This is some text!<sup class="footnote-ref"><a href="#fn-1" id="fnref-1" data-footnote-ref>1</a></sup>. Other text.<sup class="footnote-ref"><a href="#fn-footnote" id="fnref-footnote" data-footnote-ref>2</a></sup>.</p>
+<p>Here’s a thing<sup class="footnote-ref"><a href="#fn-other-note" id="fnref-other-note" data-footnote-ref>3</a></sup>.</p>
+<p>And another thing<sup class="footnote-ref"><a href="#fn-codeblock-note" id="fnref-codeblock-note" data-footnote-ref>4</a></sup>.</p>
+<p>This doesn’t have a referent[^nope].</p>
+<p>Hi!</p>
+<section class="footnotes" data-footnotes>
+<ol>
+<li id="fn-1">
+<p>Some <em>bolded</em> footnote definition. <a href="#fnref-1" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="1" aria-label="Back to reference 1">↩</a></p>
+</li>
+<li id="fn-footnote">
+<blockquote>
+<p>Blockquotes can be in a footnote.</p>
+</blockquote>
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code>as well as code blocks
+</code></pre>
+<p>or, naturally, simple paragraphs. <a href="#fnref-footnote" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="2" aria-label="Back to reference 2">↩</a></p>
+</li>
+<li id="fn-other-note">
+<p>no code block here (spaces are stripped away) <a href="#fnref-other-note" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="3" aria-label="Back to reference 3">↩</a></p>
+</li>
+<li id="fn-codeblock-note">
+<pre tabindex="0" aria-label="Code block, scroll horizontally"><code>this is now a code block (8 spaces indentation)
+</code></pre>
+<a href="#fnref-codeblock-note" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="4" aria-label="Back to reference 4">↩</a>
+</li>
+</ol>
+</section>
+=== ext/0024 | When a footnote is used multiple times, we insert multiple backrefs.
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p>This is some text. It has a footnote<sup class="footnote-ref"><a href="#fn-a-footnote" id="fnref-a-footnote" data-footnote-ref>1</a></sup>.</p>
+<p>This footnote is referenced<sup class="footnote-ref"><a href="#fn-a-footnote" id="fnref-a-footnote-2" data-footnote-ref>1</a></sup> multiple times, in lots of different places.<sup class="footnote-ref"><a href="#fn-a-footnote" id="fnref-a-footnote-3" data-footnote-ref>1</a></sup></p>
+<section class="footnotes" data-footnotes>
+<ol>
+<li id="fn-a-footnote">
+<p>This footnote definition should have three backrefs. <a href="#fnref-a-footnote" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="1" aria-label="Back to reference 1">↩</a> <a href="#fnref-a-footnote-2" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="1-2" aria-label="Back to reference 1-2">↩<sup class="footnote-ref">2</sup></a> <a href="#fnref-a-footnote-3" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="1-3" aria-label="Back to reference 1-3">↩<sup class="footnote-ref">3</sup></a></p>
+</li>
+</ol>
+</section>
+=== ext/0025 | Footnote reference labels are href escaped
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p>Hello<sup class="footnote-ref"><a href="#fn-%22%3E%3Cscript%3Ealert(1)%3C/script%3E" id="fnref-%22%3E%3Cscript%3Ealert(1)%3C/script%3E" data-footnote-ref>1</a></sup></p>
+<section class="footnotes" data-footnotes>
+<ol>
+<li id="fn-%22%3E%3Cscript%3Ealert(1)%3C/script%3E">
+<p>pwned <a href="#fnref-%22%3E%3Cscript%3Ealert(1)%3C/script%3E" class="footnote-backref" data-footnote-backref data-footnote-backref-idx="1" aria-label="Back to reference 1">↩</a></p>
+</li>
+</ol>
+</section>
+=== ext/0026 | Interop
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<p><del><a href="http://www.google.com">www.google.com</a></del></p>
+<p><del><a href="http://google.com">http://google.com</a></del></p>
+=== ext/0027 | Interop
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>a</th>
+<th>b</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com">https://github.com</a> <a href="http://www.github.com">www.github.com</a></td>
+<td><a href="http://pokemon.com">http://pokemon.com</a></td>
+</tr>
+</tbody>
+</table></div>
+=== ext/0028 | Task lists
+[flags] omitted=false whitespace=false rawFailed=false
+--- body
+<ul>
+<li><input type="checkbox" disabled="" /> foo</li>
+<li><input type="checkbox" checked="" disabled="" />\u{20}
+<span data-lac-checked-task></span>
+bar</li>
+</ul>
+=== ext/0029 | Task lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1, 2
+--- body
+<ul>
+<li><input type="checkbox" checked="" disabled="" />\u{20}
+<span data-lac-checked-task></span>
+foo
+<ul>
+<li><input type="checkbox" disabled="" /> bar</li>
+<li><input type="checkbox" checked="" disabled="" />\u{20}
+<span data-lac-checked-task></span>
+baz</li>
+</ul>
+</li>
+<li><input type="checkbox" disabled="" /> bim</li>
+</ul>
+<p>Show a regular (non task) list to show that it has the same structure</p>
+<ul>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+[@] foo
+<ul>
+<li>
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+[@] bar</li>
+<li>
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+[@] baz</li>
+</ul>
+</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+[@] bim</li>
+</ul>
+=== ext/0030 | Task lists
+[flags] omitted=false whitespace=false rawFailed=false
+[listDepths] 1, 2
+--- body
+<ul>
+<li><input type="checkbox" checked="" disabled="" />\u{20}
+<span data-lac-checked-task></span>
+foo
+<ul>
+<li><input type="checkbox" disabled="" /> bar</li>
+<li><input type="checkbox" checked="" disabled="" />\u{20}
+<span data-lac-checked-task></span>
+baz</li>
+</ul>
+</li>
+<li><input type="checkbox" disabled="" /> bim</li>
+</ul>
+<p>Show a regular (non task) list to show that it has the same structure</p>
+<ul>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+[@] foo
+<ul>
+<li>
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+[@] bar</li>
+<li>
+<span hidden data-lac-list-depth="2" data-lac-list-kind="unordered"></span>
+[@] baz</li>
+</ul>
+</li>
+<li>
+<span hidden data-lac-list-depth="1" data-lac-list-kind="unordered"></span>
+[@] bim</li>
+</ul>

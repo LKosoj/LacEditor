@@ -49,7 +49,7 @@ final class MarkdownTableShortcutTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
-        let table = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first)
+        let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first)
         let header = try XCTUnwrap(table.rows.first?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(header.range, frame: NSRect(x: 0, y: 0, width: 100, height: 30), cell: header))
         var child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
@@ -66,7 +66,7 @@ final class MarkdownTableShortcutTests: XCTestCase {
             timestamp: 0, windowNumber: window.windowNumber, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
         child.keyDown(with: enter)
         XCTAssertEqual(view.string, source + "\r\n|   |   |   ")
-        XCTAssertEqual(MarkdownPresentationParser.parse(view.string).tables.first?.rows.count, 3)
+        XCTAssertEqual(MarkdownPresentationBuilder.parse(view.string).tables.first?.rows.count, 3)
         XCTAssertNotNil(view.subviews.first { $0 is MarkdownTableCellEditor })
         try XCTUnwrap(view.undoManager).undo()
         XCTAssertEqual(view.string, source)
@@ -98,7 +98,7 @@ final class MarkdownTableShortcutTests: XCTestCase {
         coordinator.installObservers(scrollView: scroll)
         coordinator.updateActivity(true)
         defer { coordinator.updateActivity(false); window.close() }
-        let cell = try XCTUnwrap(MarkdownPresentationParser.parse(source).tables.first?.rows.last?.cells.first)
+        let cell = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first?.rows.last?.cells.first)
         XCTAssertTrue(coordinator.beginTableCell(cell.range, frame: NSRect(x: 0, y: 0, width: 100, height: 30), cell: cell))
         let child = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first)
         child.isEditable = true

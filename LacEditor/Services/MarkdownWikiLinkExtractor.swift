@@ -5,7 +5,7 @@ enum MarkdownWikiLinkExtractor {
     /// Полный разбор документа: те же правила, что в редакторе (код, экранирование, HTML и т. п. исключены). Позиции в UTF-16.
     static func links(in markdown: String, syntax: MarkdownSyntaxOptions = .init(), isCancelled: @escaping () -> Bool = { false }) -> [MarkdownWikiLink] {
         guard markdown.contains("[[") else { return [] }
-        return MarkdownPresentationParser.parse(markdown, includeWikiLinks: true, syntax: syntax, isCancelled: isCancelled).wikiLinks
+        return MarkdownDocumentParser.parseOrEmpty(markdown, syntax: syntax, includes: [.wikiLinks], isCancelled: isCancelled).wikiLinks
     }
 
     /// `textRanges` — подтверждённые фрагменты текста, `excluded` — диапазоны, где ссылка запрещена.

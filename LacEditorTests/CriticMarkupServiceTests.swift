@@ -8,7 +8,7 @@ final class CriticMarkupServiceTests: XCTestCase {
     }
 
     private func parsedItems(_ text: String) -> [CriticMarkupItem] {
-        let excluded = MarkdownPresentationParser.parse(text).elements
+        let excluded = MarkdownPresentationBuilder.parse(text).elements
             .excludedRanges(intersecting: NSRange(location: 0, length: (text as NSString).length))
         return scan(text, excluded: excluded)
     }
@@ -186,11 +186,11 @@ final class CriticMarkupServiceTests: XCTestCase {
 
     func testExcludedRangesFromParser() {
         let code = "```\nline1\nline2\nline3\n```\n"
-        let index = MarkdownPresentationParser.parse(code).elements
+        let index = MarkdownPresentationBuilder.parse(code).elements
         let inside = index.excludedRanges(intersecting: NSRange(location: 7, length: 3))
         XCTAssertEqual(inside.count, 1)
         XCTAssertEqual(inside.first?.location, 0)
-        XCTAssertTrue(MarkdownPresentationParser.parse("plain text").elements.excludedRanges(intersecting: NSRange(location: 0, length: 10)).isEmpty)
+        XCTAssertTrue(MarkdownPresentationBuilder.parse("plain text").elements.excludedRanges(intersecting: NSRange(location: 0, length: 10)).isEmpty)
     }
 
     func testParserExcludesCodeHTMLTablesAndFrontMatter() {

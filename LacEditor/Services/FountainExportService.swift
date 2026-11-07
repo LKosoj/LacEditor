@@ -1,6 +1,4 @@
 import Foundation
-import cmark_gfm
-import cmark_gfm_extensions
 import SwiftSoup
 import Yams
 
@@ -91,7 +89,7 @@ enum FountainExportService {
     static func titlePage(frontMatterFrom text: String?, titleOverride: String?) -> (text: String, warnings: [Warning]) {
         var values: [String: String] = [:]
         var warnings: [Warning] = []
-        if let text, MarkdownPresentationParser.frontMatter(text) != nil {
+        if let text, MarkdownFrontMatter.frontMatter(text) != nil {
             do {
                 if let mapping = try PandocExportService.yamlFrontMatter(text) {
                     for (key, name) in titleKeys {
@@ -255,8 +253,9 @@ private final class Converter {
     let tokensAllowed: Bool
     private var counts: [WarningKind: Int] = [:]
     private var notes: [String] = []
-    private var mathExtension: OpaquePointer?
-    private var inlineMath: [OpaquePointer: String] = [:]
+    /// Исходный текст разбора (для проверки, что пара тегов начинается с `<`) и определения сносок по метке.
+    private var source: NSString = ""
+    private var footnoteDefinitions: [String: MarkdownBlockNode] = [:]
     private var output: [Piece] = []
 
     init(options: FountainExportService.Options, sources: [String]) {
@@ -302,7 +301,7 @@ private final class Converter {
     }
 
     private static func withoutFrontMatter(_ text: String) -> String {
-        guard let frontMatter = MarkdownPresentationParser.frontMatter(text) else { return text }
+        guard let frontMatter = MarkdownFrontMatter.frontMatter(text) else { return text }
         return (text as NSString).substring(from: NSMaxRange(frontMatter.range))
     }
 
@@ -374,7 +373,7 @@ private final class Converter {
         return result + source.substring(from: cursor)
     }
 
-    // MARK: Разбор cmark
+    // MARK: Разбор модели документа
 
     private func prepareCritic(_ body: String) -> String {
         guard !options.sourceTextIsClean else { return body }
@@ -397,20 +396,22 @@ private final class Converter {
 
     func pieces(from body: String) -> [Piece] {
         let text = prepareCritic(body).replacingOccurrences(of: String(Self.soft), with: " ")
-        let syntax = options.syntax
+        // Прямые кавычки сценария не превращаем в «ёлочки»: умная пунктуация выключена, остальные настройки прежние.
+        let base = options.syntax
+        let syntax = MarkdownSyntaxOptions(
+            strictMode: base.strictMode, inlineMath: base.inlineMath, legacyInlineMath: base.legacyInlineMath, smartPunctuation: false,
+            preserveEditingWhitespace: base.preserveEditingWhitespace, preserveExportWhitespace: base.preserveExportWhitespace,
+            preserveEditingSoftBreaks: base.preserveEditingSoftBreaks, preserveExportSoftBreaks: base.preserveExportSoftBreaks)
+        // Шапку тела уже убрал `unit(for:)`; повторно её не ищем.
+        let modelOptions = MarkdownDocumentModel.Options(syntax: syntax, includes: [], isVaultNote: false, detectsFrontMatter: false)
         output = []
-        let parsed: Bool? = MarkdownMathExtension.withDocument(
-            text, options: CMARK_OPT_TABLE_SPANS | CMARK_OPT_FOOTNOTES, includeInline: syntax.inlineMath,
-            legacyInlineMath: syntax.legacyInlineMath, strictMode: syntax.strictMode
-        ) { root, mathExt, inline -> Bool in
-            mathExtension = mathExt
-            inlineMath = Dictionary(inline.map { ($0.node, $0.text) }, uniquingKeysWith: { first, _ in first })
-            visitChildren(of: root)
-            mathExtension = nil
-            inlineMath = [:]
-            return true
-        }
-        if parsed == nil {
+        if let model = MarkdownDocumentParser.parse(text, options: modelOptions) {
+            self.source = text as NSString
+            footnoteDefinitions = [:]
+            collectFootnoteDefinitions(model.blocks)
+            visit(model.blocks)
+            footnoteDefinitions = [:]
+        } else {
             let lines = text.components(separatedBy: .newlines).map { PLine(text: plainLine($0), hard: true) }
                 .filter { !$0.text.isEmpty }
             if !lines.isEmpty { output.append(.paragraph(lines)) }
@@ -420,67 +421,71 @@ private final class Converter {
         return result
     }
 
-    private func typeName(_ node: OpaquePointer) -> String {
-        cmark_node_get_type_string(node).map { String(cString: $0) } ?? ""
-    }
-
-    private func literalOf(_ node: OpaquePointer) -> String {
-        cmark_node_get_literal(node).map { String(cString: $0) } ?? ""
-    }
-
-    private func visitChildren(of parent: OpaquePointer) {
-        var child = cmark_node_first_child(parent)
-        while let node = child {
-            child = cmark_node_next(node)
-            visitBlock(node)
+    private func collectFootnoteDefinitions(_ blocks: [MarkdownBlockNode]) {
+        for block in blocks {
+            if case .footnoteDefinition(let label) = block.kind { let key = MarkdownHTMLRenderer.footnoteKey(label)
+                if !key.isEmpty, footnoteDefinitions[key] == nil { footnoteDefinitions[key] = block } }
+            collectFootnoteDefinitions(block.children)
         }
     }
 
-    private func visitBlock(_ node: OpaquePointer) {
-        switch typeName(node) {
-        case "heading":
-            let level = Int(cmark_node_get_heading_level(node))
-            let text = flat(node)
+    private func visit(_ blocks: [MarkdownBlockNode]) {
+        for block in blocks { visitBlock(block) }
+    }
+
+    private func visitBlock(_ node: MarkdownBlockNode) {
+        switch node.kind {
+        case .heading(let heading):
+            let text = flat(node.inlines)
             if let scene = sceneLine(text) {
                 output.append(.literal([scene]))
             } else if !text.isEmpty {
-                output.append(.heading(level: level, text: text))
+                output.append(.heading(level: heading.level, text: text))
             }
-        case "paragraph":
-            let lines = splitLines(finalize(inlineChildren(of: node)))
-            if lines.count == 1, lines[0].text.lowercased() == "[toc]" { return }
-            if !lines.isEmpty { output.append(.paragraph(lines)) }
-        case "thematic_break":
+        case .paragraph:
+            paragraph(node.inlines)
+        case .thematicBreak:
             output.append(.literal(["==="]))
-        case "block_quote":
-            visitChildren(of: node)
-        case "list":
+        case .quote:
+            visit(node.children)
+        case .callout, .alert:
+            // Маркер выноски `[!тип]` в сценарий не попадает: остаётся заголовок и содержимое.
+            if !node.inlines.isEmpty { paragraph(node.inlines) }
+            visit(node.children)
+        case .list:
             let lines = listLines(node, indent: "")
             if !lines.isEmpty { output.append(.action(lines)) }
-        case "code_block":
-            codeBlock(node)
-        case "html_block":
-            htmlBlock(literalOf(node))
-        case "table":
+        case .codeBlock(let code):
+            codeBlock(code.literal)
+        case .mathBlock(let source):
+            mathBlock(source)
+        case .html(let html):
+            htmlBlock(html.literal)
+        case .table(let table):
             counts[.table, default: 0] += 1
-            let lines = tableLines(node)
+            let lines = tableLines(table)
             if !lines.isEmpty { output.append(.action(lines)) }
-        case "footnote_definition":
+        case .footnoteDefinition, .tableOfContents, .frontMatter, .noteEmbed, .comment:
             break
-        default:
-            visitChildren(of: node)
+        case .listItem:
+            visit(node.children)
         }
     }
 
-    private func codeBlock(_ node: OpaquePointer) {
-        let literal = literalOf(node)
-        if let mathExtension, cmark_node_get_syntax_extension(node) == mathExtension {
-            counts[.formula, default: 0] += 1
-            let lines = literal.components(separatedBy: .newlines)
-                .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.map { plainLine($0) }
-            output.append(.action(["$$"] + lines + ["$$"]))
-            return
-        }
+    private func paragraph(_ inlines: [MarkdownInlineNode]) {
+        let lines = splitLines(finalize(inlineChildren(inlines)))
+        if lines.count == 1, lines[0].text.lowercased() == "[toc]" { return }
+        if !lines.isEmpty { output.append(.paragraph(lines)) }
+    }
+
+    private func mathBlock(_ literal: String) {
+        counts[.formula, default: 0] += 1
+        let lines = literal.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.map { plainLine($0) }
+        output.append(.action(["$$"] + lines + ["$$"]))
+    }
+
+    private func codeBlock(_ literal: String) {
         counts[.codeBlock, default: 0] += 1
         var chunk: [String] = []
         func flush() {
@@ -524,31 +529,31 @@ private final class Converter {
         return "/* " + text + " */"
     }
 
-    private func listLines(_ list: OpaquePointer, indent: String) -> [String] {
+    private func listLines(_ list: MarkdownBlockNode, indent: String) -> [String] {
         var result: [String] = []
-        let ordered = cmark_node_get_list_type(list) == CMARK_ORDERED_LIST
-        var number = Int(cmark_node_get_list_start(list))
-        var item = cmark_node_first_child(list)
-        while let current = item {
-            item = cmark_node_next(current)
+        var ordered = false
+        var number = 1
+        if case .list(let data) = list.kind, case .ordered(let start, _) = data.marker {
+            ordered = true
+            number = start
+        }
+        for current in list.children {
             var marker = ordered ? "\(number). " : "- "
             number += 1
-            if typeName(current) == "tasklist" {
-                marker += cmark_gfm_extensions_get_tasklist_item_checked(current) ? "[x] " : "[ ] "
+            if case .listItem(let item) = current.kind, let task = item.task {
+                marker += task.state != 32 ? "[x] " : "[ ] "
             }
             var texts: [String] = []
             var nested: [String] = []
-            var child = cmark_node_first_child(current)
-            while let content = child {
-                child = cmark_node_next(content)
-                switch typeName(content) {
-                case "paragraph":
-                    texts.append(flat(content))
-                case "list":
+            for content in current.children {
+                switch content.kind {
+                case .paragraph:
+                    texts.append(flat(content.inlines))
+                case .list:
                     nested += listLines(content, indent: indent + "  ")
-                case "code_block":
+                case .codeBlock(let code):
                     counts[.codeBlock, default: 0] += 1
-                    texts.append(plainLine(literalOf(content).components(separatedBy: .newlines).joined(separator: " ")
+                    texts.append(plainLine(code.literal.components(separatedBy: .newlines).joined(separator: " ")
                         .trimmingCharacters(in: .whitespaces)))
                 default:
                     texts.append(plainLine(plain(content)))
@@ -560,18 +565,10 @@ private final class Converter {
         return result
     }
 
-    private func tableLines(_ table: OpaquePointer) -> [String] {
+    private func tableLines(_ table: MarkdownBlockNode.Table) -> [String] {
         var lines: [String] = []
-        var row = cmark_node_first_child(table)
-        while let current = row {
-            row = cmark_node_next(current)
-            guard ["table_row", "table_header"].contains(typeName(current)) else { continue }
-            var cells: [String] = []
-            var cell = cmark_node_first_child(current)
-            while let item = cell {
-                cell = cmark_node_next(item)
-                cells.append(flat(item))
-            }
+        for row in table.rows {
+            let cells = row.cells.map { flat($0.inlines) }
             let line = cells.joined(separator: " | ").trimmingCharacters(in: .whitespaces)
             if !line.isEmpty { lines.append(line) }
         }
@@ -580,9 +577,9 @@ private final class Converter {
 
     // MARK: Строчная разметка
 
-    /// Текст узла одной строкой (переносы заменены пробелами).
-    private func flat(_ node: OpaquePointer) -> String {
-        finalize(inlineChildren(of: node))
+    /// Текст узлов одной строкой (переносы заменены пробелами).
+    private func flat(_ nodes: [MarkdownInlineNode]) -> String {
+        finalize(inlineChildren(nodes))
             .replacingOccurrences(of: String(Self.soft), with: " ")
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespaces)
@@ -640,52 +637,129 @@ private final class Converter {
         return result
     }
 
-    private func inlineChildren(of parent: OpaquePointer) -> String {
-        var result = ""
-        var child = cmark_node_first_child(parent)
-        while let node = child {
-            child = cmark_node_next(node)
-            result += inline(node)
-        }
-        return result
+    private func inlineChildren(_ nodes: [MarkdownInlineNode]) -> String {
+        nodes.map { inline($0) }.joined()
     }
 
-    private func inline(_ node: OpaquePointer) -> String {
-        if let formula = inlineMath[node] {
+    private static let entityExpression = try! NSRegularExpression(pattern: "&(?:#[0-9]{1,8}|#[xX][0-9a-fA-F]{1,8}|[A-Za-z][A-Za-z0-9]*);")
+
+    /// Сущности как у cmark: только `&имя;` и `&#…;`; `&not` или `&copy` без `;` остаются текстом.
+    private func entities(in text: String) -> String {
+        let source = text as NSString
+        var result = ""
+        var cursor = 0
+        for match in Self.entityExpression.matches(in: text, range: NSRange(location: 0, length: source.length)) {
+            result += source.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
+            let entity = source.substring(with: match.range)
+            if entity.hasPrefix("&#") {
+                // Числовая сущность как у cmark: 0, суррогаты и значения выше U+10FFFF дают U+FFFD.
+                let digits = entity.dropFirst(2).dropLast()
+                let hex = digits.hasPrefix("x") || digits.hasPrefix("X")
+                let value = UInt32(hex ? String(digits.dropFirst()) : String(digits), radix: hex ? 16 : 10)
+                result += value.flatMap { Unicode.Scalar($0) }.flatMap { $0.value == 0 ? nil : String($0) } ?? "\u{FFFD}"
+            } else {
+                result += (try? Entities.unescape(string: entity, strict: true)) ?? entity
+            }
+            cursor = NSMaxRange(match.range)
+        }
+        return result + source.substring(from: cursor)
+    }
+
+    /// Дети `==…==` и `^…^` хранят сырой кусок исходника (с `\_` и `&amp;`), в отличие от обычного текста cmark, который уже разобран:
+    /// снимаем экранирование и сущности, чтобы `esc` не удвоил обратную косую.
+    private func decoratedText(_ nodes: [MarkdownInlineNode]) -> String {
+        nodes.map { node -> String in
+            guard case .text(let raw) = node.kind else { return inline(node) }
+            var result = ""
+            var chunk = ""
+            func flush() {
+                guard !chunk.isEmpty else { return }
+                result += entities(in: chunk)
+                chunk = ""
+            }
+            var iterator = raw.makeIterator()
+            while let character = iterator.next() {
+                if character == "\\", let next = iterator.next() {
+                    if next.isASCII, next.isPunctuation || next.isSymbol {
+                        flush()
+                        result += String(next)
+                    } else {
+                        chunk.append(character)
+                        chunk.append(next)
+                    }
+                } else {
+                    chunk.append(character)
+                }
+            }
+            flush()
+            return esc(result)
+        }.joined()
+    }
+
+    /// Пара HTML-тегов (`<b>…</b>`, `<mark>…</mark>`): у узла в начале стоит `<`, а не маркер Markdown.
+    private func isHTMLPair(_ node: MarkdownInlineNode) -> Bool {
+        switch node.kind {
+        case .underline, .keyboard, .inlineStyle: return true
+        case .strong, .emphasis, .strikethrough, .subscriptText, .superscriptText, .highlight:
+            return node.hasHTMLTagMarker(in: source)
+        default: return false
+        }
+    }
+
+    private func inline(_ node: MarkdownInlineNode) -> String {
+        if isHTMLPair(node) {
+            let inner = inlineChildren(node.children)
+            if case .underline = node.kind { return "_" + inner + "_" }
+            counts[.html, default: 0] += 1
+            return inner
+        }
+        switch node.kind {
+        case .formula(let formula):
             counts[.formula, default: 0] += 1
             return esc("$" + formula + "$")
-        }
-        switch typeName(node) {
-        case "text", "code":
-            return esc(literalOf(node))
-        case "softbreak":
+        case .text(let value), .code(let value):
+            return esc(value)
+        case .softBreak:
             return String(Self.soft)
-        case "linebreak":
+        case .hardBreak:
             return "\n"
-        case "emph":
-            return mark("*", inlineChildren(of: node))
-        case "strong":
-            return mark("**", inlineChildren(of: node))
-        case "strikethrough":
+        case .emphasis:
+            return mark("*", inlineChildren(node.children))
+        case .strong:
+            return mark("**", inlineChildren(node.children))
+        case .strikethrough, .subscriptText:
             counts[.strikethrough, default: 0] += 1
-            return inlineChildren(of: node)
-        case "link":
-            let inner = inlineChildren(of: node)
-            let address = cmark_node_get_url(node).map { String(cString: $0) } ?? ""
+            return inlineChildren(node.children)
+        case .highlight:
+            return "==" + decoratedText(node.children) + "=="
+        case .superscriptText:
+            return "^" + decoratedText(node.children) + "^"
+        case .link(let link):
+            let inner = inlineChildren(node.children)
+            if link.form == .html {
+                counts[.html, default: 0] += 1
+                return inner
+            }
+            let address = link.url
             if address.isEmpty || isServiceAddress(address) || plain(node) == address { return inner }
             return inner + " (" + esc(address) + ")"
-        case "image":
+        case .image(let image):
             counts[.image, default: 0] += 1
-            let address = cmark_node_get_url(node).map { String(cString: $0) } ?? ""
-            return note(imageNote(alt: plain(node), address: address))
-        case "html_inline":
-            return inlineHTML(literalOf(node))
-        case "footnote_reference":
+            return note(imageNote(alt: image.alt, address: image.url))
+        case .rawHTML(let tag):
+            return inlineHTML(tag)
+        case .media, .iframe, .svg:
+            counts[.html, default: 0] += 1
+            return ""
+        case .ruby(let ruby):
+            counts[.html, default: 0] += 1
+            return esc(ruby.base + ruby.reading)
+        case .footnoteReference(let label):
             counts[.footnote, default: 0] += 1
-            guard let definition = cmark_node_parent_footnote_def(node) else { return "" }
+            guard let definition = footnoteDefinitions[MarkdownHTMLRenderer.footnoteKey(label)] else { return "" }
             return note(plain(definition))
         default:
-            return inlineChildren(of: node)
+            return inlineChildren(node.children)
         }
     }
 
@@ -728,27 +802,45 @@ private final class Converter {
     }
 
     /// Текст без разметки; блоки разделяются пробелом.
-    private func plain(_ node: OpaquePointer) -> String {
+    private func plain(_ node: MarkdownInlineNode) -> String {
+        plainText(of: node.children)
+    }
+
+    private func plain(_ block: MarkdownBlockNode) -> String {
         var result = ""
-        func walk(_ current: OpaquePointer) {
-            switch typeName(current) {
-            case "text", "code", "code_block":
-                result += literalOf(current)
-            case "softbreak", "linebreak":
-                result += " "
-            case "paragraph", "heading":
-                if !result.isEmpty, !result.hasSuffix(" ") { result += " " }
+        func addSpace() { if !result.isEmpty, !result.hasSuffix(" ") { result += " " } }
+        func walk(_ current: MarkdownBlockNode) {
+            switch current.kind {
+            case .paragraph, .heading:
+                addSpace()
+            case .codeBlock(let code):
+                result += code.literal
+            case .mathBlock(let source):
+                result += source
+            case .table(let table):
+                for row in table.rows { for cell in row.cells { result += plainText(of: cell.inlines) } }
             default:
                 break
             }
-            var child = cmark_node_first_child(current)
-            while let next = child {
-                child = cmark_node_next(next)
-                walk(next)
-            }
+            result += plainText(of: current.inlines)
+            for child in current.children { walk(child) }
         }
-        walk(node)
+        walk(block)
         return result.components(separatedBy: .newlines).joined(separator: " ").trimmingCharacters(in: .whitespaces)
+    }
+
+    private func plainText(of nodes: [MarkdownInlineNode]) -> String {
+        var result = ""
+        for node in nodes {
+            switch node.kind {
+            case .text(let value), .code(let value): result += value
+            case .softBreak, .hardBreak: result += " "
+            case .image(let image): result += image.alt
+            default: break
+            }
+            result += plainText(of: node.children)
+        }
+        return result
     }
 
     // MARK: Сценарные строки

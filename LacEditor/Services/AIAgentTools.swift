@@ -843,10 +843,10 @@ final class AIAgentTools: @unchecked Sendable {
 
     private static func outline(path: String, scope: AIAgentScope) throws -> AIAgentToolOutcome {
         let document = try text(for: path, scope: scope)
-        let presentation = MarkdownPresentationParser.parse(document.text, isCancelled: { Task.isCancelled })
+        let model = MarkdownDocumentParser.parseOrEmpty(document.text, isCancelled: { Task.isCancelled })
         try checkCancelled()
         let lines = TextLines(document.text)
-        let headings = presentation.headings
+        guard let headings = model.queries(.headings, isCancelled: { Task.isCancelled })?.headings else { throw CancellationError() }
         let items = headings.prefix(AIAgentToolLimits.outlineHeadings).map { heading in
             Item(value: ["level": heading.level, "title": heading.title, "line": lines.number(at: heading.range.location)],
                  bytes: heading.title.utf8.count)
@@ -866,8 +866,9 @@ final class AIAgentTools: @unchecked Sendable {
     private static func links(path: String, scope: AIAgentScope) throws -> AIAgentToolOutcome {
         let document = try text(for: path, scope: scope)
         let root = scope.root.map(normalizedRoot)
-        let presentation = MarkdownPresentationParser.parse(document.text, includeWikiLinks: true, isCancelled: { Task.isCancelled })
+        let model = MarkdownDocumentParser.parseOrEmpty(document.text, includes: [.wikiLinks], isCancelled: { Task.isCancelled })
         try checkCancelled()
+        guard let wikiLinks = model.queries(.wikiLinks, isCancelled: { Task.isCancelled })?.wikiLinks else { throw CancellationError() }
         let lines = TextLines(document.text)
         var paths: [String] = []
         if let root {
@@ -878,7 +879,7 @@ final class AIAgentTools: @unchecked Sendable {
         }
         let resolver = MarkdownWikiLinkResolver(base: root, paths: paths)
         let cap = AIAgentToolLimits.linkItems
-        let outgoing = presentation.wikiLinks.prefix(cap).map { link -> Item in
+        let outgoing = wikiLinks.prefix(cap).map { link -> Item in
             var value: [String: Any] = ["target": link.target, "heading": link.heading.map { $0 as Any } ?? NSNull(), "alias": link.alias.map { $0 as Any } ?? NSNull(),
                                         "line": lines.number(at: link.range.location)]
             switch resolver.resolve(target: link.target) {
@@ -917,7 +918,7 @@ final class AIAgentTools: @unchecked Sendable {
         var seen = Set<String>()
         for name in found where !name.isEmpty && seen.insert(name.lowercased()).inserted { tagNames.append(name) }
         let tags = tagNames.prefix(cap).map { Item(value: $0, bytes: $0.utf8.count) }
-        let totals = (outgoing: presentation.wikiLinks.count, tags: tagNames.count)
+        let totals = (outgoing: wikiLinks.count, tags: tagNames.count)
         try checkCancelled()
         var sections = [Section(key: "outgoing", items: Array(outgoing)), Section(key: "tags", items: Array(tags))]
         if let backlinks { sections.append(Section(key: "backlinks", items: backlinks)) }

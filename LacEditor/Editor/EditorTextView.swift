@@ -46,6 +46,9 @@ struct EditorTextView: NSViewRepresentable {
     var wikiResolver: MarkdownWikiLinkResolver? = nil
     var requestWikiCatalog: (() -> Void)? = nil
     var wikiSource: (() -> MarkdownWikiLinkSource)? = nil
+    /// Диалог ссылки и переключение «исходник ↔ оформленный текст» живут в `AppState`; контекстное меню координатора вызывает их отсюда.
+    var requestMarkdownLink: (() -> Void)? = nil
+    var requestToggleMarkdownPresentation: (() -> Void)? = nil
 
     /// Невидимые символы рисуются только в исходном тексте: в оформленном Markdown (и режиме чтения) раскладка меняет вид строк.
     static func showsInvisibles(setting: Bool, language: EditorLanguage, isMarkdownFormatted: Bool) -> Bool {
@@ -88,6 +91,8 @@ struct EditorTextView: NSViewRepresentable {
                                                     numbering: aiPreferences?.mathNumbering ?? .none))
         context.coordinator.requestAIImageEdit = requestAIImageEdit
         context.coordinator.requestAIImageDescription = requestAIImageDescription
+        context.coordinator.requestMarkdownLink = requestMarkdownLink
+        context.coordinator.requestToggleMarkdownPresentation = requestToggleMarkdownPresentation
         if let cachedView = sessionStore.cachedView(for: document.id) {
             context.coordinator.configureWritingChecks(spellingEnabled: spellingEnabled, grammarEnabled: grammarEnabled)
             context.coordinator.configureAIAssistance(preferences: aiPreferences)
@@ -231,6 +236,9 @@ struct EditorTextView: NSViewRepresentable {
         textView.selectionTrackingHandler = { [weak coordinator = context.coordinator] in
             coordinator?.selectionDidChangeDuringTracking()
         }
+        textView.pointerTrackingEndedHandler = { [weak coordinator = context.coordinator] in
+            coordinator?.pointerTrackingEnded()
+        }
         textView.textTransformationHandler = requestTextTransformation
         textView.listIndentationHandler = { [weak coordinator = context.coordinator] outdent in
             coordinator?.indentCurrentListItem(outdent: outdent) ?? false
@@ -294,6 +302,11 @@ struct EditorTextView: NSViewRepresentable {
         coordinator.updateActivity(false)
         coordinator.textView?.paragraphStylesChangedHandler = nil
         coordinator.textView?.diagramMenuHandler = nil
+        coordinator.textView?.markdownFormatMenuHandler = nil
+        coordinator.textView?.tableMenuHandler = nil
+        coordinator.textView?.tableEdgeButtonHandler = nil
+        coordinator.requestMarkdownLink = nil
+        coordinator.requestToggleMarkdownPresentation = nil
         coordinator.requestAIImageEdit = nil
         coordinator.requestAIImageDescription = nil
     }
@@ -307,6 +320,8 @@ struct EditorTextView: NSViewRepresentable {
         guard let textView = context.coordinator.textView else { return }
         context.coordinator.requestAIImageEdit = requestAIImageEdit
         context.coordinator.requestAIImageDescription = requestAIImageDescription
+        context.coordinator.requestMarkdownLink = requestMarkdownLink
+        context.coordinator.requestToggleMarkdownPresentation = requestToggleMarkdownPresentation
         context.coordinator.magnificationDidChange = magnificationDidChange
         context.coordinator.updateViewMagnification(viewMagnification)
         textView.remoteImageTransferEnabled = remoteImageTransferEnabled
@@ -332,9 +347,15 @@ struct EditorTextView: NSViewRepresentable {
         let lineSpacingChanged = context.coordinator.foldLayoutManager?
             .editorLineSpacing != lineSpacing
         let languageChanged = context.coordinator.currentLanguage != document.language
+        context.coordinator.noteMarkdownPresentationMode(formatted: documentChanged ? nil : document.language == .markdown && document.isMarkdownFormatted)
         if documentChanged || languageChanged || !document.isMarkdownFormatted || !isEditorEditable ||
             context.coordinator.lastSynchronizedRevision != document.textRevision {
-            context.coordinator.finishTableCell()
+            // Только переключение вида: выделение основного вида остаётся там, где была каретка ячейки.
+            if !documentChanged, !languageChanged, isEditorEditable, context.coordinator.lastSynchronizedRevision == document.textRevision {
+                context.coordinator.closeTableCellKeepingSelection()
+            } else {
+                context.coordinator.finishTableCell()
+            }
         }
         if documentChanged || languageChanged {
             context.coordinator.cancelFoldTask()

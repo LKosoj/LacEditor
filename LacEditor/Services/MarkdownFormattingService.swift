@@ -1,10 +1,10 @@
 import Foundation
-import cmark_gfm
-import cmark_gfm_extensions
 
 enum MarkdownFormattingCommand: Equatable {
     case bold, italic, strikethrough, inlineCode, inlineMath, blockMath, heading(Int), quote
     case bulletList, numberedList, taskList, fencedCode, horizontalRule
+    /// «Обычный текст»: снимает заголовок, цитату и список с выбранных строк.
+    case plainText
     case table(MarkdownTableCommand)
     case link(MarkdownLinkInput)
 
@@ -23,6 +23,7 @@ enum MarkdownFormattingCommand: Equatable {
         case .taskList: L10n.tr("任务列表")
         case .fencedCode: L10n.tr("代码块")
         case .horizontalRule: L10n.tr("分隔线")
+        case .plainText: L10n.tr("普通文本")
         case .link: L10n.tr("链接")
         case let .table(command):
             switch command {
@@ -50,10 +51,14 @@ struct MarkdownFormattingEdit {
     let range: NSRange
     let replacement: String
     let selectionRange: NSRange
+    /// Та же правка отдельными вставками и удалениями (от конца к началу): токены и текст между маркерами остаются нетронутыми.
+    /// `range`/`replacement` при этом — объединённая равнозначная замена. nil — правка одна.
+    var parts: [MarkdownEditTransaction.Edit]? = nil
 }
 
 enum MarkdownFormattingService {
-    static func edit(in text: NSString, selection: NSRange, command: MarkdownFormattingCommand, strictMode: Bool = true) -> MarkdownFormattingEdit? {
+    static func edit(in text: NSString, selection: NSRange, command: MarkdownFormattingCommand, strictMode: Bool = true,
+                     context: MarkdownInlineContext? = nil) -> MarkdownFormattingEdit? {
         guard selection.location != NSNotFound, selection.location >= 0, selection.length >= 0,
               selection.location <= text.length, selection.length <= text.length - selection.location,
               isCharacterBoundary(selection.location, in: text),
@@ -63,6 +68,13 @@ enum MarkdownFormattingService {
             return mathEdit(in: text, selection: selection, block: command == .blockMath, strictMode: strictMode)
         case .bold, .italic, .strikethrough, .inlineCode:
             guard let selected = inlineSelection(selection, in: text) else { return nil }
+            if let context {
+                switch inlineEdit(in: text, selection: selected, command: command, context: context) {
+                case let .edit(edit): return edit
+                case .refused: return nil
+                case .fallback: break
+                }
+            }
             switch command {
             case .bold: return inlineEdit(in: text, selection: selected, marker: "**")
             case .italic: return inlineEdit(in: text, selection: selected, marker: "*")
@@ -77,6 +89,8 @@ enum MarkdownFormattingService {
         case .bulletList, .numberedList, .taskList:
             let existing = existingListEdit(in: text, selection: selection, command: command, strictMode: strictMode)
             return existing.handled ? existing.edit : newBlockEdit(in: text, selection: selection, command: command)
+        case .plainText:
+            return plainTextEdit(in: text, selection: selection, strictMode: strictMode, blocked: context?.blocked ?? [])
         case .fencedCode, .horizontalRule:
             return newBlockEdit(in: text, selection: selection, command: command)
         case let .table(command):
@@ -91,7 +105,7 @@ enum MarkdownFormattingService {
         guard !isEscaped(selection.location, in: text), !isEscaped(end, in: text) else { return nil }
         let selected = text.substring(with: selection)
         if !block && selected.rangeOfCharacter(from: .newlines) != nil { return nil }
-        let presentation = MarkdownPresentationParser.parse(text as String, syntax: .init(strictMode: strictMode))
+        let presentation = MarkdownPresentationBuilder.presentation(of: text as String, syntax: .init(strictMode: strictMode))
         func intersects(_ range: NSRange) -> Bool {
             selection.length == 0 ? selection.location >= range.location && selection.location < NSMaxRange(range)
                 : NSIntersectionRange(selection, range).length > 0
@@ -117,143 +131,213 @@ enum MarkdownFormattingService {
         let probe = text.replacingCharacters(in: selection, with: probeReplacement)
         let expected = NSRange(location: selection.location + (before as NSString).length,
                                length: ((left + probeBody + right) as NSString).length)
-        let checked = MarkdownPresentationParser.parse(probe, syntax: .init(strictMode: strictMode))
+        let checked = MarkdownPresentationBuilder.presentation(of: probe, syntax: .init(strictMode: strictMode))
         guard (block ? checked.formulas : checked.inlineFormulas).contains(where: { $0.range == expected }) else { return nil }
         let replacement = before + left + selected + right + after
         return MarkdownFormattingEdit(range: selection, replacement: replacement,
             selectionRange: NSRange(location: selection.location + ((before + left) as NSString).length, length: selection.length))
     }
 
+    /// Плоский обход блоков модели: у блока модели нет ссылки на родителя, а командам нужно подниматься вверх.
+    /// Узлы идут в порядке документа (родитель раньше детей).
+    private struct BlockTree {
+        struct Node {
+            let block: MarkdownBlockNode
+            let parent: Int?
+            var children: [Int] = []
+        }
+        let nodes: [Node]
+
+        init(_ model: MarkdownDocumentModel) {
+            var nodes: [Node] = []
+            func add(_ block: MarkdownBlockNode, parent: Int?) {
+                let index = nodes.count
+                nodes.append(Node(block: block, parent: parent))
+                for child in block.children {
+                    nodes[index].children.append(nodes.count)
+                    add(child, parent: index)
+                }
+            }
+            for block in model.blocks { add(block, parent: nil) }
+            self.nodes = nodes
+        }
+
+        func hasQuoteAncestor(_ index: Int) -> Bool {
+            var current = nodes[index].parent
+            while let parent = current {
+                if MarkdownFormattingService.isQuote(nodes[parent].block.kind) { return true }
+                current = nodes[parent].parent
+            }
+            return false
+        }
+    }
+
+    private static func isQuote(_ kind: MarkdownBlockNode.Kind) -> Bool {
+        switch kind {
+        case .quote, .callout, .alert: return true
+        default: return false
+        }
+    }
+
+    /// Контейнеры, в которых блок формулы нельзя ставить как в обычном тексте (цитата, пункт списка, задача, таблица).
+    private static func isMathContainer(_ kind: MarkdownBlockNode.Kind) -> Bool {
+        switch kind {
+        case .quote, .callout, .alert, .listItem, .table: return true
+        default: return false
+        }
+    }
+
+    private static func documentModel(of text: String, strictMode: Bool) -> MarkdownDocumentModel? {
+        MarkdownPresentationBuilder.model(of: text, syntax: .init(strictMode: strictMode))
+    }
+
+    /// Строки текста целиком (с переводом строки в конце), которые затрагивает диапазон.
+    private static func wholeLines(_ range: NSRange, in text: NSString) -> NSRange {
+        let start = markdownLineRange(in: text, at: min(range.location, text.length)).location
+        let last = range.length > 0 ? NSMaxRange(range) - 1 : range.location
+        let end = NSMaxRange(markdownLineRange(in: text, at: min(last, text.length)))
+        return NSRange(location: start, length: max(end, start) - start)
+    }
+
+    /// Что стоит в строке левее маркера пункта и чем это заменяется на строках продолжения:
+    /// `>`, пробелы и табы остаются, остальное становится пробелом.
+    private static func itemPrefix(before marker: Int, in text: NSString) -> (source: String, continuation: String) {
+        let line = markdownLineRange(in: text, at: marker)
+        let source = text.substring(with: NSRange(location: line.location, length: max(marker - line.location, 0)))
+        let continuation = String(decoding: source.utf16.map { $0 == 62 || $0 == 32 || $0 == 9 ? $0 : 32 }, as: UTF16.self)
+        return (source, continuation)
+    }
+
     private struct QuotedTaskContent {
         let checkbox: MarkdownTaskCheckbox
-        let paragraph: OpaquePointer
-        let textNode: OpaquePointer
+        let paragraph: Int
         let prefix: String
         let bodyRange: NSRange
     }
 
-    private static func quotedTaskContent(_ item: OpaquePointer, source: MarkdownPresentationParser.Source, text: NSString) -> QuotedTaskContent? {
-        guard let checkbox = source.quotedTaskCheckbox(item),
-              let paragraph = cmark_node_first_child(item), cmark_node_get_type(paragraph) == CMARK_NODE_PARAGRAPH,
-              let first = cmark_node_first_child(paragraph), cmark_node_get_type(first) == CMARK_NODE_TEXT,
-              let range = source.range(paragraph), range.location == checkbox.markerRange.location,
-              source.firstPosition(first) == range.location,
-              let rawLiteral = cmark_node_get_literal(first) else { return nil }
+    private static func taskCheckbox(_ block: MarkdownBlockNode) -> MarkdownTaskCheckbox? {
+        if case let .listItem(item) = block.kind { return item.task }
+        return nil
+    }
+
+    /// Первый абзац пункта, в тексте которого стоит сам флажок `[ ]`: у настоящей задачи разбор снимает флажок с текста абзаца.
+    private static func checkboxParagraph(_ tree: BlockTree, item: Int) -> Int? {
+        guard let checkbox = taskCheckbox(tree.nodes[item].block), let paragraph = tree.nodes[item].children.first,
+              case .paragraph = tree.nodes[paragraph].block.kind,
+              tree.nodes[paragraph].block.range.location == checkbox.markerRange.location else { return nil }
+        return paragraph
+    }
+
+    private static func quotedTaskContent(_ tree: BlockTree, item: Int, text: NSString) -> QuotedTaskContent? {
+        guard let checkbox = taskCheckbox(tree.nodes[item].block), tree.hasQuoteAncestor(item),
+              let paragraph = checkboxParagraph(tree, item: item), !tree.nodes[paragraph].block.isUnreliable else { return nil }
+        let block = tree.nodes[paragraph].block
+        guard let first = block.inlines.first, case .text = first.kind, first.range.location == block.range.location else { return nil }
+        // Ведущие текстовые узлы склеиваются: cmark может отдать `[` отдельным узлом.
+        var literal = ""
+        for inline in block.inlines {
+            guard case let .text(value) = inline.kind else { break }
+            literal += value
+        }
         var after = NSMaxRange(checkbox.markerRange)
-        while after < NSMaxRange(range), text.character(at: after) == 32 { after += 1 }
-        guard after > NSMaxRange(checkbox.markerRange), after < NSMaxRange(range) else { return nil }
-        let prefix = text.substring(with: NSRange(location: range.location, length: after - range.location))
-        guard String(cString: rawLiteral).utf16.starts(with: prefix.utf16) else { return nil }
-        return QuotedTaskContent(checkbox: checkbox, paragraph: paragraph, textNode: first, prefix: prefix,
-            bodyRange: NSRange(location: after, length: NSMaxRange(range) - after))
+        let end = NSMaxRange(block.range)
+        while after < end, text.character(at: after) == 32 { after += 1 }
+        guard after > NSMaxRange(checkbox.markerRange), after < end else { return nil }
+        let prefix = text.substring(with: NSRange(location: block.range.location, length: after - block.range.location))
+        guard literal.utf16.starts(with: prefix.utf16) else { return nil }
+        return QuotedTaskContent(checkbox: checkbox, paragraph: paragraph, prefix: prefix,
+            bodyRange: NSRange(location: after, length: end - after))
     }
 
     private static func containerMathEdit(in text: NSString, selection: NSRange, strictMode: Bool) -> (handled: Bool, edit: MarkdownFormattingEdit?) {
-        MarkdownMathExtension.withDocument(text as String, strictMode: strictMode) { root, mathExtension, _ in
-            let source = MarkdownPresentationParser.Source(text as String, root: root, looseHeadings: MarkdownMathExtension.looseHeadings(in: mathExtension), looseListRanges: MarkdownMathExtension.looseListRanges(in: mathExtension))
-            var target: OpaquePointer?, emptyContainer: OpaquePointer?, handled = false
-            func intersects(_ range: NSRange) -> Bool {
-                if selection.length > 0 { return NSIntersectionRange(selection, range).length > 0 }
-                let end = NSMaxRange(range)
-                return selection.location >= range.location && (selection.location < end ||
-                    (selection.location == end && end > 0 && ![10, 13].contains(text.character(at: end - 1))))
+        guard let model = documentModel(of: text as String, strictMode: strictMode) else { return (true, nil) }
+        let tree = BlockTree(model)
+        var target: Int?, emptyContainer: Int?, handled = false
+        func intersects(_ range: NSRange) -> Bool {
+            if selection.length > 0 { return NSIntersectionRange(selection, range).length > 0 }
+            let end = NSMaxRange(range)
+            return selection.location >= range.location && (selection.location < end ||
+                (selection.location == end && end > 0 && ![10, 13].contains(text.character(at: end - 1))))
+        }
+        var contained = [Bool](repeating: false, count: tree.nodes.count)
+        for (index, node) in tree.nodes.enumerated() {
+            let block = node.block
+            if let parent = node.parent { contained[index] = contained[parent] || isMathContainer(tree.nodes[parent].block.kind) }
+            if isMathContainer(block.kind), intersects(wholeLines(block.range, in: text)) {
+                handled = true
+                if case .table = block.kind {} else if node.children.isEmpty { emptyContainer = index }
             }
-            func visit(_ node: OpaquePointer, contained: Bool) {
-                let kind = cmark_node_get_type_string(node).map { String(cString: $0) } ?? ""
-                let container = ["block_quote", "item", "tasklist", "table"].contains(kind)
-                if container, let range = source.wholeLines(node), intersects(range) {
-                    handled = true
-                    if cmark_node_first_child(node) == nil { emptyContainer = node }
-                }
-                if kind == "paragraph", contained {
-                    if source.range(node) == selection { target = node }
-                    else if let parent = cmark_node_parent(node), let task = quotedTaskContent(parent, source: source, text: text),
-                            task.paragraph == node, task.bodyRange == selection { target = node }
-                }
-                var child = cmark_node_first_child(node)
-                while let current = child { visit(current, contained: contained || container); child = cmark_node_next(current) }
+            if case .paragraph = block.kind, contained[index], !block.isUnreliable {
+                if block.range == selection { target = index }
+                else if let parent = node.parent, let task = quotedTaskContent(tree, item: parent, text: text),
+                        task.paragraph == index, task.bodyRange == selection { target = index }
             }
-            visit(root, contained: false)
-            guard handled else { return (false, nil) }
-            let body: String, continuation: String
-            var leading = ""
-            if let target, selection.length > 0,
-               let prefixes = MarkdownPresentationParser.containerPrefixes(target, source: source, text: text),
-               !prefixes.continuation.isEmpty {
-                body = text.substring(with: selection)
-                continuation = prefixes.continuation
-            } else if selection.length == 0, selection.location == text.length,
-                      let emptyContainer, let parent = cmark_node_parent(emptyContainer) {
-                let line = markdownLineRange(in: text, at: selection.location)
-                let raw = text.substring(with: line)
-                let kind = cmark_node_get_type_string(emptyContainer).map { String(cString: $0) } ?? ""
-                if kind == "block_quote", parent == root, raw == "> " || raw == ">" {
-                    continuation = "> "
-                    if raw == ">" { leading = " " }
-                } else if (kind == "item" || kind == "tasklist"),
-                          cmark_node_get_type(parent) == CMARK_NODE_LIST,
-                          let start = source.firstPosition(emptyContainer), start >= line.location,
-                          let prefixes = MarkdownPresentationParser.listContainerPrefixes(emptyContainer, source: source, text: text),
-                          text.substring(with: NSRange(location: line.location, length: start - line.location)).replacingOccurrences(of: "\r\n", with: "\n") == prefixes.source.replacingOccurrences(of: "\r\n", with: "\n") {
-                    let suffix = text.substring(from: start)
-                    let pattern = kind == "tasklist" ? #"^([-+*]|[0-9]{1,9}[.)])( {1,4})\[[ xX]\] $"# : #"^([-+*]|[0-9]{1,9}[.)])( {1,4})$"#
-                    let expression = try! NSRegularExpression(pattern: pattern)
-                    guard let match = expression.firstMatch(in: suffix, range: NSRange(location: 0, length: (suffix as NSString).length)) else { return (true, nil) }
-                    if kind == "tasklist" {
-                        guard let checkbox = source.taskCheckbox(emptyContainer),
-                              (checkbox.state != 32) == cmark_gfm_extensions_get_tasklist_item_checked(emptyContainer) else { return (true, nil) }
-                    }
-                    continuation = prefixes.continuation + String(repeating: " ", count: match.range(at: 1).length + match.range(at: 2).length)
-                } else { return (true, nil) }
-                body = ""
+        }
+        guard handled else { return (false, nil) }
+        let body: String, continuation: String
+        var leading = ""
+        if let target, selection.length > 0,
+           let prefix = tree.nodes[target].block.containerPrefixes.first?.continuation, !prefix.isEmpty {
+            body = text.substring(with: selection)
+            continuation = prefix
+        } else if selection.length == 0, selection.location == text.length, let emptyContainer {
+            let block = tree.nodes[emptyContainer].block
+            let line = markdownLineRange(in: text, at: selection.location)
+            let raw = text.substring(with: line)
+            if case .quote = block.kind, tree.nodes[emptyContainer].parent == nil, raw == "> " || raw == ">" {
+                continuation = "> "
+                if raw == ">" { leading = " " }
+            } else if case let .listItem(item) = block.kind,
+                      let start = block.markerRanges.first?.location, start >= line.location {
+                let prefixes = itemPrefix(before: start, in: text)
+                let suffix = text.substring(from: start)
+                let pattern = item.task != nil ? #"^([-+*]|[0-9]{1,9}[.)])( {1,4})\[[ xX]\] $"# : #"^([-+*]|[0-9]{1,9}[.)])( {1,4})$"#
+                let expression = try! NSRegularExpression(pattern: pattern)
+                guard let match = expression.firstMatch(in: suffix, range: NSRange(location: 0, length: (suffix as NSString).length)) else { return (true, nil) }
+                continuation = prefixes.continuation + String(repeating: " ", count: match.range(at: 1).length + match.range(at: 2).length)
             } else { return (true, nil) }
-            let raw = body as NSString, expectedBody = NSMutableString()
-            let prefix = continuation as NSString
-            var cursor = 0
-            while cursor < raw.length {
-                let line = markdownLineRange(in: raw, at: cursor)
-                var end = NSMaxRange(line)
-                while end > cursor && [10, 13].contains(raw.character(at: end - 1)) { end -= 1 }
-                var start = cursor
-                if cursor > 0 {
-                    guard end - cursor >= prefix.length,
-                          raw.substring(with: NSRange(location: cursor, length: prefix.length)) == continuation else { return (true, nil) }
-                    start += prefix.length
-                }
-                expectedBody.append(raw.substring(with: NSRange(location: start, length: end - start)))
-                if end < NSMaxRange(line) { expectedBody.append("\n") }
-                guard NSMaxRange(line) > cursor else { return (true, nil) }
-                cursor = NSMaxRange(line)
+            body = ""
+        } else { return (true, nil) }
+        let raw = body as NSString, expectedBody = NSMutableString()
+        let prefix = continuation as NSString
+        var cursor = 0
+        while cursor < raw.length {
+            let line = markdownLineRange(in: raw, at: cursor)
+            var end = NSMaxRange(line)
+            while end > cursor && [10, 13].contains(raw.character(at: end - 1)) { end -= 1 }
+            var start = cursor
+            if cursor > 0 {
+                guard end - cursor >= prefix.length,
+                      raw.substring(with: NSRange(location: cursor, length: prefix.length)) == continuation else { return (true, nil) }
+                start += prefix.length
             }
-            let whole = text as String
-            let newline = whole.contains("\r\n") ? "\r\n" : (whole.contains("\n") ? "\n" : (whole.contains("\r") ? "\r" : "\n"))
-            let before = leading + "$$" + newline + continuation
-            let replacement = before + body + newline + continuation + "$$"
-            let expectedRange = NSRange(location: selection.location + (leading as NSString).length,
-                                        length: (replacement as NSString).length - (leading as NSString).length)
-            let probe = text.replacingCharacters(in: selection, with: replacement)
-            let expectedLiteral = (expectedBody as String) + "\n"
-            let expected = formattingStructure(root, omitting: target, source: source, text: text)
-            let verified = MarkdownMathExtension.withDocument(probe, strictMode: strictMode) { candidate, mathExtension, _ in
-                let candidateSource = MarkdownPresentationParser.Source(probe, root: candidate, looseHeadings: MarkdownMathExtension.looseHeadings(in: mathExtension), looseListRanges: MarkdownMathExtension.looseListRanges(in: mathExtension))
-                var formula: OpaquePointer?
-                func find(_ node: OpaquePointer) {
-                    if cmark_node_get_type(node) == CMARK_NODE_CODE_BLOCK,
-                       cmark_node_get_syntax_extension(node) == mathExtension,
-                       candidateSource.mathBlockRange(node) == expectedRange,
-                       cmark_node_get_literal(node).map({ String(cString: $0).utf16.elementsEqual(expectedLiteral.utf16) }) == true { formula = node }
-                    var child = cmark_node_first_child(node)
-                    while let current = child { find(current); child = cmark_node_next(current) }
-                }
-                find(candidate)
-                guard let formula else { return false }
-                guard let expected else { return true }
-                return formattingStructure(candidate, omitting: formula, source: candidateSource, text: probe as NSString) == expected
-            }
-            guard verified == true else { return (true, nil) }
-            return (true, MarkdownFormattingEdit(range: selection, replacement: replacement,
-                selectionRange: NSRange(location: selection.location + (before as NSString).length, length: selection.length)))
-        } ?? (true, nil)
+            expectedBody.append(raw.substring(with: NSRange(location: start, length: end - start)))
+            if end < NSMaxRange(line) { expectedBody.append("\n") }
+            guard NSMaxRange(line) > cursor else { return (true, nil) }
+            cursor = NSMaxRange(line)
+        }
+        let whole = text as String
+        let newline = whole.contains("\r\n") ? "\r\n" : (whole.contains("\n") ? "\n" : (whole.contains("\r") ? "\r" : "\n"))
+        let before = leading + "$$" + newline + continuation
+        let replacement = before + body + newline + continuation + "$$"
+        let expectedRange = NSRange(location: selection.location + (leading as NSString).length,
+                                    length: (replacement as NSString).length - (leading as NSString).length)
+        let probe = text.replacingCharacters(in: selection, with: replacement)
+        let expectedLiteral = (expectedBody as String) + "\n"
+        let expected = formattingStructure(tree, text: text, omitting: target)
+        // Проверка пробой: в тексте с правкой на нужном месте должна появиться формула с тем же телом, а остальная структура не измениться.
+        guard let candidateModel = documentModel(of: probe, strictMode: strictMode) else { return (true, nil) }
+        let candidate = BlockTree(candidateModel)
+        let formula = candidate.nodes.indices.first { index in
+            guard case let .mathBlock(source) = candidate.nodes[index].block.kind else { return false }
+            return candidate.nodes[index].block.range == expectedRange && source.utf16.elementsEqual(expectedLiteral.utf16)
+        }
+        guard let formula else { return (true, nil) }
+        if let expected {
+            guard formattingStructure(candidate, text: probe as NSString, omitting: formula) == expected else { return (true, nil) }
+        }
+        return (true, MarkdownFormattingEdit(range: selection, replacement: replacement,
+            selectionRange: NSRange(location: selection.location + (before as NSString).length, length: selection.length)))
     }
 
     private static func inlineSelection(_ selection: NSRange, in text: NSString) -> NSRange? {
@@ -281,7 +365,7 @@ enum MarkdownFormattingService {
         return NSRange(location: start, length: end - start)
     }
 
-    private static func isEscaped(_ location: Int, in text: NSString) -> Bool {
+    static func isEscaped(_ location: Int, in text: NSString) -> Bool {
         var index = location, count = 0
         while index > 0 && text.character(at: index - 1) == 92 { index -= 1; count += 1 }
         return count % 2 == 1
@@ -293,7 +377,7 @@ enum MarkdownFormattingService {
         return !(0xd800...0xdbff).contains(before) || !(0xdc00...0xdfff).contains(after)
     }
 
-    private static func inlineEdit(in text: NSString, selection: NSRange, marker: String) -> MarkdownFormattingEdit? {
+    static func inlineEdit(in text: NSString, selection: NSRange, marker: String) -> MarkdownFormattingEdit? {
         let selected = text.substring(with: selection)
         let size = (marker as NSString).length
         let end = NSMaxRange(selection)
@@ -312,7 +396,7 @@ enum MarkdownFormattingService {
                                       selectionRange: NSRange(location: selection.location + size, length: selection.length))
     }
 
-    private static func codeEdit(in text: NSString, selection: NSRange) -> MarkdownFormattingEdit? {
+    static func codeEdit(in text: NSString, selection: NSRange) -> MarkdownFormattingEdit? {
         let selected = text.substring(with: selection) as NSString
         var maxRun = 0, run = 0
         for index in 0..<selected.length {
@@ -351,7 +435,7 @@ enum MarkdownFormattingService {
     }
 
     // cmark recognises CR, LF and CRLF as line endings; U+2028/U+2029 are content.
-    private static func markdownLineRange(in text: NSString, at location: Int) -> NSRange {
+    static func markdownLineRange(in text: NSString, at location: Int) -> NSRange {
         var position = location
         if position < text.length && position > 0 && text.character(at: position) == 10 && text.character(at: position - 1) == 13 { position -= 1 }
         var start = position
@@ -366,7 +450,7 @@ enum MarkdownFormattingService {
         return NSRange(location: start, length: end - start)
     }
 
-    private static func intersectsCodeBlock(in text: NSString, from first: Int, through last: Int) -> Bool {
+    static func intersectsCodeBlock(in text: NSString, from first: Int, through last: Int) -> Bool {
         var location = 0, fence: (character: unichar, length: Int, quoteDepth: Int)?
         while location <= last && location < text.length {
             let line = markdownLineRange(in: text, at: location)
@@ -416,8 +500,8 @@ enum MarkdownFormattingService {
         let last = markdownLineRange(in: text, at: selection.length == 0 ? selection.location : NSMaxRange(selection) - 1)
         let selectedLines = NSRange(location: first.location, length: NSMaxRange(last) - first.location)
         struct Item {
-            let node: OpaquePointer
-            let parent: OpaquePointer
+            let node: Int
+            let parent: Int
             let line: NSRange
             let whole: NSRange
             let prefix: NSRange
@@ -427,218 +511,267 @@ enum MarkdownFormattingService {
             let ordered: Bool
             let task: Bool
         }
-        func convert(_ root: OpaquePointer, mathExtension: OpaquePointer) -> (handled: Bool, edit: MarkdownFormattingEdit?) {
-            let source = MarkdownPresentationParser.Source(text as String, root: root, looseHeadings: MarkdownMathExtension.looseHeadings(in: mathExtension), looseListRanges: MarkdownMathExtension.looseListRanges(in: mathExtension))
-            let marker = try! NSRegularExpression(pattern: #"^([-+*]|[0-9]{1,9}[.)])([ \t]+|$)"#)
-            var nodes: [OpaquePointer] = []
-            func visit(_ node: OpaquePointer) {
-                let kind = cmark_node_get_type_string(node).map { String(cString: $0) } ?? ""
-                if ["item", "tasklist"].contains(kind) { nodes.append(node) }
-                var child = cmark_node_first_child(node)
-                while let current = child { visit(current); child = cmark_node_next(current) }
-            }
-            visit(root)
-            var ordinals: [OpaquePointer: Int] = [:], nextOrdinal: [OpaquePointer: Int] = [:]
-            for node in nodes {
-                guard let parent = cmark_node_parent(node) else { return (true, nil) }
-                let ordinal = nextOrdinal[parent] ?? Int(cmark_node_get_list_start(parent))
-                ordinals[node] = ordinal
-                nextOrdinal[parent] = ordinal + 1
-            }
-            // Choose the deepest item at the first selected line, then its siblings.
-            // Descendants of a selected parent move with that parent.
-            let containing = nodes.filter { node in
-                guard let whole = source.wholeLines(node) else { return false }
-                return first.location >= whole.location && first.location < NSMaxRange(whole)
-            }
-            let starting = containing.filter { source.firstPosition($0).map { markdownLineRange(in: text, at: $0).location == first.location } ?? false }
-            let anchor = starting.last(where: { (source.firstPosition($0) ?? Int.max) <= selection.location }) ?? starting.first ?? containing.last
-            guard let anchor, let parent = cmark_node_parent(anchor) else {
-                return (nodes.contains { source.wholeLines($0).map { NSIntersectionRange($0, selectedLines).length > 0 } ?? false }, nil)
-            }
-            var items: [Item] = []
-            for node in nodes where cmark_node_parent(node) == parent {
-                guard let whole = source.wholeLines(node), NSIntersectionRange(whole, selectedLines).length > 0 else { continue }
-                guard let start = source.firstPosition(node) else { return (true, nil) }
-                let line = markdownLineRange(in: text, at: start)
-                var end = NSMaxRange(line)
-                while end > line.location && [10, 13].contains(text.character(at: end - 1)) { end -= 1 }
-                let raw = text.substring(with: NSRange(location: start, length: end - start)) as NSString
-                guard let match = marker.firstMatch(in: raw as String, range: NSRange(location: 0, length: raw.length)) else { return (true, nil) }
-                let beforeMarker = text.substring(with: NSRange(location: line.location, length: start - line.location))
-                guard beforeMarker.utf16.allSatisfy({ $0 < 128 }) else { return (true, nil) }
-                if text.substring(with: whole).contains("\t") {
-                    guard let prefix = MarkdownPresentationParser.listContainerPrefixes(node, source: source, text: text),
-                          prefix.source.utf16.elementsEqual(beforeMarker.utf16) else { return (true, nil) }
-                }
-                let markerColumn = beforeMarker.utf16.reduce(0) { value, unit in unit == 9 ? (value / 4 + 1) * 4 : value + 1 }
-                var column = markerColumn
-                for unit in raw.substring(with: match.range).utf16 {
-                    column = unit == 9 ? (column / 4 + 1) * 4 : column + 1
-                }
-                let blockWidth = column - markerColumn
-                let tokenWidth = match.range(at: 1).length
-                guard blockWidth - tokenWidth <= 4 else { return (true, nil) }
-                let ordered = cmark_node_get_list_type(parent) == CMARK_ORDERED_LIST
-                let token = raw.substring(with: match.range(at: 1))
-                guard ordered == (token.first?.isNumber == true) else { return (true, nil) }
-                var prefix = NSRange(location: start, length: match.range.length)
-                let kind = cmark_node_get_type_string(node).map { String(cString: $0) } ?? ""
-                let quotedTask = quotedTaskContent(node, source: source, text: text)
-                if kind != "tasklist", source.taskCheckbox(node) != nil, quotedTask == nil { return (true, nil) }
-                let task = kind == "tasklist" || quotedTask != nil
-                if task {
-                    guard let checkbox = quotedTask?.checkbox ?? source.taskCheckbox(node), checkbox.markerRange.location == NSMaxRange(prefix),
-                          kind != "tasklist" || (checkbox.state != 32) == cmark_gfm_extensions_get_tasklist_item_checked(node) else { return (true, nil) }
-                    var after = NSMaxRange(checkbox.markerRange)
-                    while after < end && (text.character(at: after) == 32 || text.character(at: after) == 9) { after += 1 }
-                    prefix.length = after - start
-                }
-                if selection.length > 0 {
-                    let selectedPrefix = NSIntersectionRange(prefix, selection)
-                    if selectedPrefix.length > 0 && selectedPrefix != prefix { return (true, nil) }
-                }
-                items.append(Item(node: node, parent: parent, line: line, whole: whole, prefix: prefix,
-                                  blockWidth: blockWidth, marker: raw.substring(with: match.range), ordinal: ordinals[node]!, ordered: ordered, task: task))
-            }
-            guard let firstItem = items.first, let lastItem = items.last,
-                  first.location >= firstItem.whole.location, first.location < NSMaxRange(firstItem.whole),
-                  last.location >= lastItem.whole.location, last.location < NSMaxRange(lastItem.whole) else { return (true, nil) }
-            for index in items.indices.dropFirst() {
-                guard cmark_node_next(items[index - 1].node) == items[index].node else { return (true, nil) }
-            }
-            var replacements: [(NSRange, String)] = []
-            for (index, item) in items.enumerated() {
-                let same = command == .taskList ? item.task : !item.task && (item.ordered == (command == .numberedList))
-                if same { continue }
-                let prefix = command == .taskList ? "- [ ] " : command == .bulletList ? "- " : item.ordered ? item.marker : "\(index + 1). "
-                replacements.append((item.prefix, prefix))
-                let newWidth = command == .numberedList ? (item.ordered ? item.blockWidth : (prefix as NSString).length) : 2
-                let delta = newWidth - item.blockWidth
-                if delta != 0, NSMaxRange(item.line) < NSMaxRange(item.whole) {
-                    guard let containers = MarkdownPresentationParser.listContainerPrefixes(item.node, source: source, text: text) else { return (true, nil) }
-                    let ancestor = containers.continuation as NSString
-                    var cursor = NSMaxRange(item.line)
-                    while cursor < NSMaxRange(item.whole) {
-                        let line = markdownLineRange(in: text, at: cursor)
-                        var end = NSMaxRange(line)
-                        while end > cursor && [10, 13].contains(text.character(at: end - 1)) { end -= 1 }
-                        let content = text.substring(with: NSRange(location: cursor, length: end - cursor))
-                        if !content.trimmingCharacters(in: .whitespaces).isEmpty,
-                           end - cursor >= ancestor.length,
-                           text.substring(with: NSRange(location: cursor, length: ancestor.length)) == containers.continuation {
-                            let start = cursor + ancestor.length
-                            var after = start
-                            var column = containers.continuation.utf16.reduce(0) { value, unit in unit == 9 ? (value / 4 + 1) * 4 : value + 1 }
-                            let target = column + item.blockWidth
-                            while after < end && column < target {
-                                let unit = text.character(at: after)
-                                guard unit == 32 || unit == 9 else { break }
-                                column = unit == 9 ? (column / 4 + 1) * 4 : column + 1
-                                after += 1
-                            }
-                            if column >= target {
-                                replacements.append((NSRange(location: start, length: after - start),
-                                    String(repeating: " ", count: newWidth + column - target)))
-                            }
-                        }
-                        guard NSMaxRange(line) > cursor else { return (true, nil) }
-                        cursor = NSMaxRange(line)
-                    }
-                }
-            }
-            guard let beginning = replacements.first, let ending = replacements.last else { return (true, nil) }
-            let affected = NSRange(location: beginning.0.location, length: NSMaxRange(ending.0) - beginning.0.location)
-            let changed = NSMutableString(string: text.substring(with: affected))
-            for (range, value) in replacements.reversed() {
-                changed.replaceCharacters(in: NSRange(location: range.location - affected.location, length: range.length), with: value)
-            }
-            let probe = text.replacingCharacters(in: affected, with: changed as String)
-            let selectedNodes = Set(items.map(\.node))
-            let selectedItems = Set(nodes.indices.filter { selectedNodes.contains(nodes[$0]) })
-            let nodeIndices = Dictionary(uniqueKeysWithValues: nodes.enumerated().map { ($0.element, $0.offset) })
-            var targetOrdinals: [Int: Int] = [:]
-            if command == .numberedList {
-                for (index, item) in items.enumerated() { targetOrdinals[nodeIndices[item.node]!] = item.ordered ? item.ordinal : index + 1 }
-            }
-            guard let expected = formattingStructure(root, selectedItems: selectedItems, command: command, source: source, text: text) else { return (true, nil) }
-            let verified = MarkdownMathExtension.withDocument(probe, strictMode: strictMode) { candidate, mathExtension, _ in
-                let candidateSource = MarkdownPresentationParser.Source(probe, root: candidate, looseHeadings: MarkdownMathExtension.looseHeadings(in: mathExtension), looseListRanges: MarkdownMathExtension.looseListRanges(in: mathExtension))
-                return formattingStructure(candidate, selectedItems: selectedItems, command: command, validateTarget: true,
-                                           targetOrdinals: targetOrdinals, source: candidateSource, text: probe as NSString) == expected
-            }
-            guard verified == true else { return (true, nil) }
-            func mapped(_ position: Int) -> Int {
-                var delta = 0
-                for (range, value) in replacements {
-                    if position <= range.location { break }
-                    let length = (value as NSString).length
-                    if position < NSMaxRange(range) { return range.location + delta + length }
-                    delta += length - range.length
-                }
-                return position + delta
-            }
-            let start = mapped(selection.location), end = mapped(NSMaxRange(selection))
-            return (true, MarkdownFormattingEdit(range: affected, replacement: changed as String,
-                                                 selectionRange: NSRange(location: start, length: end - start)))
+        guard let model = documentModel(of: text as String, strictMode: strictMode) else { return (true, nil) }
+        let tree = BlockTree(model)
+        let marker = try! NSRegularExpression(pattern: #"^([-+*]|[0-9]{1,9}[.)])([ \t]+|$)"#)
+        let nodes = tree.nodes.indices.filter { if case .listItem = tree.nodes[$0].block.kind { return true } else { return false } }
+        func nodeLines(_ node: Int) -> NSRange { wholeLines(tree.nodes[node].block.range, in: text) }
+        func listBlock(of node: Int) -> MarkdownBlockNode.ListBlock? {
+            guard let parent = tree.nodes[node].parent, case let .list(list) = tree.nodes[parent].block.kind else { return nil }
+            return list
         }
-        return MarkdownMathExtension.withDocument(text as String, strictMode: strictMode) { root, mathExtension, _ in convert(root, mathExtension: mathExtension) } ?? (true, nil)
+        func ordinal(of node: Int) -> Int {
+            if case let .listItem(item) = tree.nodes[node].block.kind { return item.ordinal ?? 0 }
+            return 0
+        }
+        // Choose the deepest item at the first selected line, then its siblings.
+        // Descendants of a selected parent move with that parent.
+        let containing = nodes.filter { node in
+            let range = nodeLines(node)
+            return first.location >= range.location && first.location < NSMaxRange(range)
+        }
+        let starting = containing.filter { tree.nodes[$0].block.markerRanges.first.map { markdownLineRange(in: text, at: $0.location).location == first.location } ?? false }
+        let anchor = starting.last(where: { (tree.nodes[$0].block.markerRanges.first?.location ?? Int.max) <= selection.location }) ?? starting.first ?? containing.last
+        guard let anchor, let parent = tree.nodes[anchor].parent, let parentList = listBlock(of: anchor) else {
+            return (nodes.contains { NSIntersectionRange(nodeLines($0), selectedLines).length > 0 }, nil)
+        }
+        var items: [Item] = []
+        for node in nodes where tree.nodes[node].parent == parent {
+            let whole = nodeLines(node)
+            guard NSIntersectionRange(whole, selectedLines).length > 0 else { continue }
+            guard let start = tree.nodes[node].block.markerRanges.first?.location else { return (true, nil) }
+            let line = markdownLineRange(in: text, at: start)
+            var end = NSMaxRange(line)
+            while end > line.location && [10, 13].contains(text.character(at: end - 1)) { end -= 1 }
+            let raw = text.substring(with: NSRange(location: start, length: end - start)) as NSString
+            guard let match = marker.firstMatch(in: raw as String, range: NSRange(location: 0, length: raw.length)) else { return (true, nil) }
+            let beforeMarker = text.substring(with: NSRange(location: line.location, length: start - line.location))
+            guard beforeMarker.utf16.allSatisfy({ $0 < 128 }) else { return (true, nil) }
+            let markerColumn = beforeMarker.utf16.reduce(0) { value, unit in unit == 9 ? (value / 4 + 1) * 4 : value + 1 }
+            var column = markerColumn
+            for unit in raw.substring(with: match.range).utf16 {
+                column = unit == 9 ? (column / 4 + 1) * 4 : column + 1
+            }
+            let blockWidth = column - markerColumn
+            let tokenWidth = match.range(at: 1).length
+            guard blockWidth - tokenWidth <= 4 else { return (true, nil) }
+            let ordered: Bool
+            if case .ordered = parentList.marker { ordered = true } else { ordered = false }
+            let token = raw.substring(with: match.range(at: 1))
+            guard ordered == (token.first?.isNumber == true) else { return (true, nil) }
+            var prefix = NSRange(location: start, length: match.range.length)
+            let quotedTask = quotedTaskContent(tree, item: node, text: text)
+            let checkbox = taskCheckbox(tree.nodes[node].block)
+            // Флажок, который разбор не признал задачей (и не флажок в цитате): такой пункт не трогаем.
+            if checkbox != nil, quotedTask == nil, checkboxParagraph(tree, item: node) != nil { return (true, nil) }
+            let task = checkbox != nil
+            if task {
+                guard let checkbox, checkbox.markerRange.location == NSMaxRange(prefix) else { return (true, nil) }
+                var after = NSMaxRange(checkbox.markerRange)
+                while after < end && (text.character(at: after) == 32 || text.character(at: after) == 9) { after += 1 }
+                prefix.length = after - start
+            }
+            if selection.length > 0 {
+                let selectedPrefix = NSIntersectionRange(prefix, selection)
+                if selectedPrefix.length > 0 && selectedPrefix != prefix { return (true, nil) }
+            }
+            items.append(Item(node: node, parent: parent, line: line, whole: whole, prefix: prefix,
+                              blockWidth: blockWidth, marker: raw.substring(with: match.range), ordinal: ordinal(of: node), ordered: ordered, task: task))
+        }
+        guard let firstItem = items.first, let lastItem = items.last,
+              first.location >= firstItem.whole.location, first.location < NSMaxRange(firstItem.whole),
+              last.location >= lastItem.whole.location, last.location < NSMaxRange(lastItem.whole) else { return (true, nil) }
+        let siblings = tree.nodes[parent].children
+        for index in items.indices.dropFirst() {
+            guard let previous = siblings.firstIndex(of: items[index - 1].node), previous + 1 < siblings.count,
+                  siblings[previous + 1] == items[index].node else { return (true, nil) }
+        }
+        var replacements: [(NSRange, String)] = []
+        for (index, item) in items.enumerated() {
+            let same = command == .taskList ? item.task : !item.task && (item.ordered == (command == .numberedList))
+            if same { continue }
+            let prefix = command == .taskList ? "- [ ] " : command == .bulletList ? "- " : item.ordered ? item.marker : "\(index + 1). "
+            replacements.append((item.prefix, prefix))
+            let newWidth = command == .numberedList ? (item.ordered ? item.blockWidth : (prefix as NSString).length) : 2
+            let delta = newWidth - item.blockWidth
+            if delta != 0, NSMaxRange(item.line) < NSMaxRange(item.whole) {
+                guard let markerStart = tree.nodes[item.node].block.markerRanges.first?.location else { return (true, nil) }
+                let containers = itemPrefix(before: markerStart, in: text)
+                let ancestor = containers.continuation as NSString
+                var cursor = NSMaxRange(item.line)
+                while cursor < NSMaxRange(item.whole) {
+                    let line = markdownLineRange(in: text, at: cursor)
+                    var end = NSMaxRange(line)
+                    while end > cursor && [10, 13].contains(text.character(at: end - 1)) { end -= 1 }
+                    let content = text.substring(with: NSRange(location: cursor, length: end - cursor))
+                    if !content.trimmingCharacters(in: .whitespaces).isEmpty,
+                       end - cursor >= ancestor.length,
+                       text.substring(with: NSRange(location: cursor, length: ancestor.length)) == containers.continuation {
+                        let start = cursor + ancestor.length
+                        var after = start
+                        var column = containers.continuation.utf16.reduce(0) { value, unit in unit == 9 ? (value / 4 + 1) * 4 : value + 1 }
+                        let target = column + item.blockWidth
+                        while after < end && column < target {
+                            let unit = text.character(at: after)
+                            guard unit == 32 || unit == 9 else { break }
+                            column = unit == 9 ? (column / 4 + 1) * 4 : column + 1
+                            after += 1
+                        }
+                        if column >= target {
+                            replacements.append((NSRange(location: start, length: after - start),
+                                String(repeating: " ", count: newWidth + column - target)))
+                        }
+                    }
+                    guard NSMaxRange(line) > cursor else { return (true, nil) }
+                    cursor = NSMaxRange(line)
+                }
+            }
+        }
+        guard let beginning = replacements.first, let ending = replacements.last else { return (true, nil) }
+        let affected = NSRange(location: beginning.0.location, length: NSMaxRange(ending.0) - beginning.0.location)
+        let changed = NSMutableString(string: text.substring(with: affected))
+        for (range, value) in replacements.reversed() {
+            changed.replaceCharacters(in: NSRange(location: range.location - affected.location, length: range.length), with: value)
+        }
+        let probe = text.replacingCharacters(in: affected, with: changed as String)
+        let selectedNodes = Set(items.map(\.node))
+        let selectedItems = Set(nodes.indices.filter { selectedNodes.contains(nodes[$0]) })
+        let nodeIndices = Dictionary(uniqueKeysWithValues: nodes.enumerated().map { ($0.element, $0.offset) })
+        var targetOrdinals: [Int: Int] = [:]
+        if command == .numberedList {
+            for (index, item) in items.enumerated() { targetOrdinals[nodeIndices[item.node]!] = item.ordered ? item.ordinal : index + 1 }
+        }
+        guard let expected = formattingStructure(tree, text: text, selectedItems: selectedItems, command: command) else { return (true, nil) }
+        // Проверка пробой: в тексте с правкой структура должна совпасть с прежней, кроме выбранных пунктов.
+        guard let candidateModel = documentModel(of: probe, strictMode: strictMode),
+              formattingStructure(BlockTree(candidateModel), text: probe as NSString, selectedItems: selectedItems, command: command,
+                                  validateTarget: true, targetOrdinals: targetOrdinals) == expected else { return (true, nil) }
+        func mapped(_ position: Int) -> Int {
+            var delta = 0
+            for (range, value) in replacements {
+                if position <= range.location { break }
+                let length = (value as NSString).length
+                if position < NSMaxRange(range) { return range.location + delta + length }
+                delta += length - range.length
+            }
+            return position + delta
+        }
+        let start = mapped(selection.location), end = mapped(NSMaxRange(selection))
+        return (true, MarkdownFormattingEdit(range: affected, replacement: changed as String,
+                                             selectionRange: NSRange(location: start, length: end - start)))
     }
 
-    // Compare content and item ancestry, allowing only the requested outer markers to change.
-    private static func formattingStructure(_ root: OpaquePointer, selectedItems: Set<Int> = [],
+    /// Подпись структуры (вид, номер, разделитель, плотность, флажок, адрес, заголовок, info ограждения, уровень) без позиций.
+    /// Сравнивается до и после правки: меняться могут только внешние маркеры выбранных пунктов.
+    private static func formattingStructure(_ tree: BlockTree, text: NSString, selectedItems: Set<Int> = [],
                                             command: MarkdownFormattingCommand = .blockMath, validateTarget: Bool = false,
-                                            targetOrdinals: [Int: Int] = [:], omitting omitted: OpaquePointer? = nil,
-                                            source: MarkdownPresentationParser.Source? = nil, text: NSString? = nil) -> [[String]]? {
+                                            targetOrdinals: [Int: Int] = [:], omitting omitted: Int? = nil) -> [[String]]? {
         var result: [[String]] = [], nextItem = 0, valid = true
-        var listOrdinals: [OpaquePointer: Int] = [:]
-        var taskPrefixes: [OpaquePointer: String] = [:]
-        func visit(_ node: OpaquePointer, owner: Int?) {
-            if node == omitted { return }
-            let kind = cmark_node_get_type_string(node).map { String(cString: $0) } ?? ""
-            var literal = cmark_node_get_literal(node).map { String(cString: $0) } ?? ""
-            if let prefix = taskPrefixes[node] {
-                literal = (literal as NSString).substring(from: (prefix as NSString).length)
-                if literal.isEmpty { return }
-            }
-            var currentOwner = owner
-            if kind == "item" || kind == "tasklist" {
-                let index = nextItem
-                nextItem += 1
-                currentOwner = index
-                guard let list = cmark_node_parent(node) else { valid = false; return }
-                let ordered = cmark_node_get_list_type(list) == CMARK_ORDERED_LIST
-                let quotedCheckbox = source?.quotedTaskCheckbox(node)
-                if let source, let text, let quoted = quotedTaskContent(node, source: source, text: text) {
-                    taskPrefixes[quoted.textNode] = quoted.prefix
+        var taskPrefixes: [Int: String] = [:]
+        func entry(_ name: String, owner: Int?, literal: String = "", url: String = "", title: String = "", info: String = "", level: Int = 0) {
+            result.append([name, String(owner ?? -1), literal, url, title, info, String(level)])
+        }
+        // Соседние текстовые узлы склеиваются: деление на узлы зависит от соседних символов, а не от содержимого.
+        func inlines(_ nodes: [MarkdownInlineNode], owner: Int?, stripping prefix: String?) {
+            var pending = "", stripped = prefix == nil
+            func flush() {
+                guard !pending.isEmpty else { return }
+                var literal = pending
+                pending = ""
+                if !stripped, let prefix {
+                    stripped = true
+                    literal = (literal as NSString).substring(from: min((prefix as NSString).length, (literal as NSString).length))
                 }
-                let task = kind == "tasklist" || quotedCheckbox != nil
-                let checked = quotedCheckbox.map { $0.state != 32 } ?? cmark_gfm_extensions_get_tasklist_item_checked(node)
-                let tight = String(cmark_node_get_list_tight(list))
-                let ordinal = listOrdinals[list] ?? Int(cmark_node_get_list_start(list))
-                listOrdinals[list] = ordinal + 1
-                if selectedItems.contains(index) {
-                    if validateTarget, let expectedOrdinal = targetOrdinals[index], ordinal != expectedOrdinal { valid = false }
+                if !literal.isEmpty { entry("text", owner: owner, literal: literal) }
+            }
+            for node in nodes {
+                if case let .text(value) = node.kind { pending += value; continue }
+                flush()
+                stripped = true
+                var name = Mirror(reflecting: node.kind).children.first?.label ?? String(describing: node.kind)
+                var literal = "", url = "", title = ""
+                switch node.kind {
+                case let .code(value), let .rawHTML(value), let .formula(source: value): literal = value
+                case let .link(link): url = link.url; title = link.title ?? ""
+                case let .image(image): url = image.url; title = image.title ?? ""; literal = image.alt
+                case let .footnoteReference(label: label): literal = label
+                case let .emoji(name: emoji): literal = emoji
+                default: break
+                }
+                if name.isEmpty { name = "inline" }
+                entry(name, owner: owner, literal: literal, url: url, title: title)
+                inlines(node.children, owner: owner, stripping: nil)
+                result.append(["end", name])
+            }
+            flush()
+        }
+        func visit(_ index: Int, owner: Int?) {
+            if index == omitted { return }
+            let block = tree.nodes[index].block
+            var currentOwner = owner
+            var endName = ""
+            switch block.kind {
+            case let .listItem(item):
+                let itemIndex = nextItem
+                nextItem += 1
+                currentOwner = itemIndex
+                guard let listIndex = tree.nodes[index].parent, case let .list(list) = tree.nodes[listIndex].block.kind else { valid = false; return }
+                var ordered = false, delimiter = ""
+                if case let .ordered(_, unit) = list.marker { ordered = true; delimiter = String(unit) }
+                let quoted = quotedTaskContent(tree, item: index, text: text)
+                if let quoted { taskPrefixes[quoted.paragraph] = quoted.prefix }
+                // Флажок в тексте абзаца считается задачей только в цитате; иначе это обычный текст `[ ]`.
+                let task = item.task != nil && (checkboxParagraph(tree, item: index) == nil || tree.hasQuoteAncestor(index))
+                let checked = (item.task?.state ?? 32) != 32
+                let tight = String(list.isTight)
+                let ordinal = item.ordinal ?? -1
+                if selectedItems.contains(itemIndex) {
+                    if validateTarget, let expectedOrdinal = targetOrdinals[itemIndex], ordinal != expectedOrdinal { valid = false }
                     if validateTarget && (command == .taskList ? !task : task || ordered != (command == .numberedList)) { valid = false }
                     result.append(["item", String(owner ?? -1), "selected", tight])
                 } else {
                     result.append(["item", String(owner ?? -1), String(ordered), String(task), tight,
-                                   ordered ? String(ordinal) : "", ordered ? String(cmark_node_get_list_delim(list).rawValue) : "",
+                                   ordered ? String(ordinal) : "", ordered ? delimiter : "",
                                    task ? String(checked) : ""])
                 }
-            } else if kind != "list" {
-                result.append([kind, String(owner ?? -1), literal,
-                    cmark_node_get_url(node).map { String(cString: $0) } ?? "",
-                    cmark_node_get_title(node).map { String(cString: $0) } ?? "",
-                    cmark_node_get_fence_info(node).map { String(cString: $0) } ?? "",
-                    String(cmark_node_get_heading_level(node))])
+                endName = "item"
+            case .list:
+                break
+            default:
+                var name = Mirror(reflecting: block.kind).children.first?.label ?? String(describing: block.kind)
+                var literal = "", info = "", level = 0
+                switch block.kind {
+                case let .heading(heading): level = heading.level
+                case let .callout(callout): literal = callout.type
+                case let .alert(alert): literal = alert.rawValue
+                case let .codeBlock(code): literal = code.literal; info = code.info
+                case let .mathBlock(source): literal = source
+                case let .html(html): literal = html.literal
+                case let .footnoteDefinition(label): literal = label
+                case .frontMatter, .comment, .noteEmbed:
+                    if block.range.location >= 0, NSMaxRange(block.range) <= text.length { literal = text.substring(with: block.range) }
+                default: break
+                }
+                if name.isEmpty { name = "block" }
+                entry(name, owner: owner, literal: literal, info: info, level: level)
+                endName = name
+                inlines(block.inlines, owner: currentOwner, stripping: taskPrefixes[index])
+                if case let .table(table) = block.kind {
+                    for row in table.rows {
+                        for cell in row.cells {
+                            entry("cell", owner: currentOwner)
+                            inlines(cell.inlines, owner: currentOwner, stripping: nil)
+                            result.append(["end", "cell"])
+                        }
+                        result.append(["end", "row"])
+                    }
+                }
             }
-            var child = cmark_node_first_child(node)
-            while let current = child { visit(current, owner: currentOwner); child = cmark_node_next(current) }
+            for child in tree.nodes[index].children { visit(child, owner: currentOwner) }
             // The close marker distinguishes nested paragraph/inline structures with equal literals.
-            if kind != "list" { result.append(["end", kind == "tasklist" ? "item" : kind]) }
+            if !endName.isEmpty { result.append(["end", endName]) }
         }
-        visit(root, owner: nil)
+        for index in tree.nodes.indices where tree.nodes[index].parent == nil { visit(index, owner: nil) }
         return valid ? result : nil
     }
 
@@ -753,7 +886,7 @@ enum MarkdownFormattingService {
 
         let looseHeadings: Set<Int>
         if !strictMode && heading != nil {
-            let presentation = MarkdownPresentationParser.parse(text as String, syntax: .init(strictMode: false))
+            let presentation = MarkdownPresentationBuilder.presentation(of: text as String, syntax: .init(strictMode: false))
             looseHeadings = Set(presentation.spans.compactMap { span in
                 guard case .heading = span.kind, let marker = span.markerRanges.first,
                       marker.length > 0, NSMaxRange(marker) < text.length,

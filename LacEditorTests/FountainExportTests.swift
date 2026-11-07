@@ -93,6 +93,86 @@ final class FountainExportTests: XCTestCase {
         XCTAssertFalse(result.lint.lines.contains { $0.kind == .synopsis || $0.kind == .lyrics || $0.kind == .character })
     }
 
+    // Разбор идёт на модели документа без умной пунктуации: кавычки сценария остаются прямыми.
+    func testStraightQuotesCRLFTaskFootnoteFormulaAndCJKTable() {
+        let markdown = "Он сказал: \"Привет\" -- и 'ушёл'.\r\n\r\n- [x] Готово\r\n- [ ] 待办\r\n\r\nТекст[^1] и $x^2$.\r\n\r\n| 名字 | 值 |\r\n| --- | --- |\r\n| 苹果 | 🍎 |\r\n\r\n[^1]: Сноска «а».\r\n"
+        let result = FountainExportService.convertDocument(markdown, options: options)
+        XCTAssertTrue(result.text.contains("\"Привет\" -- и 'ушёл'."), result.text)
+        XCTAssertTrue(result.text.contains("- [x] Готово"), result.text)
+        XCTAssertTrue(result.text.contains("- [ ] 待办"), result.text)
+        XCTAssertTrue(result.text.contains("[[Сноска «а».]]"), result.text)
+        XCTAssertTrue(result.text.contains("$x^2$"), result.text)
+        XCTAssertTrue(result.text.contains("名字 | 值"), result.text)
+        XCTAssertTrue(result.text.contains("苹果 | 🍎"), result.text)
+    }
+
+    // Метка ссылки приходит из ядра (метка определения, а не номер cmark); порядок и регистр не важны.
+    func testFootnotesWithLetterLabelsReverseOrderAndCase() {
+        let text = convert("Текст[^б] и ещё[^а] и [^A].\n\n[^а]: Первая.\n[^б]: Вторая.\n[^a]: Третья.\n")
+        XCTAssertTrue(text.contains("[[Вторая.]]"), text)
+        XCTAssertTrue(text.contains("[[Первая.]]"), text)
+        XCTAssertTrue(text.contains("[[Третья.]]"), text)
+        XCTAssertLessThan(text.range(of: "Вторая")!.lowerBound, text.range(of: "Первая")!.lowerBound)
+    }
+
+    // Выноска даёт два абзаца (заголовок и текст) без маркера [!note]; решение U7.1.c.
+    func testCalloutDropsMarkerAndKeepsTitleAndBodyAsSeparateParagraphs() {
+        let text = convert("> [!note] Заголовок\n> Текст выноски\n")
+        XCTAssertFalse(text.contains("[!note]"), text)
+        XCTAssertTrue(text.contains("Заголовок"), text)
+        XCTAssertTrue(text.contains("Текст выноски"), text)
+        XCTAssertTrue(text.contains("Заголовок\n\n"), text)
+    }
+
+    func testRubyCountsOneHTMLWarningAndKeepsText() {
+        let result = FountainExportService.convertDocument("Слово <ruby>漢<rt>kan</rt></ruby> тут.\n", options: options)
+        XCTAssertTrue(result.text.contains("漢"), result.text)
+        XCTAssertEqual(result.warnings.first { $0.kind == .html }?.count, 1)
+    }
+
+    func testHTMLPairsKeepTextAndUnderlineBecomesFountainUnderline() {
+        let result = FountainExportService.convertDocument("Он <b>громко</b> и <u>тихо</u> и <mark>ярко</mark>.\n", options: options)
+        XCTAssertTrue(result.text.contains("Он громко и _тихо_ и ярко."), result.text)
+        XCTAssertEqual(result.warnings.first { $0.kind == .html }?.count, 2)
+    }
+
+    func testMathBlockInListItemIsNotCodeBlock() {
+        let result = FountainExportService.convertDocument("- пункт\n\n  $$\n  x^2\n  $$\n", options: options)
+        XCTAssertNil(result.warnings.first { $0.kind == .codeBlock }, result.text)
+    }
+
+    func testNestedQuotesAndOrderedListStartingAtThree() {
+        let text = convert("> внешняя\n>\n> > вложенная\n\n3. три\n4. четыре\n")
+        XCTAssertTrue(text.contains("внешняя"), text)
+        XCTAssertTrue(text.contains("вложенная"), text)
+        XCTAssertTrue(text.contains("3. три"), text)
+        XCTAssertTrue(text.contains("4. четыре"), text)
+    }
+
+    // Подсветка и верхний индекс дают тот же литерал, что раньше (текст cmark): сущности и экранирование разобраны, `*`/`_` экранируются один раз.
+    func testHighlightAndSuperscriptKeepOldLiteral() {
+        let text = convert("==Привет== и ^2^ и ==a &amp; b== и ==a\\_b==.\n")
+        XCTAssertTrue(text.contains("==Привет== и ^2^ и ==a & b== и ==a\\_b==."), text)
+    }
+
+    // Сущности внутри подсветки разбираются как у cmark: `&notb` и `&copy` без `;` остаются текстом, `&copy;` и `&#169;` становятся ©.
+    func testHighlightEntitiesWithoutSemicolonStayText() {
+        let text = convert("==a&notb== и ==x&copy y== и ==&copy; &#169;==.\n")
+        XCTAssertTrue(text.contains("==a&notb== и ==x&copy y== и ==© ©==."), text)
+    }
+
+    // Числовые сущности как у cmark: 0 и значения выше U+10FFFF дают U+FFFD, до 8 цифр, `X` в любом регистре.
+    func testHighlightNumericEntitiesFollowCmark() {
+        let text = convert("==&#0; &#x110000; &#X41; &#00000041;==\n")
+        XCTAssertTrue(text.contains("==\u{FFFD} \u{FFFD} A )=="), text) // &#00000041; — десятичное 41, то есть «)»
+    }
+
+    // Ссылка `[^7]` стоит раньше существующего `[^1]:` — заметка берётся по метке, а не по номеру cmark.
+    func testFootnoteSevenBeforeOneUsesOwnDefinition() {
+        let text = convert("Текст[^7] и [^1].\n\n[^1]: Один.\n[^7]: Семь.\n")
+        XCTAssertLessThan(text.range(of: "Семь")!.lowerBound, text.range(of: "Один")!.lowerBound)
+    }
+
     // MARK: Заметки и предупреждения
 
     func testImageBecomesNoteWithWarning() {

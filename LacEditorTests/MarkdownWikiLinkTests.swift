@@ -53,7 +53,7 @@ final class MarkdownWikiLinkTests: XCTestCase {
 
     func testParserKeepsWikiLinksOnlyWhenRequested() {
         let text = "[[a]]"
-        XCTAssertTrue(MarkdownPresentationParser.parse(text).wikiLinks.isEmpty)
-        XCTAssertEqual(MarkdownPresentationParser.parse(text, includeWikiLinks: true).wikiLinks.count, 1)
+        XCTAssertTrue(MarkdownDocumentParser.parseOrEmpty(text).wikiLinks.isEmpty)
+        XCTAssertEqual(MarkdownDocumentParser.parseOrEmpty(text, includes: [.wikiLinks]).wikiLinks.count, 1)
     }
 }

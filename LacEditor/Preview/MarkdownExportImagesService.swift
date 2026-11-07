@@ -59,7 +59,11 @@ final class MarkdownExportImagesService {
                 let text = self.source
                 let syntax = self.syntax, includeMath = self.includeMath
                 let parsing = Task.detached(priority: .userInitiated) { () throws -> (MarkdownPresentation, [String: String]) in
-                    let presentation = MarkdownPresentationParser.parse(text, includeEmojiCandidates: includeMath, syntax: syntax, isCancelled: { Task.isCancelled })
+                    let options = MarkdownDocumentModel.Options(syntax: syntax, includes: includeMath ? [.emoji] : [], isVaultNote: false, detectsFrontMatter: true)
+                    guard let model = MarkdownDocumentParser.parse(text, options: options, isCancelled: { Task.isCancelled }), !Task.isCancelled else { throw CancellationError() }
+                    // Отсев формул, эмодзи и диаграмм внутри медиа и неподтверждённого HTML делает сборщик оформления.
+                    let presentation = MarkdownPresentationBuilder.build(model, text: text as NSString,
+                        options: .init(includeEmojiCandidates: includeMath, syntax: syntax), isCancelled: { Task.isCancelled })
                     guard !Task.isCancelled else { throw CancellationError() }
                     let values = includeMath ? try EmojiShortcodeResolver.resolve(presentation.emojiCandidates.map(\.name), isCancelled: { Task.isCancelled }) : [:]
                     return (presentation, values)

@@ -7,7 +7,7 @@ final class MarkdownFootnoteTests: XCTestCase {
     func testTableOfContentsLevelChangesHeightAndHitTargets() throws {
         _ = NSApplication.shared
         let source = "[toc]\n\n# 中文😀\n\n### Deep\n\n## Second\n\n# 中文😀"
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         let storage = NSTextStorage(string: source), layout = FoldLayoutManager()
         storage.addLayoutManager(layout)
         let container = NSTextContainer(containerSize: NSSize(width: 500, height: 500))
@@ -103,7 +103,7 @@ final class MarkdownFootnoteTests: XCTestCase {
     }
     func testReferencePositionsAndDefinitionAssociation() throws {
         let source = "中文😀 [^id] and [^id] [^missing]\r\n\r\n[^id]: first\r\n    second\r\n\r\n[^id]: duplicate\r\n\r\n`[^id]`"
-        let parsed = MarkdownPresentationParser.parse(source)
+        let parsed = MarkdownPresentationBuilder.parse(source)
         XCTAssertEqual(parsed.footnotes.count, 2)
         let text = source as NSString
         let first = text.range(of: "[^id]")
@@ -116,17 +116,17 @@ final class MarkdownFootnoteTests: XCTestCase {
     }
 
     func testHTMLReferencesAndSafeLinks() {
-        let body = MarkdownRenderer.renderPage("Text[^a] [^missing]\n\n[^a]: note", darkMode: false).body
+        let body = MarkdownHTMLRenderer.renderPage("Text[^a] [^missing]\n\n[^a]: note", darkMode: false).body
         XCTAssertTrue(body.contains("href=\"#fn-a\""))
         XCTAssertTrue(body.contains("href=\"#fnref-a\""))
         XCTAssertTrue(body.contains("[^missing]"))
-        let code = MarkdownRenderer.renderPage("`[^a]`\n\n[^a]: note", darkMode: false).body
+        let code = MarkdownHTMLRenderer.renderPage("`[^a]`\n\n[^a]: note", darkMode: false).body
         XCTAssertFalse(code.contains("class=\"footnote-ref\""))
     }
 
     func testUnicodeIdentifierAndBlockText() throws {
         let source = "Text[^中文😀]\n\n[^中文😀]: first\n\n    second\n\n    ```\n    fenced\n    ```\n\n        indented\n"
-        let note = try XCTUnwrap(MarkdownPresentationParser.parse(source).footnotes.first)
+        let note = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).footnotes.first)
         let text = source as NSString
         XCTAssertEqual(note.referenceRange, text.range(of: "[^中文😀]"))
         let definition = text.range(of: "[^中文😀]:")

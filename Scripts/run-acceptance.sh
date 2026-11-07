@@ -66,6 +66,9 @@ swiftc -O -parse-as-library \
     LacEditor/Models/DocumentStatistics.swift \
     LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Models/EditorDocument.swift \
+    LacEditor/Models/MarkdownDocumentModel.swift \
+    LacEditor/Models/MarkdownBlockIndex.swift \
+    LacEditor/Models/MarkdownSyntaxOptions.swift \
     LacEditor/Models/VaultPath.swift \
     LacEditor/Models/VaultOwnerZone.swift \
     LacEditor/Models/VaultPageGuard.swift \
@@ -77,6 +80,8 @@ swiftc -O -parse-as-library \
     LacEditor/Editor/ListContinuationService.swift \
     LacEditor/Editor/LogicalLineIndex.swift \
     LacEditor/Models/MarkdownPresentation.swift \
+    LacEditor/Models/MarkdownDecorationKinds.swift \
+    LacEditor/Models/MarkdownFormattingState.swift \
     LacEditor/Models/MarkdownColorOverrides.swift \
     LacEditor/Models/MarkdownListStyle.swift \
     LacEditor/Models/MarkdownMedia.swift \
@@ -86,6 +91,7 @@ swiftc -O -parse-as-library \
     LacEditor/Services/MarkdownAutoPairService.swift \
     LacEditor/Services/FocusSentenceService.swift \
     LacEditor/Editor/LacTextView.swift \
+    LacEditor/Services/MarkdownImagePlacement.swift \
     LacEditor/Editor/CodeLexicalScanner.swift \
     LacEditor/Editor/DelimiterMatchingService.swift \
     LacEditor/Editor/SyntaxParser.swift \
@@ -107,12 +113,17 @@ swiftc -O -parse-as-library \
     LacEditor/Models/DocumentStatistics.swift \
     LacEditor/Models/MarkdownReadableText.swift \
     LacEditor/Models/EditorDocument.swift \
+    LacEditor/Models/MarkdownDocumentModel.swift \
+    LacEditor/Models/MarkdownBlockIndex.swift \
+    LacEditor/Models/MarkdownSyntaxOptions.swift \
     LacEditor/Models/VaultPath.swift \
     LacEditor/Models/VaultOwnerZone.swift \
     LacEditor/Models/VaultPageGuard.swift \
     LacEditor/Models/MarkdownDataMedia.swift \
     LacEditor/Editor/MarkdownMediaProjection.swift \
     LacEditor/Models/MarkdownPresentation.swift \
+    LacEditor/Models/MarkdownDecorationKinds.swift \
+    LacEditor/Models/MarkdownFormattingState.swift \
     LacEditor/Models/MarkdownColorOverrides.swift \
     LacEditor/Models/MarkdownListStyle.swift \
     LacEditor/Models/MarkdownMedia.swift \

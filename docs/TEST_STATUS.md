@@ -23,6 +23,80 @@
 
 ## Последние результаты
 
+### Единая модель Markdown (`docs/markdown-unified-model-plan.md`, 2026-11-05, не запускалось на Mac)
+
+- U0: `MarkdownRenderBaselineTests`, `MarkdownPresentationBaselineTests`, `MarkdownSpecConformanceTests` (+ `GFMSpecReader`, `BaselineSupport`) проходят на стенде `lac-writer-check`; эталоны записаны на Linux, первый прогон на Mac должен подтвердить совпадение (различия Foundation записать сюда). Spec: 685 совпадений из 700, 14 намеренных расширений.
+- U2.2: `MarkdownSourceMaskTests` (15 тестов: инварианты маски на корпусе с `\r\n`, сверка с `CriticMarkupRender.items`, `commentRanges`, `MarkdownFrontMatter`, оценка запретных зон против дерева) проходят на стенде `lac-writer-check` (1915 тестов, настоящих падений нет); на Mac не запускались.
+- U2.3: `MarkdownDocumentParserTests`, `MarkdownDocumentParserInlineTests`, `MarkdownDocumentParserHTMLTests` (ядро единого разбора: блоки, строчные узлы, HTML, контракт R1–R9, сравнения с рендером) проходят на стенде `lac-writer-check` (2034 теста, настоящих падений нет); `lac-check` — расхождений 0; на Mac не запускались.
+- U2.4–U2.5: `MarkdownDocumentCodeBlockTests`, `MarkdownDocumentExtrasTests`, `MarkdownDocumentElementsTests`, `MarkdownDocumentFenceTests`, `MarkdownDocumentReplacementsTests` (блоки кода и дополнительные данные ядра, сверка со старым `MarkdownPresentation` на корпусе) проходят на стенде `lac-writer-check` (2094 теста, настоящих падений нет); `lac-check` — расхождений 0; на Mac не запускались.
+- U2.6: `MarkdownDocumentModelCorpusTests` (модель единого разбора против cmark на корпусе, LF/CRLF) проходит на стенде `lac-writer-check`; на Mac не запускался.
+- U3.1: `MarkdownHTMLRendererTests` (37), `testConformanceHTMLRenderer`, `testHTMLRendererMatchesLegacyBytesOnSpecCorpus` проходят на стенде `lac-writer-check`; на Mac не запускались.
+- U5.1–U5.2: новые тесты ядра в `MarkdownDocumentParserHTMLTests` (пары HTML-тегов, ссылки и заполнители в ячейках), `MarkdownPresentationBaselineTests` с эталонами через `MarkdownPresentationBuilder`, `MarkdownPresentationBuilderTests` (8) проходят на стенде `lac-writer-check`; на Mac не запускались.
+- U3.3, U5.3, U5a.1–U5a.4 (часть А): `MarkdownHTMLRendererObsidianTests`, `MarkdownPresentationBuilderObsidianTests` (10), обновлённые `MarkdownPresentationTests`/`MarkdownDisplayMapTests` (сдвиг через `prepareForEditing`) проходят на стенде `lac-writer-check`; стенд `lac-check` — 0 расхождений; на Mac не запускались.
+- U4.1: `EditorDocumentMarkdownModelTests` (8) проходят на стенде `lac-writer-check`; на Mac не запускались.
+- U3.2: `MarkdownHTMLMediaRendererTests` проходят на стенде `lac-writer-check`, кроме `testLocalMarkdownImageBecomesDataURI` (на Linux нет `UTType`/`CGImageSource`, внесён в список Linux-падений стенда); на Mac не запускались.
+- U4.2–U4.4, U6.2–U6.4, ext/0016: `MarkdownDecorationColorsTests`, `MarkdownHTMLRendererAcceptsTests`, тесты локального разбора (`usedLocal`), форматирования и таблиц на модели (`testEditsTableThatIsNotFirstInItsContainer`), точные позиции ячеек прерывающей таблицы (`testInterruptedTableHeaderCellsAreExact`, `testInterruptedTableHeaderInlinesHaveExactRanges`), переведённые на HTML-адаптер `MarkdownRendererTests`, `MarkdownPreviewTests`, `TaskListEditingTests` и тесты Obsidian/Callout/NoteEmbed/Critic/SourceMask проходят на стенде `lac-writer-check`; на Mac не запускались.
+- U4.5.0–U4.5.1, U7.0: новые тесты ядра в `MarkdownDocumentParserTests` (голые ссылки, сущности, SMART, определения ссылок), `MarkdownClipboardProjectionTests`, `MarkdownDocumentQueriesTests` проходят на стенде `lac-writer-check`; `lac-check` — 147 документов, расхождений 0; `MarkdownClipboardProjectionParityTests` (сверка со старым `project`) только для Mac; на Mac не запускались.
+- U4.5.2–U4.5.4, U7.1–U7.5: `MarkdownClipboardProjectionBlocksTests`, `MarkdownClipboardProjectionInlinesTests`, `MarkdownClipboardProjectionHTMLTests`, `MarkdownFrontMatterTests`, новые тесты `FountainExportTests`, `ManuscriptServiceTests`, `MarkdownObsidianCommentTests`, `CriticMarkupRenderTests`, `MarkdownDocumentParserTests` (номера сносок, `testFootnoteReferenceLabelIsDefinitionLabel`) и `MarkdownDocumentParserHTMLTests` проходят на стенде `lac-writer-check`; тесты с картинками без ImageIO на стенде пропускаются; на Mac не запускались.
+- U4.5.6, U7.3, U9.1, U8.1–U8.2, U9.2 (2026-11-07): старый разбор (`MarkdownPresentationParser`, `MarkdownReadableTextParser`) и старый путь копирования удалены; сверки со старым разбором в `MarkdownDocument{Extras,Replacements,Elements,Fence}Tests` и `MarkdownClipboardProjectionParityTests` удалены вместе с ним. Сценарные тесты переведены на `MarkdownPresentationBuilderScenarioTests` (новые тесты на таб, `<kbd>`/`<u>` после `<script>`, зачёркивание через перенос строки, CRLF, CJK и эмодзи). Новый `MarkdownUnifiedModelTests` (4: одна модель на версию, склейка против полного разбора на случайных правках, `data-sourcepos`, отмена). Стенд `lac-writer-check`: 2452 теста, настоящих падений нет, кроме 5 `MarkdownClipboardCopyTestsCorpus` (ImageIO на Linux); `lac-check` (полный разбор теперь `MarkdownPresentationBuilder.parse`) — 147 документов, расхождений 0, `LOCALCHECK` — 0. На Mac не запускались, ручные списки `swiftc` в `Scripts` на Mac не проверялись.
+- Исправления отличий после удаления старого разбора (2026-11-07): абзац с табом (spec 9) и многострочная ссылка (spec 518) подтверждаются сверкой с исходником; копирование среза выноски, текста в `<script>`/`<template>`/`<textarea>` и эмодзи между блоками `<template>` — как в панели; правка картинки: `$…$` в подписи правится, CriticMarkup — отказ, сервисы правки без умной пунктуации (подпись буквально). Новые и изменённые тесты: `MarkdownDocumentParserInlineTests.testTabbedParagraphAndMultilineLinkKeepExactRanges`, `MarkdownClipboardCopyTests.testTabbedParagraphAndMultilineLinkCopyWithFormatting` (и ожидания `hidden`/`inert`), `MarkdownPresentationBuilderScenarioTests.testMultilineLinkWithTitleIsPresented`, `MarkdownClipboardProjectionBlocksTests.testCalloutHeadPartsCopyAsPlainText`, `MarkdownClipboardProjectionInlinesTests` (`testRawHTMLContextTagsGiveNilButTextCopies`, `testEmojiShortcodeInsideScriptOrTemplateCopiesAsPlainText`, `testEmojiParagraphBetweenTemplateBlocksCopiesGlyph`, `testMultilineLinkDoesNotAddTrailingLineBreak`), `MarkdownClipboardProjectionHTMLTests.testBrokenVideoOpeningWithNextBlockIsNotCopied`, `MarkdownImageEditingTests` (`testImageAltWithFormulaIsEditedAsPlainTextLikePanel`, `testImageAltKeepsLiteralPunctuation`), `MarkdownFormattingServiceTests.testTabbedQuotedTaskListConvertsToNumberedList`, wiki spec 556 в `MarkdownHTMLRendererObsidianTests` и `MarkdownPresentationBuilderObsidianTests`. Эталоны: `PresentationBaseline` spec 518, `RenderBaseline` (preview, nobreaks, vault) spec 4. Стенд `lac-writer-check`: 2474 теста, настоящих падений нет, кроме 5 `MarkdownClipboardCopyTestsCorpus` (ImageIO); `lac-check` — 147 документов, 0 расхождений; `LOCALCHECK` — 0 и 0. На Mac не запускались.
+
+### План Markdown-редактора, ред. 2026-11-05 (не запускалось на Mac)
+
+Задачи из `docs/markdown-editor-plan.md` («Задачи реализации»). На Linux
+проверен только разбор файлов (`swiftc -frontend -parse`) и стенды с
+заглушками там, где они есть; на Mac новые и изменённые тесты ещё не
+запускались.
+
+- T0: `MarkdownBaselineDocumentsTests`, `MarkdownHiddenGlyphStressTests`,
+  fixture `LacEditorTests/Fixtures/MarkdownBaseline/`.
+- T8a: `MarkdownImagePlacementTests`, `MarkdownImagePlacementInteractionTests`,
+  обновлены тесты вставки изображений в `AIWritingControllerTests`.
+- T1: `MarkdownDisplayMapTests`; стенд `lac-check` — карта на 147 документах, расхождений 0.
+- T2: `MarkdownEditTransactionTests`; чистые проверки транзакции — на стенде `lac-check`.
+- T5: `MarkdownLocalParseTests`, `MarkdownLocalParseControllerTests` (на Mac не запускались); стенд `lac-check` — локальный разбор совпал с
+  полным на 89 400 случайных правках. Порог 20 000 символов на Mac не замерен.
+- T6: `MarkdownSemanticRoundTripTests`; сверку `MarkdownSemanticConsistencyTests`
+  и стенд `lac-semantic-check` заменил `MarkdownDocumentModelCorpusTests` (U2.6,
+  на Mac не запускался).
+- T3: `MarkdownDisplayMapCaretTests`, `MarkdownRevealLayoutTests`,
+  `MarkdownCaretInteractionTests` (клики, клавиши, отложенная установка
+  разбора, marked text) и новые тесты в `MarkdownEditTransactionTests`; на
+  Linux — только разбор файлов и стенд `lac-check` для чистой части.
+- T4: `MarkdownInlineFormattingTests`, `MarkdownFormattingStateTests`,
+  `MarkdownVisualFormattingInteractionTests`, два теста `selectionBefore` в
+  `MarkdownEditTransactionTests`, `testFormattingBarTextsExistInAllCatalogs` в
+  `LocalizationTests`; на Linux — разбор файлов и чистая логика на копии стенда
+  `lac-check`.
+- T7: `MarkdownTableNavigationTests` (таблица после абзаца — бывшее исключение
+  ext#16, кнопки «+», прокрутка, переключение вида, переход к каретке, undo,
+  IME) и `testTableMenuTextsExistInAllCatalogs` в `LocalizationTests`; старые
+  тесты таблиц после правок меню, кнопок и прокрутки не перепроверялись. На
+  Linux — разбор файлов, стенд `lac-check` (стенд `lac-semantic-check` удалён в U2.6).
+- T8b: `MarkdownBlockSourceTests`, 10 тестов (пункт «编辑源代码» у изображения, HTML,
+  `details`, плеера, iframe, PDF; нет пункта у формулы, Mermaid, ruby, кода,
+  `![[…]]`). Только на Mac: настоящий правый клик по `AVPlayerView`, `PDFView`,
+  `WKWebView`, прокрутка после перехода изображения в исходный вид.
+- T9: `MarkdownUndoGroupTests`, `MarkdownIMETests` (китайский, японский,
+  корейский через `setMarkedText`), `MarkdownPasteBoundaryTests`,
+  `MarkdownAccessibilityTests`, `MarkdownModeAnnouncementTests`,
+  `testImageInsertionInMiddleOfParagraphIsOneUndo`. Только на Mac: VoiceOver
+  (чтение без маркеров, навигация по символам, ротор), настоящий IME, склейка
+  undo при Enter и композиции.
+- T10: `testFullParseCountGrowsOnlyOnInstalledFullParses`
+  (`MarkdownLocalParseControllerTests`); пороги целей P1–P9 пусты до baseline
+  на Mac.
+- T11: `MarkdownEditRoundTripTests` (7 тестов: цикл source → formatted →
+  правка → source по D1, D2, срезу D4 и коротким GFM; переключение без правок;
+  отказ вставки внутри картинки и маркера; повтор команд форматирования).
+- Итоговое ревью: в трёх тестах `MarkdownEditTransactionTests` опрос через
+  `perform` начинается после `waitForParse`; в `MarkdownUndoGroupTests`,
+  `MarkdownVisualFormattingInteractionTests`, `MarkdownIMETests`,
+  `MarkdownPasteBoundaryTests` текст модели читается через
+  `synchronizedText()`. Стенд `lac-writer-check` (в него добавлены новые файлы
+  плана, `MarkdownImagePlacement` — урезанной копией): 1878 тестов, настоящих
+  падений нет.
+
 ### Сворачивание рабочей папки (2026-11-05, не запускалось на Mac)
 
 Добавлен `FolderWorkspaceTests.testCollapsedWorkspaceHidesRowsAndSurvivesSession`,

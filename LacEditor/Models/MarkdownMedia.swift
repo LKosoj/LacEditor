@@ -81,3 +81,34 @@ struct MarkdownEmbeddedMedia: Equatable, Sendable {
     let width: String?
     let height: String?
 }
+
+// Типы модели документа (`MarkdownDocumentModel`) лежат здесь, а не у сервисов разбора: модель собирается без SwiftSoup и cmark.
+struct MarkdownTwitterWidget: Equatable {
+    let id: String
+    let postURL: String
+    let text: String
+    var iframeURL: String { "https://platform.twitter.com/embed/Tweet.html?id=" + id + "&dnt=true" }
+}
+
+struct MarkdownEmbeddedFrame: Equatable, Sendable {
+    let source: URL
+    let width: String?
+    let height: String?
+    let title: String?
+    let fallback: String
+    let allowsFullscreen: Bool
+    let scrolling: String?
+    let frameBorder: String?
+    let allowTransparency: String?
+}
+
+/// Встраивание, найденное в тексте.
+struct MarkdownNoteEmbedItem: Equatable, Sendable {
+    enum Kind: Equatable, Sendable { case note, image, attachment }
+    let range: NSRange            // от `!` до последней `]`
+    let target: String
+    let heading: String?
+    let alias: String?
+    let kind: Kind
+    let isBlock: Bool             // стоит в отдельном абзаце верхнего уровня
+}

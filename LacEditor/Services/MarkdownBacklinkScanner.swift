@@ -27,18 +27,20 @@ enum MarkdownBacklinkScanner {
         if isCancelled() { throw CancellationError() }
         guard mayLink(text as NSString, needles: needles) else { return [] }
         // разбор принимает замыкание отмены как escaping, но не сохраняет его после возврата
-        let presentation = withoutActuallyEscaping(isCancelled) {
-            MarkdownPresentationParser.parse(text, includeWikiLinks: true, syntax: target.syntax, isCancelled: $0)
-        }
+        let queries = withoutActuallyEscaping(isCancelled) {
+            MarkdownDocumentParser.parseOrEmpty(text, syntax: target.syntax, includes: [.wikiLinks], isCancelled: $0)
+                .queries([.wikiLinks, .links], isCancelled: $0)
+        } ?? MarkdownDocumentQueries.empty
         if isCancelled() { throw CancellationError() }
         var result: [NSRange] = []
-        for link in presentation.wikiLinks {
+        for link in queries.wikiLinks {
             if isCancelled() { throw CancellationError() }
             // пустая цель (`[[#Заголовок]]`) разрешается в текущий файл и сюда не попадает
             if resolver.resolve(target: link.target) == .file(targetPath) { result.append(link.range) }
         }
-        for link in presentation.links {
+        for entry in queries.linkEntries {
             if isCancelled() { throw CancellationError() }
+            let link = entry.link
             if isLink(link.url, from: file.url, to: target) { result.append(link.range) }
         }
         return Array(Set(result)).sorted { $0.location < $1.location }
