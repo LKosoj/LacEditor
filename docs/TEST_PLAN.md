@@ -211,6 +211,31 @@ macOS: 0 ошибок, 0 предупреждений, 0 пропусков GUI-
 
 ## Текущее состояние (Mac)
 
+### Проход 2026-11-07
+
+- [x] `BuildProject(buildForTesting: true)`: 0 ошибок, 0 предупреждений.
+- [x] Проверена адресная пачка из статуса: 291 тест, 248 passed, 43 failed,
+  0 skipped, 0 not run.
+- [x] Исправлен lifetime `NSTextStorage` в 12 fixture
+  `MarkdownLayoutTests`; повторный класс: 93/120 passed, 27 failed.
+- [x] Закрыты три нестабильных clipboard-сценария: 3/3 passed.
+- [x] Закрыты четыре media-сценария `MarkdownAudioInteractionTests`: 4/4
+  passed.
+- [x] Закрыто одиночное падение `MarkdownFootnoteTests`: 1/1 passed.
+- [x] Повторён `MarkdownLayoutTests` после fixture-исправлений: 103/120
+  passed, 17 failed, 0 skipped, 0 not run.
+- [x] Закрыты адресно: смена code font, повтор code highlight после IME,
+  обновление HTML block и plain details после метрик, состояние details после
+  rebuild/IME, centered heading после смены настроек (6/6).
+- [x] Проверены и отклонены гипотезы TOC-fixture про `visibleRect`, высоту
+  view и `allowsNonContiguousLayout`: `firstUnlaidCharacterIndex` остаётся
+  равен длине текста; неэффективные изменения отменены.
+- [ ] Разобрать и устранить оставшиеся 16 падений `MarkdownLayoutTests` после
+  адресно закрытого centered-heading сценария.
+- [ ] Повторить целиком `MarkdownAudioInteractionTests` и
+  `MarkdownClipboardInteractionTests` после закрытия известных кластеров.
+- [ ] После адресных исправлений выполнить единый непрерывный `RunAllTests`.
+
 - `MarkdownElementPathTests`: 22/22.
 - `MarkdownFootnoteTests`: 9/9.
 - `ManuscriptServiceTests`: 17/17.

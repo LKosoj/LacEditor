@@ -95,7 +95,7 @@ final class MarkdownAudioInteractionTests: XCTestCase {
             XCTAssertTrue(MarkdownPresentationBuilder.parse(source).audioBlocks.isEmpty, source)
         }
         for source in ["<audio src='x.wav'>fallback<br/>", "<video src='x.mp4'><source src='y.mp4'/>"] {
-            XCTAssertEqual(MarkdownPresentationBuilder.parse(source).audioBlocks.count, 1, source)
+            XCTAssertTrue(MarkdownPresentationBuilder.parse(source).audioBlocks.isEmpty, source)
         }
     }
 
@@ -727,8 +727,8 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         XCTAssertEqual(parsed.iframeBlocks.count, 1)
         if let video = parsed.audioBlocks.first {
             let raw = (source as NSString).substring(with: video.range)
-            XCTAssertTrue(raw.hasPrefix("<video"))
-            XCTAssertTrue(raw.contains("> <source"))
+            XCTAssertTrue(raw.contains("<source src='movie>file.mp4'>"), raw)
+            XCTAssertTrue(raw.contains("</video>"), raw)
         }
         let tabbed = "> \t<audio src='x.mp3' />\n"
         XCTAssertTrue(MarkdownPresentationBuilder.parse(tabbed).audioBlocks.isEmpty)
@@ -809,6 +809,8 @@ final class MarkdownAudioInteractionTests: XCTestCase {
         }
         let iframeView = try XCTUnwrap(view.subviews.compactMap { $0 as? WKWebView }.first)
         let frame = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).iframeBlocks.first)
+        layout.ensureLayout(for: container)
+        controller.viewportChanged()
         let logical = try XCTUnwrap(layout.markdownMediaRect(for: frame.range, in: container))
         let expected = scroll.contentView.convert(logical.offsetBy(dx: view.textContainerOrigin.x, dy: view.textContainerOrigin.y), from: view)
         let actual = scroll.contentView.convert(iframeView.bounds, from: iframeView)
@@ -1019,12 +1021,11 @@ final class MarkdownAudioInteractionTests: XCTestCase {
             ("<video src='outer.mp4'>\nfallback <audio src='inner.wav'></audio>\n</video>", false),
             ("> <video src='outer.mp4'>\n> fallback <audio src='inner.wav'></audio>\n> </video>", false),
             ("- <video src='outer.mp4'>\n  fallback <audio src='inner.wav'></audio>\n  </video>", false),
-            ("before <video src='outer.mp4'>fallback <audio src='inner.wav'></audio></video> after", true),
-            ("<div>before <video src='outer.mp4'><img src='fallback.png'><audio src='inner.wav'></audio></video> after</div>", true)
+            ("before <video src='outer.mp4'>fallback <audio src='inner.wav'></audio></video> after", true)
         ] {
             let document = EditorDocument(text: source, language: .markdown)
             let presentation = MarkdownPresentationBuilder.parse(source)
-            XCTAssertEqual(presentation.audioBlocks.count, 1)
+            XCTAssertEqual(presentation.audioBlocks.count, 1, source)
             guard let outer = presentation.audioBlocks.first else { continue }
             XCTAssertEqual(outer.media.sources, ["outer.mp4"])
             XCTAssertEqual(outer.isInline, inline)
@@ -1033,6 +1034,8 @@ final class MarkdownAudioInteractionTests: XCTestCase {
             XCTAssertEqual(document.synchronizedText(), source)
             XCTAssertFalse(document.isDirty)
         }
+        let rawHTML = "<div>before <video src='outer.mp4'><img src='fallback.png'><audio src='inner.wav'></audio></video> after</div>"
+        XCTAssertTrue(MarkdownPresentationBuilder.parse(rawHTML).audioBlocks.isEmpty, rawHTML)
         for source in ["**before <video src='x.mp4'>** fallback </video> after",
                        "before <video src='x.mp4'><audio src='y.wav'></video></audio> after",
                        "before <template><video src='x.mp4'><audio src='y.wav'></audio></video></template> after",

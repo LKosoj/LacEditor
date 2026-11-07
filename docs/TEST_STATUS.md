@@ -612,6 +612,45 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
   редактора. После targeted-прогона: 19/28 passed, 9 failed; оставшиеся
   ошибки относятся к runtime media geometry/loading, а не к пустому редактору.
 
+### Адресный прогон на Mac (2026-11-07)
+
+- `BuildProject(buildForTesting: true)` проходит; журнал Xcode содержит
+  0 ошибок и 0 предупреждений.
+- Пачка `MarkdownPresentationTests`, `MarkdownFootnoteTests`,
+  `MarkdownImageTests`, `MarkdownAudioInteractionTests`,
+  `MarkdownHTMLBlockProofTests`, `MarkdownLayoutTests` и
+  `MarkdownClipboardInteractionTests`: 291 тест, 248 passed, 43 failed,
+  0 skipped, 0 not run.
+- В `MarkdownLayoutTests` 12 fixture отбрасывали `NSTextStorage`, который
+  владеет layout manager. После явного удержания storage класс улучшился до
+  93/120 passed; 27 независимых падений остаются.
+- Три clipboard-сценария больше не зависят от глобального порядка observer'ов
+  `AppState`: уведомления проверяются локально, а undo-группа mixed paste
+  изолирована. Адресная проверка: 3/3 passed.
+- Четыре media-сценария приведены к фактическому контракту HTML media и
+  стабильному layout lifecycle. Адресная проверка: 4/4 passed.
+- `MarkdownFootnoteTests/testTableOfContentsClickUsesCurrentHeadingWithoutEditing`
+  учитывает fast-path: неизменившийся первый пункт оглавления остаётся
+  актуальным после правки второго заголовка. Адресная проверка: 1/1 passed.
+- Диагностический повтор `MarkdownLayoutTests`: 120 тестов, 98 passed,
+  22 failed, 0 skipped, 0 not run. `testCodeFontUpdatesInlineAndBlockWithoutEditingSource`
+  теперь ждёт асинхронное применение fallback-шрифта и проходит 1/1.
+- Повтор класса после следующих fixture-исправлений: 120 тестов, 103 passed,
+  17 failed, 0 skipped, 0 not run. Адресно проходят: повтор code highlight
+  после IME через production-вызов `compositionFinished`, обновление HTML
+  block и plain details через viewport lifecycle, сохранение details state
+  после rebuild/IME и centered heading после смены уровней. Последний из них
+  проверен после общего прогона, поэтому актуально остаётся 16 известных
+  падений класса.
+- Для `testTableOfContentsHitTestingDoesNotLayOutDistantMarkers` проверены
+  `documentVisibleRect`, малый frame и production-значение
+  `allowsNonContiguousLayout`; ни один вариант не изменил полный layout
+  (110023 символа). Неэффективные fixture-правки отменены. DocumentationSearch
+  подтвердил, что TextKit вправе расширять диапазон layout; тест остаётся
+  открытым без ослабления ожидания.
+- Полный `RunAllTests` не запускался: сначала должны быть устранены известные
+  адресные падения, как требует `docs/TEST_PLAN.md`.
+
 ### Статический разбор на Linux (2026-11-05)
 
 Тесты не запускались: на сервере нет AppKit. Пять сабагентов разобрали классы с

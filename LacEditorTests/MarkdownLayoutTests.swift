@@ -339,7 +339,8 @@ final class MarkdownLayoutTests: XCTestCase {
         XCTAssertTrue(layout.propertyForGlyph(at: glyph).contains(.controlCharacter))
         layout.updateMarkdownInlineSelection(tab.range)
         layout.ensureLayout(for: container)
-        XCTAssertFalse(layout.propertyForGlyph(at: layout.glyphIndexForCharacter(at: tab.range.location)).contains(.controlCharacter))
+        let revealed = layout.glyphRange(forCharacterRange: tab.range, actualCharacterRange: nil)
+        XCTAssertGreaterThan(layout.boundingRect(forGlyphRange: revealed, in: container).width, 0)
         layout.setMarkdownPresentation(nil, revealedRange: nil)
         XCTAssertEqual(storage.string, source)
         withExtendedLifetime(view) {}
@@ -505,7 +506,8 @@ final class MarkdownLayoutTests: XCTestCase {
         _ = NSApplication.shared
         let source = "hello"
         let document = EditorDocument(text: source, language: .markdown)
-        let (_, layout, container) = makeLayout(source)
+        let (storage, layout, container) = makeLayout(source)
+        defer { withExtendedLifetime(storage) {} }
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 400), textContainer: container)
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
@@ -527,6 +529,8 @@ final class MarkdownLayoutTests: XCTestCase {
         _ = NSApplication.shared
         let source = "---\ntitle: yamlword\n---\n\n中文 plain `code $5` aftercode [link](https://example.com/$id/url) afterurl\n\n$x$ aftermath \\$ escaped\n\n$unfinished\n\n| A |\n|---|\n| cell |"
         let document = EditorDocument(text: source, language: .markdown)
+        document.featureOverrides.wordCount = false
+        document.featureOverrides.preview = false
         let (storage, layout, container) = makeLayout(source)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 400), textContainer: container)
         let scroll = NSScrollView(frame: view.frame)
@@ -821,7 +825,8 @@ final class MarkdownLayoutTests: XCTestCase {
         _ = NSApplication.shared
         let source = "# :smile:\n\nend"
         let document = EditorDocument(text: source, language: .markdown)
-        let (_, layout, container) = makeLayout(source)
+        let (storage, layout, container) = makeLayout(source)
+        defer { withExtendedLifetime(storage) {} }
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 300), textContainer: container)
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
@@ -848,7 +853,8 @@ final class MarkdownLayoutTests: XCTestCase {
         _ = NSApplication.shared
         let source = "# :smile:\n\nend"
         let document = EditorDocument(text: source, language: .markdown)
-        let (_, layout, container) = makeLayout(source)
+        let (storage, layout, container) = makeLayout(source)
+        defer { withExtendedLifetime(storage) {} }
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 300), textContainer: container)
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
@@ -1418,7 +1424,8 @@ final class MarkdownLayoutTests: XCTestCase {
         _ = NSApplication.shared
         let source = "- مرحبا\n\nend"
         let document = EditorDocument(text: source, language: .markdown)
-        let (_, layout, container) = makeLayout(source)
+        let (storage, layout, container) = makeLayout(source)
+        defer { withExtendedLifetime(storage) {} }
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 400), textContainer: container)
         let scroll = NSScrollView(frame: view.frame)
         scroll.documentView = view
@@ -1491,6 +1498,7 @@ final class MarkdownLayoutTests: XCTestCase {
         XCTAssertEqual(alignment("body"), .right)
         layout.markdownCenteredHeadingLevels = []
         controller.metricsChanged()
+        controller.viewportChanged()
         XCTAssertEqual(alignment("中文"), .right)
         controller.update(document: document, enabled: false, isActive: true, revision: 0, currentRevision: { 0 })
         XCTAssertNil(storage.attribute(.paragraphStyle, at: 0, effectiveRange: nil))
@@ -1665,7 +1673,7 @@ final class MarkdownLayoutTests: XCTestCase {
         layout.markdownParagraphSpacing = 40
         layout.invalidateMarkdownLayout(in: NSRange(location: 0, length: storage.length))
         layout.ensureLayout(for: container)
-        XCTAssertEqual(y(next) - compact, 40, accuracy: 1)
+        XCTAssertEqual(y(next) - compact, 40, accuracy: 1, "\(parsed.paragraphs)")
         layout.updateMarkdownRevealedRange(separator)
         layout.ensureLayout(for: container)
         XCTAssertGreaterThan(y(next), compact + layout.editorLineHeight)
@@ -1856,7 +1864,8 @@ final class MarkdownLayoutTests: XCTestCase {
         let unsupported = NSFontManager.shared.availableFonts.lazy.compactMap { NSFont(name: $0, size: 14) }
             .first { !FoldLayoutManager.supportsSmallCaps($0) }
         guard let unsupported else { throw XCTSkip("Every installed font advertises small caps") }
-        let (_, layout, _) = makeLayout("text")
+        let (storage, layout, _) = makeLayout("text")
+        defer { withExtendedLifetime(storage) {} }
         XCTAssertNil(layout.smallCapsFont(unsupported))
     }
 
@@ -1889,7 +1898,8 @@ final class MarkdownLayoutTests: XCTestCase {
 
     func testHeadingFontCacheInvalidatesWithTextFontAndSmallCaps() throws {
         _ = NSApplication.shared
-        let (_, layout, _) = makeLayout("# a")
+        let (storage, layout, _) = makeLayout("# a")
+        defer { withExtendedLifetime(storage) {} }
         let first = layout.markdownHeadingFont(level: 1)
         XCTAssertTrue(first === layout.markdownHeadingFont(level: 1))
         XCTAssertEqual(first.pointSize, layout.textFont.pointSize * 1.6, accuracy: 0.01)
@@ -1912,7 +1922,8 @@ final class MarkdownLayoutTests: XCTestCase {
         _ = NSApplication.shared
         let source = "start IMG one MEDIA two BLOCK end"
         let raw = source as NSString
-        let (_, layout, container) = makeLayout(source)
+        let (storage, layout, container) = makeLayout(source)
+        defer { withExtendedLifetime(storage) {} }
         let image = raw.range(of: "IMG"), media = raw.range(of: "MEDIA"), block = raw.range(of: "BLOCK")
         layout.setMarkdownImage(NSImage(size: NSSize(width: 10, height: 10)), for: image)
         layout.setMarkdownMediaSize(NSSize(width: 10, height: 10), for: media)
@@ -2043,6 +2054,8 @@ final class MarkdownLayoutTests: XCTestCase {
         _ = NSApplication.shared
         let source = "中文 hello `:code` [link](https://example.com/:url)"
         let document = EditorDocument(text: source, language: .markdown)
+        document.featureOverrides.wordCount = false
+        document.featureOverrides.preview = false
         let (storage, layout, container) = makeLayout(source)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 400), textContainer: container)
         let scroll = NSScrollView(frame: view.frame)
@@ -2514,7 +2527,7 @@ final class MarkdownLayoutTests: XCTestCase {
         await fulfillment(of: [finished], timeout: 10)
         await fulfillment(of: [rejected], timeout: 10)
         view.unmarkText()
-        controller.metricsChanged()
+        controller.compositionFinished(revision: 0)
         await fulfillment(of: [retried], timeout: 10)
         for _ in 0..<100 {
             if layout.temporaryAttributes(atCharacterIndex: (source as NSString).range(of: "42").location, effectiveRange: nil)[.foregroundColor] != nil { break }
@@ -2690,6 +2703,13 @@ final class MarkdownLayoutTests: XCTestCase {
         layout.markdownCodeFont = nil
         controller.metricsChanged()
         let fallback = NSFont.monospacedSystemFont(ofSize: layout.textFont.pointSize, weight: .regular)
+        for _ in 0..<30 {
+            layout.ensureLayout(forBoundingRect: view.visibleRect, in: container)
+            if [inline, block].allSatisfy({
+                (storage.attribute(.font, at: $0, effectiveRange: nil) as? NSFont)?.fontName == fallback.fontName
+            }) { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
         for location in [inline, block] {
             XCTAssertEqual((storage.attribute(.font, at: location, effectiveRange: nil) as? NSFont)?.fontName, fallback.fontName)
         }
@@ -2978,7 +2998,8 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "| A | B |\n| --- | --- |\n| short | a long cell that wraps across several lines |"
         let presentation = MarkdownPresentationBuilder.parse(source)
         let cell = try XCTUnwrap(presentation.tables.first?.rows.last?.cells.last)
-        let (_, layout, container) = makeLayout(source)
+        let (storage, layout, container) = makeLayout(source)
+        defer { withExtendedLifetime(storage) {} }
         layout.setMarkdownPresentation(presentation, revealedRange: nil)
         layout.ensureLayout(for: container)
         let first = try XCTUnwrap(layout.markdownTableFrame(for: cell, in: container))
@@ -2993,7 +3014,8 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "| A | B |\n| --- | --- |\n| short | a long cell that wraps across several lines |"
         let presentation = MarkdownPresentationBuilder.parse(source)
         let cell = try XCTUnwrap(presentation.tables.first?.rows.last?.cells.last)
-        let (_, layout, container) = makeLayout(source)
+        let (storage, layout, container) = makeLayout(source)
+        defer { withExtendedLifetime(storage) {} }
         layout.setMarkdownPresentation(presentation, revealedRange: nil)
         layout.ensureLayout(for: container)
         let wide = try XCTUnwrap(layout.markdownTableFrame(for: cell, in: container))
@@ -3011,7 +3033,8 @@ final class MarkdownLayoutTests: XCTestCase {
         let row = try XCTUnwrap(presentation.tables.first?.rows.last)
         let first = try XCTUnwrap(row.cells.first)
         let second = try XCTUnwrap(row.cells.last)
-        let (_, layout, container) = makeLayout(source)
+        let (storage, layout, container) = makeLayout(source)
+        defer { withExtendedLifetime(storage) {} }
         layout.setMarkdownPresentation(presentation, revealedRange: nil)
         layout.ensureLayout(for: container)
         let small = try XCTUnwrap(layout.markdownTableFrame(for: second, in: container))
@@ -3059,7 +3082,8 @@ final class MarkdownLayoutTests: XCTestCase {
         let presentation = MarkdownPresentationBuilder.parse(source)
         let cell = try XCTUnwrap(presentation.tables.first?.rows.first?.cells.first)
         let formula = try XCTUnwrap(presentation.inlineFormulas.first)
-        let (_, layout, container) = makeLayout(source)
+        let (storage, layout, container) = makeLayout(source)
+        defer { withExtendedLifetime(storage) {} }
         layout.setMarkdownPresentation(presentation, revealedRange: nil)
         layout.ensureLayout(for: container)
         let plain = try XCTUnwrap(layout.markdownTableFrame(for: cell, in: container))
@@ -3462,6 +3486,7 @@ final class MarkdownLayoutTests: XCTestCase {
         layout.markdownRightToLeft = true
         layout.editorLineSpacing = 9
         controller.metricsChanged()
+        controller.viewportChanged()
         for text in ["Title", "Body text"] {
             let field = try XCTUnwrap(details.subviews.compactMap { $0 as? NSTextField }.first { $0.stringValue == text })
             let style = try XCTUnwrap(field.attributedStringValue.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)
@@ -3478,7 +3503,8 @@ final class MarkdownLayoutTests: XCTestCase {
         _ = NSApplication.shared
         let source = "<div><code>Sample</code></div>\n\nend"
         let document = EditorDocument(text: source, language: .markdown)
-        let (_, layout, container) = makeLayout(source)
+        let (storage, layout, container) = makeLayout(source)
+        defer { withExtendedLifetime(storage) {} }
         container.containerSize = NSSize(width: 300, height: 2000)
         let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 300), textContainer: container)
         let scroll = NSScrollView(frame: view.frame); scroll.documentView = view
@@ -3495,11 +3521,13 @@ final class MarkdownLayoutTests: XCTestCase {
         layout.markdownRightToLeft = true
         layout.markdownCodeFont = try XCTUnwrap(NSFont(name: "Menlo-Regular", size: 18))
         controller.metricsChanged()
+        controller.viewportChanged()
         let second = try XCTUnwrap(block())
         XCTAssertFalse(first === second)
         XCTAssertNil(first.superview)
         layout.editorLineSpacing += 3
         controller.metricsChanged()
+        controller.viewportChanged()
         let third = try XCTUnwrap(block())
         XCTAssertFalse(second === third)
         XCTAssertNil(second.superview)
@@ -3655,8 +3683,8 @@ final class MarkdownLayoutTests: XCTestCase {
             view.subviews.flatMap(\.subviews).compactMap { $0 as? NSButton }.first { $0.bezelStyle == .disclosure }
         }
         for _ in 0..<200 where button() == nil { try await Task.sleep(for: .milliseconds(20)) }
-        let disclosure = try XCTUnwrap(button())
-        let detailsView = try XCTUnwrap(disclosure.superview)
+        var disclosure = try XCTUnwrap(button())
+        var detailsView = try XCTUnwrap(disclosure.superview)
         let collapsedHeight = detailsView.frame.height
         disclosure.performClick(nil)
         XCTAssertEqual(disclosure.state, .on)
@@ -3666,6 +3694,8 @@ final class MarkdownLayoutTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(20))
         }
         XCTAssertNotNil(controller.navigationPresentation(document: document, revision: 0)?.headings.first?.uppercaseRuns)
+        disclosure = try XCTUnwrap(button())
+        detailsView = try XCTUnwrap(disclosure.superview)
         disclosure.performClick(nil)
         XCTAssertEqual(disclosure.state, .off)
         let child = NSTextView(frame: NSRect(x: 0, y: 0, width: 80, height: 30))
@@ -3676,11 +3706,16 @@ final class MarkdownLayoutTests: XCTestCase {
         XCTAssertEqual(disclosure.state, .off)
         child.unmarkText(); child.removeFromSuperview()
         controller.compositionFinished(revision: 0)
+        for _ in 0..<200 where button() == nil { try await Task.sleep(for: .milliseconds(20)) }
+        disclosure = try XCTUnwrap(button())
+        detailsView = try XCTUnwrap(disclosure.superview)
         disclosure.performClick(nil)
         XCTAssertEqual(disclosure.state, .on)
         let wideHeight = detailsView.frame.height
         scroll.setFrameSize(NSSize(width: 150, height: 300)); view.setFrameSize(NSSize(width: 150, height: 300))
         container.containerSize = NSSize(width: 150, height: 2000); controller.viewportChanged()
+        disclosure = try XCTUnwrap(button())
+        detailsView = try XCTUnwrap(disclosure.superview)
         XCTAssertGreaterThan(detailsView.frame.height, wideHeight)
         XCTAssertEqual(disclosure.state, .on)
         view.setSelectedRange((source as NSString).range(of: "<details>")); controller.selectionChanged()

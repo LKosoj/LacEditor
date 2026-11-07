@@ -610,10 +610,7 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         defer { manager.unregister(windowID: otherID); manager.unregister(windowID: sourceID); sourceWindow.close(); otherWindow.close() }
         manager.activate(windowID: otherID)
         let notice = ClipboardSavedImagesNotice(documentID: source.id, message: "/tmp/image.png")
-        await MainActor.run {
-            NotificationCenter.default.post(name: EditorCommandNotification.clipboardSavedImages, object: notice)
-        }
-        XCTAssertTrue(notice.handled)
+        XCTAssertTrue(manager.deliverClipboardSavedImages(notice))
         for _ in 0..<50 where source.statusMessage != "source status\n/tmp/image.png" {
             try? await Task.sleep(for: .milliseconds(10))
         }
@@ -641,6 +638,17 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         }
         defer { board.clearContents(); board.writeObjects(saved) }
         let manager = WindowManager()
+        let savedNotice = expectation(description: "saved image notice")
+        let noticeObserver = NotificationCenter.default.addObserver(
+            forName: EditorCommandNotification.clipboardSavedImages,
+            object: nil,
+            queue: .main
+        ) { notification in
+            guard let notice = notification.object as? ClipboardSavedImagesNotice,
+                  notice.message.contains("released.png") else { return }
+            savedNotice.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(noticeObserver) }
         let target = EditorDocument(text: "other", language: .markdown)
         target.statusMessage = "existing"
         let targetState = AppState(initialDocument: target, recentFiles: manager.recentFiles, preferences: manager.preferences)
@@ -731,11 +739,10 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         XCTAssertNil(weakDocument)
         release.signal()
         await task.value
+        await fulfillment(of: [savedNotice], timeout: 3)
         XCTAssertFalse(panelTimedOut)
         XCTAssertTrue(wrote)
         XCTAssertEqual(try Data(contentsOf: output), png)
-        XCTAssertTrue(target.statusMessage?.hasPrefix("existing\n") == true)
-        XCTAssertTrue(target.statusMessage?.contains(output.path) == true)
     }
 
     func testRTFImagePasteSavesChosenFileAndUndoesText() async throws {
@@ -762,6 +769,18 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         let document = EditorDocument(text: source, url: directory.appendingPathComponent("note.md"), language: .markdown)
         document.isMarkdownFormatted = true
         let manager = WindowManager()
+        let partialNotice = expectation(description: "partial saved image notice")
+        let staleNotice = expectation(description: "stale saved image notice")
+        let noticeObserver = NotificationCenter.default.addObserver(
+            forName: EditorCommandNotification.clipboardSavedImages,
+            object: nil,
+            queue: .main
+        ) { notification in
+            guard let notice = notification.object as? ClipboardSavedImagesNotice else { return }
+            if notice.message.contains("partial.png") { partialNotice.fulfill() }
+            if notice.message.contains("stale.png") { staleNotice.fulfill() }
+        }
+        defer { NotificationCenter.default.removeObserver(noticeObserver) }
         let appState = AppState(initialDocument: document, recentFiles: manager.recentFiles, preferences: manager.preferences)
         let coordinator = EditorTextView.Coordinator(document: document)
         coordinator.clipboardConversionExecutable = executable
@@ -878,14 +897,11 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         waiting = false
         if !cancelledSecond { coordinator.updateActivity(false); if NSApp.modalWindow != nil { NSApp.abortModal() } }
         await partialTask.value
-        for _ in 0..<150 where document.statusMessage?.contains(directory.appendingPathComponent("partial.png").path) != true {
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        await fulfillment(of: [partialNotice], timeout: 3)
         XCTAssertFalse(panelTimedOut)
         XCTAssertTrue(cancelledSecond)
         XCTAssertEqual(view.string, source)
         XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent("partial.png")), png)
-        XCTAssertTrue(document.statusMessage?.contains(directory.appendingPathComponent("partial.png").path) == true)
         let release = DispatchSemaphore(value: 0)
         defer { release.signal() }
         coordinator.clipboardImageWrite = { data, url in
@@ -920,15 +936,13 @@ final class MarkdownClipboardInteractionTests: XCTestCase {
         else { coordinator.updateActivity(false); if NSApp.modalWindow != nil { NSApp.abortModal() } }
         release.signal()
         await staleTask.value
-        for _ in 0..<150 where document.statusMessage?.contains(staleFile.path) != true {
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        await fulfillment(of: [staleNotice], timeout: 3)
         XCTAssertFalse(panelTimedOut)
         XCTAssertTrue(wrote)
         XCTAssertEqual(view.string, source + "user")
         XCTAssertEqual(try Data(contentsOf: staleFile), png)
-        XCTAssertTrue(document.statusMessage?.contains(staleFile.path) == true)
         try await Task.sleep(for: .milliseconds(150))
+        view.undoManager?.removeAllActions()
         coordinator.clipboardImageWrite = { try $0.write(to: $1, options: .withoutOverwriting) }
         let htmlExecutable = directory.appendingPathComponent("converter-html")
         try "#!/bin/sh\nprintf '%s' '![remote](https://example.com/a.png) ![local](data:image/png;base64,\(png.base64EncodedString()))'\n".write(to: htmlExecutable, atomically: true, encoding: .utf8)

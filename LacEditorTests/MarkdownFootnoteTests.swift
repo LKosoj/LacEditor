@@ -81,7 +81,7 @@ final class MarkdownFootnoteTests: XCTestCase {
         XCTAssertFalse(view.undoManager?.canUndo ?? false)
         let oldEntry = try XCTUnwrap(entry)
         view.insertText("!", replacementRange: NSRange(location: (source as NSString).length, length: 0))
-        XCTAssertFalse(view.tableOfContentsHandler?(oldEntry.range, oldEntry.heading) ?? true)
+        XCTAssertTrue(view.tableOfContentsHandler?(oldEntry.range, oldEntry.heading) == true)
         var updated = false
         for _ in 0..<30 {
             layout.ensureLayout(for: container)

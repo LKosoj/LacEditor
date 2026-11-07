@@ -77,6 +77,11 @@ extension MarkdownDocumentParser {
             case .codeBlock(let code):
                 closedFence = code.isFenced && code.isClosed && !block.isUnreliable
                 openFenceWithoutBody = topLevel && code.isFenced && !code.isClosed && !block.isUnreliable && code.infoRange != nil && code.bodySegments.isEmpty
+                let blockEnd = NSMaxRange(block.range)
+                if code.isFenced && !code.isClosed && !block.isUnreliable && blockEnd <= text.length &&
+                    (blockEnd..<text.length).allSatisfy({ [10, 13, 0x85, 0x2028, 0x2029].contains(Int(text.character(at: $0))) }) {
+                    blockedEOF = true
+                }
             case .mathBlock, .html, .quote, .callout, .alert, .list, .table, .footnoteDefinition:
                 break
             default:

@@ -1386,6 +1386,8 @@ final class MarkdownPresentationBuilderScenarioTests: XCTestCase {
         XCTAssertFalse(blocked("end"))
         // U9.1, класс Б (U6.1): NUL заменяется на U+FFFD, поэтому контекст ограждений есть и у текста с NUL.
         XCTAssertTrue(MarkdownPresentationBuilder.parse("\0").fenceContextAvailable)
+        let bareFence = MarkdownPresentationBuilder.parse("```\n\n")
+        XCTAssertTrue(bareFence.fenceBlockedEOF, "\(bareFence.codeBlocks)")
         XCTAssertTrue(MarkdownPresentationBuilder.parse("```js\n").fenceBlockedEOF)
         XCTAssertFalse(MarkdownPresentationBuilder.parse("```js\nx\n```\n").fenceBlockedEOF)
     }

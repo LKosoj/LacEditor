@@ -70,6 +70,9 @@ final class MarkdownDocumentFenceTests: XCTestCase {
         XCTAssertEqual(result?.blockedRanges, [], "блок без тела: открывающая строка остаётся доступной")
         XCTAssertEqual(result?.blockedEOF, true)
         XCTAssertEqual(result?.isAvailable, true)
+        let blankBody = fence("```\n\n")
+        XCTAssertEqual(blankBody?.blockedRanges, [NSRange(location: 0, length: 4)])
+        XCTAssertEqual(blankBody?.blockedEOF, true)
     }
 
     func testUnclosedFenceWithBodyBlocksWholeBlock() {
