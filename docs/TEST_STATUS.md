@@ -826,3 +826,20 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
 `MarkdownLayoutTests`, `UIExperimentTests`, `WritingModesTests` и одиночные
 падения из списка. В `MarkdownPDFExportTests` после таймаута 30 с задача
 экспорта не отменяется, поздний `fulfill`/`XCTFail` может попасть в соседний тест.
+
+### Полный прогон 2026-11-07 после закрытия MarkdownLayoutTests
+
+- Все известные падения `MarkdownLayoutTests` закрыты адресно. Отложенный
+  `testParagraphSpacingReplacesBlankSeparatorAndRevealsSource` запущен
+  последним и проходит 1/1 (`B33DCABA-F05D-45B5-917C-5F504AE308CF.txt`).
+- TOC hit-testing больше не вызывает layout удалённого конца документа;
+  targeted тест проходит 1/1 (`00CDC8AD-94AF-4029-8795-BFDFA9E84F11.txt`).
+  Paragraph spacing применяется первым скрытым fragment разделителя и проходит
+  для wrapped и CRLF/multiline separator сценариев 2/2.
+- Непрерывный `RunAllTests` завершён штатно: 4713 total, 4584 passed,
+  117 failed, 11 skipped, 1 not run. Отчёт Xcode:
+  `0699FB34-28E1-4A6A-850F-620B00211360.txt`. Чистый прогон ещё не достигнут.
+- Первый изолированный baseline-сбой был реальным: D1 содержал
+  неподтверждённый `<div class>` и details с пустыми строками внутри. Fixture
+  приведён к подтверждённым формам; targeted тест проходит 1/1
+  (`BC35C212-817F-459E-A667-517C6FE0257B.txt`).

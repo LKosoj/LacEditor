@@ -892,7 +892,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         guard let view = container.textView, !markdownTOCRanges.isEmpty else { return nil }
         let visibleRect = view.visibleRect.offsetBy(dx: -view.textContainerOrigin.x, dy: -view.textContainerOrigin.y)
         guard visibleRect.contains(point) else { return nil }
-        let glyphs = glyphRange(forBoundingRect: visibleRect, in: container)
+        let glyphs = glyphRange(forBoundingRectWithoutAdditionalLayout: visibleRect, in: container)
         let visible = characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
         var index = upperBound(visible.location, count: markdownTOCRanges.count) { markdownTOCRanges[$0].location }
         if index > 0 { index -= 1 }
@@ -2772,7 +2772,9 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             // Раскрытый абзац с одной пустой строкой: интервал переходит в высоту строки-разделителя, текст ниже не двигается.
             return isSingleLineSeparator(separator: separator) ? 0 : original
         }
-        return markdownParagraphSpacing
+        // В свёрнутом виде интервал резервирует первый line fragment разделителя.
+        // Так он применяется ровно один раз и не зависит от переноса последней строки абзаца.
+        return 0
     }
 
     /// Разделитель абзацев — ровно одна пустая строка (исключение: несколько строк при раскрытии сдвигают текст ниже).
@@ -2797,8 +2799,11 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
                 if NSIntersectionRange(separator.range, characters).length > 0,
                    !(markdownRevealedRange.map { touches(separator.owner, $0) } ?? false),
                    !isCharacterFolded(characters.location) {
-                    lineFragmentRect.pointee.size.height = 0.01
-                    lineFragmentUsedRect.pointee.size.height = 0.01
+                    let height = NSLocationInRange(separator.range.location, characters)
+                        ? (markdownParagraphSpacing ?? 0) + 0.01
+                        : 0.01
+                    lineFragmentRect.pointee.size.height = height
+                    lineFragmentUsedRect.pointee.size.height = height
                     return true
                 }
                 // Раскрытый разделитель из одной строки получает высоту интервала, как у свёрнутого (вместе с 0,01 pt схлопнутой строки),

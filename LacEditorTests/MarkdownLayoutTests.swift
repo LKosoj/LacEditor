@@ -3154,21 +3154,26 @@ final class MarkdownLayoutTests: XCTestCase {
         let source = "start\n\n# Heading\n\n" + String(repeating: "paragraph\n\n", count: 10_000) + "[toc]"
         let (storage, layout, container) = makeLayout(source)
         layout.backgroundLayoutEnabled = false
-        layout.allowsNonContiguousLayout = false
+        layout.allowsNonContiguousLayout = true
         container.containerSize = NSSize(width: 600, height: CGFloat.greatestFiniteMagnitude)
-        let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 300_000), textContainer: container)
-        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 600, height: 150))
-        scroll.documentView = view
+        let view = LacTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 150), textContainer: container)
+        view.isVerticallyResizable = true
+        view.minSize = NSSize(width: 0, height: 150)
+        view.maxSize = NSSize(width: 600, height: 300_000)
+        container.widthTracksTextView = true
+        container.heightTracksTextView = false
+        XCTAssertLessThan(layout.firstUnlaidCharacterIndex(), storage.length / 2, "before presentation")
         layout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(source), revealedRange: nil,
                                        invalidating: NSRange(location: 0, length: 1))
+        XCTAssertLessThan(layout.firstUnlaidCharacterIndex(), storage.length / 2, "after presentation")
         let visible = view.visibleRect.offsetBy(dx: -view.textContainerOrigin.x, dy: -view.textContainerOrigin.y)
-        layout.ensureLayout(forBoundingRect: visible, in: container)
+        layout.ensureLayout(forCharacterRange: NSRange(location: 0, length: min(100, storage.length)))
         let before = layout.firstUnlaidCharacterIndex()
         XCTAssertLessThan(before, storage.length / 2)
         XCTAssertNil(layout.markdownTOC(at: NSPoint(x: visible.midX, y: visible.midY), in: container))
         XCTAssertLessThan(layout.firstUnlaidCharacterIndex(), storage.length / 2)
         XCTAssertEqual(storage.string, source)
-        withExtendedLifetime(scroll) {}
+        withExtendedLifetime(view) {}
     }
     func testInlineSelectionOverPlainTextKeepsLayoutAndOverMarkerInvalidatesIt() throws {
         let source = "plain one\n\nplain **bold** end", raw = source as NSString
@@ -3399,7 +3404,8 @@ final class MarkdownLayoutTests: XCTestCase {
         let last = (source as NSString).range(of: "**last**")
         func lastWidth() -> CGFloat {
             layout.ensureLayout(for: container)
-            return layout.boundingRect(forGlyphRange: layout.glyphRange(forCharacterRange: last, actualCharacterRange: nil), in: container).width
+            let glyph = layout.glyphIndexForCharacter(at: last.location)
+            return layout.lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: nil).width
         }
         let width = lastWidth()
         layout.setMarkdownPresentation(MarkdownPresentationBuilder.parse(source), revealedRange: nil)

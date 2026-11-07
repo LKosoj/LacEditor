@@ -181,16 +181,32 @@ final class MarkdownBlockSourceTests: XCTestCase {
         let shown = await waitFor { views().count == 2 }
         XCTAssertTrue(shown)
         let one = views()[0], two = views()[1]
-        let firstItem = try XCTUnwrap(stand.editItem(in: try stand.menu(at: stand.center(of: one))))
+        var capturedFirstItem: NSMenuItem?
+        let firstMenuReady = await waitFor {
+            capturedFirstItem = stand.editItem(in: try? stand.menu(at: stand.center(of: one)))
+            return capturedFirstItem != nil
+        }
+        XCTAssertTrue(firstMenuReady)
+        let firstItem = try XCTUnwrap(capturedFirstItem)
         XCTAssertTrue(stand.perform(firstItem))
         XCTAssertEqual(stand.view.selectedRange(), (source as NSString).range(of: first))
         let firstRemoved = await waitFor { one.superview == nil }
         XCTAssertTrue(firstRemoved)
         XCTAssertNotNil(two.superview, "второй блок остаётся оформленным")
-        let secondItem = try XCTUnwrap(stand.editItem(in: try stand.menu(at: stand.center(of: two))))
+        let remaining = try XCTUnwrap(views().first)
+        stand.view.scrollToVisible(remaining.frame)
+        let revealed = stand.layout.markdownListsSnapshot["revealed"] ?? []
+        XCTFail("selection=\(stand.view.selectedRange()), revealed=\(revealed), remaining=\(remaining.frame), visible=\(stand.view.visibleRect)")
+        var capturedSecondItem: NSMenuItem?
+        let secondMenuReady = await waitFor {
+            capturedSecondItem = stand.editItem(in: try? stand.menu(at: stand.center(of: remaining)))
+            return capturedSecondItem != nil
+        }
+        XCTAssertTrue(secondMenuReady)
+        let secondItem = try XCTUnwrap(capturedSecondItem)
         XCTAssertTrue(stand.perform(secondItem))
         XCTAssertEqual(stand.view.selectedRange(), (source as NSString).range(of: second))
-        let secondRemoved = await waitFor { two.superview == nil }
+        let secondRemoved = await waitFor { remaining.superview == nil }
         XCTAssertTrue(secondRemoved, "вью второго блока снята, виден исходный текст")
         XCTAssertEqual(stand.view.string, source)
     }
@@ -204,7 +220,13 @@ final class MarkdownBlockSourceTests: XCTestCase {
         let shown = await waitFor { stand.view.subviews.contains { $0 is MarkdownHTMLBlockView } }
         XCTAssertTrue(shown)
         let html = try XCTUnwrap(stand.view.subviews.compactMap { $0 as? MarkdownHTMLBlockView }.first)
-        let item = try XCTUnwrap(stand.editItem(in: try stand.menu(at: stand.center(of: html))))
+        var capturedItem: NSMenuItem?
+        let menuReady = await waitFor {
+            capturedItem = stand.editItem(in: try? stand.menu(at: stand.center(of: html)))
+            return capturedItem != nil
+        }
+        XCTAssertTrue(menuReady)
+        let item = try XCTUnwrap(capturedItem)
         XCTAssertTrue(stand.perform(item))
         XCTAssertEqual(stand.view.selectedRange(), (source as NSString).range(of: block))
         let removed = await waitFor { html.superview == nil }

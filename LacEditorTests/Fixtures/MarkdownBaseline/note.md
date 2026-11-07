@@ -113,15 +113,13 @@ func greet(_ name: String) -> String {
 
 ## HTML
 
-<div class="box">
+<div>
 Блок HTML с <b>жирным</b> текстом.
 </div>
 
 <details>
 <summary>Сводка details</summary>
-
 Скрытое содержимое с **разметкой**.
-
 </details>
 
 Ruby: <ruby>漢<rt>kan</rt></ruby> и <ruby>字<rt>ji</rt></ruby>.
