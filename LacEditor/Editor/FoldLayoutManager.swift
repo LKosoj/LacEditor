@@ -182,6 +182,8 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     private var markdownMarkerEnds: [Int] = []
     private var markdownContainers: [NSRange] = []
     private var markdownContainerEnds: [Int] = []
+    private var markdownInlineContainers: [NSRange] = []
+    private var markdownInlineContainerEnds: [Int] = []
     private var markdownHeadings: [MarkdownPresentationSpan] = []
     private var markdownHeadingNumberWidths: [Int: CGFloat] = [:]
     private var markdownNumberedHeadingsBySource: [MarkdownHeading] = []
@@ -2057,6 +2059,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             end = max(end, NSMaxRange(range))
             return end
         }
+        rebuildMarkdownInlineContainers()
         markdownHeadings = spans.filter {
             if case .heading = $0.kind { return true }
             return false
@@ -2170,6 +2173,7 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             peak = max(peak, NSMaxRange(markdownContainers[index]))
             markdownContainerEnds[index] = peak
         }
+        rebuildMarkdownInlineContainers()
         for index in firstLocated(markdownHeadings, from: spanStart, location: { $0.range.location })..<markdownHeadings.count {
             move(&markdownHeadings[index].range, edit.block)
             for marker in markdownHeadings[index].markerRanges.indices { move(&markdownHeadings[index].markerRanges[marker], edit.away) }
@@ -2271,11 +2275,11 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         for affected in [previous, range].compactMap({ $0 }) {
             var dirty = affected
             var found = false
-            var index = upperBound(affected.location + affected.length, count: markdownContainers.count) { markdownContainers[$0].location }
+            var index = upperBound(affected.location + affected.length, count: markdownInlineContainers.count) { markdownInlineContainers[$0].location }
             while index > 0 {
                 index -= 1
-                if markdownContainerEnds[index] < affected.location { break }
-                let owner = markdownContainers[index]
+                if markdownInlineContainerEnds[index] < affected.location { break }
+                let owner = markdownInlineContainers[index]
                 if touches(owner, affected) { dirty = NSUnionRange(dirty, owner); found = true }
             }
             // Читатели inline-выделения (скрытые маркеры и подмены текста) берут владельцев только из markdownContainers
@@ -2283,6 +2287,16 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
                 invalidateMarkdownLayout(in: dirty)
                 invalidated = dirty
             }
+        }
+    }
+
+    private func rebuildMarkdownInlineContainers() {
+        markdownInlineContainers = (markdownMarkers.filter(\.inline).map(\.owner) + markdownTextReplacements.map(\.range))
+            .sorted { $0.location < $1.location }
+        var end = 0
+        markdownInlineContainerEnds = markdownInlineContainers.map { range in
+            end = max(end, NSMaxRange(range))
+            return end
         }
     }
 

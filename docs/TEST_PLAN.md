@@ -241,6 +241,19 @@ macOS: 0 ошибок, 0 предупреждений, 0 пропусков GUI-
   1/1; соседние alignment/numbering сценарии — 3/3.
 - [x] Повторить `MarkdownLayoutTests` после alignment-исправления: 120 тестов,
   106 passed, 14 failed, 0 skipped, 0 not run.
+- [x] Закрыть `testShiftInPlaceMovesImagesFormulasAndEmoji`: plain text того же
+  абзаца подтверждается через `MarkdownImage.paragraphRange`; связанная пачка
+  shift-сценариев проходит 4/4.
+- [x] Повторить `MarkdownLayoutTests` после shift-исправления: 120 тестов,
+  107 passed, 13 failed, 0 skipped, 0 not run.
+- [x] Закрыть восстановление номера при раскрытии заголовка без доступного
+  viewport: основной и два соседних сценария проходят 3/3.
+- [x] Закрыть лишнюю invalidation при inline selection в обычном тексте:
+  основной и два соседних сценария проходят 3/3.
+- [x] Повторить `MarkdownLayoutTests` после двух исправлений: 120 тестов,
+  109 passed, 11 failed, 0 skipped, 0 not run.
+- [x] Закрыть повторный рендер Ruby после смены метрик/appearance: основной
+  сценарий 1/1; соседние Ruby-сценарии сохраняют результат 2/2.
 - [ ] Повторить целиком `MarkdownAudioInteractionTests` и
   `MarkdownClipboardInteractionTests` после закрытия известных кластеров.
 - [ ] После адресных исправлений выполнить единый непрерывный `RunAllTests`.

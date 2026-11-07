@@ -1438,13 +1438,20 @@ final class MarkdownPresentationController {
             }
             return
         }
+        let previousRevealedRange = lastRevealedRange
         lastRevealedRange = range
         layout?.updateMarkdownRevealedRange(range)
         if headingNumbering {
             lastVisibleRange = nil
             applyVisible()
             // Отступ номера зависит от раскрытой строки, а уже оформленный текст `applyVisible` не перестраивает.
-            if let visible = visibleRange() { applyParagraphAlignment(in: visible) }
+            let changedRange: NSRange? = switch (previousRevealedRange, range) {
+            case let (previous?, current?): NSUnionRange(previous, current)
+            case let (previous?, nil): previous
+            case let (nil, current?): current
+            case (nil, nil): nil
+            }
+            if let affected = visibleRange() ?? changedRange { applyParagraphAlignment(in: affected) }
         }
         notifyGeometryChanged()
         if let visible = visibleRange() {
@@ -1604,6 +1611,10 @@ final class MarkdownPresentationController {
     func metricsChanged() {
         guard isActive, !hasMarkedText else { return }
         if !uppercaseHeadingLevels.isEmpty { clearUppercaseHeadings() }
+        let renderedRubyRange = rubyRendered.keys.reduce(nil as NSRange?) { partial, range in
+            partial.map { NSUnionRange($0, range) } ?? range
+        }
+        clearRuby()
         publishReadableTextIfNeeded()
         refreshMathOptionsIfNeeded()
         lastVisibleRange = nil
@@ -1611,6 +1622,9 @@ final class MarkdownPresentationController {
             // Шрифты и метрики уже оформленных мест устарели: без сброса `applyVisible` их не перестраивает.
             restoreStyles()
             applyVisible()
+            if let renderedRubyRange, rubyRendered.isEmpty {
+                updateRuby(in: visibleRange() ?? renderedRubyRange)
+            }
             // `applyVisible` can return early when all visible text already
             // has styling; media views still need their frames refreshed after
             // font/metric changes.

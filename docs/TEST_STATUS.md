@@ -642,6 +642,32 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
 - Повтор полного `MarkdownLayoutTests` после исправления: 120 тестов,
   106 passed, 14 failed, 0 skipped, 0 not run. Отчёт Xcode:
   `8CD84520-A4F9-4825-92A1-4C444BF1ED55.txt`.
+- Исправлен incremental shift для обычного текста в абзаце с inline-медиа:
+  подтверждённый `MarkdownImage.paragraphRange` покрывает окружающий текст,
+  при этом правка самого media token по-прежнему отклоняется существующей
+  проверкой диапазона. `testShiftInPlaceMovesImagesFormulasAndEmoji` и три
+  соседних shift-сценария проходят 4/4; отчёт Xcode:
+  `937BF3AB-A409-4A24-9392-6C89B7300DE9.txt`.
+- Повтор `MarkdownLayoutTests` после shift-исправления: 120 тестов,
+  107 passed, 13 failed, 0 skipped, 0 not run. Отчёт Xcode:
+  `819A935A-369F-4560-B1F0-9EE30E31C24C.txt`.
+- При смене раскрытого заголовка нумерация теперь перестраивает объединение
+  прежней и новой строки, если viewport временно недоступен. Поэтому номер
+  снимается под выделением и возвращается после ухода курсора; setext underline
+  не получает отступ. Основной и два соседних теста проходят 3/3; отчёт Xcode:
+  `62D423C4-4E7C-4489-9B17-FCF7D0416B97.txt`.
+- Для inline selection выделен отдельный отсортированный индекс владельцев
+  inline-маркеров и text replacements. Абзацные разделители больше не вызывают
+  сброс layout при каретке в обычном тексте; поиск остаётся ограниченным
+  пересекающимися владельцами. Основной и два соседних теста проходят 3/3;
+  отчёт Xcode: `4D504793-06DC-4D39-92D9-38606B72EE59.txt`.
+- Повтор `MarkdownLayoutTests` после исправлений numbering и inline selection:
+  120 тестов, 109 passed, 11 failed, 0 skipped, 0 not run. Отчёт Xcode:
+  `3BBFA1F9-81EA-4380-B623-5EDD802BF017.txt`.
+- При смене метрик/appearance готовые Ruby-изображения сбрасываются и заново
+  создаются для ранее отрисованных диапазонов даже при временно недоступном
+  viewport. Основной тест проходит 1/1 (`E0FF32BC-6446-48BD-9409-1E0052B6BFF3.txt`),
+  два соседних Ruby-сценария также проходят.
 
 - `BuildProject(buildForTesting: true)` проходит; журнал Xcode содержит
   0 ошибок и 0 предупреждений.
