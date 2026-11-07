@@ -9,6 +9,30 @@
 
 ## Последний диагностический прогон (2026-11-05)
 
+### Диагностический прогон Xcode (2026-11-07)
+
+- `BuildProject(buildForTesting: true)` после исправления Mac-компиляции
+  завершён успешно: 0 ошибок; повторный актуальный
+  `GetBuildLog(severity: warning)` — 0 предупреждений.
+- Полный `RunAllTests` выполнен одним непрерывным запуском и не прерывался.
+  После штатного окончания тестового процесса Xcode не смог открыть
+  незавершённый `.xcresult`, поэтому итоговые счётчики `passed/failed/skipped`
+  отсутствуют и прогон не считается чистым.
+- Issue Navigator сохранил 519 свежих test issues (повторные assertions и
+  runtime warnings входят в это число; выдача обрезана до 100). Сборка после
+  тестов не активна, её журнал остаётся чистым.
+- Детальный список известных падающих test cases и их сообщений вынесен в
+  [`FAILING_TEST_CASES_2026-11-07.md`](FAILING_TEST_CASES_2026-11-07.md).
+  В нём отдельно отмечены полный targeted-список renderer и неполная выборка
+  полного прогона из Issue Navigator.
+- После завершения полного запуска разрешена targeted-диагностика. Первый
+  кластер `MarkdownRendererTests` воспроизведён отдельно: 103 теста,
+  78 passed, 25 failed, 0 skipped/not run. Основная группа связана с
+  подтверждением raw HTML/media и точных source ranges после перехода на
+  единую модель; отдельно падают Unicode image path и named anchor с табом.
+  Остаются runtime warnings UI-тестов о блокирующем вызове на main thread и
+  AVKit constraints.
+
 После чистой сборки выполнен полный `RunAllTests`: 3911 тестов, 3776 passed,
 123 failed, 11 skipped, 1 not run, 0 expected failures. `GetBuildLog` с уровнем
 warning сообщает 0 предупреждений. Адресный `MarkdownAudioInteractionTests`

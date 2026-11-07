@@ -213,11 +213,11 @@ final class MarkdownClipboardProjectionHTMLTests: XCTestCase {
         XCTAssertTrue(copy.html.contains("<iframe"), copy.html)
         XCTAssertTrue(copy.hasUnverifiedHTMLBlocks)
         XCTAssertNil(project(source as String, NSRange(location: source.range(of: frame).location, length: 10)), "часть iframe")
-        for unsafe in ["<video src=\"https://example.invalid/a\" onplay=\"evil()\">hidden</video>",
-                       "<video src=\"https://example.invalid/a\">hidden",
-                       "<script><video src=\"https://example.invalid/a\">secret</video></script>"] {
-            let raw = unsafe as NSString
-            XCTAssertNil(project(unsafe, raw.range(of: raw.contains("secret") ? "secret" : "hidden")), unsafe)
+        for unsafeSource in ["<video src=\"https://example.invalid/a\" onplay=\"evil()\">hidden</video>",
+                             "<video src=\"https://example.invalid/a\">hidden",
+                             "<script><video src=\"https://example.invalid/a\">secret</video></script>"] {
+            let raw = unsafeSource as NSString
+            XCTAssertNil(project(unsafeSource, raw.range(of: raw.contains("secret") ? "secret" : "hidden")), unsafeSource)
         }
         for address in ["relative.wav", "javascript:alert(1)"] {
             let value = "<audio src=\"\(address)\">fallback</audio>"

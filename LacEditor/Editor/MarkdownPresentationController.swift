@@ -1382,7 +1382,7 @@ final class MarkdownPresentationController {
 
     func selectionChanged() {
         // Пока кнопка мыши зажата, раскрытие и перестройка откладываются до `pointerTrackingEnded`.
-        if (textView as? LacTextView)?.isPointerTracking == true {
+        if textView?.isPointerTracking == true {
             selectionChangedWhilePointerDown = true
             return
         }
@@ -2026,7 +2026,7 @@ final class MarkdownPresentationController {
 
     private func install(_ result: MarkdownPresentation) {
         // Пока кнопка мыши зажата, раскладка не перестраивается: пользователь кликает по той, что видит.
-        if (textView as? LacTextView)?.isPointerTracking == true {
+        if textView?.isPointerTracking == true {
             deferredInstall = (result, currentRevision?())
             return
         }

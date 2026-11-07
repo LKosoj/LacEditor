@@ -13612,7 +13612,7 @@ readableText:
 wikiLinks: []
 unreliableRanges: []
 elements: {textLength=98 endsWithLineBreak=true blocks=[{range=0+13 kind=heading(1) parent=-1}] inlines=[]}
-=== doc/Corpus/tables
+=== doc/Corpus/corpus-tables
 spans: [{range=0+9 kind=heading(1) markerRanges=[0+2]}]
 headings:
   [0]

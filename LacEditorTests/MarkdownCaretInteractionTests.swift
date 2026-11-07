@@ -471,6 +471,6 @@ final class MarkdownCaretInteractionTests: XCTestCase {
         try await waitForParse(editor)
         try click(editor, at: editor.point(of: 2, fraction: 0.25))
         XCTAssertEqual(editor.view.accessibilitySelectedTextRange(), NSRange(location: 0, length: 0))
-        XCTAssertEqual(editor.view.accessibilityValue() as? String, editor.view.string)
+        XCTAssertEqual(editor.view.accessibilityValue(), editor.view.string)
     }
 }

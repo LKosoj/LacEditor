@@ -314,6 +314,7 @@ private final class CountingImageURLProtocol: URLProtocol {
 /// Локальный разбор в контроллере (T5): база, сброс, поздние результаты, картинки. Стенд повторяет `ImageShiftFixture` из MarkdownImageTests.
 @MainActor
 final class MarkdownLocalParseControllerTests: XCTestCase {
+    @MainActor
     private final class Fixture {
         let storage: NSTextStorage
         let layout = FoldLayoutManager()
@@ -375,6 +376,11 @@ final class MarkdownLocalParseControllerTests: XCTestCase {
         func finish() { controller.cancel(); withExtendedLifetime(scroll) {} }
     }
 
+    private func assertNextParse(_ fixture: Fixture, _ message: String = "разбор не завершился", file: StaticString = #filePath, line: UInt = #line) async {
+        let didParse = await fixture.waitForNextParse()
+        XCTAssertTrue(didParse, message, file: file, line: line)
+    }
+
     private func makeFixture() -> (Fixture, URLSession) {
         CountingImageURLProtocol.reset()
         let config = URLSessionConfiguration.ephemeral
@@ -389,13 +395,13 @@ final class MarkdownLocalParseControllerTests: XCTestCase {
     func testLocalParseSeriesKeepsImageAndHasNoDivergence() async throws {
         let (fixture, session) = makeFixture()
         defer { fixture.finish(); session.invalidateAndCancel() }
-        XCTAssertTrue(await fixture.waitForNextParse(), "первый разбор")
+        await assertNextParse(fixture, "первый разбор")
         for _ in 0..<100 where CountingImageURLProtocol.requestCount == 0 { try await Task.sleep(for: .milliseconds(50)) }
         XCTAssertEqual(CountingImageURLProtocol.requestCount, 1)
         var localCount = 0
         for index in 2..<7 {
             fixture.type(after: "Раздел \(index)")
-            XCTAssertTrue(await fixture.waitForNextParse(), "разбор после правки \(index)")
+            await assertNextParse(fixture, "разбор после правки \(index)")
             XCTAssertNil(fixture.controller.lastParseDivergence, "сверка нашла расхождение после правки \(index)")
             if fixture.controller.lastParseFallback == nil { localCount += 1 }
         }
@@ -407,14 +413,14 @@ final class MarkdownLocalParseControllerTests: XCTestCase {
     func testOptionChangeAndClearResetBase() async throws {
         let (fixture, session) = makeFixture()
         defer { fixture.finish(); session.invalidateAndCancel() }
-        XCTAssertTrue(await fixture.waitForNextParse())
+        await assertNextParse(fixture)
         fixture.type(after: "Раздел 1")
-        XCTAssertTrue(await fixture.waitForNextParse())
+        await assertNextParse(fixture)
         XCTAssertNil(fixture.controller.lastParseFallback, "перед проверкой база должна работать")
         // Читаемый текст выключен: параметры разбора другие, база прежняя не подходит.
         fixture.document.featureOverrides.wordCount = false
         fixture.type(after: "Раздел 2")
-        XCTAssertTrue(await fixture.waitForNextParse())
+        await assertNextParse(fixture)
         XCTAssertEqual(fixture.controller.lastParseFallback, "параметры разбора изменились")
         // Оформление отключено и включено снова: `clear()` сбросил базу.
         fixture.controller.update(document: fixture.document, enabled: false, isActive: true, revision: fixture.revision,
@@ -422,7 +428,7 @@ final class MarkdownLocalParseControllerTests: XCTestCase {
         fixture.controller.update(document: fixture.document, enabled: true, isActive: true, revision: fixture.revision,
                                   currentRevision: { [unowned fixture] in fixture.revision }, textProvider: { [unowned fixture] in fixture.storage.string })
         fixture.type(after: "Раздел 3")
-        XCTAssertTrue(await fixture.waitForNextParse())
+        await assertNextParse(fixture)
         XCTAssertEqual(fixture.controller.lastParseFallback, "нет базы")
     }
 
@@ -430,9 +436,9 @@ final class MarkdownLocalParseControllerTests: XCTestCase {
     func testStaleRevisionDoesNotInstallOrChangeBase() async throws {
         let (fixture, session) = makeFixture()
         defer { fixture.finish(); session.invalidateAndCancel() }
-        XCTAssertTrue(await fixture.waitForNextParse())
+        await assertNextParse(fixture)
         fixture.type(after: "Раздел 1")
-        XCTAssertTrue(await fixture.waitForNextParse())
+        await assertNextParse(fixture)
         let before = fixture.controller.lastParseFallback
         let count = fixture.parseCount
         fixture.type(after: "Раздел 2")
@@ -443,7 +449,7 @@ final class MarkdownLocalParseControllerTests: XCTestCase {
         XCTAssertEqual(fixture.controller.lastParseFallback, before)
         // Правка с верной ревизией после этого: база цела, разбор снова локальный.
         fixture.type(after: "Раздел 3")
-        XCTAssertTrue(await fixture.waitForNextParse())
+        await assertNextParse(fixture)
         XCTAssertNil(fixture.controller.lastParseFallback, "база не должна пострадать от устаревшего разбора")
         XCTAssertNil(fixture.controller.lastParseDivergence)
     }
@@ -452,10 +458,10 @@ final class MarkdownLocalParseControllerTests: XCTestCase {
     func testFullParseCountGrowsOnlyOnInstalledFullParses() async throws {
         let (fixture, session) = makeFixture()
         defer { fixture.finish(); session.invalidateAndCancel() }
-        XCTAssertTrue(await fixture.waitForNextParse(), "первый разбор")
+        await assertNextParse(fixture, "первый разбор")
         XCTAssertEqual(fixture.controller.fullParseCount, 1, "первый разбор без базы полный")
         fixture.type(after: "Раздел 1")
-        XCTAssertTrue(await fixture.waitForNextParse(), "локальная правка")
+        await assertNextParse(fixture, "локальная правка")
         XCTAssertNil(fixture.controller.lastParseFallback, "перед проверкой база должна работать")
         XCTAssertEqual(fixture.controller.fullParseCount, 1, "локальный разбор не считается")
         let count = fixture.parseCount
@@ -467,7 +473,7 @@ final class MarkdownLocalParseControllerTests: XCTestCase {
         XCTAssertEqual(fixture.controller.fullParseCount, 1, "устаревший результат не считается")
         fixture.document.featureOverrides.wordCount = false
         fixture.type(after: "Раздел 3")
-        XCTAssertTrue(await fixture.waitForNextParse(), "разбор после смены параметров")
+        await assertNextParse(fixture, "разбор после смены параметров")
         XCTAssertEqual(fixture.controller.lastParseFallback, "параметры разбора изменились")
         XCTAssertEqual(fixture.controller.fullParseCount, 2, "полный откат считается")
     }
@@ -476,13 +482,13 @@ final class MarkdownLocalParseControllerTests: XCTestCase {
     func testModelIsPublishedOnlyAfterInstalledFullParse() async throws {
         let (fixture, session) = makeFixture()
         defer { fixture.finish(); session.invalidateAndCancel() }
-        XCTAssertTrue(await fixture.waitForNextParse(), "первый разбор")
+        await assertNextParse(fixture, "первый разбор")
         XCTAssertNotNil(fixture.document.markdownModel(forRevision: fixture.document.textRevision), "после полного разбора модель есть")
         // Редактор записывает набранный текст в документ: прежняя модель сбрасывается.
         fixture.type(after: "Раздел 1")
         fixture.document.text = fixture.storage.string
         XCTAssertNil(fixture.document.markdownModel(forRevision: fixture.document.textRevision))
-        XCTAssertTrue(await fixture.waitForNextParse(), "локальный разбор")
+        await assertNextParse(fixture, "локальный разбор")
         XCTAssertNil(fixture.controller.lastParseFallback, "перед проверкой разбор должен быть локальным")
         XCTAssertNil(fixture.document.markdownModel(forRevision: fixture.document.textRevision), "локальный разбор модель не ставит")
         // Поздний результат гарантированно полного разбора (параметры сменились) модель не ставит: версия устарела до установки.
@@ -499,7 +505,7 @@ final class MarkdownLocalParseControllerTests: XCTestCase {
         fixture.document.featureOverrides.wordCount = false
         fixture.type(after: "Раздел 3")
         fixture.document.text = fixture.storage.string
-        XCTAssertTrue(await fixture.waitForNextParse(), "полный разбор")
+        await assertNextParse(fixture, "полный разбор")
         XCTAssertEqual(fixture.controller.lastParseFallback, "параметры разбора изменились")
         XCTAssertNotNil(fixture.document.markdownModel(forRevision: fixture.document.textRevision), "полный разбор ставит модель")
     }
@@ -512,7 +518,7 @@ final class MarkdownLocalParseControllerTests: XCTestCase {
         let map = MarkdownMediaMap(spans: projection.spans)
         XCTAssertFalse(map.isEmpty)
         fixture.controller.sourceMap = { map }
-        XCTAssertTrue(await fixture.waitForNextParse(), "первый разбор")
+        await assertNextParse(fixture, "первый разбор")
         XCTAssertEqual(fixture.controller.fullParseCount, 1)
         XCTAssertNil(fixture.document.markdownModel(forRevision: fixture.document.textRevision))
     }
@@ -521,7 +527,7 @@ final class MarkdownLocalParseControllerTests: XCTestCase {
     func testVisiblePreviewRequestsModelWithoutDecoration() async throws {
         let (fixture, session) = makeFixture()
         defer { fixture.finish(); session.invalidateAndCancel() }
-        XCTAssertTrue(await fixture.waitForNextParse(), "первый разбор")
+        await assertNextParse(fixture, "первый разбор")
         fixture.controller.update(document: fixture.document, enabled: false, isActive: true, revision: fixture.revision,
                                   currentRevision: { [unowned fixture] in fixture.revision }, textProvider: { [unowned fixture] in fixture.storage.string })
         fixture.document.featureOverrides.preview = true

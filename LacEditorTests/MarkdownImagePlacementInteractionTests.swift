@@ -403,8 +403,8 @@ final class MarkdownImagePlacementInteractionTests: XCTestCase {
     @MainActor
     func testValidRequestorAcceptsImageReturnTypeOnlyWhenEditableAndReady() {
         let (view, _) = makeContinuityView()
-        XCTAssertTrue(view.validRequestor(forSendType: nil, returnType: .png) === view)
-        XCTAssertTrue(view.validRequestor(forSendType: nil, returnType: .tiff) === view)
+        XCTAssertTrue((view.validRequestor(forSendType: nil, returnType: .png) as? LacTextView) === view)
+        XCTAssertTrue((view.validRequestor(forSendType: nil, returnType: .tiff) as? LacTextView) === view)
         view.isEditable = false
         XCTAssertNil(view.validRequestor(forSendType: nil, returnType: .png))
         view.isEditable = true

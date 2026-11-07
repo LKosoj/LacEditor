@@ -1454,7 +1454,7 @@ $$</div>
 <h1><span data-lac-heading-number="1. "></span><span data-lac-whitespace style="white-space:break-spaces">Пунктуация</span></h1>
 <p><span data-lac-whitespace style="white-space:break-spaces">“Кавычки” и ‘одинарные’ – тире — длинное… многоточие.</span></p>
 <p><span data-lac-whitespace style="white-space:break-spaces">Дефис-слово и – минус.</span></p>
-=== doc/Corpus/tables
+=== doc/Corpus/corpus-tables
 [flags] omitted=false whitespace=true rawFailed=false
 [headingIDs] "lac-heading-таблицы"
 --- body

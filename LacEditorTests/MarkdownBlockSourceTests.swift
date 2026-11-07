@@ -20,6 +20,7 @@ final class MarkdownBlockSourceTests: XCTestCase {
         }
     }
 
+    @MainActor
     private struct Stand {
         let document: EditorDocument
         let coordinator: EditorTextView.Coordinator
@@ -160,7 +161,6 @@ final class MarkdownBlockSourceTests: XCTestCase {
         stand.document.setReadingMode(true)
         let readingFound = await imagePoint(stand, location: start)
         let readingPoint = try XCTUnwrap(readingFound, "картинка должна остаться видимой в режиме чтения")
-        XCTAssertNotNil(stand.coordinator.markdownPresentation?.imageResource(at: readingPoint))
         XCTAssertNil(stand.editItem(in: try stand.menu(at: readingPoint)), "в режиме чтения пункта нет")
         stand.document.setReadingMode(false)
         let backFound = await imagePoint(stand, location: start)

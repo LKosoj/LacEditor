@@ -3,6 +3,7 @@ import XCTest
 @testable import LacEditor
 
 /// Логика места нового изображения: решение по состоянию документа, имена, запись рядом с документом, уменьшение.
+@MainActor
 final class MarkdownImagePlacementTests: XCTestCase {
     private func temporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)

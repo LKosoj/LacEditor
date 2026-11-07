@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import XCTest
 @testable import LacEditor
 
@@ -121,6 +122,7 @@ final class MarkdownTableNavigationTests: XCTestCase {
 
     // MARK: Стенд и помощники
 
+    @MainActor
     private struct Stand {
         let document: EditorDocument
         let coordinator: EditorTextView.Coordinator
@@ -203,7 +205,8 @@ final class MarkdownTableNavigationTests: XCTestCase {
         for (name, cell, expectRow) in [("строка", lastRowCell, true), ("столбец", headerCell, false)] {
             stand.view.undoManager?.removeAllActions()
             var frame: NSRect?
-            XCTAssertTrue(try await poll { frame = stand.layout.markdownTableFrame(for: cell, in: stand.container); return frame != nil }, name)
+            let frameAppeared = try await poll { frame = stand.layout.markdownTableFrame(for: cell, in: stand.container); return frame != nil }
+            XCTAssertTrue(frameAppeared, name)
             let rect = try XCTUnwrap(frame)
             // Кнопка строки — под первой ячейкой последней строки, столбца — над правым краем заголовка.
             let point = expectRow ? NSPoint(x: rect.minX - 6, y: rect.maxY + 6) : NSPoint(x: rect.maxX - 6, y: rect.minY - 6)
@@ -250,7 +253,8 @@ final class MarkdownTableNavigationTests: XCTestCase {
         let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(source).tables.first)
         let cell = try XCTUnwrap(table.rows.last?.cells.first)
         var frame: NSRect?
-        XCTAssertTrue(try await poll { frame = stand.layout.markdownTableFrame(for: cell, in: stand.container); return frame != nil })
+        let frameAppeared = try await poll { frame = stand.layout.markdownTableFrame(for: cell, in: stand.container); return frame != nil }
+        XCTAssertTrue(frameAppeared)
         let rect = try XCTUnwrap(frame).offsetBy(dx: stand.view.textContainerOrigin.x, dy: stand.view.textContainerOrigin.y)
         let clip = stand.scroll.contentView
         XCTAssertGreaterThan(rect.minY, clip.bounds.height, "таблица ниже первого экрана")
@@ -308,7 +312,8 @@ final class MarkdownTableNavigationTests: XCTestCase {
         let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(tableSource).tables.first)
         let cell = try XCTUnwrap(table.rows.last?.cells.first)
         var frame: NSRect?
-        XCTAssertTrue(try await poll { frame = stand.layout.markdownTableFrame(for: cell, in: stand.container); return frame != nil })
+        let frameAppeared = try await poll { frame = stand.layout.markdownTableFrame(for: cell, in: stand.container); return frame != nil }
+        XCTAssertTrue(frameAppeared)
         let rect = try XCTUnwrap(frame).offsetBy(dx: stand.view.textContainerOrigin.x, dy: stand.view.textContainerOrigin.y)
         // Правка внутри ячейки, затем выход и undo.
         XCTAssertTrue(stand.coordinator.beginTableCell(cell.range, frame: rect, cell: cell))
@@ -322,7 +327,8 @@ final class MarkdownTableNavigationTests: XCTestCase {
         XCTAssertEqual(stand.view.string, tableSource)
         let selection = stand.view.selectedRange()
         XCTAssertTrue(NSLocationInRange(selection.location, cell.range) || selection.location == NSMaxRange(cell.range), "каретка в изменённой ячейке: \(selection)")
-        XCTAssertTrue(try await poll { stand.children().count == 1 }, "после undo ячейка открыта")
+        let cellReopened = try await poll { stand.children().count == 1 }
+        XCTAssertTrue(cellReopened, "после undo ячейка открыта")
         XCTAssertTrue(stand.children().first?.string.contains("Анна") == true, "открыта именно изменённая ячейка")
         stand.coordinator.finishTableCell()
         // Структурная команда из ячейки и undo.
@@ -333,7 +339,8 @@ final class MarkdownTableNavigationTests: XCTestCase {
         XCTAssertEqual(stand.view.string, tableSource)
         let restored = stand.view.selectedRange()
         XCTAssertTrue(NSLocationInRange(restored.location, table.range) || restored.location == NSMaxRange(table.range), "каретка в таблице: \(restored)")
-        XCTAssertTrue(try await poll { stand.children().count == 1 }, "после undo структурной команды ячейка открыта")
+        let cellReopenedAfterCommand = try await poll { stand.children().count == 1 }
+        XCTAssertTrue(cellReopenedAfterCommand, "после undo структурной команды ячейка открыта")
     }
 
     // MARK: IME
@@ -344,11 +351,13 @@ final class MarkdownTableNavigationTests: XCTestCase {
         let table = try XCTUnwrap(MarkdownPresentationBuilder.parse(tableSource).tables.first)
         let cell = try XCTUnwrap(table.rows.last?.cells.first)
         var frame: NSRect?
-        XCTAssertTrue(try await poll { frame = stand.layout.markdownTableFrame(for: cell, in: stand.container); return frame != nil })
+        let frameAppeared = try await poll { frame = stand.layout.markdownTableFrame(for: cell, in: stand.container); return frame != nil }
+        XCTAssertTrue(frameAppeared)
         let rect = try XCTUnwrap(frame)
         let point = NSPoint(x: rect.midX + stand.view.textContainerOrigin.x, y: rect.midY + stand.view.textContainerOrigin.y)
         var items: [NSMenuItem] = []
-        XCTAssertTrue(try await poll { items = stand.view.tableMenuHandler?(point) ?? []; return !items.isEmpty }, "без IME меню есть")
+        let menuAppeared = try await poll { items = stand.view.tableMenuHandler?(point) ?? []; return !items.isEmpty }
+        XCTAssertTrue(menuAppeared, "без IME меню есть")
         // Ввод через IME в открытой ячейке: меню ячейки пусто, команда отказывает.
         XCTAssertTrue(stand.coordinator.beginTableCell(cell.range, frame: rect.offsetBy(dx: stand.view.textContainerOrigin.x, dy: stand.view.textContainerOrigin.y), cell: cell))
         let child = try XCTUnwrap(stand.children().first)
@@ -394,13 +403,15 @@ final class MarkdownTableNavigationTests: XCTestCase {
         view.setSelectedRange(NSRange(location: anna.location + 2, length: 0))
         view.scrollRangeToVisible(anna)
         window.makeFirstResponder(view)
-        XCTAssertTrue(try await poll { coordinator.openTableCellAtSelection(scrollsIntoView: true) || view.subviews.contains { $0 is MarkdownTableCellEditor } })
+        let cellOpened = try await poll { coordinator.openTableCellAtSelection(scrollsIntoView: true) || view.subviews.contains { $0 is MarkdownTableCellEditor } }
+        XCTAssertTrue(cellOpened)
         let before = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first?.frame.minY) - clip.bounds.origin.y
         let lineHeight = try XCTUnwrap(coordinator.foldLayoutManager?.editorLineHeight)
         let formattedDocumentY = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first?.frame.minY)
         document.isMarkdownFormatted = false
         host.layoutSubtreeIfNeeded()
-        XCTAssertTrue(try await poll { !view.subviews.contains { $0 is MarkdownTableCellEditor } && view.string == source })
+        let sourceModeAppeared = try await poll { !view.subviews.contains { $0 is MarkdownTableCellEditor } && view.string == source }
+        XCTAssertTrue(sourceModeAppeared)
         try await Task.sleep(for: .milliseconds(200))
         XCTAssertTrue(NSLocationInRange(view.selectedRange().location, anna) || view.selectedRange().location == NSMaxRange(anna), "каретка в той же ячейке")
         let sourceDocumentY = try XCTUnwrap(caretDistance()) + clip.bounds.origin.y
@@ -408,7 +419,8 @@ final class MarkdownTableNavigationTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(caretDistance()), before, accuracy: lineHeight, "положение каретки в окне сохранено (исходный вид)")
         document.isMarkdownFormatted = true
         host.layoutSubtreeIfNeeded()
-        XCTAssertTrue(try await poll { view.subviews.contains { $0 is MarkdownTableCellEditor } }, "ячейка снова открыта")
+        let formattedCellAppeared = try await poll { view.subviews.contains { $0 is MarkdownTableCellEditor } }
+        XCTAssertTrue(formattedCellAppeared, "ячейка снова открыта")
         let after = try XCTUnwrap(view.subviews.compactMap { $0 as? MarkdownTableCellEditor }.first?.frame.minY) - clip.bounds.origin.y
         XCTAssertEqual(after, before, accuracy: lineHeight, "положение ячейки в окне сохранено (оформленный вид)")
     }

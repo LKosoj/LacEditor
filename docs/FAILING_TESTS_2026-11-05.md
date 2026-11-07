@@ -5,6 +5,23 @@
 
 ## Текущий targeted-чек-лист
 
+Обновление 2026-11-07:
+
+- [x] Устранить ошибки Mac-компиляции новых тестов и конфликт двух ресурсов
+  `tables.md`; `BuildProject(buildForTesting: true)` проходит.
+- [x] Устранить предупреждения компиляции; актуальный `GetBuildLog` — 0.
+- [x] Выполнить один непрерывный полный `RunAllTests` без прерывания.
+- [ ] Получить закрытый итоговый `.xcresult`: последний запуск завершил
+  тестовый процесс, но bundle остался неполным; Issue Navigator содержит 519
+  свежих test issues без общей сводки.
+- [ ] Разобрать `MarkdownRendererTests` как первый крупный кластер после
+  завершённого полного запуска: targeted-прогон — 78/103 passed, 25 failed;
+  локализована общая группа raw HTML/media/source ranges, исправление ещё не
+  внесено.
+- [ ] Устранить runtime warnings UI-тестов (блокирующий вызов на main thread)
+  и AVKit constraints.
+- [ ] Повторить полный прогон после устранения известных кластеров.
+
 Последняя проверка `MarkdownAudioInteractionTests`: **25/28 passed, 3 failed**.
 
 - [ ] `MarkdownAudioInteractionTests/testLocalAndRemoteSVGUseImageContextWithoutEditingSource()` — remote SVG callback не завершает ожидание.

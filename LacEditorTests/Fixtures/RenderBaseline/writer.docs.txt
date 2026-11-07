@@ -1213,7 +1213,7 @@ $$</div>
 <h1>Пунктуация</h1>
 <p>“Кавычки” и ‘одинарные’ – тире — длинное… многоточие.</p>
 <p>Дефис-слово и – минус.</p>
-=== doc/Corpus/tables
+=== doc/Corpus/corpus-tables
 [flags] omitted=false whitespace=false rawFailed=false
 [headingIDs] "lac-heading-таблицы"
 --- body

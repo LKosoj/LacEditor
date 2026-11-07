@@ -46,7 +46,7 @@ final class MarkdownDecorationColorsTests: XCTestCase {
         let source = "Привет 😀 {++новое++} и {--старое--}\r\n\r\n`{++в коде++}` {>>заметка<<} {==важно==}"
         try await makeFixture(source: source, url: nil) { controller, layout, text, _ in
             XCTAssertTrue(controller.reapplyDecorationColors(in: NSRange(location: 0, length: text.length)))
-            func color(_ marker: String) -> NSColor? { foreground(layout, text.range(of: marker).location) }
+            @MainActor func color(_ marker: String) -> NSColor? { foreground(layout, text.range(of: marker).location) }
             XCTAssertEqual(color("{++новое"), NSColor.lacCriticInsertText, "вставка")
             XCTAssertEqual(color("{--старое"), NSColor.lacCriticDeleteText, "удаление")
             XCTAssertEqual(color("{>>заметка"), NSColor.lacCriticCommentText, "комментарий")

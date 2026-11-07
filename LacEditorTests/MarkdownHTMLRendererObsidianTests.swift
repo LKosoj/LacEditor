@@ -166,7 +166,7 @@ final class MarkdownHTMLRendererObsidianTests: XCTestCase {
     }
 
     private struct TextProvider: MarkdownNoteEmbedProvider {
-        let text: (String) -> String?
+        let text: @Sendable (String) -> String?
         func embeddedNote(for target: String) -> String? { text(target) }
     }
 

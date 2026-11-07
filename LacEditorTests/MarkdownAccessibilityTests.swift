@@ -109,7 +109,7 @@ final class MarkdownAccessibilityTests: XCTestCase {
         editor.view.setSelectedRange(NSRange(location: editor.shown.length, length: 0))
         let whole = NSRange(location: 0, length: editor.shown.length)
         XCTAssertEqual(editor.view.accessibilityString(for: whole), "до жирный после 😀")
-        XCTAssertEqual(editor.view.accessibilityValue() as? String, source)
+        XCTAssertEqual(editor.view.accessibilityValue(), source)
         // Каретка внутри жирного раскрывает маркеры: читается то, что видно.
         editor.view.setSelectedRange(NSRange(location: editor.shown.range(of: "жирный").location + 2, length: 0))
         XCTAssertEqual(editor.view.accessibilityString(for: whole), source)
