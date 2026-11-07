@@ -1305,6 +1305,10 @@ struct MarkdownPresentation: Sendable {
             let item = paragraphs[index]
             guard edit.paragraph(item.range) != nil, edit.paragraph(item.lastLine) != nil,
                   item.separatorAfter.map({ edit.after($0) != nil }) ?? true else { return false }
+            if edit.range.location == item.range.location,
+               taskCheckboxes.contains(where: { NSLocationInRange($0.markerRange.location, item.range) }) {
+                return false
+            }
             if edit.holds(item.range) { covered = true }
         }
         for index in edit.window(listMarkers, extent: { $0.line }) {
