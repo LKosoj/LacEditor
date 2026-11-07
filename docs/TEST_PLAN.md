@@ -235,8 +235,10 @@ macOS: 0 ошибок, 0 предупреждений, 0 пропусков GUI-
   подтверждён как проходящий; список оставшихся падений обновлён по отчёту
   Xcode `C88961EC-6A40-4F49-8770-5470FA720233.txt`.
 - [ ] Разобрать и устранить оставшиеся 14 падений `MarkdownLayoutTests`.
-  `testParagraphSpacingReplacesBlankSeparatorAndRevealsSource` временно
-  отложен по указанию пользователя; `XCTSkip` в код не добавлялся.
+  `testParagraphSpacingReplacesBlankSeparatorAndRevealsSource` закрывать
+  последним из известных адресных падений по указанию пользователя; `XCTSkip`
+  в код не добавлялся. Сразу после его исправления и контрольных адресных
+  проверок перейти к полному тестированию.
 - [x] Закрыть `testParagraphAlignmentChangesVisibleTextAndRestoresSource`:
   1/1; соседние alignment/numbering сценарии — 3/3.
 - [x] Повторить `MarkdownLayoutTests` после alignment-исправления: 120 тестов,
@@ -254,9 +256,14 @@ macOS: 0 ошибок, 0 предупреждений, 0 пропусков GUI-
   109 passed, 11 failed, 0 skipped, 0 not run.
 - [x] Закрыть повторный рендер Ruby после смены метрик/appearance: основной
   сценарий 1/1; соседние Ruby-сценарии сохраняют результат 2/2.
+- [x] Повторить `MarkdownLayoutTests` после Ruby-исправления: 120 тестов,
+  110 passed, 10 failed, 0 skipped, 0 not run.
 - [ ] Повторить целиком `MarkdownAudioInteractionTests` и
   `MarkdownClipboardInteractionTests` после закрытия известных кластеров.
-- [ ] После адресных исправлений выполнить единый непрерывный `RunAllTests`.
+- [ ] После последнего исправления
+  `testParagraphSpacingReplacesBlankSeparatorAndRevealsSource` выполнить
+  единый непрерывный `RunAllTests`, дождаться штатного завершения и затем
+  устранить все обнаруженные ошибки и предупреждения до чистого прогона.
 
 - `MarkdownElementPathTests`: 22/22.
 - `MarkdownFootnoteTests`: 9/9.

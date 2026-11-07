@@ -630,8 +630,9 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
 - `testParagraphSpacingReplacesBlankSeparatorAndRevealsSource`: direct-вызов
   delegate возвращает ожидаемые 40 pt, но повторная раскладка сохраняет 0 pt;
   перестановка invalidation и `textContainerChangedGeometry` не помогли,
-  изменения отменены. Дальнейшее расследование этого теста отложено по
-  указанию пользователя, без добавления `XCTSkip`.
+  изменения отменены. По указанию пользователя этот тест закрывается последним
+  среди известных адресных падений, без добавления `XCTSkip`; сразу после его
+  исправления и контрольных адресных проверок начинается полный `RunAllTests`.
 - Исправлено восстановление paragraph style после chunk-refresh:
   `paragraphStylesDidChange` восстанавливает исходные alignment/direction/
   indent и повторно применяет Markdown alignment ко всему изменённому chunk,
@@ -668,6 +669,9 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
   создаются для ранее отрисованных диапазонов даже при временно недоступном
   viewport. Основной тест проходит 1/1 (`E0FF32BC-6446-48BD-9409-1E0052B6BFF3.txt`),
   два соседних Ruby-сценария также проходят.
+- Повтор `MarkdownLayoutTests` после Ruby-исправления: 120 тестов,
+  110 passed, 10 failed, 0 skipped, 0 not run. Отчёт Xcode:
+  `9ED1375A-3EB2-463D-ACEA-573505F3D640.txt`.
 
 - `BuildProject(buildForTesting: true)` проходит; журнал Xcode содержит
   0 ошибок и 0 предупреждений.
