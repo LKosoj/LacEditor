@@ -79,10 +79,11 @@ final class MarkdownEditRoundTripTests: XCTestCase {
 
     private func finish(_ editor: Editor) { editor.coordinator.updateActivity(false); editor.window.close() }
 
-    /// Ждёт, пока Writing Tools получит карту текста (то есть готов разбор Markdown).
+    /// Ждёт готовый разбор Markdown: модель документа текущей версии (у текста без разметки защищённых диапазонов нет).
     private func waitForParse(_ editor: Editor, _ message: String = "") async throws {
-        for _ in 0..<30 where editor.ignoredRanges().isEmpty { try await Task.sleep(for: .milliseconds(100)) }
-        XCTAssertFalse(editor.ignoredRanges().isEmpty, "\(message): разбор Markdown не успел завершиться")
+        func parsed() -> Bool { editor.document.markdownModel(forRevision: editor.document.textRevision) != nil }
+        for _ in 0..<30 where !parsed() { try await Task.sleep(for: .milliseconds(100)) }
+        XCTAssertTrue(parsed(), "\(message): разбор Markdown не успел завершиться")
     }
 
     /// Сравнение по UTF-16 без огромного diff в отчёте.
@@ -403,6 +404,11 @@ final class MarkdownEditRoundTripTests: XCTestCase {
                 editor.format(item.command)
                 let first = editor.fileText()
                 XCTAssertFalse(first.utf16.elementsEqual(item.source.utf16), "\(name)/первое применение меняет текст")
+                // Две команды подряд - два нажатия: UndoManager (groupsByEvent) склеивает всё за один проход цикла событий
+                // в одну запись, поэтому ждём закрытия группы этого прохода.
+                let undoBetween = try XCTUnwrap(editor.undo, name)
+                for _ in 0..<30 where undoBetween.groupingLevel != 0 { try await Task.sleep(for: .milliseconds(100)) }
+                XCTAssertEqual(undoBetween.groupingLevel, 0, "\(name)/группа отмены первой команды закрыта")
 
                 editor.format(item.command)
                 let second = editor.fileText()

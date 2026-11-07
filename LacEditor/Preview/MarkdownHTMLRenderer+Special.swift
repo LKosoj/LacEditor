@@ -176,7 +176,13 @@ extension MarkdownHTMLRenderer {
     static func writeSpecialInline(_ node: MarkdownInlineNode, _ w: Writer) {
         switch node.kind {
         case .underline: writeTagPair(node, open: "<u>", close: "</u>", w)
-        case .keyboard: writeTagPair(node, open: "<kbd>", close: "</kbd>", w)
+        case .keyboard:
+            // В ячейке таблицы предпросмотр оформляет из HTML-пар только `<span style>`, теги `<kbd>` пропускаются (как в старом рендере).
+            if w.media.inTableCell, !w.includeHTMLMedia, node.hasHTMLTagMarker(in: w.text) {
+                w.put(omittedHTMLComment)
+                writeInlines(node.children, w)
+                w.put(omittedHTMLComment)
+            } else { writeTagPair(node, open: "<kbd>", close: "</kbd>", w) }
         case .highlight: writeTagPair(node, open: "<mark>", close: "</mark>", w)
         case .subscriptText: writeTagPair(node, open: "<sub>", close: "</sub>", w)
         case .superscriptText: writeTagPair(node, open: "<sup>", close: "</sup>", w)

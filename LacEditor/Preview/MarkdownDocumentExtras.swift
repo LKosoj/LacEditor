@@ -180,7 +180,7 @@ enum MarkdownDocumentExtras {
     }
 
     /// Верхнеуровневые блоки документа для локального разбора; nil, если границы блоков не подтверждены (тогда локальный разбор не применяется).
-    static func topLevelBlocks(root: OpaquePointer, source: MarkdownSourcePositions, text: NSString, frontMatter: Bool, hasHTML: Bool, readableEnds: [Int]?, readableUnconfirmed: [Bool] = []) -> MarkdownBlockIndex? {
+    static func topLevelBlocks(root: OpaquePointer, source: MarkdownSourcePositions, text: NSString, frontMatter: Bool, hasHTML: Bool, readableEnds: [Int]?, readableUnconfirmed: [Bool] = [], readableDocumentDependent: [Bool] = []) -> MarkdownBlockIndex? {
         func isBlank(_ range: NSRange) -> Bool {
             (range.location..<NSMaxRange(range)).allSatisfy { [32, 9, 10, 13].contains(Int(text.character(at: $0))) }
         }
@@ -218,8 +218,9 @@ enum MarkdownDocumentExtras {
                 if index < readableUnconfirmed.count, readableUnconfirmed[index] { blocks[index].kind = .other }
             }
         }
+        // Блок с неподтверждённым узлом сам получает вид `other`; весь документ запрещён, только если запасной диапазон - весь текст.
         return MarkdownBlockIndex(blocks: blocks, textLength: text.length, hasHTML: hasHTML, hasFrontMatter: frontMatter,
-                                  hasUnconfirmedReadable: readableUnconfirmed.contains(true))
+                                  hasUnconfirmedReadable: readableDocumentDependent.contains(true))
     }
 
     /// Участки верхнего регистра в заголовке: текст заголовка по подтверждённым узлам и стили каждого участка.

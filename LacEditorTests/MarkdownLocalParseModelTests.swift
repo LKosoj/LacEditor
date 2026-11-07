@@ -11,8 +11,6 @@ final class MarkdownLocalParseModelTests: XCTestCase {
         return copy
     }
 
-    // После правимого абзаца идут ограждение и абзац: список или цитата сразу за ядром дают склейке `fenceBlockedEOF` (участок кончается без пустой строки).
-    // Абзацы однострочные: перевод строки внутри абзаца на Linux-стенде даёт «узлы без подтверждённой позиции».
     private func chapters(_ count: Int, heading: (Int) -> String = { "Раздел \($0)" }) -> String {
         (0..<count).map { index in
             "# \(heading(index))\n\nАбзац **жирный** и *курсив* 😀 с `кодом` 中文.\n\n```swift\nlet x = 1\n```\n\nКонец главы.\n\n- пункт\n- [x] задача\n\n> цитата\n\n"

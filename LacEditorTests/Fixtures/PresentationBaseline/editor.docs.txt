@@ -10591,6 +10591,248 @@ elements:
     [5] {range=178+18 kind=codeBlock(nil) parent=-1}
     [6] {range=240+43 kind=codeBlock("json") parent=-1}
   inlines: [{range=204+5 kind=code parent=-1}, {range=212+25 kind=code parent=-1}]
+=== doc/Corpus/corpus-tables
+spans: [{range=0+9 kind=heading(1) markerRanges=[0+2]}]
+headings:
+  [0]
+    level: 1
+    title: "Таблицы"
+    range: 0+9
+    emoji: []
+    displayTitle: nil
+    number: nil
+    plainTextRange: 2+7
+    uppercaseRuns: [{pieces=[{sourceRange=2+7 text="Таблицы" matchesSource=true}] styles=[] emoji=[] attachment=nil}]
+    isTopLevel: true
+namedAnchors: []
+images: []
+diagrams: []
+audioBlocks: []
+iframeBlocks: []
+detailsBlocks: []
+htmlBlocks: []
+pageBreaks: []
+ruby: []
+links: []
+formulas: []
+inlineFormulas: []
+emojiCandidates: []
+emojiCandidatesIncluded: true
+emojiCompletionRanges:
+  [0] 2+7
+  [1] 13+5
+  [2] 21+9
+  [3] 33+6
+  [4] 68+1
+  [5] 72+1
+  [6] 76+1
+  [7] 82+2
+  [8] 87+2
+  [9] 103+4
+  [10] 120+9
+  [11] 130+8
+  [12] 142+27
+  [13] 173+1
+  [14] 177+1
+  [15] 193+1
+  [16] 199+1
+  [17] 203+1
+smartTextRanges:
+  [0] 2+7
+  [1] 13+5
+  [2] 21+9
+  [3] 33+6
+  [4] 68+1
+  [5] 72+1
+  [6] 76+1
+  [7] 82+2
+  [8] 87+2
+  [9] 103+4
+  [10] 120+9
+  [11] 130+8
+  [12] 142+27
+  [13] 173+1
+  [14] 177+1
+  [15] 193+1
+  [16] 199+1
+  [17] 203+1
+smartRawHTMLRanges: []
+textReplacements: []
+paragraphs: [{range=142+28 lastLine=142+28 separatorAfter=nil}]
+completedTaskRanges: []
+taskCheckboxes: []
+listMarkers: []
+looseIndents: []
+footnotes: []
+tableOfContents: []
+tables:
+  [0]
+    range: 11+88
+    delimiterRange: 42+23
+    alignments: [left, center, right]
+    rows:
+      [0]
+        range: 11+30
+        cells:
+          [0] {range=12+7 column=0 virtualSeparators=0 displayText="Левый" displayRuns=[]}
+          [1] {range=20+11 column=1 virtualSeparators=0 displayText="По центру" displayRuns=[]}
+          [2] {range=32+8 column=2 virtualSeparators=0 displayText="Правый" displayRuns=[]}
+      [1]
+        range: 66+13
+        cells:
+          [0] {range=67+3 column=0 virtualSeparators=0 displayText="а" displayRuns=[]}
+          [1] {range=71+3 column=1 virtualSeparators=0 displayText="б" displayRuns=[]}
+          [2] {range=75+3 column=2 virtualSeparators=0 displayText="в" displayRuns=[]}
+      [2]
+        range: 80+19
+        cells:
+          [0] {range=81+4 column=0 virtualSeparators=0 displayText="中文" displayRuns=[]}
+          [1] {range=86+4 column=1 virtualSeparators=0 displayText="😀" displayRuns=[]}
+          [2]
+            range: 91+7
+            column: 2
+            virtualSeparators: 0
+            displayText: "код"
+            displayRuns: [{range=0+3 kind=code sourceRange=nil}]
+    containerPrefix: ""
+    quoteDepth: 0
+    nestedList: false
+    referenceLabels: []
+  [1]
+    range: 101+39
+    delimiterRange: 110+7
+    alignments: [unspecified]
+    rows:
+      [0] {range=101+8 cells=[{range=102+6 column=0 virtualSeparators=0 displayText="Один" displayRuns=[]}]}
+      [1]
+        range: 118+22
+        cells: [{range=119+20 column=0 virtualSeparators=0 displayText="ячейка с | чертой" displayRuns=[]}]
+    containerPrefix: ""
+    quoteDepth: 0
+    nestedList: false
+    referenceLabels: []
+  [2]
+    range: 171+39
+    delimiterRange: 181+9
+    alignments: [unspecified, unspecified]
+    rows:
+      [0]
+        range: 171+9
+        cells:
+          [0] {range=172+3 column=0 virtualSeparators=0 displayText="a" displayRuns=[]}
+          [1] {range=176+3 column=1 virtualSeparators=0 displayText="b" displayRuns=[]}
+      [1]
+        range: 191+5
+        cells:
+          [0] {range=192+3 column=0 virtualSeparators=0 displayText="1" displayRuns=[]}
+          [1] {range=195+0 column=1 virtualSeparators=1 displayText="" displayRuns=[]}
+      [2]
+        range: 197+13
+        cells:
+          [0] {range=198+3 column=0 virtualSeparators=0 displayText="1" displayRuns=[]}
+          [1] {range=202+3 column=1 virtualSeparators=0 displayText="2" displayRuns=[]}
+    containerPrefix: ""
+    quoteDepth: 0
+    nestedList: false
+    referenceLabels: []
+codeBlocks: []
+fenceContainerLines: []
+fenceBlockedRanges: [11+89, 101+40, 171+40]
+fenceBlockedEOF: true
+fenceContextAvailable: true
+readableText:
+  sourceLength: 211
+  fragments:
+    [0] {sourceRange=0+0 text="\n" matchesSource=false pieces=nil}
+    [1] {sourceRange=2+7 text="Таблицы" matchesSource=true pieces=nil}
+    [2] {sourceRange=9+0 text="\n" matchesSource=false pieces=nil}
+    [3] {sourceRange=11+0 text="\n" matchesSource=false pieces=nil}
+    [4] {sourceRange=12+0 text="\n" matchesSource=false pieces=nil}
+    [5] {sourceRange=13+5 text="Левый" matchesSource=true pieces=nil}
+    [6] {sourceRange=19+0 text="\n" matchesSource=false pieces=nil}
+    [7] {sourceRange=20+0 text="\n" matchesSource=false pieces=nil}
+    [8] {sourceRange=21+9 text="По центру" matchesSource=true pieces=nil}
+    [9] {sourceRange=31+0 text="\n" matchesSource=false pieces=nil}
+    [10] {sourceRange=32+0 text="\n" matchesSource=false pieces=nil}
+    [11] {sourceRange=33+6 text="Правый" matchesSource=true pieces=nil}
+    [12] {sourceRange=40+0 text="\n" matchesSource=false pieces=nil}
+    [13] {sourceRange=41+0 text="\n" matchesSource=false pieces=nil}
+    [14] {sourceRange=66+0 text="\n" matchesSource=false pieces=nil}
+    [15] {sourceRange=67+0 text="\n" matchesSource=false pieces=nil}
+    [16] {sourceRange=68+1 text="а" matchesSource=true pieces=nil}
+    [17] {sourceRange=70+0 text="\n" matchesSource=false pieces=nil}
+    [18] {sourceRange=71+0 text="\n" matchesSource=false pieces=nil}
+    [19] {sourceRange=72+1 text="б" matchesSource=true pieces=nil}
+    [20] {sourceRange=74+0 text="\n" matchesSource=false pieces=nil}
+    [21] {sourceRange=75+0 text="\n" matchesSource=false pieces=nil}
+    [22] {sourceRange=76+1 text="в" matchesSource=true pieces=nil}
+    [23] {sourceRange=78+0 text="\n" matchesSource=false pieces=nil}
+    [24] {sourceRange=79+0 text="\n" matchesSource=false pieces=nil}
+    [25] {sourceRange=80+0 text="\n" matchesSource=false pieces=nil}
+    [26] {sourceRange=81+0 text="\n" matchesSource=false pieces=nil}
+    [27] {sourceRange=82+2 text="中文" matchesSource=true pieces=nil}
+    [28] {sourceRange=85+0 text="\n" matchesSource=false pieces=nil}
+    [29] {sourceRange=86+0 text="\n" matchesSource=false pieces=nil}
+    [30] {sourceRange=87+2 text="😀" matchesSource=true pieces=nil}
+    [31] {sourceRange=90+0 text="\n" matchesSource=false pieces=nil}
+    [32] {sourceRange=91+0 text="\n" matchesSource=false pieces=nil}
+    [33] {sourceRange=93+3 text="код" matchesSource=true pieces=nil}
+    [34] {sourceRange=98+0 text="\n" matchesSource=false pieces=nil}
+    [35] {sourceRange=99+0 text="\n" matchesSource=false pieces=nil}
+    [36] {sourceRange=101+0 text="\n" matchesSource=false pieces=nil}
+    [37] {sourceRange=102+0 text="\n" matchesSource=false pieces=nil}
+    [38] {sourceRange=103+4 text="Один" matchesSource=true pieces=nil}
+    [39] {sourceRange=108+0 text="\n" matchesSource=false pieces=nil}
+    [40] {sourceRange=109+0 text="\n" matchesSource=false pieces=nil}
+    [41] {sourceRange=118+0 text="\n" matchesSource=false pieces=nil}
+    [42] {sourceRange=119+0 text="\n" matchesSource=false pieces=nil}
+    [43]
+      sourceRange: 120+18
+      text: "ячейка с | чертой"
+      matchesSource: false
+      pieces:
+        [0] {sourceRange=120+9 text="ячейка с " matchesSource=true}
+        [1] {sourceRange=130+8 text="| чертой" matchesSource=true}
+    [44] {sourceRange=139+0 text="\n" matchesSource=false pieces=nil}
+    [45] {sourceRange=140+0 text="\n" matchesSource=false pieces=nil}
+    [46] {sourceRange=142+0 text="\n" matchesSource=false pieces=nil}
+    [47] {sourceRange=142+27 text="Таблица с рваными строками:" matchesSource=true pieces=nil}
+    [48] {sourceRange=169+0 text="\n" matchesSource=false pieces=nil}
+    [49] {sourceRange=171+0 text="\n" matchesSource=false pieces=nil}
+    [50] {sourceRange=172+0 text="\n" matchesSource=false pieces=nil}
+    [51] {sourceRange=173+1 text="a" matchesSource=true pieces=nil}
+    [52] {sourceRange=175+0 text="\n" matchesSource=false pieces=nil}
+    [53] {sourceRange=176+0 text="\n" matchesSource=false pieces=nil}
+    [54] {sourceRange=177+1 text="b" matchesSource=true pieces=nil}
+    [55] {sourceRange=179+0 text="\n" matchesSource=false pieces=nil}
+    [56] {sourceRange=180+0 text="\n" matchesSource=false pieces=nil}
+    [57] {sourceRange=191+0 text="\n" matchesSource=false pieces=nil}
+    [58] {sourceRange=192+0 text="\n" matchesSource=false pieces=nil}
+    [59] {sourceRange=193+1 text="1" matchesSource=true pieces=nil}
+    [60] {sourceRange=195+0 text="\n" matchesSource=false pieces=nil}
+    [61] {sourceRange=191+0 text="\n" matchesSource=false pieces=nil}
+    [62] {sourceRange=196+0 text="\n" matchesSource=false pieces=nil}
+    [63] {sourceRange=196+0 text="\n" matchesSource=false pieces=nil}
+    [64] {sourceRange=197+0 text="\n" matchesSource=false pieces=nil}
+    [65] {sourceRange=198+0 text="\n" matchesSource=false pieces=nil}
+    [66] {sourceRange=199+1 text="1" matchesSource=true pieces=nil}
+    [67] {sourceRange=201+0 text="\n" matchesSource=false pieces=nil}
+    [68] {sourceRange=202+0 text="\n" matchesSource=false pieces=nil}
+    [69] {sourceRange=203+1 text="2" matchesSource=true pieces=nil}
+    [70] {sourceRange=205+0 text="\n" matchesSource=false pieces=nil}
+    [71] {sourceRange=210+0 text="\n" matchesSource=false pieces=nil}
+  unsupportedRanges: []
+wikiLinks: []
+unreliableRanges: []
+elements:
+  textLength: 211
+  endsWithLineBreak: true
+  blocks:
+    [0] {range=0+10 kind=heading(1) parent=-1}
+    [1] {range=11+89 kind=table parent=-1}
+    [2] {range=101+40 kind=table parent=-1}
+    [3] {range=171+40 kind=table parent=-1}
+  inlines: []
 === doc/Corpus/critic
 spans:
   [0] {range=0+21 kind=heading(1) markerRanges=[0+2]}
@@ -13612,248 +13854,6 @@ readableText:
 wikiLinks: []
 unreliableRanges: []
 elements: {textLength=98 endsWithLineBreak=true blocks=[{range=0+13 kind=heading(1) parent=-1}] inlines=[]}
-=== doc/Corpus/corpus-tables
-spans: [{range=0+9 kind=heading(1) markerRanges=[0+2]}]
-headings:
-  [0]
-    level: 1
-    title: "Таблицы"
-    range: 0+9
-    emoji: []
-    displayTitle: nil
-    number: nil
-    plainTextRange: 2+7
-    uppercaseRuns: [{pieces=[{sourceRange=2+7 text="Таблицы" matchesSource=true}] styles=[] emoji=[] attachment=nil}]
-    isTopLevel: true
-namedAnchors: []
-images: []
-diagrams: []
-audioBlocks: []
-iframeBlocks: []
-detailsBlocks: []
-htmlBlocks: []
-pageBreaks: []
-ruby: []
-links: []
-formulas: []
-inlineFormulas: []
-emojiCandidates: []
-emojiCandidatesIncluded: true
-emojiCompletionRanges:
-  [0] 2+7
-  [1] 13+5
-  [2] 21+9
-  [3] 33+6
-  [4] 68+1
-  [5] 72+1
-  [6] 76+1
-  [7] 82+2
-  [8] 87+2
-  [9] 103+4
-  [10] 120+9
-  [11] 130+8
-  [12] 142+27
-  [13] 173+1
-  [14] 177+1
-  [15] 193+1
-  [16] 199+1
-  [17] 203+1
-smartTextRanges:
-  [0] 2+7
-  [1] 13+5
-  [2] 21+9
-  [3] 33+6
-  [4] 68+1
-  [5] 72+1
-  [6] 76+1
-  [7] 82+2
-  [8] 87+2
-  [9] 103+4
-  [10] 120+9
-  [11] 130+8
-  [12] 142+27
-  [13] 173+1
-  [14] 177+1
-  [15] 193+1
-  [16] 199+1
-  [17] 203+1
-smartRawHTMLRanges: []
-textReplacements: []
-paragraphs: [{range=142+28 lastLine=142+28 separatorAfter=nil}]
-completedTaskRanges: []
-taskCheckboxes: []
-listMarkers: []
-looseIndents: []
-footnotes: []
-tableOfContents: []
-tables:
-  [0]
-    range: 11+88
-    delimiterRange: 42+23
-    alignments: [left, center, right]
-    rows:
-      [0]
-        range: 11+30
-        cells:
-          [0] {range=12+7 column=0 virtualSeparators=0 displayText="Левый" displayRuns=[]}
-          [1] {range=20+11 column=1 virtualSeparators=0 displayText="По центру" displayRuns=[]}
-          [2] {range=32+8 column=2 virtualSeparators=0 displayText="Правый" displayRuns=[]}
-      [1]
-        range: 66+13
-        cells:
-          [0] {range=67+3 column=0 virtualSeparators=0 displayText="а" displayRuns=[]}
-          [1] {range=71+3 column=1 virtualSeparators=0 displayText="б" displayRuns=[]}
-          [2] {range=75+3 column=2 virtualSeparators=0 displayText="в" displayRuns=[]}
-      [2]
-        range: 80+19
-        cells:
-          [0] {range=81+4 column=0 virtualSeparators=0 displayText="中文" displayRuns=[]}
-          [1] {range=86+4 column=1 virtualSeparators=0 displayText="😀" displayRuns=[]}
-          [2]
-            range: 91+7
-            column: 2
-            virtualSeparators: 0
-            displayText: "код"
-            displayRuns: [{range=0+3 kind=code sourceRange=nil}]
-    containerPrefix: ""
-    quoteDepth: 0
-    nestedList: false
-    referenceLabels: []
-  [1]
-    range: 101+39
-    delimiterRange: 110+7
-    alignments: [unspecified]
-    rows:
-      [0] {range=101+8 cells=[{range=102+6 column=0 virtualSeparators=0 displayText="Один" displayRuns=[]}]}
-      [1]
-        range: 118+22
-        cells: [{range=119+20 column=0 virtualSeparators=0 displayText="ячейка с | чертой" displayRuns=[]}]
-    containerPrefix: ""
-    quoteDepth: 0
-    nestedList: false
-    referenceLabels: []
-  [2]
-    range: 171+39
-    delimiterRange: 181+9
-    alignments: [unspecified, unspecified]
-    rows:
-      [0]
-        range: 171+9
-        cells:
-          [0] {range=172+3 column=0 virtualSeparators=0 displayText="a" displayRuns=[]}
-          [1] {range=176+3 column=1 virtualSeparators=0 displayText="b" displayRuns=[]}
-      [1]
-        range: 191+5
-        cells:
-          [0] {range=192+3 column=0 virtualSeparators=0 displayText="1" displayRuns=[]}
-          [1] {range=195+0 column=1 virtualSeparators=1 displayText="" displayRuns=[]}
-      [2]
-        range: 197+13
-        cells:
-          [0] {range=198+3 column=0 virtualSeparators=0 displayText="1" displayRuns=[]}
-          [1] {range=202+3 column=1 virtualSeparators=0 displayText="2" displayRuns=[]}
-    containerPrefix: ""
-    quoteDepth: 0
-    nestedList: false
-    referenceLabels: []
-codeBlocks: []
-fenceContainerLines: []
-fenceBlockedRanges: [11+89, 101+40, 171+40]
-fenceBlockedEOF: true
-fenceContextAvailable: true
-readableText:
-  sourceLength: 211
-  fragments:
-    [0] {sourceRange=0+0 text="\n" matchesSource=false pieces=nil}
-    [1] {sourceRange=2+7 text="Таблицы" matchesSource=true pieces=nil}
-    [2] {sourceRange=9+0 text="\n" matchesSource=false pieces=nil}
-    [3] {sourceRange=11+0 text="\n" matchesSource=false pieces=nil}
-    [4] {sourceRange=12+0 text="\n" matchesSource=false pieces=nil}
-    [5] {sourceRange=13+5 text="Левый" matchesSource=true pieces=nil}
-    [6] {sourceRange=19+0 text="\n" matchesSource=false pieces=nil}
-    [7] {sourceRange=20+0 text="\n" matchesSource=false pieces=nil}
-    [8] {sourceRange=21+9 text="По центру" matchesSource=true pieces=nil}
-    [9] {sourceRange=31+0 text="\n" matchesSource=false pieces=nil}
-    [10] {sourceRange=32+0 text="\n" matchesSource=false pieces=nil}
-    [11] {sourceRange=33+6 text="Правый" matchesSource=true pieces=nil}
-    [12] {sourceRange=40+0 text="\n" matchesSource=false pieces=nil}
-    [13] {sourceRange=41+0 text="\n" matchesSource=false pieces=nil}
-    [14] {sourceRange=66+0 text="\n" matchesSource=false pieces=nil}
-    [15] {sourceRange=67+0 text="\n" matchesSource=false pieces=nil}
-    [16] {sourceRange=68+1 text="а" matchesSource=true pieces=nil}
-    [17] {sourceRange=70+0 text="\n" matchesSource=false pieces=nil}
-    [18] {sourceRange=71+0 text="\n" matchesSource=false pieces=nil}
-    [19] {sourceRange=72+1 text="б" matchesSource=true pieces=nil}
-    [20] {sourceRange=74+0 text="\n" matchesSource=false pieces=nil}
-    [21] {sourceRange=75+0 text="\n" matchesSource=false pieces=nil}
-    [22] {sourceRange=76+1 text="в" matchesSource=true pieces=nil}
-    [23] {sourceRange=78+0 text="\n" matchesSource=false pieces=nil}
-    [24] {sourceRange=79+0 text="\n" matchesSource=false pieces=nil}
-    [25] {sourceRange=80+0 text="\n" matchesSource=false pieces=nil}
-    [26] {sourceRange=81+0 text="\n" matchesSource=false pieces=nil}
-    [27] {sourceRange=82+2 text="中文" matchesSource=true pieces=nil}
-    [28] {sourceRange=85+0 text="\n" matchesSource=false pieces=nil}
-    [29] {sourceRange=86+0 text="\n" matchesSource=false pieces=nil}
-    [30] {sourceRange=87+2 text="😀" matchesSource=true pieces=nil}
-    [31] {sourceRange=90+0 text="\n" matchesSource=false pieces=nil}
-    [32] {sourceRange=91+0 text="\n" matchesSource=false pieces=nil}
-    [33] {sourceRange=93+3 text="код" matchesSource=true pieces=nil}
-    [34] {sourceRange=98+0 text="\n" matchesSource=false pieces=nil}
-    [35] {sourceRange=99+0 text="\n" matchesSource=false pieces=nil}
-    [36] {sourceRange=101+0 text="\n" matchesSource=false pieces=nil}
-    [37] {sourceRange=102+0 text="\n" matchesSource=false pieces=nil}
-    [38] {sourceRange=103+4 text="Один" matchesSource=true pieces=nil}
-    [39] {sourceRange=108+0 text="\n" matchesSource=false pieces=nil}
-    [40] {sourceRange=109+0 text="\n" matchesSource=false pieces=nil}
-    [41] {sourceRange=118+0 text="\n" matchesSource=false pieces=nil}
-    [42] {sourceRange=119+0 text="\n" matchesSource=false pieces=nil}
-    [43]
-      sourceRange: 120+18
-      text: "ячейка с | чертой"
-      matchesSource: false
-      pieces:
-        [0] {sourceRange=120+9 text="ячейка с " matchesSource=true}
-        [1] {sourceRange=130+8 text="| чертой" matchesSource=true}
-    [44] {sourceRange=139+0 text="\n" matchesSource=false pieces=nil}
-    [45] {sourceRange=140+0 text="\n" matchesSource=false pieces=nil}
-    [46] {sourceRange=142+0 text="\n" matchesSource=false pieces=nil}
-    [47] {sourceRange=142+27 text="Таблица с рваными строками:" matchesSource=true pieces=nil}
-    [48] {sourceRange=169+0 text="\n" matchesSource=false pieces=nil}
-    [49] {sourceRange=171+0 text="\n" matchesSource=false pieces=nil}
-    [50] {sourceRange=172+0 text="\n" matchesSource=false pieces=nil}
-    [51] {sourceRange=173+1 text="a" matchesSource=true pieces=nil}
-    [52] {sourceRange=175+0 text="\n" matchesSource=false pieces=nil}
-    [53] {sourceRange=176+0 text="\n" matchesSource=false pieces=nil}
-    [54] {sourceRange=177+1 text="b" matchesSource=true pieces=nil}
-    [55] {sourceRange=179+0 text="\n" matchesSource=false pieces=nil}
-    [56] {sourceRange=180+0 text="\n" matchesSource=false pieces=nil}
-    [57] {sourceRange=191+0 text="\n" matchesSource=false pieces=nil}
-    [58] {sourceRange=192+0 text="\n" matchesSource=false pieces=nil}
-    [59] {sourceRange=193+1 text="1" matchesSource=true pieces=nil}
-    [60] {sourceRange=195+0 text="\n" matchesSource=false pieces=nil}
-    [61] {sourceRange=191+0 text="\n" matchesSource=false pieces=nil}
-    [62] {sourceRange=196+0 text="\n" matchesSource=false pieces=nil}
-    [63] {sourceRange=196+0 text="\n" matchesSource=false pieces=nil}
-    [64] {sourceRange=197+0 text="\n" matchesSource=false pieces=nil}
-    [65] {sourceRange=198+0 text="\n" matchesSource=false pieces=nil}
-    [66] {sourceRange=199+1 text="1" matchesSource=true pieces=nil}
-    [67] {sourceRange=201+0 text="\n" matchesSource=false pieces=nil}
-    [68] {sourceRange=202+0 text="\n" matchesSource=false pieces=nil}
-    [69] {sourceRange=203+1 text="2" matchesSource=true pieces=nil}
-    [70] {sourceRange=205+0 text="\n" matchesSource=false pieces=nil}
-    [71] {sourceRange=210+0 text="\n" matchesSource=false pieces=nil}
-  unsupportedRanges: []
-wikiLinks: []
-unreliableRanges: []
-elements:
-  textLength: 211
-  endsWithLineBreak: true
-  blocks:
-    [0] {range=0+10 kind=heading(1) parent=-1}
-    [1] {range=11+89 kind=table parent=-1}
-    [2] {range=101+40 kind=table parent=-1}
-    [3] {range=171+40 kind=table parent=-1}
-  inlines: []
 === doc/Corpus/tasks
 spans: [{range=0+8 kind=heading(1) markerRanges=[0+2]}]
 headings:
@@ -25292,6 +25292,248 @@ elements:
     [5] {range=200+19 kind=codeBlock(nil) parent=-1}
     [6] {range=266+46 kind=codeBlock("json") parent=-1}
   inlines: [{range=228+5 kind=code parent=-1}, {range=236+25 kind=code parent=-1}]
+=== doc/Corpus/corpus-tables[crlf]
+spans: [{range=0+9 kind=heading(1) markerRanges=[0+2]}]
+headings:
+  [0]
+    level: 1
+    title: "Таблицы"
+    range: 0+9
+    emoji: []
+    displayTitle: nil
+    number: nil
+    plainTextRange: 2+7
+    uppercaseRuns: [{pieces=[{sourceRange=2+7 text="Таблицы" matchesSource=true}] styles=[] emoji=[] attachment=nil}]
+    isTopLevel: true
+namedAnchors: []
+images: []
+diagrams: []
+audioBlocks: []
+iframeBlocks: []
+detailsBlocks: []
+htmlBlocks: []
+pageBreaks: []
+ruby: []
+links: []
+formulas: []
+inlineFormulas: []
+emojiCandidates: []
+emojiCandidatesIncluded: true
+emojiCompletionRanges:
+  [0] 2+7
+  [1] 15+5
+  [2] 23+9
+  [3] 35+6
+  [4] 72+1
+  [5] 76+1
+  [6] 80+1
+  [7] 87+2
+  [8] 92+2
+  [9] 110+4
+  [10] 129+9
+  [11] 139+8
+  [12] 153+27
+  [13] 186+1
+  [14] 190+1
+  [15] 208+1
+  [16] 215+1
+  [17] 219+1
+smartTextRanges:
+  [0] 2+7
+  [1] 15+5
+  [2] 23+9
+  [3] 35+6
+  [4] 72+1
+  [5] 76+1
+  [6] 80+1
+  [7] 87+2
+  [8] 92+2
+  [9] 110+4
+  [10] 129+9
+  [11] 139+8
+  [12] 153+27
+  [13] 186+1
+  [14] 190+1
+  [15] 208+1
+  [16] 215+1
+  [17] 219+1
+smartRawHTMLRanges: []
+textReplacements: []
+paragraphs: [{range=153+29 lastLine=153+29 separatorAfter=nil}]
+completedTaskRanges: []
+taskCheckboxes: []
+listMarkers: []
+looseIndents: []
+footnotes: []
+tableOfContents: []
+tables:
+  [0]
+    range: 13+91
+    delimiterRange: 45+23
+    alignments: [left, center, right]
+    rows:
+      [0]
+        range: 13+30
+        cells:
+          [0] {range=14+7 column=0 virtualSeparators=0 displayText="Левый" displayRuns=[]}
+          [1] {range=22+11 column=1 virtualSeparators=0 displayText="По центру" displayRuns=[]}
+          [2] {range=34+8 column=2 virtualSeparators=0 displayText="Правый" displayRuns=[]}
+      [1]
+        range: 70+13
+        cells:
+          [0] {range=71+3 column=0 virtualSeparators=0 displayText="а" displayRuns=[]}
+          [1] {range=75+3 column=1 virtualSeparators=0 displayText="б" displayRuns=[]}
+          [2] {range=79+3 column=2 virtualSeparators=0 displayText="в" displayRuns=[]}
+      [2]
+        range: 85+19
+        cells:
+          [0] {range=86+4 column=0 virtualSeparators=0 displayText="中文" displayRuns=[]}
+          [1] {range=91+4 column=1 virtualSeparators=0 displayText="😀" displayRuns=[]}
+          [2]
+            range: 96+7
+            column: 2
+            virtualSeparators: 0
+            displayText: "код"
+            displayRuns: [{range=0+3 kind=code sourceRange=nil}]
+    containerPrefix: ""
+    quoteDepth: 0
+    nestedList: false
+    referenceLabels: []
+  [1]
+    range: 108+41
+    delimiterRange: 118+7
+    alignments: [unspecified]
+    rows:
+      [0] {range=108+8 cells=[{range=109+6 column=0 virtualSeparators=0 displayText="Один" displayRuns=[]}]}
+      [1]
+        range: 127+22
+        cells: [{range=128+20 column=0 virtualSeparators=0 displayText="ячейка с | чертой" displayRuns=[]}]
+    containerPrefix: ""
+    quoteDepth: 0
+    nestedList: false
+    referenceLabels: []
+  [2]
+    range: 184+42
+    delimiterRange: 195+9
+    alignments: [unspecified, unspecified]
+    rows:
+      [0]
+        range: 184+9
+        cells:
+          [0] {range=185+3 column=0 virtualSeparators=0 displayText="a" displayRuns=[]}
+          [1] {range=189+3 column=1 virtualSeparators=0 displayText="b" displayRuns=[]}
+      [1]
+        range: 206+5
+        cells:
+          [0] {range=207+3 column=0 virtualSeparators=0 displayText="1" displayRuns=[]}
+          [1] {range=210+0 column=1 virtualSeparators=1 displayText="" displayRuns=[]}
+      [2]
+        range: 213+13
+        cells:
+          [0] {range=214+3 column=0 virtualSeparators=0 displayText="1" displayRuns=[]}
+          [1] {range=218+3 column=1 virtualSeparators=0 displayText="2" displayRuns=[]}
+    containerPrefix: ""
+    quoteDepth: 0
+    nestedList: false
+    referenceLabels: []
+codeBlocks: []
+fenceContainerLines: []
+fenceBlockedRanges: [13+93, 108+43, 184+44]
+fenceBlockedEOF: true
+fenceContextAvailable: true
+readableText:
+  sourceLength: 228
+  fragments:
+    [0] {sourceRange=0+0 text="\n" matchesSource=false pieces=nil}
+    [1] {sourceRange=2+7 text="Таблицы" matchesSource=true pieces=nil}
+    [2] {sourceRange=9+0 text="\n" matchesSource=false pieces=nil}
+    [3] {sourceRange=13+0 text="\n" matchesSource=false pieces=nil}
+    [4] {sourceRange=14+0 text="\n" matchesSource=false pieces=nil}
+    [5] {sourceRange=15+5 text="Левый" matchesSource=true pieces=nil}
+    [6] {sourceRange=21+0 text="\n" matchesSource=false pieces=nil}
+    [7] {sourceRange=22+0 text="\n" matchesSource=false pieces=nil}
+    [8] {sourceRange=23+9 text="По центру" matchesSource=true pieces=nil}
+    [9] {sourceRange=33+0 text="\n" matchesSource=false pieces=nil}
+    [10] {sourceRange=34+0 text="\n" matchesSource=false pieces=nil}
+    [11] {sourceRange=35+6 text="Правый" matchesSource=true pieces=nil}
+    [12] {sourceRange=42+0 text="\n" matchesSource=false pieces=nil}
+    [13] {sourceRange=43+0 text="\n" matchesSource=false pieces=nil}
+    [14] {sourceRange=70+0 text="\n" matchesSource=false pieces=nil}
+    [15] {sourceRange=71+0 text="\n" matchesSource=false pieces=nil}
+    [16] {sourceRange=72+1 text="а" matchesSource=true pieces=nil}
+    [17] {sourceRange=74+0 text="\n" matchesSource=false pieces=nil}
+    [18] {sourceRange=75+0 text="\n" matchesSource=false pieces=nil}
+    [19] {sourceRange=76+1 text="б" matchesSource=true pieces=nil}
+    [20] {sourceRange=78+0 text="\n" matchesSource=false pieces=nil}
+    [21] {sourceRange=79+0 text="\n" matchesSource=false pieces=nil}
+    [22] {sourceRange=80+1 text="в" matchesSource=true pieces=nil}
+    [23] {sourceRange=82+0 text="\n" matchesSource=false pieces=nil}
+    [24] {sourceRange=83+0 text="\n" matchesSource=false pieces=nil}
+    [25] {sourceRange=85+0 text="\n" matchesSource=false pieces=nil}
+    [26] {sourceRange=86+0 text="\n" matchesSource=false pieces=nil}
+    [27] {sourceRange=87+2 text="中文" matchesSource=true pieces=nil}
+    [28] {sourceRange=90+0 text="\n" matchesSource=false pieces=nil}
+    [29] {sourceRange=91+0 text="\n" matchesSource=false pieces=nil}
+    [30] {sourceRange=92+2 text="😀" matchesSource=true pieces=nil}
+    [31] {sourceRange=95+0 text="\n" matchesSource=false pieces=nil}
+    [32] {sourceRange=96+0 text="\n" matchesSource=false pieces=nil}
+    [33] {sourceRange=98+3 text="код" matchesSource=true pieces=nil}
+    [34] {sourceRange=103+0 text="\n" matchesSource=false pieces=nil}
+    [35] {sourceRange=104+0 text="\n" matchesSource=false pieces=nil}
+    [36] {sourceRange=108+0 text="\n" matchesSource=false pieces=nil}
+    [37] {sourceRange=109+0 text="\n" matchesSource=false pieces=nil}
+    [38] {sourceRange=110+4 text="Один" matchesSource=true pieces=nil}
+    [39] {sourceRange=115+0 text="\n" matchesSource=false pieces=nil}
+    [40] {sourceRange=116+0 text="\n" matchesSource=false pieces=nil}
+    [41] {sourceRange=127+0 text="\n" matchesSource=false pieces=nil}
+    [42] {sourceRange=128+0 text="\n" matchesSource=false pieces=nil}
+    [43]
+      sourceRange: 129+18
+      text: "ячейка с | чертой"
+      matchesSource: false
+      pieces:
+        [0] {sourceRange=129+9 text="ячейка с " matchesSource=true}
+        [1] {sourceRange=139+8 text="| чертой" matchesSource=true}
+    [44] {sourceRange=148+0 text="\n" matchesSource=false pieces=nil}
+    [45] {sourceRange=149+0 text="\n" matchesSource=false pieces=nil}
+    [46] {sourceRange=153+0 text="\n" matchesSource=false pieces=nil}
+    [47] {sourceRange=153+27 text="Таблица с рваными строками:" matchesSource=true pieces=nil}
+    [48] {sourceRange=180+0 text="\n" matchesSource=false pieces=nil}
+    [49] {sourceRange=184+0 text="\n" matchesSource=false pieces=nil}
+    [50] {sourceRange=185+0 text="\n" matchesSource=false pieces=nil}
+    [51] {sourceRange=186+1 text="a" matchesSource=true pieces=nil}
+    [52] {sourceRange=188+0 text="\n" matchesSource=false pieces=nil}
+    [53] {sourceRange=189+0 text="\n" matchesSource=false pieces=nil}
+    [54] {sourceRange=190+1 text="b" matchesSource=true pieces=nil}
+    [55] {sourceRange=192+0 text="\n" matchesSource=false pieces=nil}
+    [56] {sourceRange=193+0 text="\n" matchesSource=false pieces=nil}
+    [57] {sourceRange=206+0 text="\n" matchesSource=false pieces=nil}
+    [58] {sourceRange=207+0 text="\n" matchesSource=false pieces=nil}
+    [59] {sourceRange=208+1 text="1" matchesSource=true pieces=nil}
+    [60] {sourceRange=210+0 text="\n" matchesSource=false pieces=nil}
+    [61] {sourceRange=206+0 text="\n" matchesSource=false pieces=nil}
+    [62] {sourceRange=211+0 text="\n" matchesSource=false pieces=nil}
+    [63] {sourceRange=211+0 text="\n" matchesSource=false pieces=nil}
+    [64] {sourceRange=213+0 text="\n" matchesSource=false pieces=nil}
+    [65] {sourceRange=214+0 text="\n" matchesSource=false pieces=nil}
+    [66] {sourceRange=215+1 text="1" matchesSource=true pieces=nil}
+    [67] {sourceRange=217+0 text="\n" matchesSource=false pieces=nil}
+    [68] {sourceRange=218+0 text="\n" matchesSource=false pieces=nil}
+    [69] {sourceRange=219+1 text="2" matchesSource=true pieces=nil}
+    [70] {sourceRange=221+0 text="\n" matchesSource=false pieces=nil}
+    [71] {sourceRange=226+0 text="\n" matchesSource=false pieces=nil}
+  unsupportedRanges: []
+wikiLinks: []
+unreliableRanges: []
+elements:
+  textLength: 228
+  endsWithLineBreak: true
+  blocks:
+    [0] {range=0+11 kind=heading(1) parent=-1}
+    [1] {range=13+93 kind=table parent=-1}
+    [2] {range=108+43 kind=table parent=-1}
+    [3] {range=184+44 kind=table parent=-1}
+  inlines: []
 === doc/Corpus/critic[crlf]
 spans:
   [0] {range=0+21 kind=heading(1) markerRanges=[0+2]}
@@ -28319,248 +28561,6 @@ readableText:
 wikiLinks: []
 unreliableRanges: []
 elements: {textLength=103 endsWithLineBreak=true blocks=[{range=0+14 kind=heading(1) parent=-1}] inlines=[]}
-=== doc/Corpus/corpus-tables[crlf]
-spans: [{range=0+9 kind=heading(1) markerRanges=[0+2]}]
-headings:
-  [0]
-    level: 1
-    title: "Таблицы"
-    range: 0+9
-    emoji: []
-    displayTitle: nil
-    number: nil
-    plainTextRange: 2+7
-    uppercaseRuns: [{pieces=[{sourceRange=2+7 text="Таблицы" matchesSource=true}] styles=[] emoji=[] attachment=nil}]
-    isTopLevel: true
-namedAnchors: []
-images: []
-diagrams: []
-audioBlocks: []
-iframeBlocks: []
-detailsBlocks: []
-htmlBlocks: []
-pageBreaks: []
-ruby: []
-links: []
-formulas: []
-inlineFormulas: []
-emojiCandidates: []
-emojiCandidatesIncluded: true
-emojiCompletionRanges:
-  [0] 2+7
-  [1] 15+5
-  [2] 23+9
-  [3] 35+6
-  [4] 72+1
-  [5] 76+1
-  [6] 80+1
-  [7] 87+2
-  [8] 92+2
-  [9] 110+4
-  [10] 129+9
-  [11] 139+8
-  [12] 153+27
-  [13] 186+1
-  [14] 190+1
-  [15] 208+1
-  [16] 215+1
-  [17] 219+1
-smartTextRanges:
-  [0] 2+7
-  [1] 15+5
-  [2] 23+9
-  [3] 35+6
-  [4] 72+1
-  [5] 76+1
-  [6] 80+1
-  [7] 87+2
-  [8] 92+2
-  [9] 110+4
-  [10] 129+9
-  [11] 139+8
-  [12] 153+27
-  [13] 186+1
-  [14] 190+1
-  [15] 208+1
-  [16] 215+1
-  [17] 219+1
-smartRawHTMLRanges: []
-textReplacements: []
-paragraphs: [{range=153+29 lastLine=153+29 separatorAfter=nil}]
-completedTaskRanges: []
-taskCheckboxes: []
-listMarkers: []
-looseIndents: []
-footnotes: []
-tableOfContents: []
-tables:
-  [0]
-    range: 13+91
-    delimiterRange: 45+23
-    alignments: [left, center, right]
-    rows:
-      [0]
-        range: 13+30
-        cells:
-          [0] {range=14+7 column=0 virtualSeparators=0 displayText="Левый" displayRuns=[]}
-          [1] {range=22+11 column=1 virtualSeparators=0 displayText="По центру" displayRuns=[]}
-          [2] {range=34+8 column=2 virtualSeparators=0 displayText="Правый" displayRuns=[]}
-      [1]
-        range: 70+13
-        cells:
-          [0] {range=71+3 column=0 virtualSeparators=0 displayText="а" displayRuns=[]}
-          [1] {range=75+3 column=1 virtualSeparators=0 displayText="б" displayRuns=[]}
-          [2] {range=79+3 column=2 virtualSeparators=0 displayText="в" displayRuns=[]}
-      [2]
-        range: 85+19
-        cells:
-          [0] {range=86+4 column=0 virtualSeparators=0 displayText="中文" displayRuns=[]}
-          [1] {range=91+4 column=1 virtualSeparators=0 displayText="😀" displayRuns=[]}
-          [2]
-            range: 96+7
-            column: 2
-            virtualSeparators: 0
-            displayText: "код"
-            displayRuns: [{range=0+3 kind=code sourceRange=nil}]
-    containerPrefix: ""
-    quoteDepth: 0
-    nestedList: false
-    referenceLabels: []
-  [1]
-    range: 108+41
-    delimiterRange: 118+7
-    alignments: [unspecified]
-    rows:
-      [0] {range=108+8 cells=[{range=109+6 column=0 virtualSeparators=0 displayText="Один" displayRuns=[]}]}
-      [1]
-        range: 127+22
-        cells: [{range=128+20 column=0 virtualSeparators=0 displayText="ячейка с | чертой" displayRuns=[]}]
-    containerPrefix: ""
-    quoteDepth: 0
-    nestedList: false
-    referenceLabels: []
-  [2]
-    range: 184+42
-    delimiterRange: 195+9
-    alignments: [unspecified, unspecified]
-    rows:
-      [0]
-        range: 184+9
-        cells:
-          [0] {range=185+3 column=0 virtualSeparators=0 displayText="a" displayRuns=[]}
-          [1] {range=189+3 column=1 virtualSeparators=0 displayText="b" displayRuns=[]}
-      [1]
-        range: 206+5
-        cells:
-          [0] {range=207+3 column=0 virtualSeparators=0 displayText="1" displayRuns=[]}
-          [1] {range=210+0 column=1 virtualSeparators=1 displayText="" displayRuns=[]}
-      [2]
-        range: 213+13
-        cells:
-          [0] {range=214+3 column=0 virtualSeparators=0 displayText="1" displayRuns=[]}
-          [1] {range=218+3 column=1 virtualSeparators=0 displayText="2" displayRuns=[]}
-    containerPrefix: ""
-    quoteDepth: 0
-    nestedList: false
-    referenceLabels: []
-codeBlocks: []
-fenceContainerLines: []
-fenceBlockedRanges: [13+93, 108+43, 184+44]
-fenceBlockedEOF: true
-fenceContextAvailable: true
-readableText:
-  sourceLength: 228
-  fragments:
-    [0] {sourceRange=0+0 text="\n" matchesSource=false pieces=nil}
-    [1] {sourceRange=2+7 text="Таблицы" matchesSource=true pieces=nil}
-    [2] {sourceRange=9+0 text="\n" matchesSource=false pieces=nil}
-    [3] {sourceRange=13+0 text="\n" matchesSource=false pieces=nil}
-    [4] {sourceRange=14+0 text="\n" matchesSource=false pieces=nil}
-    [5] {sourceRange=15+5 text="Левый" matchesSource=true pieces=nil}
-    [6] {sourceRange=21+0 text="\n" matchesSource=false pieces=nil}
-    [7] {sourceRange=22+0 text="\n" matchesSource=false pieces=nil}
-    [8] {sourceRange=23+9 text="По центру" matchesSource=true pieces=nil}
-    [9] {sourceRange=33+0 text="\n" matchesSource=false pieces=nil}
-    [10] {sourceRange=34+0 text="\n" matchesSource=false pieces=nil}
-    [11] {sourceRange=35+6 text="Правый" matchesSource=true pieces=nil}
-    [12] {sourceRange=42+0 text="\n" matchesSource=false pieces=nil}
-    [13] {sourceRange=43+0 text="\n" matchesSource=false pieces=nil}
-    [14] {sourceRange=70+0 text="\n" matchesSource=false pieces=nil}
-    [15] {sourceRange=71+0 text="\n" matchesSource=false pieces=nil}
-    [16] {sourceRange=72+1 text="а" matchesSource=true pieces=nil}
-    [17] {sourceRange=74+0 text="\n" matchesSource=false pieces=nil}
-    [18] {sourceRange=75+0 text="\n" matchesSource=false pieces=nil}
-    [19] {sourceRange=76+1 text="б" matchesSource=true pieces=nil}
-    [20] {sourceRange=78+0 text="\n" matchesSource=false pieces=nil}
-    [21] {sourceRange=79+0 text="\n" matchesSource=false pieces=nil}
-    [22] {sourceRange=80+1 text="в" matchesSource=true pieces=nil}
-    [23] {sourceRange=82+0 text="\n" matchesSource=false pieces=nil}
-    [24] {sourceRange=83+0 text="\n" matchesSource=false pieces=nil}
-    [25] {sourceRange=85+0 text="\n" matchesSource=false pieces=nil}
-    [26] {sourceRange=86+0 text="\n" matchesSource=false pieces=nil}
-    [27] {sourceRange=87+2 text="中文" matchesSource=true pieces=nil}
-    [28] {sourceRange=90+0 text="\n" matchesSource=false pieces=nil}
-    [29] {sourceRange=91+0 text="\n" matchesSource=false pieces=nil}
-    [30] {sourceRange=92+2 text="😀" matchesSource=true pieces=nil}
-    [31] {sourceRange=95+0 text="\n" matchesSource=false pieces=nil}
-    [32] {sourceRange=96+0 text="\n" matchesSource=false pieces=nil}
-    [33] {sourceRange=98+3 text="код" matchesSource=true pieces=nil}
-    [34] {sourceRange=103+0 text="\n" matchesSource=false pieces=nil}
-    [35] {sourceRange=104+0 text="\n" matchesSource=false pieces=nil}
-    [36] {sourceRange=108+0 text="\n" matchesSource=false pieces=nil}
-    [37] {sourceRange=109+0 text="\n" matchesSource=false pieces=nil}
-    [38] {sourceRange=110+4 text="Один" matchesSource=true pieces=nil}
-    [39] {sourceRange=115+0 text="\n" matchesSource=false pieces=nil}
-    [40] {sourceRange=116+0 text="\n" matchesSource=false pieces=nil}
-    [41] {sourceRange=127+0 text="\n" matchesSource=false pieces=nil}
-    [42] {sourceRange=128+0 text="\n" matchesSource=false pieces=nil}
-    [43]
-      sourceRange: 129+18
-      text: "ячейка с | чертой"
-      matchesSource: false
-      pieces:
-        [0] {sourceRange=129+9 text="ячейка с " matchesSource=true}
-        [1] {sourceRange=139+8 text="| чертой" matchesSource=true}
-    [44] {sourceRange=148+0 text="\n" matchesSource=false pieces=nil}
-    [45] {sourceRange=149+0 text="\n" matchesSource=false pieces=nil}
-    [46] {sourceRange=153+0 text="\n" matchesSource=false pieces=nil}
-    [47] {sourceRange=153+27 text="Таблица с рваными строками:" matchesSource=true pieces=nil}
-    [48] {sourceRange=180+0 text="\n" matchesSource=false pieces=nil}
-    [49] {sourceRange=184+0 text="\n" matchesSource=false pieces=nil}
-    [50] {sourceRange=185+0 text="\n" matchesSource=false pieces=nil}
-    [51] {sourceRange=186+1 text="a" matchesSource=true pieces=nil}
-    [52] {sourceRange=188+0 text="\n" matchesSource=false pieces=nil}
-    [53] {sourceRange=189+0 text="\n" matchesSource=false pieces=nil}
-    [54] {sourceRange=190+1 text="b" matchesSource=true pieces=nil}
-    [55] {sourceRange=192+0 text="\n" matchesSource=false pieces=nil}
-    [56] {sourceRange=193+0 text="\n" matchesSource=false pieces=nil}
-    [57] {sourceRange=206+0 text="\n" matchesSource=false pieces=nil}
-    [58] {sourceRange=207+0 text="\n" matchesSource=false pieces=nil}
-    [59] {sourceRange=208+1 text="1" matchesSource=true pieces=nil}
-    [60] {sourceRange=210+0 text="\n" matchesSource=false pieces=nil}
-    [61] {sourceRange=206+0 text="\n" matchesSource=false pieces=nil}
-    [62] {sourceRange=211+0 text="\n" matchesSource=false pieces=nil}
-    [63] {sourceRange=211+0 text="\n" matchesSource=false pieces=nil}
-    [64] {sourceRange=213+0 text="\n" matchesSource=false pieces=nil}
-    [65] {sourceRange=214+0 text="\n" matchesSource=false pieces=nil}
-    [66] {sourceRange=215+1 text="1" matchesSource=true pieces=nil}
-    [67] {sourceRange=217+0 text="\n" matchesSource=false pieces=nil}
-    [68] {sourceRange=218+0 text="\n" matchesSource=false pieces=nil}
-    [69] {sourceRange=219+1 text="2" matchesSource=true pieces=nil}
-    [70] {sourceRange=221+0 text="\n" matchesSource=false pieces=nil}
-    [71] {sourceRange=226+0 text="\n" matchesSource=false pieces=nil}
-  unsupportedRanges: []
-wikiLinks: []
-unreliableRanges: []
-elements:
-  textLength: 228
-  endsWithLineBreak: true
-  blocks:
-    [0] {range=0+11 kind=heading(1) parent=-1}
-    [1] {range=13+93 kind=table parent=-1}
-    [2] {range=108+43 kind=table parent=-1}
-    [3] {range=184+44 kind=table parent=-1}
-  inlines: []
 === doc/Corpus/tasks[crlf]
 spans: [{range=0+8 kind=heading(1) markerRanges=[0+2]}]
 headings:

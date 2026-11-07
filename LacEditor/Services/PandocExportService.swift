@@ -519,7 +519,13 @@ enum PandocExportService {
                     if !loaded { paths = try MarkdownResourcePaths(text: text, document: document); loaded = true }
                     if let paths, paths.root != nil {
                         guard let url = paths.resolve(target[0]), url.isFileURL else { throw MarkdownResourcePaths.PathError.invalidRoot }
-                        target[0] = url.absoluteString
+                        // Pandoc не декодирует %-кодирование в `file:` URI, а в обычном пути декодирует:
+                        // передаём путь с кодированием, как в rootMediaSnapshot.
+                        let components = URLComponents(url: url, resolvingAgainstBaseURL: true)
+                        var path = components?.percentEncodedPath ?? url.path
+                        if let query = components?.percentEncodedQuery { path += "?" + query }
+                        if let fragment = components?.percentEncodedFragment { path += "#" + fragment }
+                        target[0] = path
                         parts[2] = target
                         object["c"] = parts
                     }

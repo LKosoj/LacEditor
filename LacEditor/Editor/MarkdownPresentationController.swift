@@ -1443,6 +1443,8 @@ final class MarkdownPresentationController {
         if headingNumbering {
             lastVisibleRange = nil
             applyVisible()
+            // Отступ номера зависит от раскрытой строки, а уже оформленный текст `applyVisible` не перестраивает.
+            if let visible = visibleRange() { applyParagraphAlignment(in: visible) }
         }
         notifyGeometryChanged()
         if let visible = visibleRange() {
@@ -1606,6 +1608,8 @@ final class MarkdownPresentationController {
         refreshMathOptionsIfNeeded()
         lastVisibleRange = nil
         if enabled, presentation != nil {
+            // Шрифты и метрики уже оформленных мест устарели: без сброса `applyVisible` их не перестраивает.
+            restoreStyles()
             applyVisible()
             // `applyVisible` can return early when all visible text already
             // has styling; media views still need their frames refreshed after

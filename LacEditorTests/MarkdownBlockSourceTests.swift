@@ -153,17 +153,19 @@ final class MarkdownBlockSourceTests: XCTestCase {
         let point = try XCTUnwrap(found)
         let item = try XCTUnwrap(stand.editItem(in: try stand.menu(at: point)))
         stand.view.insertText("я", replacementRange: NSRange(location: 0, length: 0))
+        // Вставка в начало сдвигает картинку: дальше её ищем по новому месту.
+        let shifted = start + ("я" as NSString).length
         let selection = stand.view.selectedRange()
         XCTAssertTrue(stand.perform(item))
         XCTAssertTrue(stand.document.isMarkdownFormatted, "устаревший пункт не переключает вид")
         XCTAssertEqual(stand.view.selectedRange(), selection)
         // Режим чтения: картинка заново находится (раскладка могла сдвинуться), и только потом проверяется отсутствие пункта.
         stand.document.setReadingMode(true)
-        let readingFound = await imagePoint(stand, location: start)
+        let readingFound = await imagePoint(stand, location: shifted)
         let readingPoint = try XCTUnwrap(readingFound, "картинка должна остаться видимой в режиме чтения")
         XCTAssertNil(stand.editItem(in: try stand.menu(at: readingPoint)), "в режиме чтения пункта нет")
         stand.document.setReadingMode(false)
-        let backFound = await imagePoint(stand, location: start)
+        let backFound = await imagePoint(stand, location: shifted)
         let backPoint = try XCTUnwrap(backFound)
         let back = await waitFor { stand.editItem(in: try? stand.menu(at: backPoint)) != nil }
         XCTAssertTrue(back, "после выхода из режима чтения пункт снова есть")

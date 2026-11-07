@@ -324,9 +324,14 @@ final class MarkdownDisplayMapTests: XCTestCase {
     func testTabsMultilineBackslashAndLinksNeverLoseBothSpanAndFlag() {
         let cases: [(String, Int)] = [("-\t**bold** item", 1), ("> -\t**x**", 1), ("1.\t*em*", 1),
                                       ("a\\\nx`**c**`\nxy**c**", 1), ("[multi\nline](http://x.com/中文)", 1),
-                                      ("[a][ref]\n\n[ref]: http://x.com\n  \"t\"", 1),
                                       ("> - **a** x\n>   - **b**", 2), ("- > **q**\n  > text", 1)]
         for (text, inlines) in cases { assertEveryInlineIsMappedOrFlagged(text, inlines: inlines) }
+        // У ссылочной формы `[a][ref]` маркеров нет (скобки видны, как у автоссылки): не теряться должна сама подсветка ссылки либо пометка участка.
+        let reference = "[a][ref]\n\n[ref]: http://x.com\n  \"t\""
+        let presentation = parsed(reference)
+        let linkRange = range(reference, "[a][ref]")
+        XCTAssertTrue(presentation.spans.contains { $0.kind == .link && $0.range == linkRange }
+                      || presentation.unreliableRanges.contains { NSLocationInRange(linkRange.location, $0) }, reference.debugDescription)
     }
 
     func testPlainDocumentHasNoUnreliableRanges() {

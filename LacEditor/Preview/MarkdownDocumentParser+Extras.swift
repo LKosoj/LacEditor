@@ -39,12 +39,12 @@ extension MarkdownDocumentParser {
             case .critic(let kind): return kind == .comment ? [segment.range] : segment.markerRanges
             }
         }.sorted { $0.location < $1.location }
-        var readableEnds: [Int] = [], readableUnconfirmed: [Bool] = []
+        var readableEnds: [Int] = [], readableUnconfirmed: [Bool] = [], readableDocumentDependent: [Bool] = []
         if wantsReadable {
             let masked = ctx.mask.segments.filter { $0.kind != .frontMatter }.map(\.range)
             model.readableText = readableText(
                 root: root, source: ctx.source, text: ctx.text, mathExtension: ext, inlineMath: Set(ctx.mathInline.keys),
-                onTopLevelBlock: wantsBlocks ? { readableEnds.append($0); readableUnconfirmed.append($1) } : nil,
+                onTopLevelBlock: wantsBlocks ? { readableEnds.append($0); readableUnconfirmed.append($1); readableDocumentDependent.append($2) } : nil,
                 extraUnsupported: masked, isCancelled: ctx.isCancelled)
             if ctx.stop() { return }
         }
@@ -52,7 +52,7 @@ extension MarkdownDocumentParser {
             model.blockIndex = MarkdownDocumentExtras.topLevelBlocks(
                 root: root, source: ctx.source, text: ctx.masked, frontMatter: model.frontMatter != nil,
                 hasHTML: !html.ranges.isEmpty || !htmlAvailable, readableEnds: wantsReadable ? readableEnds : nil,
-                readableUnconfirmed: readableUnconfirmed)
+                readableUnconfirmed: readableUnconfirmed, readableDocumentDependent: readableDocumentDependent)
         }
         if wantsEmoji, let scan = ctx.textScan {
             model.emoji = MarkdownDocumentModel.EmojiData(
@@ -92,14 +92,15 @@ extension MarkdownDocumentParser {
 extension MarkdownDocumentParser {
     static func readableText(root: OpaquePointer, source: MarkdownSourcePositions, text raw: NSString,
                              mathExtension: OpaquePointer, inlineMath: Set<OpaquePointer>,
-                             onTopLevelBlock: ((Int, Bool) -> Void)? = nil,
+                             onTopLevelBlock: ((Int, Bool, Bool) -> Void)? = nil,
                              extraUnsupported: [NSRange] = [],
                              isCancelled: () -> Bool = { false }) -> MarkdownReadableText? {
         var fragments: [MarkdownReadableText.Fragment] = []
         // Ядро модели: участки масок (`%%…%%`, CriticMarkup) в тексте cmark заменены, копировать их как читаемые нельзя.
         var unsupported: [NSRange] = extraUnsupported
-        // Узел без подтверждённой позиции получает диапазон контейнера (зависит от всего документа): такой блок локальный разбор не берёт.
-        var unconfirmed = false
+        // Узел без подтверждённой позиции получает диапазон контейнера: такой блок локальный разбор не берёт.
+        // Если позиции нет и у всех контейнеров до корня, диапазон - весь текст и зависит от всего документа (`documentDependent`).
+        var unconfirmed = false, documentDependent = false
         func separator(_ position: Int) {
             fragments.append(.init(sourceRange: NSRange(location: position, length: 0), text: "\n", matchesSource: false))
         }
@@ -112,14 +113,18 @@ extension MarkdownDocumentParser {
                 : nil
             fragments.append(.init(sourceRange: range, text: value, matchesSource: matches, pieces: pieces))
         }
-        func visit(_ node: OpaquePointer, container: NSRange, cellPositions: MarkdownSourcePositions.TableCellPositions?) {
+        func visit(_ node: OpaquePointer, container: NSRange, containerIsDocument: Bool, cellPositions: MarkdownSourcePositions.TableCellPositions?) {
             guard !isCancelled() else { return }
             guard let pointer = cmark_node_get_type_string(node) else { return }
             let kind = String(cString: pointer)
             let positions = kind == "table_cell" ? source.tableCellPositions(node) : cellPositions
             let confirmed = positions.flatMap { source.tableInlineRange(node, positions: $0) } ?? source.range(node)
             // Корень документа позиции не имеет по определению: его запасной диапазон весь текст, а зависящие от него потомки помечаются сами.
-            if confirmed == nil && cmark_node_get_type(node) != CMARK_NODE_DOCUMENT { unconfirmed = true }
+            // У переноса строки cmark позиции нет, но диапазон контейнера он не берёт: разделитель ставится за последним фрагментом.
+            if confirmed == nil && cmark_node_get_type(node) != CMARK_NODE_DOCUMENT && kind != "softbreak" && kind != "linebreak" {
+                unconfirmed = true
+                if containerIsDocument { documentDependent = true }
+            }
             let range = confirmed ?? container
             if inlineMath.contains(node) || cmark_node_get_syntax_extension(node) == mathExtension {
                 separator(range.location)
@@ -202,15 +207,19 @@ extension MarkdownDocumentParser {
             default:
                 var child = cmark_node_first_child(node)
                 while let current = child, !isCancelled() {
-                    visit(current, container: range, cellPositions: positions)
+                    visit(current, container: range, containerIsDocument: confirmed == nil && containerIsDocument, cellPositions: positions)
                     // Локальный разбор берёт фрагменты читаемого текста по блокам: после каждого верхнеуровневого блока сообщаем их число.
-                    if cmark_node_get_type(node) == CMARK_NODE_DOCUMENT { onTopLevelBlock?(fragments.count, unconfirmed); unconfirmed = false }
+                    if cmark_node_get_type(node) == CMARK_NODE_DOCUMENT {
+                        onTopLevelBlock?(fragments.count, unconfirmed, documentDependent)
+                        unconfirmed = false
+                        documentDependent = false
+                    }
                     child = cmark_node_next(current)
                 }
             }
             if block || kind == "image" { separator(NSMaxRange(range)) }
         }
-        visit(root, container: NSRange(location: 0, length: raw.length), cellPositions: nil)
+        visit(root, container: NSRange(location: 0, length: raw.length), containerIsDocument: true, cellPositions: nil)
         guard !isCancelled() else { return nil }
         return MarkdownReadableText(sourceLength: raw.length, fragments: fragments, unsupportedRanges: unsupported)
     }

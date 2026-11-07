@@ -836,6 +836,64 @@ $$</div>
 <p>Инлайн <code>код</code> и <code>с `обратной` кавычкой</code>.</p>
 <pre tabindex="0" aria-label="Code block, scroll horizontally"><code class="language-json">{<span class="tok-y">&quot;a&quot;</span>: [<span class="tok-n">1</span>, <span class="tok-n">2</span>, <span class="tok-y">null</span>], <span class="tok-y">&quot;б&quot;</span>: <span class="tok-y">true</span>}
 </code></pre>
+=== doc/Corpus/corpus-tables
+[flags] omitted=false whitespace=false rawFailed=false
+[headingIDs] "lac-heading-таблицы"
+--- body
+<span id="lac-heading-таблицы"></span>
+<h1>Таблицы</h1>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th align="left">Левый</th>
+<th align="center">По центру</th>
+<th align="right">Правый</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="left">а</td>
+<td align="center">б</td>
+<td align="right">в</td>
+</tr>
+<tr>
+<td align="left">中文</td>
+<td align="center">😀</td>
+<td align="right"><code>код</code></td>
+</tr>
+</tbody>
+</table></div>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>Один</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ячейка с | чертой</td>
+</tr>
+</tbody>
+</table></div>
+<p>Таблица с рваными строками:</p>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th>a</th>
+<th>b</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td></td>
+</tr>
+<tr>
+<td>1</td>
+<td>2</td>
+</tr>
+</tbody>
+</table></div>
 === doc/Corpus/critic
 [flags] omitted=false whitespace=false rawFailed=false
 [headingIDs] "lac-heading-правки-criticmarkup"
@@ -1213,64 +1271,6 @@ $$</div>
 <h1>Пунктуация</h1>
 <p>“Кавычки” и ‘одинарные’ – тире — длинное… многоточие.</p>
 <p>Дефис-слово и – минус.</p>
-=== doc/Corpus/corpus-tables
-[flags] omitted=false whitespace=false rawFailed=false
-[headingIDs] "lac-heading-таблицы"
---- body
-<span id="lac-heading-таблицы"></span>
-<h1>Таблицы</h1>
-<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
-<thead>
-<tr>
-<th align="left">Левый</th>
-<th align="center">По центру</th>
-<th align="right">Правый</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td align="left">а</td>
-<td align="center">б</td>
-<td align="right">в</td>
-</tr>
-<tr>
-<td align="left">中文</td>
-<td align="center">😀</td>
-<td align="right"><code>код</code></td>
-</tr>
-</tbody>
-</table></div>
-<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
-<thead>
-<tr>
-<th>Один</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>ячейка с | чертой</td>
-</tr>
-</tbody>
-</table></div>
-<p>Таблица с рваными строками:</p>
-<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
-<thead>
-<tr>
-<th>a</th>
-<th>b</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td></td>
-</tr>
-<tr>
-<td>1</td>
-<td>2</td>
-</tr>
-</tbody>
-</table></div>
 === doc/Corpus/tasks
 [flags] omitted=false whitespace=false rawFailed=false
 [headingIDs] "lac-heading-задачи"

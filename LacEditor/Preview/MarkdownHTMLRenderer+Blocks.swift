@@ -32,6 +32,8 @@ extension MarkdownHTMLRenderer {
     static func writeParagraph(_ node: MarkdownBlockNode, _ w: Writer, tight: Bool) {
         // Абзац из одного неподдержанного тега: исходный текст в `<pre>`; из одного SVG — картинка без `<p>`.
         if hasUnsupportedInlineTag(node.inlines, within: node.range, w) {
+            // В экспорте HTML теги абзаца выводятся текстом, а не HTML.
+            if w.includeHTMLMedia { w.media.omittedHTML = true }
             w.cr()
             w.put("<pre tabindex=\"0\" aria-label=\"\(L10n.tr("代码块，可横向滚动"))\">\(escapeHTML(rawBlockText(node, w)))</pre>")
             w.cr()
@@ -183,7 +185,9 @@ extension MarkdownHTMLRenderer {
                     continue
                 }
                 for child in cell.inlines { if case .rawHTML = child.kind { w.media.cellBreaks.insert(child.range.location) } }
+                w.media.inTableCell = true
                 writeInlines(cell.inlines, w)
+                w.media.inTableCell = false
                 w.put(row.isHeader ? "</th>" : "</td>")
             }
             w.cr()

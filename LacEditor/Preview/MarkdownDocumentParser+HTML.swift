@@ -1177,7 +1177,13 @@ extension MarkdownDocumentParser {
         guard let html = ctx.html else { return nil }
         let node = nodes[index]
         if let merge = html.merges[node], let last = positions[merge.last], last >= index {
-            return (MarkdownInlineNode(kind: merge.kind, range: merge.range, markerRanges: merge.markers, children: [], isUnreliable: false), last + 1)
+            var inner: [MarkdownInlineNode] = []
+            // Запасное содержимое строчного `<audio>`/`<video>` (текст, оформление) остаётся детьми узла.
+            if case .media = merge.kind, last > index + 1, let opening = ctx.source.range(node), let closing = ctx.source.range(nodes[last]) {
+                let range = NSRange(location: NSMaxRange(opening), length: max(0, closing.location - NSMaxRange(opening)))
+                inner = children(Array(nodes[(index + 1)..<last]), range, NSMaxRange(opening))
+            }
+            return (MarkdownInlineNode(kind: merge.kind, range: merge.range, markerRanges: merge.markers, children: inner, isUnreliable: false), last + 1)
         }
         if let pair = html.pairs[node], let close = positions[pair.closing], close >= index {
             let kind: MarkdownInlineNode.Kind

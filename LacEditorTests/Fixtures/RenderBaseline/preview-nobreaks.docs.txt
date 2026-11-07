@@ -1025,6 +1025,64 @@ $$</div>
 <p data-sourcepos="25:1-25:68"><span data-lac-whitespace>Инлайн </span><code>код</code><span data-lac-whitespace> и </span><code>с `обратной` кавычкой</code><span data-lac-whitespace>.</span></p>
 <pre tabindex="0" aria-label="Code block, scroll horizontally" data-sourcepos="27:1-29:3"><code class="language-json">{<span class="tok-y">&quot;a&quot;</span>: [<span class="tok-n">1</span>, <span class="tok-n">2</span>, <span class="tok-y">null</span>], <span class="tok-y">&quot;б&quot;</span>: <span class="tok-y">true</span>}
 </code></pre>
+=== doc/Corpus/corpus-tables
+[flags] omitted=false whitespace=true rawFailed=false
+[headingIDs] "lac-heading-таблицы"
+--- body
+<span id="lac-heading-таблицы"></span>
+<h1 data-sourcepos="1:1-1:16"><span data-lac-heading-number="1. "></span><span data-lac-whitespace>Таблицы</span></h1>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table data-sourcepos="3:1-6:28">
+<thead>
+<tr data-sourcepos="3:1-3:49">
+<th align="left" data-sourcepos="3:3-3:12"><span data-lac-whitespace>Левый</span></th>
+<th align="center" data-sourcepos="3:16-3:32"><span data-lac-whitespace>По центру</span></th>
+<th align="right" data-sourcepos="3:36-3:47"><span data-lac-whitespace>Правый</span></th>
+</tr>
+</thead>
+<tbody>
+<tr data-sourcepos="5:1-5:16">
+<td align="left" data-sourcepos="5:3-5:4"><span data-lac-whitespace>а</span></td>
+<td align="center" data-sourcepos="5:8-5:9"><span data-lac-whitespace>б</span></td>
+<td align="right" data-sourcepos="5:13-5:14"><span data-lac-whitespace>в</span></td>
+</tr>
+<tr data-sourcepos="6:1-6:28">
+<td align="left" data-sourcepos="6:3-6:8"><span data-lac-whitespace>中文</span></td>
+<td align="center" data-sourcepos="6:12-6:15"><span data-lac-whitespace>😀</span></td>
+<td align="right" data-sourcepos="6:19-6:26"><code>код</code></td>
+</tr>
+</tbody>
+</table></div>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table data-sourcepos="8:1-10:35">
+<thead>
+<tr data-sourcepos="8:1-8:12">
+<th data-sourcepos="8:3-8:10"><span data-lac-whitespace>Один</span></th>
+</tr>
+</thead>
+<tbody>
+<tr data-sourcepos="10:1-10:35">
+<td data-sourcepos="10:3-10:33"><span data-lac-whitespace>ячейка с | чертой</span></td>
+</tr>
+</tbody>
+</table></div>
+<p data-sourcepos="12:1-12:50"><span data-lac-whitespace>Таблица с рваными строками:</span></p>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table data-sourcepos="14:1-17:13">
+<thead>
+<tr data-sourcepos="14:1-14:9">
+<th data-sourcepos="14:3-14:3"><span data-lac-whitespace>a</span></th>
+<th data-sourcepos="14:7-14:7"><span data-lac-whitespace>b</span></th>
+</tr>
+</thead>
+<tbody>
+<tr data-sourcepos="16:1-16:5">
+<td data-sourcepos="16:3-16:3"><span data-lac-whitespace>1</span></td>
+<td data-sourcepos="16:1-16:5"></td>
+</tr>
+<tr data-sourcepos="17:1-17:13">
+<td data-sourcepos="17:3-17:3"><span data-lac-whitespace>1</span></td>
+<td data-sourcepos="17:7-17:7"><span data-lac-whitespace>2</span></td>
+</tr>
+</tbody>
+</table></div>
 === doc/Corpus/critic
 [flags] omitted=false whitespace=true rawFailed=false
 [headingIDs] "lac-heading-правки-criticmarkup"
@@ -1438,64 +1496,6 @@ $$</div>
 <h1 data-sourcepos="1:1-1:22"><span data-lac-heading-number="1. "></span><span data-lac-whitespace>Пунктуация</span></h1>
 <p data-sourcepos="3:1-3:96"><span data-lac-whitespace>&quot;Кавычки&quot; и 'одинарные' -- тире --- длинное... многоточие.</span></p>
 <p data-sourcepos="5:1-5:39"><span data-lac-whitespace>Дефис-слово и -- минус.</span></p>
-=== doc/Corpus/corpus-tables
-[flags] omitted=false whitespace=true rawFailed=false
-[headingIDs] "lac-heading-таблицы"
---- body
-<span id="lac-heading-таблицы"></span>
-<h1 data-sourcepos="1:1-1:16"><span data-lac-heading-number="1. "></span><span data-lac-whitespace>Таблицы</span></h1>
-<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table data-sourcepos="3:1-6:28">
-<thead>
-<tr data-sourcepos="3:1-3:49">
-<th align="left" data-sourcepos="3:3-3:12"><span data-lac-whitespace>Левый</span></th>
-<th align="center" data-sourcepos="3:16-3:32"><span data-lac-whitespace>По центру</span></th>
-<th align="right" data-sourcepos="3:36-3:47"><span data-lac-whitespace>Правый</span></th>
-</tr>
-</thead>
-<tbody>
-<tr data-sourcepos="5:1-5:16">
-<td align="left" data-sourcepos="5:3-5:4"><span data-lac-whitespace>а</span></td>
-<td align="center" data-sourcepos="5:8-5:9"><span data-lac-whitespace>б</span></td>
-<td align="right" data-sourcepos="5:13-5:14"><span data-lac-whitespace>в</span></td>
-</tr>
-<tr data-sourcepos="6:1-6:28">
-<td align="left" data-sourcepos="6:3-6:8"><span data-lac-whitespace>中文</span></td>
-<td align="center" data-sourcepos="6:12-6:15"><span data-lac-whitespace>😀</span></td>
-<td align="right" data-sourcepos="6:19-6:26"><code>код</code></td>
-</tr>
-</tbody>
-</table></div>
-<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table data-sourcepos="8:1-10:35">
-<thead>
-<tr data-sourcepos="8:1-8:12">
-<th data-sourcepos="8:3-8:10"><span data-lac-whitespace>Один</span></th>
-</tr>
-</thead>
-<tbody>
-<tr data-sourcepos="10:1-10:35">
-<td data-sourcepos="10:3-10:33"><span data-lac-whitespace>ячейка с | чертой</span></td>
-</tr>
-</tbody>
-</table></div>
-<p data-sourcepos="12:1-12:50"><span data-lac-whitespace>Таблица с рваными строками:</span></p>
-<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table data-sourcepos="14:1-17:13">
-<thead>
-<tr data-sourcepos="14:1-14:9">
-<th data-sourcepos="14:3-14:3"><span data-lac-whitespace>a</span></th>
-<th data-sourcepos="14:7-14:7"><span data-lac-whitespace>b</span></th>
-</tr>
-</thead>
-<tbody>
-<tr data-sourcepos="16:1-16:5">
-<td data-sourcepos="16:3-16:3"><span data-lac-whitespace>1</span></td>
-<td data-sourcepos="16:1-16:5"></td>
-</tr>
-<tr data-sourcepos="17:1-17:13">
-<td data-sourcepos="17:3-17:3"><span data-lac-whitespace>1</span></td>
-<td data-sourcepos="17:7-17:7"><span data-lac-whitespace>2</span></td>
-</tr>
-</tbody>
-</table></div>
 === doc/Corpus/tasks
 [flags] omitted=false whitespace=true rawFailed=false
 [headingIDs] "lac-heading-задачи"

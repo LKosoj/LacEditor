@@ -20,6 +20,8 @@ extension MarkdownHTMLRenderer {
         var soleInline: NSRange?
         /// Прямые дети ячейки таблицы — `<br>` (по `range.location`): они выводятся тегом.
         var cellBreaks: Set<Int> = []
+        /// Выводится содержимое ячейки таблицы.
+        var inTableCell = false
         /// Именованные якоря (`prepareNamedAnchors`): `id` перед строчным узлом по `range.location`.
         var inlineAnchors: [Int: String] = [:]
         /// `<span id>` перед блоком, который целиком равен тегу якоря (по `range.location` блока).
@@ -28,6 +30,32 @@ extension MarkdownHTMLRenderer {
         var anchoredBlocks: [Int: String] = [:]
         /// Имя якоря (UTF-8) → `id` на странице; у заголовков приоритет (`special.aliases`).
         var namedAnchorTargets: [Data: String] = [:]
+        /// Экспорт HTML: подтверждение прежнего прохода экспорта (`exportProof`), считается один раз при первом обращении.
+        var exportProof: ExportProof?
+        /// Экспорт HTML: глубина строчных `<template>` (как `templateDepth` в разборе); теги внутри не выводятся.
+        var templateDepth = 0
+        /// Абзац с разорванным открывающим тегом медиа, объединённый со следующим блоком (по `range.location` блока).
+        var mergedOpenings: [Int: MarkdownBlockNode] = [:]
+    }
+
+    /// Теги и блоки, подтверждённые `MarkdownImageUploadService.images(htmlForExport:)`: баланс строчных тегов в родителе,
+    /// контекст `<script>`/`<template>`, медиа и iframe. Ключ — диапазон узла в исходном тексте.
+    struct ExportProof {
+        var inline: [NSRange: String] = [:]
+        var audio = Set<NSRange>(), video = Set<NSRange>()
+        var frames: [NSRange: MarkdownHTMLMediaService.EmbeddedFrame] = [:]
+        var blocks = Set<NSRange>()
+    }
+
+    static func exportProof(_ w: Writer) -> ExportProof {
+        if let proof = w.media.exportProof { return proof }
+        var proof = ExportProof()
+        _ = try? MarkdownImageUploadService.images(in: w.text as String, allowSharedReference: true, isCancelled: { Task.isCancelled },
+                                                   htmlForExport: true, confirmedAudio: { proof.audio.insert($0) },
+                                                   confirmedVideo: { proof.video.insert($0) }, confirmedInline: { proof.inline[$0] = $1 },
+                                                   confirmedFrame: { proof.frames[$0] = $1 }, confirmedBlock: { proof.blocks.insert($0) })
+        w.media.exportProof = proof
+        return proof
     }
 
     /// Флаги разбора для медиа и эмодзи: `:имя:` превращается в узел только при `renderEmoji`.
@@ -185,6 +213,15 @@ extension MarkdownHTMLRenderer {
         }
     }
 
+    /// Абзац из одного разорванного на строки `<audio`/`<video`, который ядро объединило со следующим блоком медиа
+    /// (`PairedMediaCollector.merges`): медиа блока совпадает с медиа из объединённого текста.
+    static func isMergedMediaOpening(_ paragraph: MarkdownBlockNode, before next: MarkdownBlockNode) -> Bool {
+        guard case .paragraph = paragraph.kind, paragraph.inlines.count == 1, case .rawHTML(let opening) = paragraph.inlines[0].kind,
+              opening.contains("\n"), case .html(let block) = next.kind, case .media(let media) = block.kind else { return false }
+        let combined = (opening + "\n" + block.literal).trimmingCharacters(in: .whitespacesAndNewlines)
+        return MarkdownHTMLMediaService.embeddedMedia(in: combined) == media
+    }
+
     private static func putOmittedBlock(_ w: Writer) {
         w.cr()
         w.put(omittedHTMLComment)
@@ -198,23 +235,51 @@ extension MarkdownHTMLRenderer {
             putCustomBlock(html, w)
             return
         }
+        let opening = w.media.mergedOpenings[node.range.location]
         let canonical: Bool
         switch block.kind {
-        case .svg, .twitter, .media, .iframe: canonical = true
+        // Медиа внутри HTML (с `<source>`, разорванный тег) в экспорте HTML остаётся сырым блоком с подставленными адресами.
+        case .media: canonical = opening == nil && MarkdownHTMLMediaService.standaloneMedia(block.literal, isCancelled: { Task.isCancelled }) != nil
+        case .svg, .twitter, .iframe: canonical = true
         case .raw, .confirmed, .details, .pageBreak, .images: canonical = false
         }
         // Экспорт HTML: любой блок, кроме медиа, остаётся сырым HTML — страница подставит его по маркеру.
         if w.preserveRawHTMLBlocks, !canonical {
-            let raw = rawBlockText(node, w)
+            var raw = rawBlockText(node, w), literal = block.literal, unreliable = node.isUnreliable
+            if let opening, case .rawHTML(let tag) = opening.inlines[0].kind {
+                // Объединённый блок начинается с тега из абзаца; перевод строки после тега берётся из исходника.
+                let gap = w.slice(NSRange(location: NSMaxRange(opening.range), length: max(0, node.range.location - NSMaxRange(opening.range))))
+                raw = rawBlockText(opening, w) + (gap.hasPrefix("\r\n") ? "\r\n" : "\n") + raw
+                literal = tag + "\n" + literal
+                unreliable = unreliable || opening.isUnreliable
+            }
             // Дешёвая сверка с literal ядра (`\r\n` как `\n`, хвостовой перевод строки не важен).
             let normalized = { (value: String) -> String in
                 var text = value.replacingOccurrences(of: "\r\n", with: "\n")
                 while text.hasSuffix("\n") { text.removeLast() }
                 return text
             }
-            if node.isUnreliable || normalized(raw) != normalized(block.literal) { w.media.rawFailed = true }
+            if unreliable || normalized(raw) != normalized(literal) { w.media.rawFailed = true }
             putCustomBlock(rawMarker(substitutingRawMedia(raw, w), w), w)
             return
+        }
+        // Экспорт HTML: блок выводится, только если его подтвердил проход экспорта (вне `<script>`, позиции сверены);
+        // одиночные `<audio>`/`<video>` — в прежнем каноническом виде.
+        if w.includeHTMLMedia, !w.preserveRawHTMLBlocks {
+            let proof = exportProof(w), literal = w.slice(node.range)
+            if proof.audio.contains(node.range), let address = MarkdownHTMLMediaService.audioSource(in: literal, allowPaired: true) {
+                putCustomBlock(addingSourcePosition("<audio controls src=\"\(escapeHTML(address))\"></audio>", node.range, w), w)
+                return
+            }
+            if proof.video.contains(node.range), let address = MarkdownHTMLMediaService.videoSource(in: literal) {
+                putCustomBlock(addingSourcePosition("<video controls src=\"\(escapeHTML(address))\"></video>", node.range, w), w)
+                return
+            }
+            if let frame = proof.frames[node.range] {
+                putCustomBlock(addingSourcePosition(frameHTML(frame, w), node.range, w), w)
+                return
+            }
+            guard proof.blocks.contains(node.range) else { putOmittedBlock(w); return }
         }
         switch block.kind {
         case .pageBreak:
@@ -342,10 +407,14 @@ extension MarkdownHTMLRenderer {
         var markers: [String: MarkdownHTMLMediaService.ExportImageMarker] = [:]
         var insertions: [(Int, String)] = []
         for (index, image) in images.enumerated() {
-            guard let tag = image.tagRange,
-                  let display = MarkdownHTMLMediaService.displayImage(in: w.slice(tag)) else { return nil }
+            guard let tag = image.tagRange else { return nil }
+            // Тег берётся из literal: у разорванного на строки тега в цитате или списке в исходнике внутри стоят префиксы контейнера.
+            let start = literalOffset(tag.location, in: node, w), end = literalOffset(NSMaxRange(tag), in: node, w)
+            let literal = block.literal as NSString
+            guard start >= 0, start <= end, end <= literal.length,
+                  let display = MarkdownHTMLMediaService.displayImage(in: literal.substring(with: NSRange(location: start, length: end - start))) else { return nil }
             let marker = prefix + "X" + String(index)
-            insertions.append((literalOffset(tag.location, in: node, w), "<!--\(marker)-->"))
+            insertions.append((start, "<!--\(marker)-->"))
             markers[marker] = .init(source: display.source, address: image.url)
         }
         for anchor in anchors {
@@ -438,6 +507,16 @@ extension MarkdownHTMLRenderer {
         }
     }
 
+    /// Тег без точной позиции (абзац после определений ссылок с табом): якорь подтверждён по исходнику,
+    /// тег узла — тот же текст внутри его запасного диапазона. Берётся первый такой якорь.
+    static func unreliableAnchor(_ node: MarkdownInlineNode, _ w: Writer) -> String? {
+        guard node.isUnreliable, case .rawHTML(let literal) = node.kind else { return nil }
+        let length = (literal as NSString).length
+        guard let location = w.media.inlineAnchors.keys.filter({ NSLocationInRange($0, node.range) && $0 + length <= NSMaxRange(node.range)
+            && w.slice(NSRange(location: $0, length: length)) == literal }).min() else { return nil }
+        return w.media.inlineAnchors.removeValue(forKey: location)
+    }
+
     // MARK: - Строчные
 
     /// Строчные: `.underline`, `.keyboard`, `.highlight`, `.subscriptText`, `.superscriptText`, `.inlineStyle`, `.media`, `.iframe`,
@@ -448,6 +527,22 @@ extension MarkdownHTMLRenderer {
         case .media(let media):
             let tag = media.kind == .audio ? "audio" : "video"
             if writeInlinePairMarkers(node, w) { return }
+            if w.includeHTMLMedia {
+                // Экспорт HTML: пара, которую принимает `audioSource`/`videoSource`, — в прежнем каноническом виде;
+                // пустая пара — как в предпросмотре; пара с запасным содержимым пропускается.
+                let literal = w.slice(node.range), opening = openingTagRange(node.range, w)
+                let address = media.kind == .audio ? MarkdownHTMLMediaService.audioSource(in: literal, allowPaired: true)
+                    : MarkdownHTMLMediaService.videoSource(in: literal)
+                if let address {
+                    w.put(addingSourcePosition("<\(tag) controls src=\"\(escapeHTML(address))\"></\(tag)>", opening, w))
+                    return
+                }
+                if !node.children.isEmpty || (literal as NSString).substring(from: opening.length).lowercased() != "</\(tag)>" {
+                    w.media.omittedHTML = true
+                    w.put(omittedHTMLComment)
+                    return
+                }
+            }
             w.put(addingSourcePosition(mediaOpeningHTML(media, w), openingTagRange(node.range, w), w))
             writeInlines(node.children, w)
             w.put("</\(tag)>")
@@ -484,45 +579,29 @@ extension MarkdownHTMLRenderer {
         let opening = openingTagRange(node.range, w)
         let closeStart = w.text.range(of: "</", options: .backwards, range: node.range).location
         w.put(rawMarker(w.slice(opening), w))
-        writeInlines(node.children, w)
+        // Сырой HTML между тегами, не покрытый детьми (например, `<source>`), — тоже маркеры.
+        let end = closeStart != NSNotFound && closeStart >= NSMaxRange(opening) ? closeStart : NSMaxRange(node.range)
+        if node.children.contains(where: { $0.isUnreliable }) {
+            writeInlines(node.children, w)
+        } else {
+            var cursor = NSMaxRange(opening), segment: [MarkdownInlineNode] = []
+            for child in node.children + [nil] as [MarkdownInlineNode?] {
+                let next = child.map { $0.range.location } ?? end
+                if next > cursor {
+                    writeInlines(segment, w)
+                    segment.removeAll()
+                    w.put(rawMarker(w.slice(NSRange(location: cursor, length: next - cursor)), w))
+                }
+                guard let child else { break }
+                segment.append(child)
+                cursor = max(cursor, NSMaxRange(child.range))
+            }
+            writeInlines(segment, w)
+        }
         if closeStart != NSNotFound, closeStart >= NSMaxRange(opening) {
             w.put(rawMarker(w.slice(NSRange(location: closeStart, length: NSMaxRange(node.range) - closeStart)), w))
         }
         return true
-    }
-
-    private static let inlineTagNames: Set<String> = ["kbd", "ruby", "rt", "rp", "span", "strong", "em", "b", "i", "u", "s", "del", "mark", "sub", "sup"]
-
-    /// Одиночный строчный тег для экспорта HTML: поддержанные теги выводятся как есть, остальные — `nil` (будут пропущены).
-    private static func confirmedInlineTag(_ tag: String) -> String? {
-        let text = tag as NSString
-        guard text.length > 2, text.character(at: 0) == 60 else { return nil }
-        var position = 1
-        let closing = text.character(at: position) == 47
-        if closing { position += 1 }
-        let start = position
-        while position < text.length {
-            let unit = text.character(at: position)
-            if unit == 32 || unit == 9 || unit == 10 || unit == 13 || unit == 12 || unit == 47 || unit == 62 { break }
-            position += 1
-        }
-        guard position > start else { return nil }
-        let name = text.substring(with: NSRange(location: start, length: position - start)).lowercased()
-        let lowered = tag.lowercased()
-        if inlineTagNames.contains(name) {
-            let fixed = "<" + (closing ? "/" : "") + name + ">"
-            if lowered == fixed { return fixed }
-            if name == "span", !closing, let style = MarkdownHTMLMediaService.inlineStyleOpening(tag, isCancelled: { Task.isCancelled }) {
-                return "<span style=\"" + style.css + "\">"
-            }
-            return nil
-        }
-        if name == "a" {
-            if closing { return lowered == "</a>" ? "</a>" : nil }
-            return MarkdownHTMLMediaService.inlineLinkOpening(tag)
-        }
-        if name == "br", !closing, ["<br>", "<br/>", "<br />"].contains(lowered) { return "<br>" }
-        return nil
     }
 
     /// Индекс узла с закрывающим тегом, если `nodes[start]` открывает `<script|style|textarea>`; иначе (и без пары) `nil`.
@@ -552,7 +631,10 @@ extension MarkdownHTMLRenderer {
             return
         }
         if w.includeHTMLMedia {
-            if let html = confirmedInlineTag(literal) {
+            let lowered = literal.lowercased()
+            if lowered.hasPrefix("<template") { w.media.templateDepth += 1 }
+            else if lowered.hasPrefix("</template") { w.media.templateDepth = max(0, w.media.templateDepth - 1) }
+            if w.media.templateDepth == 0, let html = exportProof(w).inline[node.range] {
                 w.put(addingSourcePosition(html, node.range, w))
             } else {
                 w.media.omittedHTML = true
@@ -570,7 +652,9 @@ extension MarkdownHTMLRenderer {
         if w.preserveRawHTMLBlocks {
             w.put(rawMarker(tag, w))
         } else if w.includeHTMLMedia {
-            guard let parsed = MarkdownHTMLMediaService.image(in: tag), parsed.source == image.url else {
+            // Тег без кавычек, в верхнем регистре или с ссылками на символы сначала приводится к XML.
+            let xml = MarkdownImageUploadService.htmlImage(in: w.text, range: range, htmlForExport: true, isCancelled: { Task.isCancelled })?.htmlXML
+            guard let parsed = MarkdownHTMLMediaService.image(in: xml ?? tag), parsed.source == image.url else {
                 w.media.omittedHTML = true
                 w.put(omittedHTMLComment)
                 return

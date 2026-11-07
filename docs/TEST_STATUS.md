@@ -7,6 +7,76 @@
 Добиться полного прогона тестов в режиме Develop/Debug на macOS без ошибок,
 предупреждений и пропусков GUI-сценариев.
 
+## Исправления по списку падений Mac и проверка на Linux (2026-11-07)
+
+Код и тесты изменены на сервере Linux; **на Mac ни изменённый код, ни
+изменённые тесты ещё не запускались**. Нужна сборка и targeted-прогон
+перечисленных наборов, затем полный `RunAllTests`.
+
+Что исправлено:
+
+- baseline-fixtures `PresentationBaseline/*` и `RenderBaseline/*`: записи
+  `doc/Corpus/corpus-tables` перенесены на алфавитное место (содержимое не
+  менялось);
+- локальный разбор: `softbreak`/`linebreak` больше не делают узел
+  «неподтверждённым»; неподтверждённость учитывается только для блоков,
+  зависящих от всего документа; splice не применяется, если окно доходит до
+  конца документа и фрагмент упирается в незакрытый fence;
+- оформление: смена стилей нумерованных списков перерисовывает маркеры,
+  нумерация заголовков применяет выравнивание абзацев к видимому диапазону,
+  смена метрик сначала восстанавливает стили;
+- PDF: `break-before: page` у `h1` и блока сносок учитывается при разбиении
+  на страницы;
+- Pandoc: локальные пути изображений пишутся как percent-encoded путь, а не
+  `file://` URL;
+- HTML-экспорт и preview: подтверждение raw HTML/media через
+  `MarkdownImageUploadService` (`htmlForExport`), канонические audio/video/
+  iframe, неподтверждённые блоки опускаются, kbd в ячейке таблицы;
+- тесты ожидания разбора (`MarkdownUndoGroupTests`, `MarkdownEditRoundTripTests`),
+  позиции в `MarkdownBlockSourceTests`, `MarkdownTableNavigationTests`,
+  `MarkdownWidthTests`, `MarkdownDisplayMapTests`, `PandocExportTests`
+  приведены к фактической модели без ослабления ожиданий.
+
+Проверка на Linux:
+
+- `swiftc -frontend -parse` — все изменённые Swift-файлы без ошибок;
+- стенд `lac-writer-check`: 2670 тестов; все baseline, `MarkdownLocalParseTests`,
+  `MarkdownDisplayMapTests` проходят; остаются 5 известных падений
+  `MarkdownClipboardCopyTestsCorpus` (заглушка ImageIO) и 15 в
+  `MarkdownRendererTests`/`MarkdownHTMLMediaServiceTests`;
+- `lac-check` с `LOCALCHECK=1`: 24 160 правок, 2 712 локальных, 0 расхождений,
+  0 расхождений индекса.
+
+Оставшиеся падения renderer на стенде:
+
+- только Linux (заглушки UTType/ImageIO/загрузчика, corelibs Foundation; на
+  Mac в списке падений нет): `testLocalMediaPreparationPreservesBytesAndFragment`,
+  `testLocalSVGIsEmbeddedInRenderedPreview`, `testUnicodeImagePaths…`,
+  `testPlainHTMLKeepsRawNeighboursOfConfirmedMedia`,
+  `testRemoteImagesUseRenderedSnapshotAndKeepFragments`,
+  `testUnsupportedInlineStyleDoesNotFetchImage`, HTMLMedia
+  `testIframeRejectsLocalCodeAndAmbiguousContent`, `testUnsupportedFormsRemainSource`;
+- противоречат разделу «Намеренные изменения HTML» плана единой модели
+  (нужно решение, что верно — тест или план):
+  `testPlainHTMLPreservesCanonicalMediaAndUnknownRawAttributes`,
+  `testPlainHTMLUsesCanonicalRecognizedWidgets`,
+  `testUnsupportedMultilineStyleInQuoteAndListKeepsPrefixes`,
+  `testMultilineMediaOpeningWithoutProofStaysUnconfirmed`;
+- требуют изменения модели (media внутри HTML-блока `<div>`):
+  `testPreviewKeepsConfirmedInlineAndNestedMediaWithSurroundingText`,
+  HTMLMedia `testInlineAndNestedMediaUseExactSourceRanges`;
+- конфликт с правилом показа удалённого видео как `data:,`:
+  `testRenderedHTMLImagesUseSafeSizingAndKeepOtherHTMLDisabled`.
+
+Не исправлено (нужен Mac для воспроизведения; причина не найдена чтением кода):
+layout (клик по каретке, HiddenGlyphStress, GlyphGeneration,
+PlainMultilineBodyTab, кэш геометрии таблиц, TOC, заголовки в верхнем регистре,
+RevealedSeparator, WritingModes), редактирование (undo навигации по таблице,
+NativeTable с маркерами цитат, Clipboard/ImageCopy, LinkNavigation/LinkTable —
+предположительно влияние параллельных тестов и не-key окна), preview/PDF
+(снимок с китайским текстом, ссылка на формулу, Preview ×2, UIExperiment,
+WindowAndSession sidebar).
+
 ## Последний диагностический прогон (2026-11-05)
 
 ### Диагностический прогон Xcode (2026-11-07)

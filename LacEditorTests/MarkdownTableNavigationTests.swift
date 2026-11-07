@@ -43,7 +43,8 @@ final class MarkdownTableNavigationTests: XCTestCase {
     func testCommandDoesNotPadOtherCells() throws {
         let source = "| 中文 | b |\n| - | - |\n| длинное слово | 😀 |"
         let text = source as NSString
-        let edit = try XCTUnwrap(MarkdownTableEditingService.edit(in: text, selection: NSRange(location: text.range(of: "b").location, length: 0), command: .insertRowAfter))
+        // Строка добавляется после последней строки таблицы: из заголовка при строках тела команда не применяется.
+        let edit = try XCTUnwrap(MarkdownTableEditingService.edit(in: text, selection: NSRange(location: text.range(of: "😀").location, length: 0), command: .insertRowAfter))
         let result = text.replacingCharacters(in: edit.range, with: edit.replacement)
         XCTAssertTrue(result.hasPrefix(source), "прежние строки не меняются")
     }

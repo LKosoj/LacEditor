@@ -1025,6 +1025,64 @@ $$</div>
 <p><span data-lac-whitespace style="white-space:break-spaces">Инлайн </span><code>код</code><span data-lac-whitespace style="white-space:break-spaces"> и </span><code>с `обратной` кавычкой</code><span data-lac-whitespace style="white-space:break-spaces">.</span></p>
 <pre tabindex="0" aria-label="Code block, scroll horizontally"><code class="language-json">{<span class="tok-y">&quot;a&quot;</span>: [<span class="tok-n">1</span>, <span class="tok-n">2</span>, <span class="tok-y">null</span>], <span class="tok-y">&quot;б&quot;</span>: <span class="tok-y">true</span>}
 </code></pre>
+=== doc/Corpus/corpus-tables
+[flags] omitted=false whitespace=true rawFailed=false
+[headingIDs] "lac-heading-таблицы"
+--- body
+<span id="lac-heading-таблицы"></span>
+<h1><span data-lac-heading-number="1. "></span><span data-lac-whitespace style="white-space:break-spaces">Таблицы</span></h1>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th align="left"><span data-lac-whitespace style="white-space:break-spaces">Левый</span></th>
+<th align="center"><span data-lac-whitespace style="white-space:break-spaces">По центру</span></th>
+<th align="right"><span data-lac-whitespace style="white-space:break-spaces">Правый</span></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="left"><span data-lac-whitespace style="white-space:break-spaces">а</span></td>
+<td align="center"><span data-lac-whitespace style="white-space:break-spaces">б</span></td>
+<td align="right"><span data-lac-whitespace style="white-space:break-spaces">в</span></td>
+</tr>
+<tr>
+<td align="left"><span data-lac-whitespace style="white-space:break-spaces">中文</span></td>
+<td align="center"><span data-lac-whitespace style="white-space:break-spaces">😀</span></td>
+<td align="right"><code>код</code></td>
+</tr>
+</tbody>
+</table></div>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th><span data-lac-whitespace style="white-space:break-spaces">Один</span></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span data-lac-whitespace style="white-space:break-spaces">ячейка с | чертой</span></td>
+</tr>
+</tbody>
+</table></div>
+<p><span data-lac-whitespace style="white-space:break-spaces">Таблица с рваными строками:</span></p>
+<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
+<thead>
+<tr>
+<th><span data-lac-whitespace style="white-space:break-spaces">a</span></th>
+<th><span data-lac-whitespace style="white-space:break-spaces">b</span></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span data-lac-whitespace style="white-space:break-spaces">1</span></td>
+<td></td>
+</tr>
+<tr>
+<td><span data-lac-whitespace style="white-space:break-spaces">1</span></td>
+<td><span data-lac-whitespace style="white-space:break-spaces">2</span></td>
+</tr>
+</tbody>
+</table></div>
 === doc/Corpus/critic
 [flags] omitted=false whitespace=true rawFailed=false
 [headingIDs] "lac-heading-правки-criticmarkup"
@@ -1454,64 +1512,6 @@ $$</div>
 <h1><span data-lac-heading-number="1. "></span><span data-lac-whitespace style="white-space:break-spaces">Пунктуация</span></h1>
 <p><span data-lac-whitespace style="white-space:break-spaces">“Кавычки” и ‘одинарные’ – тире — длинное… многоточие.</span></p>
 <p><span data-lac-whitespace style="white-space:break-spaces">Дефис-слово и – минус.</span></p>
-=== doc/Corpus/corpus-tables
-[flags] omitted=false whitespace=true rawFailed=false
-[headingIDs] "lac-heading-таблицы"
---- body
-<span id="lac-heading-таблицы"></span>
-<h1><span data-lac-heading-number="1. "></span><span data-lac-whitespace style="white-space:break-spaces">Таблицы</span></h1>
-<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
-<thead>
-<tr>
-<th align="left"><span data-lac-whitespace style="white-space:break-spaces">Левый</span></th>
-<th align="center"><span data-lac-whitespace style="white-space:break-spaces">По центру</span></th>
-<th align="right"><span data-lac-whitespace style="white-space:break-spaces">Правый</span></th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td align="left"><span data-lac-whitespace style="white-space:break-spaces">а</span></td>
-<td align="center"><span data-lac-whitespace style="white-space:break-spaces">б</span></td>
-<td align="right"><span data-lac-whitespace style="white-space:break-spaces">в</span></td>
-</tr>
-<tr>
-<td align="left"><span data-lac-whitespace style="white-space:break-spaces">中文</span></td>
-<td align="center"><span data-lac-whitespace style="white-space:break-spaces">😀</span></td>
-<td align="right"><code>код</code></td>
-</tr>
-</tbody>
-</table></div>
-<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
-<thead>
-<tr>
-<th><span data-lac-whitespace style="white-space:break-spaces">Один</span></th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><span data-lac-whitespace style="white-space:break-spaces">ячейка с | чертой</span></td>
-</tr>
-</tbody>
-</table></div>
-<p><span data-lac-whitespace style="white-space:break-spaces">Таблица с рваными строками:</span></p>
-<div class="table-scroll" role="region" aria-label="Table, scroll horizontally" tabindex="0"><table>
-<thead>
-<tr>
-<th><span data-lac-whitespace style="white-space:break-spaces">a</span></th>
-<th><span data-lac-whitespace style="white-space:break-spaces">b</span></th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><span data-lac-whitespace style="white-space:break-spaces">1</span></td>
-<td></td>
-</tr>
-<tr>
-<td><span data-lac-whitespace style="white-space:break-spaces">1</span></td>
-<td><span data-lac-whitespace style="white-space:break-spaces">2</span></td>
-</tr>
-</tbody>
-</table></div>
 === doc/Corpus/tasks
 [flags] omitted=false whitespace=true rawFailed=false
 [headingIDs] "lac-heading-задачи"

@@ -187,7 +187,8 @@ enum MarkdownLocalParser {
         do {
             merged = try MarkdownPresentation.spliced(
                 old: base.presentation, fragment: fragment, windowStart: coreStart, core: NSRange(location: coreStart, length: coreEnd - coreStart),
-                delta: delta, newLength: new.count, endsWithLineBreak: lastUnit == 0x0A || lastUnit == 0x0D, readable: readable)
+                delta: delta, newLength: new.count, endsWithLineBreak: lastUnit == 0x0A || lastUnit == 0x0D, windowReachesEnd: contextIndex == nil,
+                readable: readable)
         } catch let error as MarkdownPresentation.Unmergeable {
             return .full("склейка: \(error.field)")
         } catch {

@@ -334,8 +334,13 @@ enum MarkdownHTMLRenderer {
     // MARK: - Общий обход
 
     static func writeBlocks(_ nodes: [MarkdownBlockNode], _ w: Writer, tight: Bool) {
-        for node in nodes {
+        for (index, node) in nodes.enumerated() {
             if Task.isCancelled { return }
+            // Абзац из разорванного на строки `<audio`/`<video`, объединённый ядром со следующим блоком медиа, выводится вместе с блоком.
+            if index + 1 < nodes.count, isMergedMediaOpening(node, before: nodes[index + 1]) {
+                w.media.mergedOpenings[nodes[index + 1].range.location] = node
+                continue
+            }
             writeBlock(node, w, tight: tight)
         }
     }
@@ -370,7 +375,7 @@ enum MarkdownHTMLRenderer {
         while index < nodes.count {
             let node = nodes[index]
             index += 1
-            if !w.media.inlineAnchors.isEmpty, let id = w.media.inlineAnchors.removeValue(forKey: node.range.location) {
+            if !w.media.inlineAnchors.isEmpty, let id = w.media.inlineAnchors.removeValue(forKey: node.range.location) ?? unreliableAnchor(node, w) {
                 if let text = run { writeText(text, w); run = nil }
                 w.put("<span id=\"\(id)\"></span>")
             }

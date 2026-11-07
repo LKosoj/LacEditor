@@ -114,9 +114,10 @@ extension MarkdownPresentation {
 
     /// Новое оформление: элементы до `core` (координаты прежнего текста) — из `old`, внутри `core` — из `fragment` (координаты разобранного
     /// фрагмента, который начинается в позиции `windowStart` нового текста), после `core` — из `old` со сдвигом на `delta`.
+    /// `windowReachesEnd` — фрагмент доходит до конца нового текста: только тогда конец фрагмента является концом документа.
     /// Элемент, пересекающий границу `core`, или признак, который склейка не умеет переносить, — `Unmergeable`.
     static func spliced(old: MarkdownPresentation, fragment: MarkdownPresentation, windowStart: Int, core: NSRange, delta: Int,
-                        newLength: Int, endsWithLineBreak: Bool, readable: ReadableSlices?) throws -> MarkdownPresentation {
+                        newLength: Int, endsWithLineBreak: Bool, windowReachesEnd: Bool, readable: ReadableSlices?) throws -> MarkdownPresentation {
         let moved = old.translated(by: delta)
         let part = fragment.translated(by: windowStart)
         let newCore = NSRange(location: core.location, length: core.length + delta)
@@ -140,7 +141,8 @@ extension MarkdownPresentation {
         func union(_ first: NSRange, _ others: [NSRange]) -> NSRange { others.reduce(first) { NSUnionRange($0, $1) } }
         // Поля, которые склейка не переносит: либо одинаковы в обоих разборах, либо локальный разбор не применяется.
         guard old.emojiCandidatesIncluded == fragment.emojiCandidatesIncluded else { throw Unmergeable(field: "emojiCandidatesIncluded") }
-        guard !old.fenceBlockedEOF, !fragment.fenceBlockedEOF else { throw Unmergeable(field: "fenceBlockedEOF") }
+        // Блок в конце фрагмента (список, цитата, таблица контекста) до конца документа не доходит, если за фрагментом есть текст.
+        guard !old.fenceBlockedEOF, !(windowReachesEnd && fragment.fenceBlockedEOF) else { throw Unmergeable(field: "fenceBlockedEOF") }
         guard old.fenceContextAvailable, fragment.fenceContextAvailable else { throw Unmergeable(field: "fenceContextAvailable") }
         guard let rawOld = old.smartRawHTMLRanges, let rawFragment = fragment.smartRawHTMLRanges, rawOld.isEmpty, rawFragment.isEmpty else {
             throw Unmergeable(field: "smartRawHTMLRanges")

@@ -131,7 +131,7 @@ final class MarkdownLocalParseTests: XCTestCase {
         XCTAssertEqual(afterHTML.fallbackReason, "в документе есть HTML")
     }
 
-    /// Абзацы однострочные: перевод строки внутри абзаца на Linux-стенде даёт «узлы без подтверждённой позиции» (как в `MarkdownLocalParseModelTests`).
+    /// Абзацы однострочные (как в `MarkdownLocalParseModelTests`).
     private func plainChapters(_ count: Int) -> String {
         (0..<count).map { index in
             "# Раздел \(index)\n\nАбзац **жирный** и *курсив* 😀 с `кодом` 中文.\n\n```swift\nlet x = 1\n```\n\nКонец главы.\n\n- пункт\n- [x] задача\n\n> цитата\n\n"

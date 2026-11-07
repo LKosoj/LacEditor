@@ -116,7 +116,12 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     }
     var markdownStrikeCompletedTasks = false
     var markdownListStyles = MarkdownListStyles() {
-        didSet { resolvedListStyles = MarkdownResolvedListStyles(markdownListStyles) }
+        didSet {
+            resolvedListStyles = MarkdownResolvedListStyles(markdownListStyles)
+            // Ширина маркера считается при раскладке: уже разложенные маркеры перекладываются под новый стиль.
+            guard markdownListStyles != oldValue else { return }
+            for marker in markdownListMarkers { invalidateMarkdownLayout(in: marker.range) }
+        }
     }
     private var resolvedListStyles = MarkdownResolvedListStyles(.init())
     var markdownCenteredHeadingLevels: Set<Int> = []

@@ -277,14 +277,14 @@ final class PandocExportTests: XCTestCase {
             let parts = try XCTUnwrap(inlines[index]["c"] as? [Any])
             return try XCTUnwrap((parts[2] as? [String])?.first)
         }
-        XCTAssertEqual(try target(0), "file:///tmp/site/a%23b.png")
+        XCTAssertEqual(try target(0), "/tmp/site/a%23b.png")
         XCTAssertEqual(try target(1), "relative.png")
         XCTAssertEqual(try target(2), "/a%23b.png")
         let metadata = try XCTUnwrap(rewritten["meta"] as? [String: Any])
         let cover = try XCTUnwrap(metadata["cover"] as? [String: Any])
         let image = try XCTUnwrap((cover["c"] as? [[String: Any]])?.first)
         let parts = try XCTUnwrap(image["c"] as? [Any])
-        XCTAssertEqual((parts[2] as? [String])?.first, "file:///tmp/site/cover.png")
+        XCTAssertEqual((parts[2] as? [String])?.first, "/tmp/site/cover.png")
         XCTAssertThrowsError(try PandocExportService.resolveRootImages(in: tree, text: "---\ninvalid: [\n---\n", document: document))
     }
 

@@ -56,9 +56,11 @@ final class MarkdownUndoGroupTests: XCTestCase {
 
     private func finish(_ editor: Editor) { editor.coordinator.updateActivity(false); editor.window.close() }
 
+    // Признак готового разбора - модель документа текущей версии: у обычных абзацев без разметки защищённых диапазонов нет вовсе.
     private func waitForParse(_ editor: Editor) async throws {
-        for _ in 0..<30 where editor.ignoredRanges().isEmpty { try await Task.sleep(for: .milliseconds(100)) }
-        XCTAssertFalse(editor.ignoredRanges().isEmpty, "разбор Markdown не успел завершиться")
+        func parsed() -> Bool { editor.document.markdownModel(forRevision: editor.document.textRevision) != nil }
+        for _ in 0..<30 where !parsed() { try await Task.sleep(for: .milliseconds(100)) }
+        XCTAssertTrue(parsed(), "разбор Markdown не успел завершиться")
     }
 
     /// Ровно одна отмена возвращает текст и выделение, больше отменять нечего; повтор возвращает результат.

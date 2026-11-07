@@ -797,22 +797,43 @@ final class MarkdownPDFExportService: NSObject, WKNavigationDelegate {
             }
             printOperation = operation
             printLifetime = self
-            webView.createPDF(configuration: WKPDFConfiguration()) { [weak self] result in
-                guard let self else { return }
+            // createPDF рисует одну длинную страницу и не учитывает `break-before`: позиции разрывов
+            // (от верха документа, в CSS px = pt снимка) берутся до снимка и передаются нарезке.
+            let breaksScript = """
+                return Array.from(document.querySelectorAll('article h1, article section[data-footnotes]'))
+                    .filter(element => element.style.breakBefore === 'page')
+                    .map(element => element.getBoundingClientRect().top + window.scrollY);
+                """
+            webView.callAsyncJavaScript(breaksScript, arguments: [:], in: nil, in: .defaultClient) { [weak self, weak webView] breaksResult in
+                guard let self, let webView else { return }
                 guard !self.cancelled, self.isCurrent() else {
                     self.printOperation = nil
                     self.finish(.failure(ExportError.cancelled))
                     return
                 }
-                do {
-                    let data = try result.get()
-                    guard !data.isEmpty else { throw ExportError.printFailed }
-                    let paginated = try self.paginatePDF(data, printInfo: info)
-                    try paginated.write(to: output, options: .withoutOverwriting)
-                    self.printDidRun(operation, success: true, contextInfo: nil)
-                } catch {
+                guard case let .success(value) = breaksResult, let offsets = value as? [Double],
+                      offsets.allSatisfy(\.isFinite) else {
                     self.printOperation = nil
-                    self.finish(.failure(error))
+                    self.finish(.failure(ExportError.rendering))
+                    return
+                }
+                webView.createPDF(configuration: WKPDFConfiguration()) { [weak self] result in
+                    guard let self else { return }
+                    guard !self.cancelled, self.isCurrent() else {
+                        self.printOperation = nil
+                        self.finish(.failure(ExportError.cancelled))
+                        return
+                    }
+                    do {
+                        let data = try result.get()
+                        guard !data.isEmpty else { throw ExportError.printFailed }
+                        let paginated = try self.paginatePDF(data, printInfo: info, breaks: offsets.map { CGFloat($0) })
+                        try paginated.write(to: output, options: .withoutOverwriting)
+                        self.printDidRun(operation, success: true, contextInfo: nil)
+                    } catch {
+                        self.printOperation = nil
+                        self.finish(.failure(error))
+                    }
                 }
             }
             return
@@ -825,7 +846,7 @@ final class MarkdownPDFExportService: NSObject, WKNavigationDelegate {
         operation.runModal(for: window, delegate: self, didRun: #selector(printDidRun(_:success:contextInfo:)), contextInfo: nil)
     }
 
-    private func paginatePDF(_ data: Data, printInfo: NSPrintInfo) throws -> Data {
+    private func paginatePDF(_ data: Data, printInfo: NSPrintInfo, breaks: [CGFloat] = []) throws -> Data {
         guard let provider = CGDataProvider(data: data as CFData), let source = CGPDFDocument(provider),
               source.numberOfPages > 0, let sourceDocument = PDFDocument(data: data) else {
             throw ExportError.printFailed
@@ -858,14 +879,22 @@ final class MarkdownPDFExportService: NSObject, WKNavigationDelegate {
             }
             let scale = printableWidth / bounds.width
             let sourceHeight = printableHeight / scale
-            let count = max(1, Int(ceil(bounds.height / sourceHeight)))
-            for index in 0..<count {
-                let maximumY = bounds.maxY - CGFloat(index) * sourceHeight
-                let minimumY = max(bounds.minY, maximumY - sourceHeight)
-                slices.append(Slice(sourcePage: sourceIndex, sourceBounds: bounds,
-                                    sourceRect: CGRect(x: bounds.minX, y: minimumY, width: bounds.width,
-                                                       height: maximumY - minimumY),
-                                    destinationPage: slices.count, scale: scale))
+            // Принудительный разрыв начинает новую страницу; разрывы относятся к единственной странице снимка.
+            let forced = source.numberOfPages == 1 ? breaks.filter { $0 > 0 && $0 < bounds.height }.sorted() : []
+            var segmentTops = [bounds.maxY] + forced.map { bounds.maxY - $0 }
+            segmentTops.append(bounds.minY)
+            for segment in 0..<(segmentTops.count - 1) {
+                let top = segmentTops[segment], bottom = segmentTops[segment + 1]
+                guard top - bottom > 0.5 || segment == 0 else { continue }
+                let count = max(1, Int(ceil((top - bottom) / sourceHeight)))
+                for index in 0..<count {
+                    let maximumY = top - CGFloat(index) * sourceHeight
+                    let minimumY = max(bottom, maximumY - sourceHeight)
+                    slices.append(Slice(sourcePage: sourceIndex, sourceBounds: bounds,
+                                        sourceRect: CGRect(x: bounds.minX, y: minimumY, width: bounds.width,
+                                                           height: maximumY - minimumY),
+                                        destinationPage: slices.count, scale: scale))
+                }
             }
         }
         let output = NSMutableData()

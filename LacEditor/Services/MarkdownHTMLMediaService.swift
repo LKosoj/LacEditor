@@ -351,6 +351,10 @@ enum MarkdownHTMLMediaService {
                     let html = (try? element.outerHtml()) ?? ""
                     fallback += html.replacingOccurrences(of: "=\"", with: "='")
                         .replacingOccurrences(of: "\"", with: "'")
+                }
+                // Браузер читает содержимое iframe как текст: теги без атрибутов (`<b>…</b>`) остаются текстом запасного содержимого.
+                else if let element = child as? Element, (try? element.getAllElements().array().allSatisfy({ ($0.getAttributes()?.size() ?? 0) == 0 })) == true {
+                    fallback += (try? element.outerHtml()) ?? ""
                 } else { return nil }
             }
             guard fallback.range(of: "</iframe", options: .caseInsensitive) == nil else { return nil }

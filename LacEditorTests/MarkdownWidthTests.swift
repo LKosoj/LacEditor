@@ -518,8 +518,9 @@ final class MarkdownWidthTests: XCTestCase {
         show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView), layout = try XCTUnwrap(coordinator.foldLayoutManager)
-        let container = try XCTUnwrap(view.textContainer), range = raw.range(of: markup)
-        view.setSelectedRange(raw.range(of: "end"))
+        // В редакторе адрес data: заменён токеном, поэтому диапазоны берём в экранных координатах.
+        let container = try XCTUnwrap(view.textContainer), range = coordinator.displayedRange(for: raw.range(of: markup))
+        view.setSelectedRange(coordinator.displayedRange(for: raw.range(of: "end")))
         func imageVisible() -> Bool {
             layout.ensureLayout(for: container)
             return layout.markdownRenderedImageRects(for: [range], in: container)[range] != nil
@@ -529,7 +530,7 @@ final class MarkdownWidthTests: XCTestCase {
         view.setSelectedRange(range)
         let revealed = await waitFor { !imageVisible() }
         XCTAssertTrue(revealed)
-        XCTAssertEqual(view.string, source)
+        XCTAssertEqual(document.mediaTable.restore(view.string).text, source)
         XCTAssertFalse(document.isDirty)
     }
 
@@ -551,8 +552,9 @@ final class MarkdownWidthTests: XCTestCase {
         show(window, LigatureHost(document: document, sessions: sessions, preferences: preferences))
         let coordinator = sessions.coordinator(for: document)
         let view = try XCTUnwrap(coordinator.textView), layout = try XCTUnwrap(coordinator.foldLayoutManager)
-        let container = try XCTUnwrap(view.textContainer), raw = source as NSString, image = raw.range(of: markup)
-        view.setSelectedRange(raw.range(of: "end"))
+        // В редакторе адрес data: заменён токеном, поэтому диапазоны берём в экранных координатах.
+        let container = try XCTUnwrap(view.textContainer), raw = source as NSString, image = coordinator.displayedRange(for: raw.range(of: markup))
+        view.setSelectedRange(coordinator.displayedRange(for: raw.range(of: "end")))
         func imageVisible() -> Bool {
             layout.ensureLayout(for: container)
             return layout.markdownRenderedImageRects(for: [image], in: container)[image] != nil
@@ -562,7 +564,7 @@ final class MarkdownWidthTests: XCTestCase {
         view.setSelectedRange(image)
         let revealed = await waitFor { !imageVisible() }
         XCTAssertTrue(revealed)
-        XCTAssertEqual(view.string, source)
+        XCTAssertEqual(document.mediaTable.restore(view.string).text, source)
         XCTAssertFalse(document.isDirty)
     }
 
