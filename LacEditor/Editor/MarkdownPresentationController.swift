@@ -2616,10 +2616,8 @@ final class MarkdownPresentationController {
                 images[range] = image
             }
             guard ready else { continue }
-            let availableExtent = container.layoutOrientation == .vertical
-                ? min(container.containerSize.height, textView.visibleRect.height)
-                : min(container.containerSize.width, textView.visibleRect.width)
-            let available = availableExtent - 2 * container.lineFragmentPadding - layout.markdownMediaIndent(for: heading.range)
+            let available = min(container.containerSize.width, textView.visibleRect.width)
+                - 2 * container.lineFragmentPadding - layout.markdownMediaIndent(for: heading.range)
             guard available > 0, available.isFinite else { continue }
             if layout.setUppercaseHeading(heading.range, runs: runs, width: available, level: heading.level, attachmentImages: images) {
                 uppercaseInstalled.insert(heading.range)

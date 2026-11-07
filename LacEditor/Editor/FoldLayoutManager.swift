@@ -51,24 +51,6 @@ enum InvisibleCharacters {
     }
 }
 
-private final class MarkdownUppercaseTextContainer: NSTextContainer {
-    private let orientation: NSLayoutManager.TextLayoutOrientation
-
-    init(size: NSSize, orientation: NSLayoutManager.TextLayoutOrientation) {
-        self.orientation = orientation
-        super.init(size: size)
-    }
-
-    required init(coder: NSCoder) {
-        orientation = .horizontal
-        super.init(coder: coder)
-    }
-
-    override var layoutOrientation: NSLayoutManager.TextLayoutOrientation {
-        orientation
-    }
-}
-
 final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     static let defaultLineSpacing: CGFloat = 4
 
@@ -1097,20 +1079,13 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
                 attachments.append((first.sourceRange, range))
             }
         }
-        let orientation = container.layoutOrientation
         let displayLayout = NSLayoutManager()
         display.addLayoutManager(displayLayout)
-        let displaySize = orientation == .vertical
-            ? NSSize(width: .greatestFiniteMagnitude, height: width)
-            : NSSize(width: width, height: .greatestFiniteMagnitude)
-        let displayContainer = MarkdownUppercaseTextContainer(size: displaySize, orientation: orientation)
+        let displayContainer = NSTextContainer(containerSize: NSSize(width: width, height: .greatestFiniteMagnitude))
         displayContainer.lineFragmentPadding = 0
         displayLayout.addTextContainer(displayContainer)
         displayLayout.ensureLayout(for: displayContainer)
-        let used = displayLayout.usedRect(for: displayContainer)
-        let size = orientation == .vertical
-            ? NSSize(width: max(editorLineHeight, ceil(used.width)), height: width)
-            : NSSize(width: width, height: max(editorLineHeight, ceil(used.height)))
+        let size = NSSize(width: width, height: max(editorLineHeight, ceil(displayLayout.usedRect(for: displayContainer).height)))
         let image = NSImage(size: size, flipped: true) { _ in
             let glyphs = displayLayout.glyphRange(for: displayContainer)
             displayLayout.drawBackground(forGlyphRange: glyphs, at: .zero)
@@ -1122,8 +1097,8 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         guard markdownBlockImages.contains(where: { $0.range == heading }) else { return false }
         uppercaseHeadingVisuals[heading] = UppercaseHeadingVisual(sourceRange: heading, projection: projection,
             storage: display, layout: displayLayout, container: displayContainer, size: size, image: image, attachments: attachments,
-            orientation: orientation)
-        if orientation == .vertical { invalidateMarkdownLayout(in: heading) }
+            orientation: container.layoutOrientation)
+        if container.layoutOrientation == .vertical { invalidateMarkdownLayout(in: heading) }
         return true
     }
 
@@ -1181,13 +1156,9 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     func uppercaseHeadingsNeedLayout(in container: NSTextContainer) -> Bool {
         guard let view = container.textView else { return false }
         for (range, visual) in uppercaseHeadingVisuals {
-            let available = visual.orientation == .vertical
-                ? min(container.containerSize.height, view.visibleRect.height)
-                : min(container.containerSize.width, view.visibleRect.width)
-            let extent = available
+            let width = min(container.containerSize.width, view.visibleRect.width)
                 - 2 * container.lineFragmentPadding - listImageIndent(range)
-            let visualExtent = visual.orientation == .vertical ? visual.size.height : visual.size.width
-            if visual.orientation != container.layoutOrientation || abs(visualExtent - extent) > 0.5 { return true }
+            if visual.orientation != container.layoutOrientation || abs(visual.size.width - width) > 0.5 { return true }
         }
         return false
     }
@@ -1426,12 +1397,8 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         let width = max(0, inlineWidth - 2 * container.lineFragmentPadding - indent)
         let size: NSSize
         if let visual = uppercaseHeadingVisuals[entry.range] {
-            if visual.orientation == .vertical {
-                size = imageLogicalSize(visual.image, in: container, indent: indent, centered: centered)
-            } else {
-                let scale = visual.size.width > 0 ? min(1, width / visual.size.width) : 1
-                size = NSSize(width: visual.size.width * scale, height: visual.size.height * scale)
-            }
+            let scale = visual.size.width > 0 ? min(1, width / visual.size.width) : 1
+            size = NSSize(width: visual.size.width * scale, height: visual.size.height * scale)
         } else { size = imageLogicalSize(entry.image, in: container, indent: indent, centered: centered) }
         return NSRect(x: line.minX + container.lineFragmentPadding + indent + (centered ? (width - size.width) / 2 : 0), y: line.minY,
                       width: size.width, height: size.height)
@@ -2887,7 +2854,9 @@ final class FoldLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             let indent = listImageIndent(entry.range)
             let extent: CGFloat
             if let visual = uppercaseHeadingVisuals[entry.range] {
-                extent = imageLogicalSize(visual.image, in: textContainer, indent: indent).height
+                let visible = textContainer.textView?.visibleRect.width ?? textContainer.size.width
+                let width = max(0, min(textContainer.size.width, visible) - 2 * textContainer.lineFragmentPadding - indent)
+                extent = visual.size.height * (visual.size.width > 0 ? min(1, width / visual.size.width) : 1)
             } else { extent = imageLogicalSize(entry.image, in: textContainer, indent: indent).height }
             let height = first ? max(editorLineHeight, extent) : 0.01
             lineFragmentRect.pointee.size.height = height
