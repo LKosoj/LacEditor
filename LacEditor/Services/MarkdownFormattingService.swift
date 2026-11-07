@@ -90,7 +90,7 @@ enum MarkdownFormattingService {
             let existing = existingListEdit(in: text, selection: selection, command: command, strictMode: strictMode)
             return existing.handled ? existing.edit : newBlockEdit(in: text, selection: selection, command: command)
         case .plainText:
-            return plainTextEdit(in: text, selection: selection, strictMode: strictMode, blocked: context?.blocked ?? [])
+            return plainTextEdit(in: text, selection: selection, strictMode: strictMode, blocked: context?.blocked)
         case .fencedCode, .horizontalRule:
             return newBlockEdit(in: text, selection: selection, command: command)
         case let .table(command):

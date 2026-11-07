@@ -39,7 +39,7 @@ enum MarkdownSourceMask {
         var text: String
         /// Отсортированы по `range.location`.
         var segments: [Segment]
-        /// Заменитель: первая свободная единица Private Use Area (U+E000…U+F8FF) либо U+FFFF.
+        /// Заменитель: первая свободная единица Private Use Area (U+E000…U+F8FF) либо свободный U+FFFF.
         var placeholder: UInt16
         /// Ничего не замаскировано: `text` совпадает с исходным.
         var isIdentity: Bool
@@ -105,7 +105,7 @@ enum MarkdownSourceMask {
         guard !segments.isEmpty else { return identity }
         segments.sort { $0.range.location < $1.range.location }
 
-        let placeholder = freePlaceholder(in: source)
+        guard let placeholder = freePlaceholder(in: source) else { return identity }
         var units = Array(text.utf16)
         func fill(_ range: NSRange, with value: UInt16) {
             for index in range.location..<NSMaxRange(range) where units[index] != 10 && units[index] != 13 { units[index] = value }
@@ -196,15 +196,15 @@ enum MarkdownSourceMask {
         return !isBlankLine(at: startLine.location - 1, in: text) && !isBlankLine(at: NSMaxRange(endLine), in: text)
     }
 
-    private static func freePlaceholder(in text: NSString) -> UInt16 {
+    private static func freePlaceholder(in text: NSString) -> UInt16? {
         var used = Set<UInt16>()
         for index in 0..<text.length {
             let unit = text.character(at: index)
-            if unit >= 0xE000 && unit <= 0xF8FF { used.insert(unit) }
+            if (unit >= 0xE000 && unit <= 0xF8FF) || unit == 0xFFFF { used.insert(unit) }
         }
         var candidate: UInt16 = 0xE000
         while candidate <= 0xF8FF { if !used.contains(candidate) { return candidate }; candidate += 1 }
-        return 0xFFFF
+        return used.contains(0xFFFF) ? nil : 0xFFFF
     }
 
     private static func merged(_ ranges: [NSRange]) -> [NSRange] {

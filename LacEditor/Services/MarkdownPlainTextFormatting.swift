@@ -5,27 +5,52 @@ extension MarkdownFormattingService {
     /// Продолжения пункта внутри выбора сдвигаются влево на ширину маркера. Строки вне выбора и вложенные пункты ниже них не меняются.
     /// Если снимать нечего, возвращается правка, равная тексту (координатор молча её отклоняет как `.unchanged`).
     /// nil — выбор в блоке кода или результат при проверке разбором остался заголовком, цитатой, списком или кодом.
-    static func plainTextEdit(in text: NSString, selection: NSRange, strictMode: Bool, blocked: [NSRange] = []) -> MarkdownFormattingEdit? {
+    static func plainTextEdit(in text: NSString, selection: NSRange, strictMode: Bool, blocked: [NSRange]? = nil) -> MarkdownFormattingEdit? {
         let first = markdownLineRange(in: text, at: selection.location)
         let last = markdownLineRange(in: text, at: selection.length == 0 ? selection.location : NSMaxRange(selection) - 1)
-        let affected = NSRange(location: first.location, length: NSMaxRange(last) - first.location)
-        guard !intersectsCodeBlock(in: text, from: first.location, through: last.location) else { return nil }
+        var affected = NSRange(location: first.location, length: NSMaxRange(last) - first.location)
+        // Готовый разбор отличает код от допустимого отступа вложенного пункта.
+        if blocked == nil, intersectsCodeBlock(in: text, from: first.location, through: last.location) { return nil }
         // Формулы, HTML, front matter и код по разбору: те же блоки, где отказывают строчные команды.
-        guard !blocked.contains(where: { NSIntersectionRange($0, affected).length > 0 || NSLocationInRange(affected.location, $0) }) else { return nil }
+        guard !(blocked ?? []).contains(where: { NSIntersectionRange($0, affected).length > 0 || NSLocationInRange(affected.location, $0) }) else { return nil }
         // Разбор только по окну «верхнего блока» вокруг затронутых строк, а не по всему документу.
         let window = topLevelWindow(in: text, around: affected)
 
-        // Заголовки без пробела после `#` (нестрогий режим) признаются, только если их признал разбор.
-        var looseHeadings: Set<Int> = []
-        if !strictMode, text.range(of: "#").location != NSNotFound {
-            let presentation = MarkdownPresentationBuilder.parse(text.substring(with: window), syntax: .init(strictMode: false))
-            looseHeadings = Set(presentation.spans.compactMap { span in
-                guard case .heading = span.kind, let marker = span.markerRanges.first else { return nil }
-                return marker.location + window.location
-            })
-        }
-
+        guard let model = MarkdownPresentationBuilder.model(of: text.substring(with: window), syntax: .init(strictMode: strictMode)) else { return nil }
         var removals: [NSRange] = []
+        // Заголовки без пробела после `#` и закрывающие маркеры берём только из подтверждённого разбора.
+        var looseHeadings: Set<Int> = []
+        func headings(_ blocks: [MarkdownBlockNode]) {
+            for block in blocks {
+                if case let .heading(heading) = block.kind, !block.isUnreliable {
+                    let range = NSRange(location: block.range.location + window.location, length: block.range.length)
+                    if NSIntersectionRange(range, affected).length > 0 {
+                        let markers = block.markerRanges.map { NSRange(location: $0.location + window.location, length: $0.length) }
+                        if heading.style == .setext, let marker = markers.first {
+                            affected = NSUnionRange(affected, text.lineRange(for: range))
+                            removals.append(marker)
+                        } else if let opening = markers.first {
+                            looseHeadings.insert(opening.location)
+                            var closing = markers.dropFirst().first
+                            // У пустого заголовка модель может отдать только открывающий маркер.
+                            if closing == nil, block.inlines.isEmpty {
+                                var end = NSMaxRange(range)
+                                while end > NSMaxRange(opening), text.character(at: end - 1) == 32 || text.character(at: end - 1) == 9 { end -= 1 }
+                                if end > NSMaxRange(opening) { closing = NSRange(location: NSMaxRange(opening), length: end - NSMaxRange(opening)) }
+                            }
+                            if let closing {
+                                var start = closing.location
+                                while start > NSMaxRange(opening), text.character(at: start - 1) == 32 || text.character(at: start - 1) == 9 { start -= 1 }
+                                removals.append(NSRange(location: start, length: NSMaxRange(closing) - start))
+                            }
+                        }
+                    }
+                }
+                headings(block.children)
+            }
+        }
+        headings(model.blocks)
+
         var itemIndent = 0
         var location = affected.location
         while location < NSMaxRange(affected) {
@@ -77,6 +102,13 @@ extension MarkdownFormattingService {
             location = next
         }
 
+        var merged: [NSRange] = []
+        for removal in removals.sorted(by: { $0.location < $1.location }) {
+            if let last = merged.last, removal.location <= NSMaxRange(last) {
+                merged[merged.count - 1] = NSUnionRange(last, removal)
+            } else { merged.append(removal) }
+        }
+        removals = merged
         func mapped(_ point: Int) -> Int {
             var result = point
             for removal in removals {

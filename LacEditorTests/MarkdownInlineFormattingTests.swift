@@ -82,6 +82,29 @@ final class MarkdownInlineFormattingTests: XCTestCase {
         XCTAssertEqual(apply("просто текст", range(2, 0), .plainText), "просто текст")
     }
 
+    // Подчёркивание заголовка лежит за строкой каретки, но относится к тому же абзацу.
+    func testPlainTextRemovesSetextUnderlineAndKeepsSelection() {
+        for newline in ["\n", "\r\n"] {
+            let text = "Заголовок😀" + newline + "===" + newline + newline + "текст"
+            let selection = range(3, 2)
+            XCTAssertEqual(apply(text, selection, .plainText), "Заголовок😀" + newline + newline + newline + "текст", newline.debugDescription)
+            let edit = MarkdownFormattingService.plainTextEdit(in: text as NSString, selection: selection, strictMode: true)
+            XCTAssertEqual(edit?.selectionRange, selection, newline.debugDescription)
+        }
+        XCTAssertEqual(apply("Заголовок\n-", range(3, 0), .plainText), "Заголовок\n")
+    }
+
+    func testPlainTextRemovesClosingATXMarkerButKeepsLiteralHash() {
+        XCTAssertEqual(apply("# Заголовок😀 ###  ", range(4, 0), .plainText), "Заголовок😀  ")
+        XCTAssertEqual(apply("# ###", range(3, 0), .plainText), "")
+        XCTAssertEqual(apply("# текст#", range(3, 0), .plainText), "текст#")
+    }
+
+    func testPlainTextAcceptsDeepListIndentButRefusesRealCode() {
+        XCTAssertEqual(apply("- parent\n    - child", range(17, 0), .plainText), "- parent\nchild")
+        XCTAssertNil(apply("    - code", range(8, 0), .plainText))
+    }
+
     func testPartialUnboldFromMiddleMakesTwoSpans() {
         XCTAssertEqual(apply("a **bcd** e", range(5, 1), .bold), "a **b**c**d** e")
     }

@@ -142,6 +142,23 @@ final class MarkdownSourceMaskTests: XCTestCase {
         XCTAssertEqual(MarkdownSourceMask.mask("{++a++}", options: options()).placeholder, 0xE000)
     }
 
+    // Если заняты все заменители, исходные символы нельзя выдавать за служебные и удалять.
+    func testExhaustedPlaceholdersPreserveOriginalTextAndHeading() {
+        let privateUse = String(decoding: Array(UInt16(0xE000)...UInt16(0xF8FF)), as: UTF16.self)
+        let available = mask("{++x++}\n\n" + privateUse)
+        XCTAssertFalse(available.isIdentity)
+        XCTAssertEqual(available.placeholder, 0xFFFF)
+
+        let text = "# Заголовок\u{FFFF}\n\n" + privateUse + "\n\n{++x++}"
+        let result = mask(text)
+        XCTAssertTrue(result.isIdentity)
+        XCTAssertEqual(result.text, text)
+        XCTAssertTrue(result.segments.isEmpty)
+        let model = MarkdownDocumentParser.parseOrEmpty(text, includes: [.criticMarkup])
+        guard case let .heading(heading) = model.blocks.first?.kind else { return XCTFail("ожидается заголовок") }
+        XCTAssertEqual(heading.title, "Заголовок\u{FFFF}")
+    }
+
     func testMaskedTextHasNoSmartPunctuationOrStrikethroughTriggers() {
         let masked = mask("{--a--} {~~б~>в~~} {==г==}").text
         XCTAssertFalse(masked.contains("--"))
