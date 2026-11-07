@@ -121,6 +121,36 @@ macOS: 0 ошибок, 0 предупреждений, 0 пропусков GUI-
 
 ### Последняя адресная проверка (2026-11-05)
 
+- Полный `RunAllTests` после чистой сборки: 3911 тестов, 3776 passed,
+  123 failed, 11 skipped, 1 not run; предупреждений сборки нет.
+- `MarkdownAudioInteractionTests`: 26/28; два media runtime-падения
+  воспроизводятся изолированно (remote SVG и vertical iframe).
+- После iframe-cleanup targeted-прогон `MarkdownAudioInteractionTests` снова
+  26/28: stale-view assertion устранён, остаются remote SVG timeout и
+  vertical geometry (160 вместо 180).
+- После исправления предупреждения `NSRange` повторная сборка чистая:
+  `GetBuildLog(severity: warning)` — 0.
+- Разбор группы layout завершён: внесены минимальные правки геометрии
+  native page-break, fallback `rawHTMLRanges` и снятие iframe при reveal;
+  `MarkdownAudioInteractionTests` — 26/28, отдельный
+  `testNativePageBreakGeometryAndReveal` — 0/1 (rect не найден).
+- Разбор `MarkdownRendererTests` завершён без правок: статический анализ не
+  подтвердил безопасную production-причину первичных падений; требуется
+  runtime-диагностика targeted-тестами.
+- PDF-export группа разобрана без правок: production-путь подготовки media и
+  SVG статически согласован, но промежуточный HTML/PDF runtime не подтверждён;
+  правки отложены до диагностического запуска.
+- Preview группа (link routing, stale DOM, local audio) разобрана без правок:
+  guards и revision/generation checks согласованы, подтверждённой причины без
+  runtime-assertions нет.
+- Image copy/edit группа разобрана без правок: snapshot/selection guards,
+  retained remote copies и undo-группы статически соответствуют контракту;
+  production-изменение без дополнительного runtime-доказательства отклонено.
+- Renderer-разбор выявил подтверждённый дефект HTML audio с boolean `controls`:
+  ветка использовала строгий `audioSource`. Исправление переведено на
+  `embeddedMedia`; сборка чистая, но полный `MarkdownRendererTests` пока
+  остаётся 92/103 (11 падений), включая raw HTML/media сценарии.
+
 - Полный `RunAllTests`: 3904 всего, 3727 passed, 165 failed, 11 skipped,
   1 not run; сборка и журнал предупреждений чистые.
 - `FolderOpeningTests/testQueuedFolderThenFileKeepsExplicitFolder` — 1/1

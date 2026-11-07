@@ -791,7 +791,12 @@ final class MarkdownPresentationController {
                                        context: SmartTextContext, revision: UInt) -> Bool {
         guard isActive, enabled, range.length == 0, replacement == "\"" || replacement == "'",
               let fence = fenceContext, fence.revision &+ 1 == revision, fence.line == nil,
-              let rawRanges = context.rawHTMLRanges, !fenceLineBlocked(range.location, in: fence) else { return false }
+              !fenceLineBlocked(range.location, in: fence) else { return false }
+        // A nil HTML index means that parsing could not prove HTML boundaries.
+        // With no markup-looking text there is no opaque context to exclude;
+        // otherwise keep the conservative refusal.
+        if context.rawHTMLRanges == nil, text.range(of: "<").location != NSNotFound { return false }
+        let rawRanges = context.rawHTMLRanges ?? []
         var low = 0, high = rawRanges.count
         while low < high {
             let middle = (low + high) / 2
@@ -875,7 +880,9 @@ final class MarkdownPresentationController {
         if NSMaxRange(range) < source.length && source.character(at: NSMaxRange(range)) == 36 { return false }
         if mathPairTextRange(containing: range, in: context) != nil { return true }
         guard range.length == 0, context.active == nil, let fence = fenceContext, fence.revision == revision,
-              fence.line == nil, let rawRanges = context.rawHTMLRanges, !fenceLineBlocked(range.location, in: fence) else { return false }
+              fence.line == nil, !fenceLineBlocked(range.location, in: fence) else { return false }
+        if context.rawHTMLRanges == nil, source.range(of: "<").location != NSNotFound { return false }
+        let rawRanges = context.rawHTMLRanges ?? []
         var low = 0, high = rawRanges.count
         while low < high {
             let middle = (low + high) / 2
@@ -1392,6 +1399,20 @@ final class MarkdownPresentationController {
                 // source range again.
                 audioCompleted.remove(range)
                 clearMediaGeometry(range, layout: layout)
+            }
+            // Iframes are source-backed media as well.  Remove the isolated
+            // WebKit view immediately when its source range is selected;
+            // relying only on the subsequent visibility pass leaves a stale
+            // view attached when the selected range is outside the viewport.
+            if !hasMarkedText {
+                for range in Array(iframeViews.keys) where NSIntersectionRange(range, selection).length > 0 || NSLocationInRange(selection.location, range) {
+                    if let entry = iframeViews.removeValue(forKey: range) {
+                        entry.view.stopLoading()
+                        entry.view.navigationDelegate = nil
+                        entry.view.removeFromSuperview()
+                    }
+                    clearMediaGeometry(range, layout: layout)
+                }
             }
         }
         if isActive, mathPairEnabled, !enabled, !outlineVisible, !readableEnabled, !emojiCompletionEnabled,
