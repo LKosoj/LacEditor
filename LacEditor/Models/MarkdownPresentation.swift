@@ -2,6 +2,16 @@ import Foundation
 
 enum MarkdownPresentationKind: Equatable, Sendable {
     case heading(Int), strong, emphasis, strikethrough, code, keyboard, link, quote, codeBlock, highlight, yaml, alert(String), critic(CriticMarkupKind), obsidianComment, callout(label: String, kind: MarkdownCalloutKind?), subscriptText, superscriptText, underline, inlineStyle(MarkdownInlineStyle), tableMath(NSRange), tableEmoji(NSRange), tableImage(NSRange)
+
+    var usesInlineSelection: Bool {
+        switch self {
+        case .strong, .emphasis, .strikethrough, .code, .keyboard, .link, .highlight,
+             .subscriptText, .superscriptText, .underline, .inlineStyle, .critic, .obsidianComment:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 struct MarkdownPresentationSpan: Equatable, Sendable {
@@ -910,6 +920,24 @@ struct MarkdownPresentation: Sendable {
     private(set) var isReadyForShift = false
     /// Итог `hasOnlyTextStructure` на момент разбора: `shift` заголовки только убирает, поэтому на каждую правку он не считается.
     private(set) var isTextStructureOnly = false
+
+    /// На общей границе вложенных inline-владельцев каретка раскрывает внешний элемент.
+    func inlineRevealRange(for span: MarkdownPresentationSpan) -> NSRange {
+        guard span.kind.usesInlineSelection, span.range.length > 0 else { return span.range }
+        let start = span.range.location
+        let end = NSMaxRange(span.range)
+        let sharedStart = spans.contains { owner in
+            owner.kind.usesInlineSelection && owner.range != span.range &&
+                owner.range.location == start && NSMaxRange(owner.range) > end
+        }
+        let sharedEnd = spans.contains { owner in
+            owner.kind.usesInlineSelection && owner.range != span.range &&
+                owner.range.location < start && NSMaxRange(owner.range) == end
+        }
+        let trimmed = (sharedStart ? 1 : 0) + (sharedEnd ? 1 : 0)
+        guard span.range.length > trimmed else { return span.range }
+        return NSRange(location: start + (sharedStart ? 1 : 0), length: span.range.length - trimmed)
+    }
 
     init(spans: [MarkdownPresentationSpan], headings: [MarkdownHeading] = [], namedAnchors: [MarkdownNamedAnchor] = [], images: [MarkdownImage] = [], audioBlocks: [MarkdownAudioBlock] = [], iframeBlocks: [MarkdownIframeBlock] = [], detailsBlocks: [MarkdownDetailsBlock] = [], htmlBlocks: [MarkdownHTMLBlock] = [], pageBreaks: [NSRange] = [], ruby: [MarkdownRuby] = [], links: [MarkdownLink] = [], diagrams: [MarkdownDiagram] = [], formulas: [MarkdownFormula] = [], inlineFormulas: [MarkdownFormula] = [], emojiCandidates: [MarkdownEmojiCandidate] = [], emojiCandidatesIncluded: Bool = false, emojiCompletionRanges: [NSRange] = [], smartTextRanges: [NSRange] = [], smartRawHTMLRanges: [NSRange]? = nil, textReplacements: [MarkdownTextReplacement] = [], paragraphs: [MarkdownParagraph] = [], completedTaskRanges: [NSRange] = [], taskCheckboxes: [MarkdownTaskCheckbox] = [], listMarkers: [MarkdownListMarker] = [], looseIndents: [MarkdownLooseIndent] = [], footnotes: [MarkdownFootnote] = [], tableOfContents: [NSRange] = [], tables: [MarkdownTable] = [], codeBlocks: [MarkdownCodeBlock] = [], fenceContainerLines: [MarkdownFenceContainerLine] = [], fenceBlockedRanges: [NSRange] = [], fenceBlockedEOF: Bool = false, fenceContextAvailable: Bool = false, readableText: MarkdownReadableText? = nil) {
         self.spans = spans

@@ -672,6 +672,11 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
 - Повтор `MarkdownLayoutTests` после Ruby-исправления: 120 тестов,
   110 passed, 10 failed, 0 skipped, 0 not run. Отчёт Xcode:
   `9ED1375A-3EB2-463D-ACEA-573505F3D640.txt`.
+- На общей начальной или конечной границе вложенных inline-владельцев каретка
+  теперь раскрывает внешний элемент; внутри диапазона вложенный элемент
+  раскрывается как прежде. Layout и `MarkdownDisplayMap` используют один
+  `inlineRevealRange`, включая shift. Основной и четыре соседних теста проходят
+  5/5; отчёт Xcode: `7BFC16EA-F517-4A0B-92E3-D009FE4A8631.txt`.
 
 - `BuildProject(buildForTesting: true)` проходит; журнал Xcode содержит
   0 ошибок и 0 предупреждений.

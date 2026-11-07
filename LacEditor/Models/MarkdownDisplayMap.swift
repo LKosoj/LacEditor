@@ -142,16 +142,14 @@ struct MarkdownDisplayMap: Equatable, Sendable {
             if isReplacementShown(kind, range) { add(range, .replacement(kind), 1) }
         }
         for span in presentation.spans {
-            let inline: Bool
-            switch span.kind {
-            case .strong, .emphasis, .strikethrough, .code, .keyboard, .link, .highlight, .subscriptText, .superscriptText, .underline, .inlineStyle, .critic, .obsidianComment: inline = true
-            default: inline = false
-            }
-            if Reveal.touches(span.range, inline ? (reveal.inlineSelection ?? reveal.revealedRange) : reveal.revealedRange) { continue }
+            let inline = span.kind.usesInlineSelection
+            let inlineRevealOwner = inline ? presentation.inlineRevealRange(for: span) : span.range
+            if Reveal.touches(inlineRevealOwner, inline ? (reveal.inlineSelection ?? reveal.revealedRange) : reveal.revealedRange) { continue }
             var isQuote = false
             if case .quote = span.kind { isQuote = true }
             for marker in span.markerRanges {
-                add(marker, .hiddenMarker, 0, owner: isQuote ? marker : span.range, inline: inline, revealOwner: isQuote ? span.range : nil)
+                add(marker, .hiddenMarker, 0, owner: isQuote ? marker : span.range, inline: inline,
+                    revealOwner: isQuote ? span.range : (inlineRevealOwner == span.range ? nil : inlineRevealOwner))
             }
         }
         for item in presentation.textReplacements where !Reveal.touches(item.range, reveal.inlineSelection) {

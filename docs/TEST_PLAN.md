@@ -258,6 +258,8 @@ macOS: 0 ошибок, 0 предупреждений, 0 пропусков GUI-
   сценарий 1/1; соседние Ruby-сценарии сохраняют результат 2/2.
 - [x] Повторить `MarkdownLayoutTests` после Ruby-исправления: 120 тестов,
   110 passed, 10 failed, 0 skipped, 0 not run.
+- [x] Закрыть общую границу вложенных inline-владельцев единым правилом для
+  layout и source↔display map: основной и четыре соседних теста проходят 5/5.
 - [ ] Повторить целиком `MarkdownAudioInteractionTests` и
   `MarkdownClipboardInteractionTests` после закрытия известных кластеров.
 - [ ] После последнего исправления

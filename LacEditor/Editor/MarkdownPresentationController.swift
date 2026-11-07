@@ -2616,8 +2616,10 @@ final class MarkdownPresentationController {
                 images[range] = image
             }
             guard ready else { continue }
-            let available = min(container.containerSize.width, textView.visibleRect.width)
-                - 2 * container.lineFragmentPadding - layout.markdownMediaIndent(for: heading.range)
+            let availableExtent = container.layoutOrientation == .vertical
+                ? min(container.containerSize.height, textView.visibleRect.height)
+                : min(container.containerSize.width, textView.visibleRect.width)
+            let available = availableExtent - 2 * container.lineFragmentPadding - layout.markdownMediaIndent(for: heading.range)
             guard available > 0, available.isFinite else { continue }
             if layout.setUppercaseHeading(heading.range, runs: runs, width: available, level: heading.level, attachmentImages: images) {
                 uppercaseInstalled.insert(heading.range)
@@ -3936,9 +3938,16 @@ final class MarkdownPresentationController {
                 if let visible = self.visibleRange() { self.loadVisibleEmoji(in: visible) }
                 if self.uppercaseSnapshotReady && !self.uppercaseHeadingLevels.isEmpty {
                     self.uppercaseHeadings = Dictionary(updated.headings.map { ($0.range.location, $0) }, uniquingKeysWith: { first, _ in first })
+                    let styledHeadingSpans = updated.spans.filter { span in
+                        guard case .heading = span.kind else { return false }
+                        return self.styledRanges.contains { NSIntersectionRange($0, span.range).length > 0 }
+                    }
                     self.clearUppercaseHeadings()
                     self.lastVisibleRange = nil
                     self.applyVisible()
+                    if self.uppercaseInstalled.isEmpty {
+                        self.updateUppercaseHeadings(spans: styledHeadingSpans)
+                    }
                 }
             }
         }
