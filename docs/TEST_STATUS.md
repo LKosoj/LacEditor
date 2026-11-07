@@ -614,6 +614,35 @@ Linux (`linux-only-failures.txt`: ImageIO, FSEvents, `NLTokenizer`, CRLF как 
 
 ### Адресный прогон на Mac (2026-11-07)
 
+- Диагностический повтор `MarkdownLayoutTests` завершён штатно: 120 тестов,
+  105 passed, 15 failed, 0 skipped, 0 not run. По сравнению с предыдущим
+  состоянием закрыт ещё один сценарий; актуальный отчёт Xcode:
+  `C88961EC-6A40-4F49-8770-5470FA720233.txt`. Полный `RunAllTests` не
+  запускается до устранения известных адресных падений.
+- Для `testUppercaseHeadingUsesResolvedEmoji` отдельно проверены ожидание
+  геометрии после resolver и полноценный оконный fixture; оба targeted-прогона
+  остались 0/1, неэффективные изменения отменены. Для вертикального hit-test
+  таблицы также не помогли окно/first responder и прямые координаты контейнера;
+  изменения отменены. После двух проходов выполнен `DocumentationSearch`:
+  Apple подтверждает систему координат `NSTextContainer` и право TextKit
+  раскладывать больший диапазон, чем запрошен. Следующий шаг — диагностика
+  фактических visible/frame координат без ослабления ожиданий.
+- `testParagraphSpacingReplacesBlankSeparatorAndRevealsSource`: direct-вызов
+  delegate возвращает ожидаемые 40 pt, но повторная раскладка сохраняет 0 pt;
+  перестановка invalidation и `textContainerChangedGeometry` не помогли,
+  изменения отменены. Дальнейшее расследование этого теста отложено по
+  указанию пользователя, без добавления `XCTSkip`.
+- Исправлено восстановление paragraph style после chunk-refresh:
+  `paragraphStylesDidChange` восстанавливает исходные alignment/direction/
+  indent и повторно применяет Markdown alignment ко всему изменённому chunk,
+  не завися от временно недоступного viewport. Адресный тест проходит 1/1;
+  `testCenteredHeadingLevelsOverrideGeneralAlignment`,
+  `testParagraphAlignmentFollowsScrollingAndRestoresVisitedText` и
+  `testHeadingNumberingRestoresVisitedOffscreenHeadings` проходят 3/3.
+- Повтор полного `MarkdownLayoutTests` после исправления: 120 тестов,
+  106 passed, 14 failed, 0 skipped, 0 not run. Отчёт Xcode:
+  `8CD84520-A4F9-4825-92A1-4C444BF1ED55.txt`.
+
 - `BuildProject(buildForTesting: true)` проходит; журнал Xcode содержит
   0 ошибок и 0 предупреждений.
 - Пачка `MarkdownPresentationTests`, `MarkdownFootnoteTests`,

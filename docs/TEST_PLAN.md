@@ -230,8 +230,17 @@ macOS: 0 ошибок, 0 предупреждений, 0 пропусков GUI-
 - [x] Проверены и отклонены гипотезы TOC-fixture про `visibleRect`, высоту
   view и `allowsNonContiguousLayout`: `firstUnlaidCharacterIndex` остаётся
   равен длине текста; неэффективные изменения отменены.
-- [ ] Разобрать и устранить оставшиеся 16 падений `MarkdownLayoutTests` после
-  адресно закрытого centered-heading сценария.
+- [x] Диагностический повтор `MarkdownLayoutTests`: 120 тестов, 105 passed,
+  15 failed, 0 skipped, 0 not run. Ранее открытый centered-heading сценарий
+  подтверждён как проходящий; список оставшихся падений обновлён по отчёту
+  Xcode `C88961EC-6A40-4F49-8770-5470FA720233.txt`.
+- [ ] Разобрать и устранить оставшиеся 14 падений `MarkdownLayoutTests`.
+  `testParagraphSpacingReplacesBlankSeparatorAndRevealsSource` временно
+  отложен по указанию пользователя; `XCTSkip` в код не добавлялся.
+- [x] Закрыть `testParagraphAlignmentChangesVisibleTextAndRestoresSource`:
+  1/1; соседние alignment/numbering сценарии — 3/3.
+- [x] Повторить `MarkdownLayoutTests` после alignment-исправления: 120 тестов,
+  106 passed, 14 failed, 0 skipped, 0 not run.
 - [ ] Повторить целиком `MarkdownAudioInteractionTests` и
   `MarkdownClipboardInteractionTests` после закрытия известных кластеров.
 - [ ] После адресных исправлений выполнить единый непрерывный `RunAllTests`.

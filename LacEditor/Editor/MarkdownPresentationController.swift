@@ -2749,9 +2749,9 @@ final class MarkdownPresentationController {
     }
 
     func paragraphStylesDidChange(in range: NSRange) {
-        let indexes = IndexSet(integersIn: range.location..<NSMaxRange(range))
-        for key in Array(alignedRanges.keys) { alignedRanges[key]?.subtract(indexes) }
-        guard enabled, !hasMarkedText, let visible = visibleRange(), NSIntersectionRange(visible, range).length > 0 else { return }
+        restoreParagraphAlignment(in: range)
+        guard enabled, !hasMarkedText else { return }
+        applyParagraphAlignment(in: range)
         lastVisibleRange = nil
         applyVisible()
     }

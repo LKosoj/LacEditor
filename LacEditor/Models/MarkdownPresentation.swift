@@ -1316,7 +1316,9 @@ struct MarkdownPresentation: Sendable {
             guard edit.away(item.range) != nil, edit.line(item.line) != nil else { return false }
             if edit.holds(item.line) { covered = true }
         }
-        guard covered else { return false }
+        let imageParagraphCoversEdit = edit.window(images, extent: { $0.paragraphRange })
+            .contains { edit.holds(images[$0].paragraphRange) }
+        guard covered || imageParagraphCoversEdit else { return false }
         for index in edit.window(links, extent: { $0.range }) where edit.away(links[index].range) == nil { return false }
         for index in edit.window(wikiLinks, extent: { $0.range }) {
             let item = wikiLinks[index]
